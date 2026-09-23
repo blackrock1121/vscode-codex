@@ -2358,6 +2358,7 @@ function onCheckpointMarker(checkpointId: string) {
 interface QueueItem {
   text: string;
   context?: string;
+  contexts: { label: string; text: string }[];
   images: { mediaType: string; data: string }[];
   files: string[];
   labels: string[];
@@ -2368,11 +2369,12 @@ const taskQueueEl = $("task-queue");
 
 /** Snapshot the composer into a sendable payload (null if nothing to send). */
 function readComposer(): QueueItem | null {
-  const text = inputEl.value.trim();
-  if (!text && !pendingImages.length) return null;
+  const text = inputEl.value;
+  if (!text.trim() && !pendingImages.length) return null;
   return {
     text,
     context: pendingContexts.map((c) => c.text).join("\n\n") || undefined,
+    contexts: pendingContexts.map((c) => ({ ...c })),
     images: pendingImages.map((p) => ({ mediaType: p.mediaType, data: p.data })),
     files: attachedFiles.map((f) => f.path),
     labels: [...pendingContexts.map((c) => c.label), ...attachedFiles.map((f) => baseName(f.path))],
@@ -2654,6 +2656,23 @@ function flushQueue() {
   performSend(next);
 }
 
+/** Take a queued item back into the composer without flattening its newlines. */
+function recallQueuedItem(item: QueueItem) {
+  const draft = inputEl.value;
+  setComposerText(draft && item.text ? `${item.text}\n\n${draft}` : item.text || draft);
+  resetInputHistory();
+  for (const ctx of item.contexts) addContextChip(ctx.label, ctx.text);
+  for (let i = 0; i < item.images.length; i++) {
+    const img = item.images[i];
+    const uri = item.imageUris[i] || `data:${img.mediaType};base64,${img.data}`;
+    pendingImages.push({ ...img, uri });
+    addImagePreview(uri);
+  }
+  for (const path of item.files) addFile(path);
+  refreshComposerHint();
+  inputEl.focus();
+}
+
 function renderQueue() {
   if (!taskQueue.length) {
     taskQueueEl.classList.add("hidden");
@@ -2668,10 +2687,23 @@ function renderQueue() {
     const row = el("div", "tq-row");
     row.append(el("span", "tq-idx", String(i + 1)));
     const txt = el("span", "tq-text", item.text || "(图片)");
+    txt.title = item.text;
     row.appendChild(txt);
     if (item.labels.length) row.appendChild(el("span", "tq-chips", item.labels.join(" · ")));
+    const recall = el("button", "tq-recall");
+    recall.innerHTML = ICON.undo;
+    recall.title = "撤回到输入框编辑";
+    recall.setAttribute("aria-label", recall.title);
+    recall.onclick = () => {
+      // Remove first, so a turn finishing during a focus/resize callback cannot send it.
+      taskQueue.splice(i, 1);
+      renderQueue();
+      recallQueuedItem(item);
+    };
+    row.appendChild(recall);
     const del = el("button", "tq-del", "×");
     del.title = "从队列移除";
+    del.setAttribute("aria-label", del.title);
     del.onclick = () => {
       taskQueue.splice(i, 1);
       renderQueue();
