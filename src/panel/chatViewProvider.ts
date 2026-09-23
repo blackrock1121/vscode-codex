@@ -841,7 +841,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "ready":
                     ctx.ready = true;
-                    void this.store.connection().then(rpc => rpc.request("model/list", {})).then(r => this.post(ctx, { kind: "models", models: r.data.filter((m: any) => !m.hidden).map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort) })) })).catch(e => this.post(ctx, { kind: "notice", message: `模型列表读取失败：${String(e)}` }));
+                    void this.store.connection().then(rpc => rpc.request("model/list", {})).then(r => {
+                        const models = r.data.filter((m: any) => !m.hidden).map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault }));
+                        this.modelCatalog = models;
+                        this.post(ctx, { kind: "models", models });
+                    }).catch(e => this.post(ctx, { kind: "notice", message: `模型列表读取失败：${String(e)}` }));
                     this.post(ctx, {
                         kind: "config",
                         permissionMode: this.config().get<string>("permissionMode", "default"),
@@ -1199,15 +1203,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         ctx.proc.respondPermission(requestId, { behavior, suggestionId });
     }
-    private async updateConfig(key: string, value: unknown): Promise<void> {
+    private async updateConfig(key: string, value: unknown): Promise<boolean> {
         const insp = this.config().inspect(key);
         const target = insp?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
         try {
             await this.config().update(key, value, target);
+            return true;
         }
         catch (err) {
             this.output.appendLine(`[updateConfig:${key}] ${String(err)}`);
             vscode.window.showWarningMessage(`无法保存设置 codexChat.${key}，请检查工作区设置是否只读。`);
+            return false;
         }
     }
     private allProcs(): CodexProcess[] {
@@ -1219,6 +1225,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (c.proc)
                 out.push(c.proc);
         return out;
+    }
+    private modelCatalog: { id: string; efforts: string[]; isDefault?: boolean }[] = [];
+    private modelSelectionQueue: Promise<void> = Promise.resolve();
+    private queueModelSelection(change: () => Promise<void>): Promise<void> {
+        const task = this.modelSelectionQueue.then(change);
+        this.modelSelectionQueue = task.catch(() => undefined);
+        return task;
+    }
+    private broadcastModelConfig(): void {
+        const cfg: ToWebview = {
+            kind: "config",
+            permissionMode: this.config().get<string>("permissionMode", "default"),
+            model: this.config().get<string>("model", ""),
+            effort: this.config().get<string>("effort", ""),
+        };
+        for (const session of this.sessions) this.post(session, cfg);
     }
     private modeSeq = 0;
     private async setPermissionMode(_ctx: SessionCtx, mode: string): Promise<void> {
@@ -1257,17 +1279,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.post(_ctx, { kind: "error", message: `有 ${rejected.length} 个会话未能切换到「${MODE_NAMES[mode] ?? mode}」：${why}。` });
     }
-    private async setModel(ctx: SessionCtx, model: string): Promise<void> {
-        await this.updateConfig("model", model);
-        const results = await Promise.allSettled(this.allProcs().map((p) => p.setModel(model)));
-        const failed = results.filter((r) => r.status === "rejected").length;
-        if (failed) {
-            this.post(ctx, { kind: "error", message: `有 ${failed} 个会话未能切换模型，请重试或新建会话。` });
-        }
+    private setModel(ctx: SessionCtx, model: string): Promise<void> {
+        return this.queueModelSelection(async () => {
+            const previousModel = this.config().get<string>("model", "");
+            if (!await this.updateConfig("model", model)) {
+                this.broadcastModelConfig();
+                return;
+            }
+            const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
+            const oldEffort = this.config().get<string>("effort", "");
+            if (oldEffort && details?.efforts.length && !details.efforts.includes(oldEffort)) {
+                if (!await this.updateConfig("effort", "")) {
+                    await this.updateConfig("model", previousModel);
+                    this.broadcastModelConfig();
+                    return;
+                }
+                await Promise.all(this.allProcs().map(p => p.setEffort("")));
+                this.post(ctx, { kind: "notice", message: `新模型不支持原推理强度，已改用模型默认值。` });
+            }
+            const results = await Promise.allSettled(this.allProcs().map((p) => p.setModel(model)));
+            this.broadcastModelConfig();
+            const failed = results.filter((r) => r.status === "rejected").length;
+            if (failed) {
+                this.post(ctx, { kind: "error", message: `有 ${failed} 个会话未能切换模型，请重试或新建会话。` });
+            }
+        });
     }
-    private async setEffort(ctx: SessionCtx, effort: string): Promise<void> {
-        await this.updateConfig("effort", effort);
-        await Promise.all(this.allProcs().map(p => p.setEffort(effort)));
+    private setEffort(ctx: SessionCtx, effort: string): Promise<void> {
+        return this.queueModelSelection(async () => {
+            const model = this.config().get<string>("model", "");
+            const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
+            if (effort && details?.efforts.length && !details.efforts.includes(effort)) {
+                this.post(ctx, { kind: "error", message: `当前模型不支持推理强度「${effort}」。` });
+                this.broadcastModelConfig();
+                return;
+            }
+            if (!await this.updateConfig("effort", effort)) {
+                this.broadcastModelConfig();
+                return;
+            }
+            await Promise.all(this.allProcs().map(p => p.setEffort(effort)));
+            this.broadcastModelConfig();
+        });
     }
     private codeColumn(ctx: SessionCtx): vscode.ViewColumn {
         return ctx.panel.viewColumn === vscode.ViewColumn.One ? vscode.ViewColumn.Two : vscode.ViewColumn.One;

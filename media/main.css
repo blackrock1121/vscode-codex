@@ -1422,6 +1422,8 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,.45);
   padding: 5px;
+  max-height: calc(100vh - 105px);
+  overflow-y: auto;
 }
 /* section label — quieter and tighter than a row, so it reads as a caption */
 .pick-head {
@@ -1469,6 +1471,10 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   color: inherit; padding: 9px 10px; border-radius: 7px;
 }
 .pick-row:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.16)); }
+.pick-row:focus-visible, .effort-option:focus-visible {
+  outline: 2px solid var(--vscode-focusBorder);
+  outline-offset: -2px;
+}
 /* selected = the same link-hue tint used by the option picker, not a grey slab */
 .pick-row.on { background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent); }
 /* Mode icons get a tile: a bare 16px glyph next to two lines of text read as
@@ -1520,18 +1526,17 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .pick-row.danger .pick-title { color: #e08a78; }
 .pick-row.danger .pick-ico { background: rgba(199,78,57,.14); color: #e08a78; }
 .pick-sep { height: 1px; background: var(--vscode-menu-separatorBackground, rgba(128,128,128,.25)); margin: 5px 6px; }
-.pick-effort { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 3px 10px 6px; font-size: 11.5px; color: var(--vscode-descriptionForeground); }
+.pick-effort { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 2px 8px; padding: 7px 10px 5px; font-size: 11.5px; color: var(--vscode-descriptionForeground); }
 .pick-effort .eff-cur { color: var(--vscode-descriptionForeground); opacity: .8; }
-.effort-dots { display: inline-flex; gap: 3px; align-items: center; }
-/* Bars, not dots: effort is a level on a scale — five circles read as radio
-   buttons, five filling bars read as "how far along". */
-.effort-dot {
-  width: 13px; height: 5px; border-radius: 3px;
-  background: transparent;
-  border: 1px solid var(--vscode-descriptionForeground);
-  cursor: pointer;
+.effort-options { display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 8px 8px; }
+.effort-option {
+  min-height: 28px; padding: 3px 8px; border-radius: 6px;
+  border: 1px solid var(--vscode-widget-border, rgba(128,128,128,.35));
+  background: transparent; color: var(--vscode-foreground); cursor: pointer;
+  font-size: 11px;
 }
-.effort-dot.on { background: var(--vscode-button-background); border-color: var(--vscode-button-background); }
+.effort-option:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.16)); }
+.effort-option.on { border-color: var(--vscode-textLink-foreground); color: var(--vscode-textLink-foreground); background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent); }
 #context-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .input-chip {
   display: inline-flex; align-items: center; gap: 4px;
