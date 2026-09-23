@@ -506,8 +506,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.panel.title = title?.trim() || "Codex Copilot";
     }
     async openSession(sessionId?: string): Promise<void> {
-        if (sessionId)
-            await this.store.hydrate(sessionId);
         this.output.appendLine(`[${new Date().toISOString()}] [open] ${sessionId ? sessionId.slice(0, 8) : "新会话"}`);
         if (sessionId) {
             for (const ctx of this.sessions) {
@@ -1182,8 +1180,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const roots = this.workspaceDirs();
             const excludes = new Map(roots.map(root => [root, vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(root)).get<string[]>("snapshotExclude", [])]));
             const snapshot = new WorkspaceSnapshot(roots, 20000, excludes);
+            const snapshotAt = Date.now();
             await snapshot.capture();
             ctx.snapshot = snapshot;
+            this.output.appendLine(`[${new Date().toISOString()}] [snapshot] 基线 ${snapshot.files.size} 文件，跳过 ${snapshot.skipped.size} 项，耗时 ${Date.now() - snapshotAt}ms`);
             this.reportSnapshotSkips(ctx, snapshot);
         })();
         await Promise.all([historyReady, snapshotReady]);
@@ -2143,8 +2143,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     ctx.snapshot = undefined;
                     ctx.checkpoints.flush();
                     this.refreshChangedFiles(ctx);
-                    if (ctx.sessionId)
-                        await this.store.hydrate(ctx.sessionId);
                 }
                 catch (err) {
                     this.post(ctx, { kind: "notice", message: `会话或文件快照刷新失败：${String(err)}` });

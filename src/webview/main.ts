@@ -312,7 +312,7 @@ function renderLive() {
     liveBlock.committedEl.innerHTML = mdFast.render(liveBlock.raw.slice(0, commitLen));
   }
   liveBlock.lineEl.textContent = shownText.slice(liveBlock.committedLen);
-  updateActiveLine();
+  scheduleActiveLine();
   maybeScroll();
 }
 
@@ -340,6 +340,14 @@ function finalizeLive() {
 
 /** Position the pulsing "active" progress segment so it starts at the last
  *  timeline node (dot) and runs down to the current bottom of the thread. */
+let activeLineRAF = 0;
+function scheduleActiveLine() {
+  if (activeLineRAF) return;
+  activeLineRAF = requestAnimationFrame(() => {
+    activeLineRAF = 0;
+    updateActiveLine();
+  });
+}
 function updateActiveLine() {
   if (!assistantEl || !assistantEl.classList.contains("streaming-turn")) return;
   const rail = assistantEl.querySelector(".rail") as HTMLElement | null;
@@ -1690,7 +1698,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
           customRow.classList.remove("on");
           updateFoot();
           // Single-select: auto-advance after a brief beat so the ✓ is visible.
-          advance(cur, 320);
+          advance(cur, 120);
         }
       };
       rows.push(row);
