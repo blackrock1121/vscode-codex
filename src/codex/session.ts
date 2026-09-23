@@ -2,6 +2,15 @@ import { CodexRpc } from './rpc';
 import { timeline, userView } from './events';
 import { SessionSummary, TimelineItem } from '../shared';
 
+/** Codex 的 preview 是首条消息正文，直接作为标签名会把整段提问塞进标题栏。 */
+export function previewTitle(preview: string): string {
+  const firstLine = String(preview || '').split(/\r?\n/).map(line => line.trim()).find(Boolean) || '';
+  const clause = firstLine.split(/[，,。！？!?；;]/, 1)[0].trim();
+  const title = clause.length >= 6 ? clause : firstLine;
+  const chars = Array.from(title);
+  return chars.length > 22 ? chars.slice(0, 22).join('') + '…' : title || '新对话';
+}
+
 /** 历史只通过官方接口访问，不修改 Codex 的 SQLite/JSONL。同步方法仅访问已加载缓存。 */
 export class SessionStore {
   private rpc?: CodexRpc;
@@ -48,7 +57,7 @@ export class SessionStore {
     this.threads.set(id, thread);
   }
   list(): SessionSummary[] {
-    return [...this.threads.values()].map(t => ({ id: t.id, title: t.name || t.preview || '新对话', updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0 })).sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...this.threads.values()].map(t => ({ id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0 })).sort((a, b) => b.updatedAt - a.updatedAt);
   }
   load(id: string): TimelineItem[] { return timeline(this.threads.get(id)?.turns ?? []); }
   findFile(id: string): string | undefined { const t = this.threads.get(id); return t ? (t.path || id) : undefined; }
