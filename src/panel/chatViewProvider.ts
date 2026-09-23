@@ -165,6 +165,7 @@ interface SessionCtx {
     };
     pendingPrefill?: string;
     pendingPerm?: ToWebview;
+    pendingQuestionAt?: number;
     blank: boolean;
     ready: boolean;
     sendSeq?: number;
@@ -923,11 +924,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.handlePermission(ctx, m.requestId, m.behavior, m.suggestionId);
                     break;
                 case "answerQuestion":
+                    ctx.proc?.answerQuestion(m.requestId, m.answers);
+                    if (ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === m.requestId && ctx.pendingQuestionAt !== undefined)
+                        this.output.appendLine(`[${new Date().toISOString()}] [question] 用户等待 ${Date.now() - ctx.pendingQuestionAt}ms，答案已转交 Codex`);
+                    ctx.pendingQuestionAt = undefined;
                     ctx.pendingPerm = undefined;
                     ctx.lastUserActionAt = Date.now();
                     if (ctx.lastEventAt !== undefined)
                         ctx.lastEventAt = Date.now();
-                    ctx.proc?.answerQuestion(m.requestId, m.answers);
                     break;
                 case "restoreCheckpoint":
                     await this.restoreCheckpoint(ctx, m.checkpointId);
@@ -1169,6 +1173,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (saved.some(ok => !ok))
                 throw new Error("部分文件未保存，已取消发送，避免覆盖编辑器改动。");
         }
+        // Existing threads can reconnect while the local snapshot is captured.
+        // Keep new-thread creation after the snapshot so Stop can still cancel it.
+        const processReady = hadSession ? this.ensureProcess(ctx) : undefined;
         const historyReady = hadSession && ctx.sessionId ? this.store.hydrate(ctx.sessionId) : Promise.resolve();
         const snapshotReady = (async () => {
             if (!this.config().get<boolean>("snapshotFilesForRestore", true)) return;
@@ -1186,7 +1193,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         // A new thread is only durable after its first turn starts. Do not create
         // it during the (potentially slow) snapshot: Stop may cancel the send.
-        const proc = await this.ensureProcess(ctx);
+        const proc = processReady ? await processReady : await this.ensureProcess(ctx);
         if (!proc) {
             ctx.draft = text;
             ctx.draftImages = images;
@@ -1236,6 +1243,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         mediaType: string;
         data: string;
     }[]): Promise<void> {
+        const rewindAt = Date.now();
         const meta = checkpointId ? this.cpMeta(ctx, checkpointId) : undefined;
         if (!meta) {
             this.post(ctx, {
@@ -1271,6 +1279,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         this.refreshChangedFiles(ctx);
+        this.output.appendLine(`[${new Date().toISOString()}] [rewind] 回退准备 ${Date.now() - rewindAt}ms`);
         await this.handleSend(ctx, text, undefined, images);
     }
     private async saveImage(dataUri: string): Promise<void> {
@@ -2322,6 +2331,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }).catch(e => this.output.appendLine(`[usage] ${String(e)}`)).finally(() => { this.usageInFlight = false; });
     }
     private onPermission(ctx: SessionCtx, req: PermissionRequest): void {
+        if (req.toolName === "AskUserQuestion") {
+            ctx.pendingQuestionAt = Date.now();
+            this.output.appendLine(`[${new Date().toISOString()}] [question] 收到提问，距本轮发送 ${ctx.sendAt === undefined ? "未知" : `${Date.now() - ctx.sendAt}ms`}`);
+        }
         const msg: ToWebview = {
             kind: "permission_request",
             requestId: req.requestId,
