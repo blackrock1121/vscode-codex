@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 const readline = require('node:readline');
+const fs = require('node:fs');
+const path = require('node:path');
 const send = m => process.stdout.write(JSON.stringify(m)+'\n');
 const note = (method,params) => send({method,params});
 let text='';
@@ -14,6 +16,11 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};
  if(m.method==='hang')return;
+ if(m.method==='malformed'){process.stdout.write('not-json\n');return;}
+ if(m.method==='malformed-once'){
+  const marker=path.join(process.cwd(),'.malformed-once');
+  if(!fs.existsSync(marker)){fs.writeFileSync(marker,'1');process.stdout.write('not-json\n');return;}
+ }
  send({id:m.id,result});
  if(m.method==='turn/start'){
   text=m.params.input.find(x=>x.type==='text')?.text||'';

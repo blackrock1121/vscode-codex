@@ -860,7 +860,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "ready":
                     ctx.ready = true;
-                    void this.store.connection().then(rpc => rpc.request("model/list", {})).then(r => {
+                    void this.store.read("model/list").then(r => {
                         const models = r.data.filter((m: any) => !m.hidden).map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault }));
                         this.modelCatalog = models;
                         this.post(ctx, { kind: "models", models });
@@ -2234,7 +2234,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         this.usageInFlight = true;
         this.lastUsageAt = Date.now();
-        void this.store.connection().then(rpc => rpc.request("account/rateLimits/read", {})).then(r => {
+        void this.store.read("account/rateLimits/read").then(r => {
             this.lastUsage = usageView(r.rateLimits);
             for (const ctx of this.sessions)
                 for (const event of quotaEvents(r.rateLimits)) this.handleEmit(ctx, event);

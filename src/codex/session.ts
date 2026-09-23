@@ -20,23 +20,37 @@ export class SessionStore {
   private listing?: Promise<void>;
   constructor(private readonly cwd: string, private readonly executable: () => string) {}
   async connection(): Promise<CodexRpc> {
+    if (this.rpc?.isClosed) { this.rpc = undefined; this.connecting = undefined; }
     if (this.connecting) return this.connecting;
     const rpc = new CodexRpc(this.executable(), this.cwd);
     this.rpc = rpc;
     rpc.on('request', m => { try { rpc.reject(m.id, '管理连接不执行工具'); } catch {} });
     rpc.on('close', () => { if (this.rpc === rpc) { this.rpc = undefined; this.connecting = undefined; } });
-    this.connecting = rpc.start().then(() => rpc).catch(e => { rpc.dispose(); this.connecting = undefined; throw e; });
+    this.connecting = rpc.start().then(() => rpc).catch(e => {
+      rpc.dispose();
+      if (this.rpc === rpc) { this.rpc = undefined; this.connecting = undefined; }
+      throw e;
+    });
     return this.connecting;
+  }
+  /** 只用于无副作用的读取；连接在请求期间断开时重建并重试一次。 */
+  async read<T = any>(method: string, params: unknown = {}): Promise<T> {
+    const rpc = await this.connection();
+    try { return await rpc.request<T>(method, params); }
+    catch (error) {
+      if (!rpc.isClosed) throw error;
+      return (await this.connection()).request<T>(method, params);
+    }
   }
   async refresh(): Promise<void> {
     if (this.listing) return this.listing;
     this.listing = this.refreshInner().finally(() => { this.listing = undefined; }); return this.listing;
   }
   private async refreshInner(): Promise<void> {
-    const rpc = await this.connection(); let cursor: string | null = null;
+    let cursor: string | null = null;
     const found = new Map<string, any>();
     do {
-      const r: any = await rpc.request('thread/list', { cwd: this.cwd, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
+      const r: any = await this.read('thread/list', { cwd: this.cwd, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
       for (const t of r.data) {
         found.set(t.id, { ...t, turns: this.threads.get(t.id)?.turns ?? t.turns });
         if (t.preview?.trim() || t.name?.trim()) this.pending.delete(t.id);
