@@ -16,6 +16,7 @@ export class SessionStore {
   private rpc?: CodexRpc;
   private connecting?: Promise<CodexRpc>;
   private threads = new Map<string, any>();
+  private pending = new Map<string, { title: string; updatedAt: number }>();
   private listing?: Promise<void>;
   constructor(private readonly cwd: string, private readonly executable: () => string) {}
   async connection(): Promise<CodexRpc> {
@@ -36,7 +37,10 @@ export class SessionStore {
     const found = new Map<string, any>();
     do {
       const r: any = await rpc.request('thread/list', { cwd: this.cwd, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
-      for (const t of r.data) found.set(t.id, { ...t, turns: this.threads.get(t.id)?.turns ?? t.turns });
+      for (const t of r.data) {
+        found.set(t.id, { ...t, turns: this.threads.get(t.id)?.turns ?? t.turns });
+        if (t.preview?.trim() || t.name?.trim()) this.pending.delete(t.id);
+      }
       cursor = r.nextCursor;
     } while (cursor);
     this.threads = found;
@@ -57,7 +61,15 @@ export class SessionStore {
     this.threads.set(id, thread);
   }
   list(): SessionSummary[] {
-    return [...this.threads.values()].map(t => ({ id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0 })).sort((a, b) => b.updatedAt - a.updatedAt);
+    const entries = new Map<string, SessionSummary>([...this.threads.values()].map(t => [t.id, { id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0 }]));
+    for (const [id, p] of this.pending) {
+      const existing = entries.get(id);
+      entries.set(id, { id, title: existing?.title && existing.title !== '新对话' ? existing.title : p.title, updatedAt: Math.max(existing?.updatedAt ?? 0, p.updatedAt), messageCount: existing?.messageCount ?? 0 });
+    }
+    return [...entries.values()].sort((a, b) => b.updatedAt - a.updatedAt);
+  }
+  notePending(id: string, text: string): void {
+    this.pending.set(id, { title: previewTitle(text), updatedAt: Date.now() });
   }
   load(id: string): TimelineItem[] { return timeline(this.threads.get(id)?.turns ?? []); }
   findFile(id: string): string | undefined { const t = this.threads.get(id); return t ? (t.path || id) : undefined; }
@@ -80,12 +92,12 @@ export class SessionStore {
     if (this.threads.has(id)) this.threads.get(id).name = title; return true;
   }
   async archive(id: string): Promise<void> {
-    await (await this.connection()).request('thread/archive', { threadId: id }); this.threads.delete(id);
+    await (await this.connection()).request('thread/archive', { threadId: id }); this.threads.delete(id); this.pending.delete(id);
   }
   async delete(id: string): Promise<boolean> {
     const rpc = await this.connection();
     await rpc.request('thread/archive', { threadId: id });
-    await rpc.request('thread/delete', { threadId: id }); this.threads.delete(id); return true;
+    await rpc.request('thread/delete', { threadId: id }); this.threads.delete(id); this.pending.delete(id); return true;
   }
   async fork(id: string, lastTurnId: string): Promise<string> {
     const r = await (await this.connection()).request('thread/fork', { threadId: id, lastTurnId, cwd: this.cwd });

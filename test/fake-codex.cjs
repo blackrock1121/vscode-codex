@@ -11,6 +11,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='account/read')result={account:{type:'chatgpt'},requiresOpenaiAuth:true};
  if(m.method==='thread/start'||m.method==='thread/resume')result={thread:{id:'thread-1'},model:'test-model'};
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
+ if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};
  if(m.method==='hang')return;
  send({id:m.id,result});
