@@ -1168,18 +1168,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             attached = attached ? `${fileCtx}\n\n${attached}` : fileCtx;
         }
         const hadSession = !!ctx.sessionId;
-        const proc = await this.ensureProcess(ctx);
-        if (!proc) {
-            ctx.draft = text;
-            ctx.draftImages = images;
-            this.post(ctx, { kind: "draft", text, images });
-            this.post(ctx, { kind: "busy", busy: false });
-            return;
-        }
-        if ((ctx.stopSeq ?? -1) >= mySeq) {
-            this.post(ctx, { kind: "busy", busy: false });
-            return;
-        }
         if (this.config().get<boolean>("autosave", true)) {
             const saved = await Promise.all(vscode.workspace.textDocuments.filter(d => d.isDirty && !d.isUntitled && vscode.workspace.getWorkspaceFolder(d.uri)).map(d => d.save()));
             if (saved.some(ok => !ok))
@@ -1196,7 +1184,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.reportSnapshotSkips(ctx, snapshot);
         })();
         await Promise.all([historyReady, snapshotReady]);
+        if ((ctx.stopSeq ?? -1) >= mySeq) {
+            this.post(ctx, { kind: "busy", busy: false });
+            return;
+        }
+        // A new thread is only durable after its first turn starts. Do not create
+        // it during the (potentially slow) snapshot: Stop may cancel the send.
+        const proc = await this.ensureProcess(ctx);
+        if (!proc) {
+            ctx.draft = text;
+            ctx.draftImages = images;
+            this.post(ctx, { kind: "draft", text, images });
+            this.post(ctx, { kind: "busy", busy: false });
+            return;
+        }
         if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
+            if (!hadSession && ctx.proc === proc) {
+                ctx.proc = undefined;
+                ctx.sessionId = undefined;
+                ctx.blank = true;
+                ctx.checkpoints.clear();
+                void this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
+                await proc.disposeAndWait();
+            }
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
