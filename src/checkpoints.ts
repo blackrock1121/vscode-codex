@@ -317,15 +317,16 @@ export class CheckpointManager {
     destSessionId: string,
     maxTruncateLine: number,
     turns: { text: string; hasImages: boolean; line: number }[],
-  ): void {
+  ): boolean {
     try {
       const raw = fs.readFileSync(path.join(storageDir, `checkpoints-${srcSessionId}.json`), "utf8");
       const j = JSON.parse(raw) as { checkpoints?: Checkpoint[]; baseline?: unknown; baselineSkipped?: unknown };
       const prefix = (j.checkpoints ?? []).filter((c) => typeof c.truncateLine === "number" && c.truncateLine < maxTruncateLine);
       const payload = { checkpoints: CheckpointManager.rebase(prefix, turns), baseline: j.baseline ?? [], baselineSkipped: j.baselineSkipped ?? [] };
       fs.writeFileSync(path.join(storageDir, `checkpoints-${destSessionId}.json`), JSON.stringify(payload), { mode: 0o600 });
+      return true;
     } catch {
-      /* 分支缺还原点不致命——新会话从第一轮重新积累 */
+      return false;
     }
   }
 

@@ -1998,7 +1998,7 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       userOrdinal++;
       finalizeTurn();
       const cp = cpByOrdinal.get(userOrdinal);
-      if (cp) messagesEl.appendChild(renderCheckpointDivider(cp.id, cp.synthetic)); // 第一条前也画：还原到它之前 = 清空对话重来
+      if (cp) messagesEl.appendChild(renderCheckpointDivider(cp.id, cp.synthetic, userOrdinal > 0)); // 第一条前也画：还原到它之前 = 清空对话重来
       const m = appendUser(it.text, it.files || [], it.images || []);
       if (cp) m.dataset.checkpointId = cp.id; // link message -> checkpoint (for edit)
     } else if (it.type === "image") {
@@ -2287,7 +2287,7 @@ function renderChangedFiles(
 // ---------------------------------------------------------------------------
 // Inline restore points (checkpoint dividers in the conversation stream)
 // ---------------------------------------------------------------------------
-function renderCheckpointDivider(checkpointId: string, synthetic?: boolean): HTMLElement {
+function renderCheckpointDivider(checkpointId: string, synthetic?: boolean, canFork = true): HTMLElement {
   const d = el("div", "checkpoint-divider");
   d.dataset.checkpointId = checkpointId;
   // A single, always-present control — hovering only restyles it (no extra
@@ -2307,7 +2307,8 @@ function renderCheckpointDivider(checkpointId: string, synthetic?: boolean): HTM
     e.stopPropagation();
     send({ type: "forkCheckpoint", checkpointId });
   };
-  d.append(btn, fork);
+  d.append(btn);
+  if (canFork) d.append(fork);
   return d;
 }
 
@@ -2323,7 +2324,7 @@ function renderCompactionDivider(preTokens: number, postTokens: number): HTMLEle
 function onCheckpointMarker(checkpointId: string) {
   if (lastUserEl) lastUserEl.dataset.checkpointId = checkpointId; // link message -> its checkpoint (for edit)
   if (!lastUserEl) return;
-  messagesEl.insertBefore(renderCheckpointDivider(checkpointId), lastUserEl); // 第一条前也画：还原到它之前 = 清空对话重来
+  messagesEl.insertBefore(renderCheckpointDivider(checkpointId, undefined, userMsgCount > 1), lastUserEl); // 第一条前也画：还原到它之前 = 清空对话重来
   scrollToBottom();
 }
 

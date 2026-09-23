@@ -188,6 +188,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = "codex-chat.chatView";
     private view?: vscode.WebviewView;
     private readonly sessions = new Set<SessionCtx>();
+    private readonly forking = new Set<SessionCtx>();
     private activeCtx?: SessionCtx;
     private store: SessionStore;
     private lastActiveFilePath?: string;
@@ -1245,6 +1246,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.loadCtxSession(ctx);
             return;
         }
+        if (ctx.sessionId && !this.checkpointAligned(ctx.sessionId, meta)) {
+            this.post(ctx, { kind: "error", message: "还原点与当前对话不匹配，无法重新生成。" });
+            this.post(ctx, { kind: "busy", busy: false });
+            this.loadCtxSession(ctx);
+            return;
+        }
         this.post(ctx, { kind: "restoring" });
         while (ctx.proc) {
             const dying = ctx.proc;
@@ -1531,8 +1538,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return { files, totalAdded, totalRemoved };
     }
     private async forkCheckpoint(ctx: SessionCtx, checkpointId: string): Promise<void> {
-        const cut = this.cpMeta(ctx, checkpointId)?.truncateLine;
-        if (cut === undefined || !ctx.sessionId) {
+        if (this.forking.has(ctx)) return;
+        this.forking.add(ctx);
+        try {
+            await this.forkCheckpointInner(ctx, checkpointId);
+        } finally {
+            this.forking.delete(ctx);
+        }
+    }
+    private async forkCheckpointInner(ctx: SessionCtx, checkpointId: string): Promise<void> {
+        const sourceId = ctx.sessionId;
+        const meta = this.cpMeta(ctx, checkpointId);
+        const cut = meta?.truncateLine;
+        if (cut === undefined || !sourceId) {
             this.post(ctx, { kind: "error", message: "找不到该还原点，无法派生。" });
             return;
         }
@@ -1548,22 +1566,45 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }, "派生");
         if (confirm !== "派生")
             return;
-        const leaf = this.store.rewindLeafFor(ctx.sessionId, cut);
+        await ctx.finalizing;
+        if (ctx.sessionId !== sourceId) {
+            this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择派生位置。" });
+            return;
+        }
+        if (!this.checkpointAligned(sourceId, meta!)) {
+            this.post(ctx, { kind: "error", message: "还原点与当前对话不匹配，已取消派生。" });
+            return;
+        }
+        const leaf = this.store.rewindLeafFor(sourceId, cut);
         if (!leaf) {
             this.post(ctx, { kind: "error", message: "派生失败：该点之前没有可用对话。" });
             return;
         }
+        ctx.checkpoints.flush();
         let newId: string;
         try {
-            newId = await this.store.fork(ctx.sessionId, leaf);
+            newId = await this.store.fork(sourceId, leaf);
         }
         catch (err) {
             this.output.appendLine(`[fork] ${String(err)}`);
             this.post(ctx, { kind: "error", message: `派生失败：${String(err)}` });
             return;
         }
-        CheckpointManager.forkFor(this.storageDir(), ctx.sessionId, newId, cut, this.store.userTurnLines(newId));
-        await this.openSession(newId);
+        const copied = CheckpointManager.forkFor(this.storageDir(), sourceId, newId, cut, this.store.userTurnLines(newId));
+        if (ctx.checkpoints.hasAny() && !copied) {
+            try { await this.store.delete(newId); }
+            finally { CheckpointManager.deleteFor(this.storageDir(), newId); }
+            this.post(ctx, { kind: "error", message: "派生失败：复制文件还原点失败，原会话未受影响。" });
+            return;
+        }
+        try {
+            await this.openSession(newId);
+        } catch (err) {
+            this.output.appendLine(String(err));
+            this.refreshSessions();
+            this.post(ctx, { kind: "error", message: "派生会话已创建，但新窗口未能打开。可从会话历史中打开。" });
+            return;
+        }
         vscode.window.showInformationMessage("已从该点派生新会话，与原会话互不影响。");
     }
     private checkpointsForView(ctx: SessionCtx, sid: string): CheckpointSummary[] {
@@ -1608,6 +1649,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         userText: string;
     } | undefined {
         return checkpointId.startsWith("turn:") ? this.syntheticTurn(ctx, checkpointId) : ctx.checkpoints.metaOf(checkpointId);
+    }
+    private checkpointAligned(sessionId: string, meta: { truncateLine: number; userText: string }): boolean {
+        const target = this.store.firstUserTurnAfter(sessionId, meta.truncateLine);
+        if (!target) return false;
+        const norm = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, 80);
+        return meta.userText === "(图片)"
+            ? target.images.length > 0 && !norm(target.text)
+            : norm(target.text) === norm(meta.userText);
     }
     private cpPreview(ctx: SessionCtx, checkpointId: string): {
         userText: string;
@@ -1656,7 +1705,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return { result, rewoundToStart: true };
         }
         const newId = await this.store.fork(oldId, leaf);
-        CheckpointManager.forkFor(this.storageDir(), oldId, newId, cutLine, this.store.userTurnLines(newId));
+        const copied = CheckpointManager.forkFor(this.storageDir(), oldId, newId, cutLine, this.store.userTurnLines(newId));
+        if (ctx.checkpoints.hasAny() && !copied) {
+            try { await this.store.delete(newId); }
+            finally { CheckpointManager.deleteFor(this.storageDir(), newId); }
+            throw new Error("复制文件还原点失败，原会话未受影响");
+        }
         let result: ReturnType<CheckpointManager["restore"]>;
         try { result = this.cpRestore(ctx, checkpointId, cutLine); }
         finally { preserveOldCheckpoints(); }
@@ -1698,24 +1752,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "找不到该还原点。" });
             return;
         }
-        const nextTurn = ctx.sessionId && meta.truncateLine > 0
+        const nextTurn = ctx.sessionId
             ? this.store.firstUserTurnAfter(ctx.sessionId, meta.truncateLine)
             : undefined;
-        if (ctx.sessionId && meta.truncateLine > 0 && meta.userText && nextTurn !== undefined) {
-            const norm = (t: string) => t.replace(/\s+/g, " ").trim().slice(0, 80);
-            const aligned = meta.userText === "(图片)"
-                ? nextTurn.images.length > 0 && !norm(nextTurn.text)
-                : norm(nextTurn.text) === norm(meta.userText);
-            if (!aligned) {
-                this.output.appendLine(`[restore] 中止：还原点与 transcript 对不上 truncateLine=${meta.truncateLine} ` +
-                    `期望提问=${JSON.stringify(norm(meta.userText))} 实际=${JSON.stringify(norm(nextTurn.text))} ` +
-                    `图片=${nextTurn.images.length}`);
-                this.post(ctx, {
-                    kind: "error",
-                    message: "这个还原点与当前对话对不上（可能来自更早的会话状态），已中止还原以免误删上下文。",
-                });
-                return;
-            }
+        if (!ctx.sessionId || !this.checkpointAligned(ctx.sessionId, meta)) {
+            this.output.appendLine(`[restore] 中止：还原点与 transcript 对不上 truncateLine=${meta.truncateLine}`);
+            this.post(ctx, {
+                kind: "error",
+                message: "这个还原点与当前对话对不上（可能来自更早的会话状态），已中止还原以免误删上下文。",
+            });
+            return;
         }
         const wasLive = !!ctx.proc?.isBusy;
         this.post(ctx, { kind: "restoring" });
