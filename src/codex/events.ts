@@ -29,16 +29,20 @@ export function timeline(turns: any[]): TimelineItem[] {
   return out;
 }
 export function usageView(rate: any): Extract<ToWebview, { kind: 'usage' }> {
-  const date = (t: number | undefined) => t ? new Date(t * 1000).toLocaleString('zh-CN') : undefined;
-  return { kind: 'usage', sessionPct: rate?.primary?.usedPercent, sessionResetAt: rate?.primary?.resetsAt, sessionReset: date(rate?.primary?.resetsAt), weekPct: rate?.secondary?.usedPercent, weekReset: date(rate?.secondary?.resetsAt) };
+  const windows = [rate?.primary, rate?.secondary].filter((window): window is { usedPercent: number; windowDurationMins: number; resetsAt?: number } =>
+    typeof window?.usedPercent === 'number' && typeof window?.windowDurationMins === 'number');
+  const session = windows.find(window => window.windowDurationMins === 300);
+  const week = windows.find(window => window.windowDurationMins === 10080);
+  return { kind: 'usage', sessionPct: session?.usedPercent, sessionResetAt: session?.resetsAt, weekPct: week?.usedPercent, weekResetAt: week?.resetsAt };
 }
 
 export function quotaEvents(rate: any): ToWebview[] {
   const events: ToWebview[] = [usageView(rate)];
   let exhausted = false;
-  for (const [window, label] of [[rate?.primary, '短期额度'], [rate?.secondary, '长期额度']] as const) {
+  for (const window of [rate?.primary, rate?.secondary]) {
     if (!window || typeof window.usedPercent !== 'number') continue;
     if (window.usedPercent >= 100) exhausted = true;
+    const label = window.windowDurationMins === 300 ? '5 小时额度' : window.windowDurationMins === 10080 ? '每周额度' : '订阅额度';
     if (window.usedPercent >= 80) events.push({ kind: 'rate_limit', level: window.usedPercent >= 100 ? 'exhausted' : 'warning', limitLabel: label, resetsAt: window.resetsAt ?? undefined });
   }
   if (!exhausted && (rate?.primary || rate?.secondary)) events.unshift({ kind: 'rate_limit_cleared' });
