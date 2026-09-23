@@ -49,18 +49,28 @@ export class WorkspaceSnapshot {
   private async walk(root: string): Promise<string[]> {
     const out: string[] = [];
     const excluded = new Set(['.git', 'node_modules', '.venv', 'venv', 'dist', 'build', 'target', '.next', '.codex', '.idea']);
-    const visit = async (dir: string) => {
-      let entries; try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { this.skip(dir, 'unreadable'); this.completeScan = false; return; }
-      for (const e of entries) {
-        if (out.length >= this.maxFiles) { this.skip(dir, 'limit'); this.completeScan = false; return; }
-        const full = path.join(dir, e.name);
-        if (this.isExcluded(root, full)) continue;
-        if (e.isSymbolicLink()) { this.skip(full, 'symlink'); continue; }
-        if (e.isDirectory()) { if (!excluded.has(e.name)) await visit(full); }
-        else if (e.isFile()) out.push(full);
+    let dirs = [root];
+    while (dirs.length) {
+      const next: string[] = [];
+      for (let i = 0; i < dirs.length; i += this.readConcurrency) {
+        const batch = dirs.slice(i, i + this.readConcurrency);
+        const listed = await Promise.all(batch.map(dir => fs.readdir(dir, { withFileTypes: true }).catch(() => undefined)));
+        for (let j = 0; j < batch.length; j++) {
+          const dir = batch[j], entries = listed[j];
+          if (!entries) { this.skip(dir, 'unreadable'); this.completeScan = false; continue; }
+          for (const e of entries) {
+            if (out.length >= this.maxFiles) { this.skip(dir, 'limit'); this.completeScan = false; return out; }
+            const full = path.join(dir, e.name);
+            if (this.isExcluded(root, full)) continue;
+            if (e.isSymbolicLink()) { this.skip(full, 'symlink'); continue; }
+            if (e.isDirectory()) { if (!excluded.has(e.name)) next.push(full); }
+            else if (e.isFile()) out.push(full);
+          }
+        }
       }
-    };
-    await visit(root); return out;
+      dirs = next;
+    }
+    return out;
   }
   private async read(file: string): Promise<{ text?: string; reason?: SnapshotSkipReason }> {
     try {
@@ -90,13 +100,17 @@ export class WorkspaceSnapshot {
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();
-    await this.readBatch([...this.files.keys()], (file, { text: current }) => {
+    const existingReady = this.readBatch([...this.files.keys()], (file, { text: current }) => {
       const original = this.files.get(file)!;
       if (current !== original) changes.set(file, original);
     });
-    for (const root of this.roots) {
-      const newFiles = (await this.walk(root)).filter(file => !this.files.has(file) && !this.skipped.has(file));
-      if (!this.completeScan) continue;
+    const scansReady = Promise.all(this.roots.map(root => this.walk(root)));
+    const [, scans] = await Promise.all([existingReady, scansReady]);
+    // An incomplete scan cannot distinguish a newly created file from an
+    // original file that the baseline missed because of the file cap.
+    if (!this.completeScan) return changes;
+    for (const files of scans) {
+      const newFiles = files.filter(file => !this.files.has(file) && !this.skipped.has(file));
       await this.readBatch(newFiles, (file, { text }) => {
         if (text !== undefined) changes.set(file, null);
       });

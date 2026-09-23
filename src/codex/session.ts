@@ -16,6 +16,7 @@ export class SessionStore {
   private rpc?: CodexRpc;
   private connecting?: Promise<CodexRpc>;
   private threads = new Map<string, any>();
+  private hydrating = new Map<string, Promise<void>>();
   private pending = new Map<string, { title: string; updatedAt: number }>();
   private listing?: Promise<void>;
   constructor(private readonly cwd: string, private readonly executable: () => string) {}
@@ -62,12 +63,16 @@ export class SessionStore {
     this.threads = found;
   }
   async hydrate(id: string): Promise<void> {
-    await this.hydrateWith(await this.connection(), id);
+    const active = this.hydrating.get(id);
+    if (active) return active;
+    const work = (async () => this.hydrateWith(await this.connection(), id))();
+    this.hydrating.set(id, work);
+    try { await work; }
+    finally { if (this.hydrating.get(id) === work) this.hydrating.delete(id); }
   }
   private async hydrateWith(rpc: CodexRpc, id: string): Promise<void> {
-    const r = await rpc.request('thread/read', { threadId: id });
-    let thread = r.thread;
-    if (thread.historyMode !== 'paginated') thread = (await rpc.request('thread/read', { threadId: id, includeTurns: true })).thread;
+    const r = await rpc.request('thread/read', { threadId: id, includeTurns: true });
+    const thread = r.thread;
     if (thread.historyMode === 'paginated' || !thread.turns?.length) {
       let cursor: string | null = null; const turns: any[] = [];
       do {
