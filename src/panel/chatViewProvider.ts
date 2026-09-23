@@ -468,7 +468,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
     private refreshSessions(): void {
-        void this.store.refresh().then(() => this.renderSessions()).catch(e => this.output.appendLine(`[sessions] ${String(e)}`));
+        void this.store.refresh().then(async () => {
+            const last = this.context.workspaceState.get<string>(LAST_SESSION_KEY);
+            if (last && !this.store.list().some(s => s.id === last) &&
+                fs.existsSync(path.join(this.storageDir(), `checkpoints-${last}.json`))) {
+                try {
+                    await this.store.hydrate(last);
+                    this.store.notePending(last, this.store.userTurnLines(last)[0]?.text || "恢复的会话");
+                } catch (err) {
+                    this.output.appendLine(`[sessions] 恢复最近会话失败: ${String(err)}`);
+                }
+            }
+            this.renderSessions();
+        }).catch(e => this.output.appendLine(`[sessions] ${String(e)}`));
     }
     private renderSessions(): void {
         const list = this.store.list();
@@ -1158,6 +1170,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const hadSession = !!ctx.sessionId;
         const proc = await this.ensureProcess(ctx);
         if (!proc) {
+            ctx.draft = text;
+            ctx.draftImages = images;
+            this.post(ctx, { kind: "draft", text, images });
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
@@ -1191,6 +1206,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (ctx.proc === proc)
                 ctx.proc = undefined;
             this.post(ctx, { kind: "error", message: "codex 进程已退出，本条消息未送出——请重新发送（会自动重启进程）。" });
+            ctx.draft = text;
+            ctx.draftImages = images;
+            this.post(ctx, { kind: "draft", text, images });
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
@@ -1198,6 +1216,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.store.notePending(ctx.sessionId, text || "(图片)");
             this.renderSessions();
         }
+        ctx.draft = undefined;
+        ctx.draftImages = undefined;
         ctx.sendAt = Date.now();
         ctx.lastEventAt = ctx.sendAt;
         ctx.lastUserText = (text || "(图片)").slice(0, 200);
@@ -1626,6 +1646,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         ctx.checkpoints.migrateTo(newId, this.store.userTurnLines(newId));
         ctx.sessionId = newId;
+        this.store.notePending(newId, this.store.userTurnLines(newId)[0]?.text || this.store.list().find(s => s.id === oldId)?.title || "派生会话");
+        this.renderSessions();
         void this.context.workspaceState.update(LAST_SESSION_KEY, newId);
         const det = this.detached.get(oldId);
         if (det) {
