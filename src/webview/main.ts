@@ -533,21 +533,20 @@ function resetCountdownShort(resetAt?: number): string | undefined {
   const h = Math.floor(mins / 60);
   return h > 0 ? `${h}h` : `${mins}m`;
 }
-/** Codex subscription usage (current session + weekly quota), where cost was.
- *  Mirrors the official /usage panel: session % w/ reset countdown + weekly %. */
+/** Codex subscription windows, present only when returned by app-server. */
 type UsageData = {
   sessionPct?: number;
-  sessionReset?: string;
+  sessionResetAt?: number;
   weekPct?: number;
-  weekReset?: string;
+  weekResetAt?: number;
   /** 按模型的周限额（仅在服务端提供时显示）。 */
   weekModelPct?: number;
   weekModelName?: string;
 };
 let lastUsageData: UsageData = {};
 const usageMenu = $("usage-menu");
-function renderUsage(sessionPct?: number, sessionReset?: string, weekPct?: number, weekReset?: string, weekModelPct?: number, weekModelName?: string) {
-  lastUsageData = { sessionPct, sessionReset, weekPct, weekReset, weekModelPct, weekModelName };
+function renderUsage(sessionPct?: number, sessionResetAt?: number, weekPct?: number, weekResetAt?: number, weekModelPct?: number, weekModelName?: string) {
+  lastUsageData = { sessionPct, sessionResetAt, weekPct, weekResetAt, weekModelPct, weekModelName };
   // Dim label + bright number, no mini bars — the pill is a glance value, the
   // full bars live one click away in the popover.
   const item = (key: string, pct: number) =>
@@ -555,7 +554,11 @@ function renderUsage(sessionPct?: number, sessionReset?: string, weekPct?: numbe
   const parts: string[] = [];
   if (typeof sessionPct === "number") parts.push(item("会话", sessionPct));
   if (typeof weekPct === "number") parts.push(item("周", weekPct));
-  if (!parts.length) return;
+  if (!parts.length) {
+    usagePill.classList.add("hidden");
+    usageMenu.classList.add("hidden");
+    return;
+  }
   usagePill.classList.remove("hidden");
   const peak = Math.max(sessionPct ?? 0, weekPct ?? 0);
   usagePill.style.setProperty("--u-color", peak >= 90 ? "#e5534b" : peak >= 70 ? "#e0a33e" : "var(--vscode-textLink-foreground, #4a9eff)");
@@ -566,38 +569,11 @@ function renderUsage(sessionPct?: number, sessionReset?: string, weekPct?: numbe
   if (!usageMenu.classList.contains("hidden")) buildUsageMenu(); // live-refresh while open
 }
 
-// Convert the CLI's English reset string ("Jun 30 at 1:50pm" / "Jul 6 at 2am")
-// into Chinese. Session resets within hours → show just the time (or date+time
-// if not today); weekly resets days out → show the date.
-const RESET_MONTHS: Record<string, number> = {
-  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
-};
-function parseResetParts(s?: string): { mon?: number; day?: number; hh?: number; mm: number } {
-  if (!s) return { mm: 0 };
-  const m = /([A-Za-z]{3,})\s+(\d{1,2})(?:\s+at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?)?/i.exec(s);
-  if (!m) return { mm: 0 };
-  const mon = RESET_MONTHS[m[1].slice(0, 3).toLowerCase()];
-  const day = parseInt(m[2], 10);
-  let hh = m[3] != null ? parseInt(m[3], 10) : undefined;
-  const mm = m[4] != null ? parseInt(m[4], 10) : 0;
-  const ap = (m[5] || "").toLowerCase();
-  if (hh != null) {
-    if (ap === "pm" && hh < 12) hh += 12;
-    if (ap === "am" && hh === 12) hh = 0;
-  }
-  return { mon, day, hh, mm };
-}
-function cnResetSession(s?: string): string {
-  const p = parseResetParts(s);
-  if (p.hh == null) return p.mon != null ? `${p.mon}月${p.day}日 重置` : "";
-  const time = `${p.hh}:${String(p.mm).padStart(2, "0")}`;
-  const now = new Date();
-  const today = p.mon === now.getMonth() + 1 && p.day === now.getDate();
-  return today ? `${time} 重置` : `${p.mon}月${p.day}日 ${time} 重置`;
-}
-function cnResetWeek(s?: string): string {
-  const p = parseResetParts(s);
-  return p.mon != null ? `${p.mon}月${p.day}日 重置` : "";
+function cnReset(resetAt?: number): string {
+  if (typeof resetAt !== "number") return "";
+  const date = new Date(resetAt * 1000);
+  if (Number.isNaN(date.getTime())) return "";
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 重置`;
 }
 function usageRow(label: string, pct: number | undefined, resetText: string): string {
   const has = typeof pct === "number";
@@ -619,8 +595,8 @@ function usageRow(label: string, pct: number | undefined, resetText: string): st
 function buildUsageMenu() {
   const d = lastUsageData;
   let html = `<div class="pick-head usage-head">套餐用量</div>`;
-  html += usageRow("5 小时限额", d.sessionPct, cnResetSession(d.sessionReset));
-  html += usageRow("每周 · 全部模型", d.weekPct, cnResetWeek(d.weekReset));
+  if (typeof d.sessionPct === "number") html += usageRow("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt));
+  if (typeof d.weekPct === "number") html += usageRow("每周 · 全部模型", d.weekPct, cnReset(d.weekResetAt));
   // 按模型的周限额行：CLI 输出了才显示（模型名由服务端提供）。
   // 模型名来自解析 CLI 的 stdout——外部字符串进 innerHTML 必须转义。
   if (typeof d.weekModelPct === "number") {
@@ -960,7 +936,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       }
       break;
     case "usage":
-      renderUsage(m.sessionPct, m.sessionReset, m.weekPct, m.weekReset, m.weekModelPct, m.weekModelName);
+      renderUsage(m.sessionPct, m.sessionResetAt, m.weekPct, m.weekResetAt, m.weekModelPct, m.weekModelName);
       break;
     case "compacting":
       compacting = true;
@@ -2473,7 +2449,7 @@ const COMMANDS: { name: string; args?: string; desc: string }[] = [
   { name: "/compact", desc: "压缩上下文：把历史总结成摘要，保留要点但大幅缩小" },
   { name: "/model", args: "[名称]", desc: "切换模型，如 /model 模型ID；不带参数则列出可选" },
   { name: "/effort", args: "[档位]", desc: "切换思考强度，如 /effort high；不带参数则列出可选" },
-  { name: "/usage", desc: "查看 5 小时 / 每周用量" },
+  { name: "/usage", desc: "查看订阅用量及重置时间" },
 ];
 
 function cmdHelp(): string {
@@ -2487,8 +2463,8 @@ function cmdUsage(): string {
     typeof pct === "number" ? `  ${label}：${pct}%${reset ? " · " + reset : ""}` : `  ${label}：暂无数据`;
   return [
     "订阅用量：",
-    line("5 小时限额", d.sessionPct, cnResetSession(d.sessionReset)),
-    line("每周 · 全部模型", d.weekPct, cnResetWeek(d.weekReset)),
+    ...(typeof d.sessionPct === "number" ? [line("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt))] : []),
+    ...(typeof d.weekPct === "number" ? [line("每周 · 全部模型", d.weekPct, cnReset(d.weekResetAt))] : []),
     ...(typeof d.weekModelPct === "number" ? [line(`每周 · 仅 ${d.weekModelName || "特定模型"}`, d.weekModelPct)] : []),
   ].join("\n");
 }
