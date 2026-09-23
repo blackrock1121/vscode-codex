@@ -27,14 +27,16 @@ export class WorkspaceSnapshot {
   readonly skipReasons = new Map<string, SnapshotSkipReason>();
   private bytes = 0;
   private completeScan = true;
-  private readonly excluded: RegExp[];
-  constructor(private readonly roots: string[], private readonly maxFiles = 20000, excludePatterns: string[] = []) {
-    this.excluded = excludePatterns.flatMap(pattern => {
+  private readonly excluded: Map<string, RegExp[]>;
+  private readonly readConcurrency = 16;
+  constructor(private readonly roots: string[], private readonly maxFiles = 20000, excludePatterns: string[] | Map<string, string[]> = []) {
+    const compile = (patterns: string[]) => patterns.flatMap(pattern => {
       const normalized = pattern.trim().replace(/\\/g, '/').replace(/\/+$/, '');
       const full = globRegex(normalized);
       const subtree = normalized.endsWith('/**') ? globRegex(normalized.slice(0, -3)) : undefined;
       return [full, subtree].filter((re): re is RegExp => !!re);
     });
+    this.excluded = new Map(roots.map(root => [root, compile(excludePatterns instanceof Map ? excludePatterns.get(root) ?? [] : excludePatterns)]));
   }
   private skip(file: string, reason: SnapshotSkipReason): void {
     this.skipped.add(file);
@@ -42,7 +44,7 @@ export class WorkspaceSnapshot {
   }
   private isExcluded(root: string, file: string): boolean {
     const relative = path.relative(root, file).split(path.sep).join('/');
-    return this.excluded.some(re => re.test(relative));
+    return (this.excluded.get(root) ?? []).some(re => re.test(relative));
   }
   private async walk(root: string): Promise<string[]> {
     const out: string[] = [];
@@ -65,27 +67,39 @@ export class WorkspaceSnapshot {
       const stat = await fs.stat(file);
       if (stat.size > 2 * 1024 * 1024) return { reason: 'large' };
       const data = await fs.readFile(file);
-      if (data.includes(0) || !Buffer.from(data.toString('utf8')).equals(data)) return { reason: 'binary' };
-      return { text: data.toString('utf8') };
+      if (data.includes(0)) return { reason: 'binary' };
+      try { return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(data) }; }
+      catch { return { reason: 'binary' }; }
     } catch { return { reason: 'unreadable' }; }
   }
-  async capture(): Promise<void> {
-    for (const root of this.roots) for (const file of await this.walk(root)) {
-      const { text, reason } = await this.read(file);
-      if (text === undefined) { this.skip(file, reason ?? 'unreadable'); continue; }
-      const size = Buffer.byteLength(text);
-      if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); continue; }
-      this.files.set(file, text); this.bytes += size;
+  /** Overlap disk reads while bounding transient buffers and preserving file order. */
+  private async readBatch(files: string[], visit: (file: string, result: { text?: string; reason?: SnapshotSkipReason }) => void): Promise<void> {
+    for (let i = 0; i < files.length; i += this.readConcurrency) {
+      const batch = files.slice(i, i + this.readConcurrency);
+      const results = await Promise.all(batch.map(file => this.read(file)));
+      batch.forEach((file, index) => visit(file, results[index]));
     }
+  }
+  async capture(): Promise<void> {
+    for (const root of this.roots) await this.readBatch(await this.walk(root), (file, { text, reason }) => {
+      if (text === undefined) { this.skip(file, reason ?? 'unreadable'); return; }
+      const size = Buffer.byteLength(text);
+      if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); return; }
+      this.files.set(file, text); this.bytes += size;
+    });
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();
-    for (const [file, original] of this.files) {
-      const current = (await this.read(file)).text;
+    await this.readBatch([...this.files.keys()], (file, { text: current }) => {
+      const original = this.files.get(file)!;
       if (current !== original) changes.set(file, original);
-    }
-    for (const root of this.roots) for (const file of await this.walk(root)) {
-      if (this.completeScan && !this.files.has(file) && !this.skipped.has(file) && (await this.read(file)).text !== undefined) changes.set(file, null);
+    });
+    for (const root of this.roots) {
+      const newFiles = (await this.walk(root)).filter(file => !this.files.has(file) && !this.skipped.has(file));
+      if (!this.completeScan) continue;
+      await this.readBatch(newFiles, (file, { text }) => {
+        if (text !== undefined) changes.set(file, null);
+      });
     }
     return changes;
   }

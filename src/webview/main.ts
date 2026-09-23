@@ -972,6 +972,25 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "notice":
       if (m.message) appendNotice(m.message, "info");
       break;
+    case "snapshot_skips":
+      renderSnapshotSkips(m);
+      break;
+    case "snapshot_exclude_result": {
+      const card = messagesEl.querySelector<HTMLElement>(".snapshot-skips");
+      card?.querySelectorAll<HTMLButtonElement>("button").forEach(btn => btn.disabled = false);
+      if (m.ok && card) {
+        for (const row of Array.from(card.querySelectorAll<HTMLElement>(".ss-row"))) {
+          if (m.paths.includes(row.dataset.path || "")) row.remove();
+        }
+        const remaining = Math.max(0, Number(card.dataset.total || 0) - m.paths.length);
+        card.dataset.total = String(remaining);
+        const count = card.querySelector(".ss-count");
+        if (count) count.textContent = `${remaining} 项`;
+        if (!remaining) card.remove();
+      }
+      appendNotice(m.message, m.ok ? "info" : "error");
+      break;
+    }
     case "prefill":
       inputEl.value = m.text;
       autoResize();
@@ -3668,6 +3687,46 @@ function makeThumb(src: string): HTMLElement {
 function appendNotice(text: string, kind: "info" | "error") {
   const n = el("div", `notice ${kind}`, text);
   messagesEl.appendChild(n);
+  scrollToBottom();
+}
+
+function renderSnapshotSkips(m: Extract<ToWebview, { kind: "snapshot_skips" }>) {
+  messagesEl.querySelector(".snapshot-skips")?.remove();
+  const card = el("div", "snapshot-skips");
+  card.dataset.total = String(m.total);
+  const head = el("div", "ss-head");
+  head.append(el("strong", "", "未纳入自动回滚快照"), el("span", "ss-count", `${m.total} 项`));
+  card.append(head, el("div", "ss-desc", "这些路径无法用“还原到此处”恢复。可逐项排除，或忽略本次提醒。"));
+  const list = el("div", "ss-list");
+  for (const file of m.files) {
+    const row = el("div", "ss-row");
+    row.dataset.path = file.path;
+    const name = el("span", "ss-name", file.rel);
+    name.title = file.path;
+    const reason = el("span", "ss-reason", file.reason);
+    const exclude = el("button", "ss-action", "排除");
+    exclude.title = "加入当前项目的快照排除规则，之后不再提醒";
+    exclude.onclick = () => {
+      card.querySelectorAll<HTMLButtonElement>("button").forEach(btn => btn.disabled = true);
+      send({ type: "excludeSnapshotPaths", paths: [file.path] });
+    };
+    row.append(name, reason, exclude);
+    list.appendChild(row);
+  }
+  card.appendChild(list);
+  if (m.total > m.files.length) card.appendChild(el("div", "ss-more", `另有 ${m.total - m.files.length} 项，完整清单见“Codex Chat”输出。`));
+  const actions = el("div", "ss-actions");
+  const all = el("button", "ss-action", "排除全部");
+  all.title = "将本次清单中的路径加入当前项目的快照排除规则";
+  all.onclick = () => {
+    card.querySelectorAll<HTMLButtonElement>("button").forEach(btn => btn.disabled = true);
+    send({ type: "excludeSnapshotPaths", all: true });
+  };
+  const dismiss = el("button", "ss-action", "忽略本次提醒");
+  dismiss.onclick = () => card.remove();
+  actions.append(all, dismiss);
+  card.appendChild(actions);
+  messagesEl.appendChild(card);
   scrollToBottom();
 }
 
