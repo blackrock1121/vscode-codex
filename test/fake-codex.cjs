@@ -19,7 +19,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(text==='approval'){
    note('item/started',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',cwd:'/tmp'}});
    send({id:'approval-1',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'cmd',command:'echo test'}});
-  }else if(text==='question')send({id:17,method:'item/tool/requestUserInput',params:{threadId:'thread-1',questions:[{id:'q1',question:'选择什么？',header:'选择',options:[{label:'A',description:'选项'}]}]}});
+  }else if(text==='question'||text==='legacy-question')send({id:17,method:text==='question'?'tool/requestUserInput':'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',itemId:'ask-1',isBlocking:true,questions:[{id:'q1',question:'选择什么？',header:'选择',isOther:true,isSecret:false,options:[{label:'A',description:'选项'}]}]}});
   else if(text!=='wait'){
    note('item/agentMessage/delta',{threadId:'thread-1',itemId:'msg',delta:'你好'});
    note('item/completed',{threadId:'thread-1',item:{type:'agentMessage',id:'msg',text:'你好'}});

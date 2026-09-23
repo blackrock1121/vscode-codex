@@ -197,6 +197,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private usageFails = 0;
     private usageInFlight = false;
     private lastUsage?: ToWebview;
+    private readonly snapshotWarningSignatures = new Map<string, string>();
     private layoutFixing = false;
     private readonly origChanged = new vscode.EventEmitter<vscode.Uri>();
     private terminal?: vscode.Terminal;
@@ -1089,6 +1090,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             await this.handleSend(ctx, m.text ?? "", m.context, m.images, m.files);
         }
     }
+    private reportSnapshotSkips(ctx: SessionCtx, snapshot: WorkspaceSnapshot): void {
+        const key = this.workspaceDirs().join("\0");
+        const entries = [...snapshot.skipReasons.entries()].sort(([a], [b]) => a.localeCompare(b));
+        if (!entries.length) { this.snapshotWarningSignatures.delete(key); return; }
+        const signature = JSON.stringify(entries);
+        if (this.snapshotWarningSignatures.get(key) === signature) return;
+        this.snapshotWarningSignatures.set(key, signature);
+        const names: Record<string, string> = { large: "超过 2 MB", binary: "二进制", limit: "扫描或容量上限", symlink: "符号链接", unreadable: "无法读取" };
+        const details = entries.map(([file, reason]) => `${vscode.workspace.asRelativePath(file)}（${names[reason]}）`);
+        this.output.appendLine(`[snapshot] 未纳入自动回滚快照 ${entries.length} 项：\n${details.join("\n")}`);
+        const preview = details.slice(0, 4).join("、");
+        const more = details.length > 4 ? `等 ${details.length} 项` : "";
+        this.post(ctx, { kind: "notice", message: `未纳入自动回滚快照：${preview}${more}。完整清单见“Codex Chat”输出；这些路径无法用“还原到此处”恢复。` });
+    }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
         data: string;
@@ -1122,11 +1137,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 throw new Error("部分文件未保存，已取消发送，避免覆盖编辑器改动。");
         }
         if (this.config().get<boolean>("snapshotFilesForRestore", true)) {
-            const snapshot = new WorkspaceSnapshot(this.workspaceDirs());
+            const excludes = vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(this.cwd())).get<string[]>("snapshotExclude", []);
+            const snapshot = new WorkspaceSnapshot(this.workspaceDirs(), 20000, excludes);
             await snapshot.capture();
             ctx.snapshot = snapshot;
-            if (snapshot.skipped.size)
-                this.post(ctx, { kind: "notice", message: `有 ${snapshot.skipped.size} 个大文件、二进制或超限路径未纳入自动回滚快照。` });
+            this.reportSnapshotSkips(ctx, snapshot);
         }
         if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
             this.post(ctx, { kind: "busy", busy: false });
