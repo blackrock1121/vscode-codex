@@ -58,7 +58,7 @@ export class CodexProcess {
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
-      void this.rpc.request('model/list', {}).then(r => this.emit({ kind: 'models', models: r.data.map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort) })) })).catch(e => this.error(e));
+      void this.rpc.request('model/list', {}).then(r => this.emit({ kind: 'models', models: r.data.filter((m: any) => !m.hidden).map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault })) })).catch(e => this.error(e));
     } catch (e) { this.exited = true; this.rpc.dispose(); throw e; }
   }
   sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[]): boolean {

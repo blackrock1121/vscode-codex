@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -211,7 +211,9 @@
             "low",
             "medium",
             "high",
-            "xhigh"
+            "xhigh",
+            "max",
+            "ultra"
           ],
           "default": "",
           "description": "推理强度；留空使用 Codex 默认值，可用档位取决于模型。"
@@ -268,7 +270,7 @@
     "watch": "node esbuild.js --watch",
     "check-types": "tsc --noEmit",
     "package": "vsce package --no-dependencies --out release/vscode-codex.vsix",
-    "test": "node scripts/build-test.cjs && node --test test/*.test.cjs",
+    "test": "npm run build && node scripts/build-test.cjs && node --test test/*.test.cjs",
     "smoke": "node scripts/build-test.cjs && node scripts/smoke.cjs --turn"
   },
   "devDependencies": {

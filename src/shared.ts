@@ -40,7 +40,7 @@ export const ICONS: Record<string, string> = {
 // ---- Extension host -> webview --------------------------------------------
 
 export type ToWebview =
-  | { kind: "models"; models: { id: string; name: string; description: string; efforts: string[] }[] }
+  | { kind: "models"; models: { id: string; name: string; description: string; efforts: string[]; defaultEffort?: string; isDefault?: boolean }[] }
   /** `permissionMode` is the mode the CLI process ACTUALLY runs in (from its
    *  init event) — the picker syncs to this, never to a local guess. */
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }

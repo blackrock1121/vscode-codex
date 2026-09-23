@@ -988,8 +988,15 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "models":
       modelEfforts = Object.fromEntries(m.models.map(x => [x.id, x.efforts]));
+      modelDefaultEfforts = Object.fromEntries(m.models.map(x => [x.id, x.defaultEffort || ""]));
+      const defaultModel = m.models.find(x => x.isDefault);
+      if (defaultModel) {
+        modelEfforts[""] = defaultModel.efforts;
+        modelDefaultEfforts[""] = defaultModel.defaultEffort || "";
+      }
       MODELS = [{ id: "", label: "默认模型", short: "默认", desc: "使用 Codex 默认模型" }, ...m.models.map(x => ({ id: x.id, label: x.name, short: x.name, desc: x.description }))];
       syncPickers();
+      if (!modelMenu.classList.contains("hidden")) buildModelMenu();
       break;
     case "config":
       if (m.modEnterToSend !== undefined) {
@@ -1002,6 +1009,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       currentEffort = m.effort || "";
 
       syncPickers();
+      if (!modelMenu.classList.contains("hidden")) buildModelMenu();
       break;
     case "context_added":
       addContextChip(m.label, m.text);
@@ -1240,6 +1248,12 @@ function isInterruptSentinel(content: string): boolean {
  *  so we scan for the JSON array and fall back to a loose regex. */
 function extractSearchLinks(text: string): { title: string; url: string }[] {
   const out: { title: string; url: string }[] = [];
+  const add = (title: string, url: string) => {
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === "https:" || parsed.protocol === "http:") out.push({ title, url: parsed.href });
+    } catch { /* Ignore malformed links in tool output. */ }
+  };
   const m = /\[\s*{[\s\S]*}\s*\]/.exec(text);
   if (m) {
     try {
@@ -1247,7 +1261,7 @@ function extractSearchLinks(text: string): { title: string; url: string }[] {
       if (Array.isArray(arr)) {
         for (const o of arr) {
           if (o && typeof o === "object" && (o.url || o.link)) {
-            out.push({ title: String(o.title ?? o.name ?? ""), url: String(o.url ?? o.link) });
+            add(String(o.title ?? o.name ?? ""), String(o.url ?? o.link));
           }
         }
       }
@@ -1256,7 +1270,7 @@ function extractSearchLinks(text: string): { title: string; url: string }[] {
   if (!out.length) {
     const re = /"title"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"url"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
     let r: RegExpExecArray | null;
-    while ((r = re.exec(text))) out.push({ title: r[1], url: r[2] });
+    while ((r = re.exec(text))) add(r[1], r[2]);
   }
   return out;
 }
@@ -2504,6 +2518,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
         return true;
       }
       currentModel = hit.id;
+      if (currentEffort && modelEfforts[currentModel]?.length && !modelEfforts[currentModel].includes(currentEffort)) currentEffort = "";
       send({ type: "setModel", model: currentModel });
       syncPickers();
       appendNotice(`已切换模型：${hit.label}`, "info");
@@ -2511,13 +2526,18 @@ function handleSlashCommand(payload: QueueItem): boolean {
     }
     case "/effort": {
       if (!arg) {
-        appendNotice("可选思考强度：\n" + EFFORTS.map((e) => `  ${e.id}  —  ${e.label}：${e.desc}`).join("\n"), "info");
+        const supported = modelEfforts[currentModel];
+        appendNotice("可选思考强度：\n" + EFFORTS.filter(e => !e.id || !supported?.length || supported.includes(e.id)).map((e) => `  ${e.id || "default"}  —  ${e.label}：${e.desc}`).join("\n"), "info");
         return true;
       }
       const key = arg.toLowerCase();
-      const hit = EFFORTS.find((e) => e.id.toLowerCase() === key || e.label.toLowerCase() === key);
+      const hit = EFFORTS.find((e) => e.id.toLowerCase() === key || e.label.toLowerCase() === key || (!e.id && key === "default"));
       if (!hit) {
         appendNotice(`未知强度「${arg}」。可选：${EFFORTS.map((e) => e.id).join(" / ")}`, "error");
+        return true;
+      }
+      if (hit.id && modelEfforts[currentModel]?.length && !modelEfforts[currentModel].includes(hit.id)) {
+        appendNotice(`当前模型不支持「${hit.label}」，请选择菜单中列出的强度。`, "error");
         return true;
       }
       currentEffort = hit.id;
@@ -3135,6 +3155,7 @@ const MODES = [
   { id: "bypassPermissions", icon: ICONS.bypassPermissions, title: "绕过权限", desc: "跳过所有权限检查（危险）" },
 ];
 let modelEfforts: Record<string, string[]> = {};
+let modelDefaultEfforts: Record<string, string> = {};
 let MODELS: { id: string; label: string; short: string; desc: string; versions?: { id: string; label: string; date: string }[] }[] = [
   { id: "", label: "默认模型", short: "默认", desc: "使用 Codex 默认模型" },
 ];
@@ -3146,6 +3167,8 @@ const EFFORTS = [
   { id: "medium", label: "中", desc: "均衡，标准测试" },
   { id: "high", label: "高", desc: "全面实现，充分测试" },
   { id: "xhigh", label: "极高", desc: "扩展推理，深入分析" },
+  { id: "max", label: "最高", desc: "更充分的推理" },
+  { id: "ultra", label: "超高", desc: "最充分的推理" },
   { id: "", label: "默认", desc: "使用模型默认推理强度" },
 ];
 let currentMode = "default";
@@ -3219,14 +3242,15 @@ function buildModelMenu() {
       tail +
       `</button>`;
   }
-  // Reasoning effort as filling bars — it's a level on a scale, not a radio set.
-  const idx = EFFORTS.findIndex((e) => e.id === currentEffort);
-  const curLabel = idx >= 0 ? EFFORTS[idx].label : "默认";
-  html += `<div class="pick-sep"></div><div class="pick-effort"><span>推理强度<span class="eff-cur"> · ${curLabel}</span></span><span class="effort-dots">`;
-  EFFORTS.filter(e => !e.id || !modelEfforts[currentModel]?.length || modelEfforts[currentModel].includes(e.id)).forEach((e, i) => {
-    html += `<span class="effort-dot ${idx >= 0 && i <= idx ? "on" : ""}" data-effort="${e.id}" title="${e.label}：${e.desc}"></span>`;
-  });
-  html += `</span></div>`;
+  const supported = modelEfforts[currentModel];
+  const available = EFFORTS.filter(e => e.id && (!supported?.length || supported.includes(e.id)));
+  const selected = EFFORTS.find(e => e.id === currentEffort)?.label || currentEffort || "默认";
+  const defaultEffort = modelDefaultEfforts[currentModel];
+  const defaultLabel = defaultEffort ? EFFORTS.find(e => e.id === defaultEffort)?.label || defaultEffort : "";
+  html += `<div class="pick-sep"></div><div class="pick-effort"><span>推理强度 · ${escapeHtml(selected)}</span><span class="eff-cur">下轮生效</span></div><div class="effort-options">`;
+  html += `<button type="button" class="effort-option${!currentEffort ? " on" : ""}" data-effort="" aria-pressed="${!currentEffort}" title="使用模型默认推理强度">默认${defaultLabel ? ` (${escapeHtml(defaultLabel)})` : ""}</button>`;
+  for (const e of available) html += `<button type="button" class="effort-option${currentEffort === e.id ? " on" : ""}" data-effort="${e.id}" aria-pressed="${currentEffort === e.id}" title="${e.label}：${e.desc}">${e.label}</button>`;
+  html += `</div>`;
   modelMenu.innerHTML = html;
 }
 
@@ -3315,7 +3339,9 @@ modelMenu.addEventListener("click", (e) => {
   if (dot) {
     currentEffort = dot.dataset.effort || "";
     send({ type: "setEffort", effort: currentEffort });
-    buildModelMenu(); // keep menu open, update dots
+    const scrollTop = modelMenu.scrollTop;
+    buildModelMenu();
+    modelMenu.scrollTop = scrollTop;
     return;
   }
   const more = t.closest("[data-versions]") as HTMLElement | null;
@@ -3328,6 +3354,7 @@ modelMenu.addEventListener("click", (e) => {
   const row = ver ?? (t.closest("[data-model]") as HTMLElement | null);
   if (!row) return;
   currentModel = (ver ? row.dataset.version : row.dataset.model) || "";
+  if (currentEffort && modelEfforts[currentModel]?.length && !modelEfforts[currentModel].includes(currentEffort)) currentEffort = "";
   send({ type: "setModel", model: currentModel });
   syncPickers();
   closePickers();
