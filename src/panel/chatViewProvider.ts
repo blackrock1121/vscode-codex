@@ -470,15 +470,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private refreshSessions(): void {
         void this.store.refresh().then(async () => {
             const last = this.context.workspaceState.get<string>(LAST_SESSION_KEY);
-            if (last && !this.store.list().some(s => s.id === last) &&
-                fs.existsSync(path.join(this.storageDir(), `checkpoints-${last}.json`))) {
-                try {
-                    await this.store.hydrate(last);
-                    this.store.notePending(last, this.store.userTurnLines(last)[0]?.text || "恢复的会话");
-                } catch (err) {
-                    this.output.appendLine(`[sessions] 恢复最近会话失败: ${String(err)}`);
-                }
-            }
+            // thread/list 已排除归档会话。不能凭残留的 checkpoint 文件把它重新放回列表。
+            const live = last && [...this.sessions, ...this.detached.values()].some(ctx => ctx.sessionId === last && ctx.proc && !ctx.proc.isExited);
+            if (last && !live && !this.store.list().some(s => s.id === last))
+                await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
             this.renderSessions();
         }).catch(e => this.output.appendLine(`[sessions] ${String(e)}`));
     }
@@ -1646,6 +1641,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await this.store.archive(oldId);
             ctx.sessionId = undefined;
             ctx.checkpoints.clear();
+            if (this.context.workspaceState.get<string>(LAST_SESSION_KEY) === oldId)
+                await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
+            this.refreshSessions();
             return { result, rewoundToStart: true };
         }
         const newId = await this.store.fork(oldId, leaf);
@@ -1803,6 +1801,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (ctx.proc !== proc)
                 return undefined;
             const raw = String(err);
+            if (isResume && /session\s+\S+\s+is archived/i.test(raw)) {
+                this.output.appendLine(`[codex] 归档会话 ${sessionId.slice(0, 8)} 无法恢复，切换到新会话`);
+                ctx.proc = undefined;
+                ctx.sessionId = undefined;
+                ctx.blank = true;
+                ctx.checkpoints.clear();
+                ctx.checkpoints = new CheckpointManager(this.storageDir());
+                if (this.context.workspaceState.get<string>(LAST_SESSION_KEY) === sessionId)
+                    await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
+                this.post(ctx, { kind: "load_history", items: [], checkpoints: [] });
+                this.post(ctx, { kind: "notice", message: "原会话已归档，已切换到空白会话。输入内容已保留，请重新发送。" });
+                this.refreshSessions();
+                return undefined;
+            }
             const hint = /not found|ENOENT|no such file/i.test(raw)
                 ? `\n请检查设置 codexChat.codexPath，或确认 \`codex\` 在 PATH 中（终端里 \`codex --version\` 能跑通）。`
                 : "";
