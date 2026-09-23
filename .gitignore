@@ -1,7 +1,21 @@
+# 依赖和编译产物
 node_modules/
 dist/
 media/webview.js*
+.cache/
+*.tsbuildinfo
+coverage/
+.nyc_output/
+
+# 日志和本机文件
+*.log
 .DS_Store
+.vscode/settings.json
+.vscode-test/
+
+# 本地参考源码和打包产物
 claude-chat-main/
 *.vsix
+release/*
+# 自动更新从 GitHub main 分支下载此文件，必须纳入版本控制
 !release/vscode-codex.vsix
