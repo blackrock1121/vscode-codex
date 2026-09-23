@@ -2,6 +2,8 @@ import { CTX_OPEN, CTX_CLOSE, PermissionSuggestionView, ToWebview } from '../sha
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { toolView, quotaEvents } from './events';
 
+const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，使用 request_user_input 向用户提问并等待其答案。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。如果此工具不可用，就在当前轮结束时明确提问，等待用户下一条消息。';
+
 export interface CodexProcessOptions {
   codexPath: string; cwd: string; model?: string; effort?: string; permissionMode: string;
   resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
@@ -53,7 +55,7 @@ export class CodexProcess {
       const account = await this.rpc.request('account/read', {});
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-      const params = { cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: this.opts.appendSystemPrompt || null };
+      const params = { cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
       const result = await this.rpc.request(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
@@ -126,9 +128,9 @@ export class CodexProcess {
     const p = m.params ?? {}, key = String(m.id);
     if (p.threadId && p.threadId !== this.sessionId) { this.rpc.reject(m.id!, '会话不匹配'); return; }
     const method = m.method!;
-    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/tool/requestUserInput', 'item/permissions/requestApproval', 'mcpServer/elicitation/request'].includes(method)) { this.rpc.reject(m.id!); return; }
+    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput', 'item/permissions/requestApproval', 'mcpServer/elicitation/request'].includes(method)) { this.rpc.reject(m.id!); return; }
     this.pending.set(key, { id: m.id!, method, params: p });
-    const question = method === 'item/tool/requestUserInput';
+    const question = method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput';
     const name = question ? 'AskUserQuestion' : method.includes('commandExecution') ? 'Bash' : method.includes('fileChange') ? 'Edit' : '权限请求';
     const item = this.tools.get(p.itemId);
     const input = question ? { questions: (p.questions ?? []).map((q: any) => ({ ...q, multiSelect: false })) } : item ? toolView(item).input : { command: p.command, ...p };
@@ -138,7 +140,7 @@ export class CodexProcess {
   respondPermission(key: string, decision: { behavior: 'allow' | 'deny'; suggestionId?: string; message?: string }): void {
     const p = this.pending.get(key); if (!p) return;
     const allow = decision.behavior === 'allow';
-    if (p.method === 'item/tool/requestUserInput') { this.answerQuestion(key, {}); return; }
+    if (p.method === 'item/tool/requestUserInput' || p.method === 'tool/requestUserInput') { this.answerQuestion(key, {}); return; }
     const result = p.method === 'item/permissions/requestApproval' ? { permissions: allow ? p.params.permissions : {}, scope: 'turn' }
       : p.method === 'mcpServer/elicitation/request' ? { action: allow ? 'accept' : 'decline', content: null }
       : { decision: allow ? (decision.suggestionId === 'session' ? 'acceptForSession' : 'accept') : 'decline' };

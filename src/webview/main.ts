@@ -252,7 +252,7 @@ function cancelPendingInteractions() {
     ),
   ).forEach((box) => {
     box.classList.add("interaction-cancelled");
-    Array.from(box.querySelectorAll("button")).forEach((b) => ((b as HTMLButtonElement).disabled = true));
+    Array.from(box.querySelectorAll("button, textarea")).forEach((b) => ((b as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
   });
 }
 
@@ -1592,9 +1592,12 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const body = ensureAssistant();
   removeWorking();
   const questions = ((m.input as { questions?: any[] })?.questions || []) as Array<{
+    id?: string;
     question: string;
     header?: string;
     multiSelect?: boolean;
+    isOther?: boolean;
+    isSecret?: boolean;
     options?: Array<{ label: string; description?: string }>;
   }>;
   if (!questions.length) {
@@ -1723,14 +1726,15 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     customRow.append(el("span", "askp-n", String(opts.length + 1)));
     // 用 textarea 而不是 input：单行 input 粘贴多行文本会被浏览器把换行吃掉，
     // 贴一段日志/代码进来就粘成一行。随内容增高，超出上限内部滚动。
-    const customInput = el("textarea", "askp-input") as HTMLTextAreaElement;
-    customInput.rows = 1;
+    const customInput = el(q.isSecret ? "input" : "textarea", "askp-input") as HTMLInputElement | HTMLTextAreaElement;
+    if (customInput instanceof HTMLTextAreaElement) customInput.rows = 1;
+    else customInput.type = "password";
     customInput.placeholder = "输入自定义答案（⇧↵ 换行）";
     customInput.value = custom[cur];
     const growCustom = () => {
       // 没进文档时 scrollHeight 恒为 0，量出来会把输入框压成 0 高——首次 paint()
       // 正是在 wrap 挂到消息区之前跑的，所以这里必须挡住。
-      if (!customInput.isConnected) return;
+      if (!customInput.isConnected || q.isSecret) return;
       customInput.style.height = "auto";
       customInput.style.height = Math.min(customInput.scrollHeight, 132) + "px";
     };
@@ -1757,7 +1761,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
       advance(cur, 120, true);
     };
     customRow.append(customInput);
-    optsBox.append(customRow);
+    if (q.isOther !== false || !opts.length) optsBox.append(customRow);
     requestAnimationFrame(growCustom); // 首次 paint 时节点还没入文档，量高要等挂载
     updateFoot();
   }
@@ -1768,8 +1772,8 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     if (answers) {
       const pairs = questions
         .map((q): [string, string] => {
-          const v = answers[q.question];
-          return [q.header || q.question, Array.isArray(v) ? v.join("、") : v || ""];
+          const v = answers[q.id || q.question];
+          return [q.header || q.question, q.isSecret && v ? "（已填写）" : Array.isArray(v) ? v.join("、") : v || ""];
         })
         .filter(([, a]) => a);
       wrap.replaceWith(askQuestionNode(pairs));
@@ -1795,7 +1799,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     questions.forEach((q, qi) => {
       const picks = [...sel[qi]];
       if (custom[qi].trim()) picks.push(custom[qi].trim());
-      answers[q.question] = q.multiSelect ? picks : picks[0] || "";
+      answers[q.id || q.question] = q.multiSelect ? picks : picks[0] || "";
     });
     send({ type: "answerQuestion", requestId: m.requestId, answers });
     finish(answers);
@@ -1816,6 +1820,11 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 }
 
 function resolvePermission(requestId: string, behavior: "allow" | "deny") {
+  const ask = Array.from(messagesEl.querySelectorAll<HTMLElement>(".askp")).find(node => node.dataset.requestId === requestId);
+  if (ask && behavior === "deny") {
+    ask.classList.add("interaction-cancelled");
+    ask.querySelectorAll("button, textarea").forEach(control => ((control as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
+  }
   const bar = messagesEl.querySelector(`.perm-bar[data-request-id="${requestId}"]`) as HTMLElement;
   if (!bar) return;
   bar.closest(".tool-card")?.classList.remove("needs-approval");
