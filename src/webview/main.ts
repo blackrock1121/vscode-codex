@@ -1,7 +1,7 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
 import type { FromWebview, TimelineItem, ToWebview } from "../shared";
-import { ICONS as ICON } from "../shared";
+import { ICONS as ICON, GPT_LOGO } from "../shared";
 
 // ---------------------------------------------------------------------------
 // VS Code bridge
@@ -169,24 +169,6 @@ const toolCards = new Map<string, HTMLElement>();
 const pendingContexts: { label: string; text: string }[] = [];
 const pendingImages: { mediaType: string; data: string; uri: string }[] = [];
 
-/** Original rainbow radial sunburst mark (generic geometry, our own design). */
-const SUNBURST = (() => {
-  const cx = 12, cy = 12, r1 = 3.6, r2 = 9, n = 12;
-  const hues = [
-    "#e74c3c", "#e67e22", "#f1c40f", "#2ecc71", "#27ae60", "#1abc9c",
-    "#00bcd4", "#3498db", "#5b6cf0", "#8e44ad", "#c0399b", "#e84393",
-  ];
-  let s = "";
-  for (let i = 0; i < n; i++) {
-    const a = (i / n) * Math.PI * 2;
-    const x1 = (cx + r1 * Math.cos(a)).toFixed(2);
-    const y1 = (cy + r1 * Math.sin(a)).toFixed(2);
-    const x2 = (cx + r2 * Math.cos(a)).toFixed(2);
-    const y2 = (cy + r2 * Math.sin(a)).toFixed(2);
-    s += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${hues[i]}"/>`;
-  }
-  return `<svg viewBox="0 0 24 24" fill="none" stroke-width="2.1" stroke-linecap="round">${s}</svg>`;
-})();
 
 function ensureAssistant(): HTMLElement {
   if (!assistantEl) {
@@ -195,7 +177,7 @@ function ensureAssistant(): HTMLElement {
     if (isBusy) assistantEl.classList.add("streaming-turn");
     const rail = el("div", "rail");
     const avatar = el("div", "avatar");
-    avatar.innerHTML = SUNBURST;
+    avatar.innerHTML = GPT_LOGO;
     rail.append(avatar);
     const body = el("div", "msg-body");
     // The rail line is anchored INSIDE the body, off its left edge — the dots
@@ -2102,7 +2084,7 @@ function updateEmptyState() {
   if (messagesEl.querySelector(".empty-state")) return;
   const es = el("div", "empty-state");
   es.innerHTML =
-    `<div class="es-logo">${SUNBURST}</div>` +
+    `<div class="es-logo">${GPT_LOGO}</div>` +
     `<div class="es-title">Codex Copilot</div>` +
     `<div class="es-sub">问我任何关于这个项目的问题。<br>在根目录放一个 <code>CLAUDE.md</code>，每次对话都会自动读取它作为项目说明。</div>`;
   messagesEl.appendChild(es);

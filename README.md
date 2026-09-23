@@ -88,3 +88,5 @@ node scripts/smoke-process.cjs
 界面与通用功能源自 [TomHusky/claude-chat](https://github.com/TomHusky/claude-chat)，保留 [MIT 许可证](LICENSE.md)。参考源码 `claude-chat-main` 仅保留在本地，不进入新仓库和 VSIX。
 
 Codex 接入依据 [官方 App Server 文档](https://learn.chatgpt.com/docs/app-server) 与本机 CLI 生成的协议类型。此项目是独立插件，并非 OpenAI 或 GitHub 官方扩展。
+
+图标使用 OpenAI 的 GPT／Blossom 标志，商标与图形归 OpenAI 所有。图标来源为本机官方 `openai.chatgpt` 扩展资源；本插件仍为独立项目。

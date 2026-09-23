@@ -554,7 +554,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
         };
         panel.title = "Codex Copilot";
-        panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "icon.svg");
+        panel.iconPath = { light: vscode.Uri.joinPath(this.context.extensionUri, "media", "icon-light.svg"), dark: vscode.Uri.joinPath(this.context.extensionUri, "media", "icon.svg") };
         panel.webview.html = this.html(panel.webview);
         ctx.webview = panel.webview;
         panel.webview.onDidReceiveMessage((m: FromWebview) => {
