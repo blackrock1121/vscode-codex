@@ -1,0 +1,1 @@
+require('esbuild').buildSync({ entryPoints: ['src/codex/rpc.ts', 'src/codex/session.ts', 'src/codex/process.ts', 'src/codex/events.ts', 'src/checkpoints.ts', 'src/snapshot.ts'], outdir: 'dist/test', platform: 'node', format: 'cjs', bundle: true });

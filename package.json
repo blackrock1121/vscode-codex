@@ -1,0 +1,285 @@
+{
+  "name": "vscode-codex",
+  "displayName": "Codex Copilot",
+  "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
+  "version": "0.1.0",
+  "publisher": "blackrock1121",
+  "icon": "media/icon.png",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/blackrock1121/vscode-codex.git"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "keywords": [
+    "codex",
+    "ai",
+    "chat",
+    "copilot"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onWebviewPanel:codex-chat.editor"
+  ],
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "codex-chat",
+          "title": "Codex Copilot",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "codex-chat": [
+        {
+          "id": "codex-chat.chatView",
+          "name": "会话",
+          "type": "webview"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "codex-chat.newSession",
+        "title": "Codex: 打开新会话",
+        "icon": "media/icon.svg"
+      },
+      {
+        "command": "codex-chat.showSessions",
+        "title": "Codex: 查看会话历史",
+        "icon": "$(history)"
+      },
+      {
+        "command": "codex-chat.stop",
+        "title": "Codex: 停止当前轮次",
+        "icon": "$(stop-circle)"
+      },
+      {
+        "command": "codex-chat.focusInput",
+        "title": "Codex: 聚焦输入框"
+      },
+      {
+        "command": "codex-chat.addSelectionToChat",
+        "title": "Codex: 添加选中代码"
+      },
+      {
+        "command": "codex-chat.openInEditor",
+        "title": "Codex: 在编辑器右侧打开",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "codex-chat.checkUpdate",
+        "title": "Codex: 检查更新",
+        "icon": "$(sync)"
+      },
+      {
+        "command": "codex-chat.open",
+        "title": "Codex: 打开新会话",
+        "icon": "media/icon.svg"
+      },
+      {
+        "command": "codex-chat.notifyConfig",
+        "title": "Codex: 任务推送配置",
+        "icon": "$(bell)"
+      },
+      {
+        "command": "codex-chat.openLogs",
+        "title": "Codex: 打开日志文件夹"
+      },
+      {
+        "command": "codex-chat.reopenClosedSession",
+        "title": "Codex: 重新打开刚关闭的会话"
+      },
+      {
+        "command": "codex-chat.login",
+        "title": "Codex: 登录账号"
+      },
+      {
+        "command": "codex-chat.account",
+        "title": "Codex: 查看账号状态"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "codex-chat.openInEditor",
+          "when": "view == codex-chat.chatView",
+          "group": "navigation@0"
+        },
+        {
+          "command": "codex-chat.checkUpdate",
+          "when": "view == codex-chat.chatView",
+          "group": "navigation@1"
+        },
+        {
+          "command": "codex-chat.notifyConfig",
+          "when": "view == codex-chat.chatView",
+          "group": "navigation@5"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "codex-chat.open",
+          "when": "resourceScheme == file",
+          "group": "navigation@9"
+        },
+        {
+          "command": "codex-chat.newSession",
+          "when": "activeWebviewPanelId == 'codex-chat.editor'",
+          "group": "navigation@0"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "codex-chat.addSelectionToChat",
+          "when": "editorHasSelection",
+          "group": "codex@1"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "codex-chat.focusInput",
+        "key": "ctrl+shift+i",
+        "mac": "cmd+shift+i"
+      },
+      {
+        "command": "codex-chat.addSelectionToChat",
+        "key": "ctrl+shift+l",
+        "mac": "cmd+shift+l",
+        "when": "editorHasSelection"
+      },
+      {
+        "command": "codex-chat.reopenClosedSession",
+        "key": "ctrl+shift+t",
+        "mac": "cmd+shift+t",
+        "when": "activeWebviewPanelId == 'codex-chat.editor' || focusedView == 'codex-chat.chatView'"
+      }
+    ],
+    "configuration": {
+      "title": "Codex Chat",
+      "properties": {
+        "codexChat.codexPath": {
+          "type": "string",
+          "default": "codex",
+          "description": "Codex CLI 路径；默认从 PATH、Homebrew、~/.local/bin 和 nvm 安装位置查找。"
+        },
+        "codexChat.model": {
+          "type": "string",
+          "default": "",
+          "description": "模型 ID；留空使用 Codex 默认值。选择器通过 model/list 获取账号可用模型。"
+        },
+        "codexChat.permissionMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "acceptEdits",
+            "plan",
+            "bypassPermissions"
+          ],
+          "default": "default",
+          "enumDescriptions": [
+            "只读沙箱，需要写入或提权时由用户审批",
+            "允许工作区内写入，额外权限仍需审批",
+            "只读，不允许提权",
+            "完全访问，跳过审批"
+          ],
+          "description": "default：只读沙箱，按需审批；acceptEdits：允许工作区写入；plan：只读且不提权；bypassPermissions：完全访问。"
+        },
+        "codexChat.effort": {
+          "type": "string",
+          "enum": [
+            "",
+            "none",
+            "minimal",
+            "low",
+            "medium",
+            "high",
+            "xhigh"
+          ],
+          "default": "",
+          "description": "推理强度；留空使用 Codex 默认值，可用档位取决于模型。"
+        },
+        "codexChat.snapshotFilesForRestore": {
+          "type": "boolean",
+          "default": true,
+          "description": "每轮开始前捕获工作区文本文件基线，用于查看差异和回滚。"
+        },
+        "codexChat.autosave": {
+          "type": "boolean",
+          "default": true,
+          "description": "每轮发送前保存工作区中已打开的未保存文件，避免 Codex 读到旧内容；保存失败则取消发送。"
+        },
+        "codexChat.modEnterToSend": {
+          "type": "boolean",
+          "default": false,
+          "description": "用 Cmd/Ctrl+Enter 发送、Enter 换行（默认 Enter 发送、Shift+Enter 换行）。切换后新打开的会话生效。"
+        },
+        "codexChat.prespawnOnOpen": {
+          "type": "boolean",
+          "default": true,
+          "description": "打开已有会话时提前连接 Codex 并恢复会话，不主动发送模型预热请求。"
+        },
+        "codexChat.turnStallTimeoutSec": {
+          "type": "number",
+          "default": 720,
+          "minimum": 60,
+          "description": "持续没有事件的超时时间（秒），达到后重置连接；等待用户审批时不计时。"
+        },
+        "codexChat.appendSystemPrompt": {
+          "type": "string",
+          "default": "",
+          "description": "追加给 Codex 的开发者指令，项目指令使用 AGENTS.md。"
+        },
+        "codexChat.notifyWebhook": {
+          "type": "string",
+          "default": "",
+          "description": "任务推送的 webhook 地址（长任务完成、以及 Codex 停下来等你输入时提醒）。填飞书/企业微信/钉钉群机器人的 webhook 可直接收到文本消息；其他地址会收到通用 JSON（{text, isError, durationMs, project, question}，等待输入推送另带 waiting:true 与 ask）。留空关闭推送。"
+        },
+        "codexChat.notifyMinDurationSec": {
+          "type": "number",
+          "default": 60,
+          "minimum": 0,
+          "description": "任务执行时长达到该秒数才推送完成通知（默认 60 秒）；等待输入的提醒同用此阈值——距你上次操作超过该秒数才推。"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "node esbuild.js --production",
+    "compile": "node esbuild.js",
+    "watch": "node esbuild.js --watch",
+    "check-types": "tsc --noEmit",
+    "package": "vsce package --no-dependencies --out release/vscode-codex.vsix",
+    "test": "node scripts/build-test.cjs && node --test test/*.test.cjs",
+    "smoke": "node scripts/build-test.cjs && node scripts/smoke.cjs --turn"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.14.0",
+    "@types/vscode": "^1.90.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.28.2",
+    "highlight.js": "^11.10.0",
+    "jsdom": "^29.1.1",
+    "markdown-it": "^14.1.0",
+    "typescript": "^5.5.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Codex 需要读取项目及执行工具，请先信任工作区。"
+    }
+  }
+}

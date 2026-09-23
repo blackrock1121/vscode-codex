@@ -1,0 +1,407 @@
+import * as fs from "node:fs";
+import * as path from "node:path";
+import { randomUUID } from "node:crypto";
+import { CheckpointSummary } from "./shared";
+
+interface FileBackup {
+  path: string;
+  /** Pre-edit content, or null if the file did not exist (i.e. was created). */
+  content: string | null;
+}
+
+interface Checkpoint {
+  id: string;
+  label: string;
+  createdAt: number;
+  userText: string;
+  files: FileBackup[];
+  /** Files touched this turn that could NOT be snapshotted (too large / binary).
+   *  Restore must surface these — silently reporting success while a file keeps
+   *  Codex's edits is a lie. */
+  skipped?: string[];
+  /** Number of Codex turns completed *before* this turn ran. Restoring
+   *  this checkpoint forks conversation history through this many turns. */
+  truncateLine: number;
+}
+
+const MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024;
+/** Oldest checkpoints beyond this are pruned (their earliest-baseline role for
+ *  the changed-files panel passes to the next snapshot). Keeps globalStorage
+ *  from growing without bound: each checkpoint can hold full file contents. */
+const MAX_CHECKPOINTS = 40;
+
+/**
+ * Restore points. A checkpoint is created at each user turn. Before any
+ * file-modifying tool runs, the target file's current content is snapshotted
+ * into the active checkpoint. Restoring a checkpoint reverts every file change
+ * made at or after that point.
+ */
+export class CheckpointManager {
+  private checkpoints: Checkpoint[] = [];
+  /** Pre-session content of files whose ORIGINAL snapshot lived in a checkpoint
+   *  that has since been pruned. Without this, `originalOf()` would return a
+   *  mid-session snapshot (already containing Codex's earlier edits) and
+   *  "revert file" would silently keep those edits while claiming success. */
+  private baseline = new Map<string, string | null>();
+  private baselineSkipped = new Set<string>();
+  private sessionId?: string;
+
+  constructor(private readonly storageDir: string) {}
+
+  setSession(sessionId: string): void {
+    if (this.sessionId === sessionId) return;
+    this.sessionId = sessionId;
+    this.load();
+  }
+
+  /**
+   * Open a new checkpoint for a user turn.
+   * @param truncateLine line count of the session transcript before this turn.
+   */
+  beginTurn(userText: string, truncateLine: number): string {
+    const id = randomUUID();
+    this.checkpoints.push({
+      id,
+      label: shortLabel(userText),
+      createdAt: Date.now(),
+      userText,
+      files: [],
+      truncateLine,
+    });
+    if (this.checkpoints.length > MAX_CHECKPOINTS) {
+      // Fold the dropped checkpoints' EARLIEST snapshots into `baseline` before
+      // discarding them — they are the only record of the files' pre-session
+      // content. Dropping them outright corrupts revert/diff.
+      const cut = this.checkpoints.length - MAX_CHECKPOINTS;
+      for (const c of this.checkpoints.slice(0, cut)) {
+        for (const f of c.files) if (!this.baseline.has(f.path)) this.baseline.set(f.path, f.content);
+        for (const s of c.skipped ?? []) this.baselineSkipped.add(s);
+      }
+      this.checkpoints = this.checkpoints.slice(cut);
+    }
+    this.persist();
+    return id;
+  }
+
+  /** Snapshot a file before it is modified (idempotent within a checkpoint). */
+  snapshotFile(absPath: string): void {
+    const cp = this.current();
+    if (!cp) return;
+    if (cp.files.some((f) => f.path === absPath) || cp.skipped?.includes(absPath)) return;
+    let content: string | null = null;
+    try {
+      const stat = fs.statSync(absPath);
+      if (stat.size > MAX_SNAPSHOT_BYTES) {
+        (cp.skipped ??= []).push(absPath); // too large — restore must report it
+        this.persistSoon();
+        return;
+      }
+      const buf = fs.readFileSync(absPath);
+      // Binary files round-tripped through utf8 come back corrupted — skip them.
+      if (buf.subarray(0, 8192).includes(0)) {
+        (cp.skipped ??= []).push(absPath);
+        this.persistSoon();
+        return;
+      }
+      content = buf.toString("utf8");
+    } catch {
+      content = null; // file does not exist yet -> created by this turn
+    }
+    cp.files.push({ path: absPath, content });
+    // Debounced: a turn with many edits otherwise rewrites the (potentially
+    // multi-MB) snapshot JSON once per tool call, on the host thread.
+    this.persistSoon();
+  }
+
+  recordSnapshot(file: string, content: string | null): void {
+    const cp = this.current();
+    if (!cp || cp.files.some(f => f.path === file)) return;
+    cp.files.push({ path: file, content }); this.persistSoon();
+  }
+
+  list(): CheckpointSummary[] {
+    return this.checkpoints.map((c) => ({
+      id: c.id,
+      label: c.label,
+      createdAt: c.createdAt,
+      userText: c.userText,
+      fileCount: c.files.length,
+    }));
+  }
+
+  hasAny(): boolean {
+    return this.checkpoints.length > 0;
+  }
+
+  /** 该还原点记录的截断行数（派生分支用），找不到返回 undefined。 */
+  cutLineOf(checkpointId: string): number | undefined {
+    return this.checkpoints.find((x) => x.id === checkpointId)?.truncateLine;
+  }
+
+  preview(checkpointId: string): { userText: string } | undefined {
+    const c = this.checkpoints.find((x) => x.id === checkpointId);
+    return c ? { userText: c.label } : undefined;
+  }
+
+  /** 还原点元数据（截断行 + 完整提问原文），不产生任何副作用——还原前的
+   *  安全校验用它，校验不过时工作区必须原封不动。 */
+  metaOf(checkpointId: string): { truncateLine: number; userText: string } | undefined {
+    const c = this.checkpoints.find((x) => x.id === checkpointId);
+    return c ? { truncateLine: c.truncateLine, userText: c.userText } : undefined;
+  }
+
+  /** All file paths touched during this session (incl. pruned-away turns). */
+  changedPaths(): string[] {
+    const set = new Set<string>(this.baseline.keys());
+    for (const c of this.checkpoints) for (const f of c.files) set.add(f.path);
+    return [...set];
+  }
+
+  /**
+   * Accept a file's changes: drop its snapshots so it no longer appears as a
+   * pending change (the on-disk content is kept as the new baseline).
+   */
+  accept(path: string): void {
+    let changed = this.baseline.delete(path);
+    this.baselineSkipped.delete(path);
+    for (const c of this.checkpoints) {
+      const before = c.files.length;
+      c.files = c.files.filter((f) => f.path !== path);
+      if (c.files.length !== before) changed = true;
+    }
+    if (changed) this.persist();
+  }
+
+  /**
+   * The session-baseline content of a path: the earliest snapshot taken
+   * (i.e. its content before Codex first touched it this session).
+   * Returns null if the file did not exist at baseline, undefined if untracked.
+   */
+  originalOf(path: string): string | null | undefined {
+    // Pruned turns hold the TRUE earliest content — check them first.
+    if (this.baseline.has(path)) return this.baseline.get(path);
+    for (const c of this.checkpoints) {
+      const f = c.files.find((x) => x.path === path);
+      if (f) return f.content;
+    }
+    return undefined;
+  }
+
+  /**
+   * Revert workspace files to the state just before the given checkpoint's
+   * turn, and drop that checkpoint and everything after it.
+   * Returns the number of files reverted.
+   */
+  restore(checkpointId: string): { restoredFiles: number; skipped: string[]; userText: string; truncateLine: number } | undefined {
+    const idx = this.checkpoints.findIndex((c) => c.id === checkpointId);
+    if (idx < 0) return undefined;
+    const truncateLine = this.checkpoints[idx].truncateLine;
+    // Files we could never snapshot (large/binary) keep Codex's edits — collect
+    // them so the caller can tell the user instead of claiming a full revert.
+    const skippedSet = new Set<string>();
+    for (let i = idx; i < this.checkpoints.length; i++) {
+      for (const s of this.checkpoints[i].skipped ?? []) skippedSet.add(s);
+    }
+    // Restoring the OLDEST surviving checkpoint means going back to the session
+    // baseline — pruned turns' un-snapshottable files must be reported too.
+    if (idx === 0) for (const s of this.baselineSkipped) skippedSet.add(s);
+
+    // Earliest backup per path across checkpoints[idx..] == pre-turn content.
+    const target = new Map<string, string | null>();
+    for (let i = idx; i < this.checkpoints.length; i++) {
+      for (const b of this.checkpoints[i].files) {
+        if (!target.has(b.path)) target.set(b.path, b.content);
+      }
+    }
+    // Rewinding to the oldest surviving turn == rewinding to the session start:
+    // files whose only snapshot lived in a pruned turn must revert to baseline.
+    if (idx === 0) for (const [p, c] of this.baseline) if (!target.has(p)) target.set(p, c);
+
+    let restored = 0;
+    for (const [p, content] of target) {
+      try {
+        if (content === null) {
+          if (fs.existsSync(p)) {
+            fs.unlinkSync(p);
+            restored++;
+          }
+        } else {
+          fs.mkdirSync(path.dirname(p), { recursive: true });
+          fs.writeFileSync(p, content, "utf8");
+          restored++;
+        }
+      } catch {
+        /* best effort per file */
+      }
+    }
+
+    const userText = this.checkpoints[idx].userText;
+    this.checkpoints = this.checkpoints.slice(0, idx);
+    // Everything at/after idx is undone; if we went all the way back, the
+    // baseline has been applied to disk and is no longer pending.
+    if (idx === 0) {
+      this.baseline.clear();
+      this.baselineSkipped.clear();
+    }
+    this.persist();
+    return { restoredFiles: restored, skipped: [...skippedSet], userText, truncateLine };
+  }
+
+  /** 合成还原点（该轮没有文件快照）回退对话时用：截点及之后的真实还原点随被丢弃
+   *  的轮次一起作废；它们的最早快照折进 baseline，保住「已更改文件」的回滚原文。 */
+  pruneFrom(cutLine: number): void {
+    const keep: Checkpoint[] = [];
+    let changed = false;
+    for (const c of this.checkpoints) {
+      if (c.truncateLine < cutLine) {
+        keep.push(c);
+        continue;
+      }
+      changed = true;
+      for (const f of c.files) if (!this.baseline.has(f.path)) this.baseline.set(f.path, f.content);
+      for (const x of c.skipped ?? []) this.baselineSkipped.add(x);
+    }
+    if (!changed) return;
+    this.checkpoints = keep;
+    this.persist();
+  }
+
+  clear(): void {
+    this.checkpoints = [];
+    this.baseline.clear();
+    this.baselineSkipped.clear();
+    this.persist();
+  }
+
+  /** 还原 = 派生出新会话替换旧会话后，还原点随之迁移：fork 只复制链记录，行号与原
+   *  文件不同，这里按「同一段提问文本」（纯图片轮次按「带图且无正文」）在新文件里
+   *  单调向前匹配，把 truncateLine 重对齐为该提问所在行之前的行数；对不上的还原点
+   *  已无法安全还原，直接丢弃。随后把持久化文件切到新会话、删除旧文件。 */
+  migrateTo(newSessionId: string, turns: { text: string; hasImages: boolean; line: number }[]): void {
+    const old = this.sessionId;
+    this.checkpoints = CheckpointManager.rebase(this.checkpoints, turns);
+    this.sessionId = newSessionId;
+    this.persist();
+    if (old && old !== newSessionId) CheckpointManager.deleteFor(this.storageDir, old);
+  }
+
+  /** 按提问文本把还原点的 truncateLine 重对齐到另一份 transcript（单调向前匹配；
+   *  纯图片轮次按「带图且无正文」）；对不上的丢弃。 */
+  private static rebase(cps: Checkpoint[], turns: { text: string; hasImages: boolean; line: number }[]): Checkpoint[] {
+    const norm = (t: string) => t.replace(/\s+/g, " ").trim().slice(0, 80);
+    const kept: Checkpoint[] = [];
+    let from = 0;
+    for (const c of cps) {
+      let hit = -1;
+      for (let k = from; k < turns.length; k++) {
+        const t = turns[k];
+        const ok = c.userText === "(图片)" ? t.hasImages && !norm(t.text) : norm(t.text) === norm(c.userText);
+        if (ok) {
+          hit = k;
+          break;
+        }
+      }
+      if (hit < 0) continue;
+      c.truncateLine = turns[hit].line - 1;
+      kept.push(c);
+      from = hit + 1;
+    }
+    return kept;
+  }
+
+  /** 派生会话：把「截断点之前」的还原点复制给新会话并按新文件的提问行重对齐（新会话
+   *  由 Codex thread/fork 生成，按轮次索引重新对齐）。baseline 一并带上。 */
+  static forkFor(
+    storageDir: string,
+    srcSessionId: string,
+    destSessionId: string,
+    maxTruncateLine: number,
+    turns: { text: string; hasImages: boolean; line: number }[],
+  ): void {
+    try {
+      const raw = fs.readFileSync(path.join(storageDir, `checkpoints-${srcSessionId}.json`), "utf8");
+      const j = JSON.parse(raw) as { checkpoints?: Checkpoint[]; baseline?: unknown; baselineSkipped?: unknown };
+      const prefix = (j.checkpoints ?? []).filter((c) => typeof c.truncateLine === "number" && c.truncateLine < maxTruncateLine);
+      const payload = { checkpoints: CheckpointManager.rebase(prefix, turns), baseline: j.baseline ?? [], baselineSkipped: j.baselineSkipped ?? [] };
+      fs.writeFileSync(path.join(storageDir, `checkpoints-${destSessionId}.json`), JSON.stringify(payload), { mode: 0o600 });
+    } catch {
+      /* 分支缺还原点不致命——新会话从第一轮重新积累 */
+    }
+  }
+
+  /** Force any debounced snapshot write to disk (window closing / disposal). */
+  flush(): void {
+    if (this.persistTimer) this.persist();
+  }
+
+  private current(): Checkpoint | undefined {
+    return this.checkpoints[this.checkpoints.length - 1];
+  }
+
+  private file(): string {
+    return path.join(this.storageDir, `checkpoints-${this.sessionId ?? "none"}.json`);
+  }
+
+  /** Delete the persisted checkpoint file of a session (used when the session
+   *  itself is deleted — otherwise globalStorage grows forever). */
+  static deleteFor(storageDir: string, sessionId: string): void {
+    try {
+      fs.unlinkSync(path.join(storageDir, `checkpoints-${sessionId}.json`));
+    } catch {
+      /* absent is fine */
+    }
+  }
+
+  private load(): void {
+    this.checkpoints = [];
+    this.baseline = new Map();
+    this.baselineSkipped = new Set();
+    try {
+      const raw = JSON.parse(fs.readFileSync(this.file(), "utf8"));
+      // Legacy files are a bare array; new ones carry the folded baseline too.
+      if (Array.isArray(raw)) {
+        this.checkpoints = raw;
+      } else if (raw && Array.isArray(raw.checkpoints)) {
+        this.checkpoints = raw.checkpoints;
+        for (const [p, c] of raw.baseline ?? []) this.baseline.set(p, c);
+        for (const s of raw.baselineSkipped ?? []) this.baselineSkipped.add(s);
+      }
+    } catch {
+      /* absent/corrupt — start clean */
+    }
+  }
+
+  private persistTimer?: ReturnType<typeof setTimeout>;
+
+  /** Debounced persist for high-frequency snapshot writes. */
+  private persistSoon(): void {
+    if (this.persistTimer) return;
+    this.persistTimer = setTimeout(() => {
+      this.persistTimer = undefined;
+      this.persist();
+    }, 500);
+  }
+
+  private persist(): void {
+    if (this.persistTimer) {
+      clearTimeout(this.persistTimer);
+      this.persistTimer = undefined;
+    }
+    try {
+      fs.mkdirSync(this.storageDir, { recursive: true });
+      const payload = {
+        checkpoints: this.checkpoints,
+        baseline: [...this.baseline],
+        baselineSkipped: [...this.baselineSkipped],
+      };
+      fs.writeFileSync(this.file(), JSON.stringify(payload), "utf8");
+    } catch {
+      /* ignore persistence failure */
+    }
+  }
+}
+
+export function shortLabel(text: string): string {
+  const t = text.replace(/\s+/g, " ").trim();
+  return t.length > 48 ? t.slice(0, 48) + "…" : t || "(空消息)";
+}

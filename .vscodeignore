@@ -1,0 +1,14 @@
+src/**
+test/**
+docs/**
+claude-chat-main/**
+node_modules/**
+.vscode/**
+.git/**
+*.vsix
+release/**
+dist/test/**
+scripts/**
+package-lock.json
+esbuild.js
+tsconfig.json
