@@ -43,10 +43,14 @@ export class SessionStore {
       }
       cursor = r.nextCursor;
     } while (cursor);
+    // Forked threads can be absent from thread/list briefly after creation.
+    for (const [id, thread] of this.threads) if (this.pending.has(id) && !found.has(id)) found.set(id, thread);
     this.threads = found;
   }
   async hydrate(id: string): Promise<void> {
-    const rpc = await this.connection();
+    await this.hydrateWith(await this.connection(), id);
+  }
+  private async hydrateWith(rpc: CodexRpc, id: string): Promise<void> {
     const r = await rpc.request('thread/read', { threadId: id });
     let thread = r.thread;
     if (thread.historyMode !== 'paginated') thread = (await rpc.request('thread/read', { threadId: id, includeTurns: true })).thread;
@@ -100,8 +104,19 @@ export class SessionStore {
     await rpc.request('thread/delete', { threadId: id }); this.threads.delete(id); this.pending.delete(id); return true;
   }
   async fork(id: string, lastTurnId: string): Promise<string> {
-    const r = await (await this.connection()).request('thread/fork', { threadId: id, lastTurnId, cwd: this.cwd });
-    this.threads.set(r.thread.id, r.thread); await this.hydrate(r.thread.id); return r.thread.id;
+    // thread/fork grants its app-server process the new thread's writer lock.
+    // A long-lived management RPC would block the chat process from resuming it.
+    const rpc = new CodexRpc(this.executable(), this.cwd);
+    try {
+      await rpc.start();
+      const r = await rpc.request('thread/fork', { threadId: id, lastTurnId, cwd: this.cwd });
+      this.threads.set(r.thread.id, r.thread);
+      await this.hydrateWith(rpc, r.thread.id);
+      this.notePending(r.thread.id, this.threads.get(id)?.preview || '派生会话');
+      return r.thread.id;
+    } finally {
+      await rpc.disposeAndWait();
+    }
   }
   dispose() { this.rpc?.dispose(); }
 }
