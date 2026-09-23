@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -52,7 +52,10 @@
       {
         "command": "codex-chat.newSession",
         "title": "Codex: 打开新会话",
-        "icon": "media/icon.svg"
+        "icon": {
+          "light": "media/icon-light.svg",
+          "dark": "media/icon.svg"
+        }
       },
       {
         "command": "codex-chat.showSessions",
@@ -85,7 +88,10 @@
       {
         "command": "codex-chat.open",
         "title": "Codex: 打开新会话",
-        "icon": "media/icon.svg"
+        "icon": {
+          "light": "media/icon-light.svg",
+          "dark": "media/icon.svg"
+        }
       },
       {
         "command": "codex-chat.notifyConfig",
