@@ -16,6 +16,7 @@ export class CodexRpc extends EventEmitter {
   private starting?: Promise<void>;
   private closed = false;
   constructor(private readonly executable: string, private readonly cwd: string, private readonly env?: NodeJS.ProcessEnv) { super(); }
+  get isClosed(): boolean { return this.closed; }
   start(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Codex 连接已关闭'));
     return this.starting ??= this.initialize();
@@ -31,7 +32,7 @@ export class CodexRpc extends EventEmitter {
     child.once('close', code => { this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`)); this.emit('close', code); });
     createInterface({ input: child.stdout }).on('line', line => {
       let msg: RpcMessage;
-      try { msg = JSON.parse(line); } catch { this.fail(new Error('Codex 返回了无效协议数据')); return; }
+      try { msg = JSON.parse(line); } catch { this.fail(new Error(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       if (msg.method) {
         this.emit(msg.id === undefined ? 'notification' : 'request', msg);
       } else if (msg.id !== undefined) {
@@ -60,9 +61,12 @@ export class CodexRpc extends EventEmitter {
     this.child.stdin.write(JSON.stringify(msg) + '\n');
   }
   private fail(e: Error): void {
+    if (this.closed) return;
     this.closed = true;
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(e); }
     this.pending.clear();
+    // 协议损坏时子进程可能仍存活；释放它，避免后续请求复用失效连接。
+    this.child?.kill();
   }
   dispose(): void {
     this.fail(new Error('Codex 连接已关闭'));
