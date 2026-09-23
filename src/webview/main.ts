@@ -155,7 +155,6 @@ interface LiveBlock {
 }
 let assistantEl: HTMLElement | null = null;
 let liveBlock: LiveBlock | null = null;
-let typewriterRAF = 0;
 let pinnedToBottom = true;
 let isBusy = false;
 /** Subscription quota spent: sending is blocked until the window resets.
@@ -296,9 +295,8 @@ function endTimelineAtLastNode(msg: HTMLElement) {
  *  one live ResizeObserver per reply, each still firing on any resize. */
 const railObservers: ResizeObserver[] = [];
 
-/** Reveal the live text with a typewriter: complete lines are rendered as
- *  markdown (committed once each newline arrives), and the current line types
- *  out char-by-char as plain text.
+/** Show each received delta immediately. Complete lines are rendered as
+ *  markdown, while the current line stays plain text until finalized.
  *  NOTE: each commit re-renders the whole prefix — O(n²) over a long reply.
  *  Once the text is big, batch commits into larger chunks: the tail lines just
  *  stay as plain text a moment longer, which is visually indistinguishable. */
@@ -318,43 +316,6 @@ function renderLive() {
   maybeScroll();
 }
 
-/** 自适应打字速率（字符/毫秒的滑动估计）。CLI 2.1.x 把流事件节流成约 1 秒
- *  一批（实测 p50≈850ms、每批约 20 字，SDK 与裸 CLI 一致），追赶型排字会变成
- *  "闪现一段、冻一秒"。按到达速率匀速排字，把每批摊到下一批到来前的时间里。 */
-let charRate = 0.03;
-let lastDeltaAt = 0;
-
-function noteDeltaArrival(len: number) {
-  const now = performance.now();
-  if (lastDeltaAt) {
-    const gap = now - lastDeltaAt;
-    // 同一批连发（<30ms）不算节奏；>3s 是工具调用等间隙，不是流速。
-    if (gap > 30 && gap < 3000) charRate = charRate * 0.7 + (len / gap) * 0.3;
-  }
-  lastDeltaAt = now;
-}
-
-function startTypewriter() {
-  if (typewriterRAF) return;
-  let last = performance.now();
-  const tick = (now: number) => {
-    typewriterRAF = 0;
-    if (!liveBlock) return;
-    const dt = Math.min(100, now - last); // 页面切后台 rAF 暂停，回来别一口气跳完
-    last = now;
-    const target = liveBlock.raw.length;
-    if (liveBlock.shown < target) {
-      const remaining = target - liveBlock.shown;
-      // 匀速跟随到达速率；积压超过约 2.5 秒的量时按比例加速，保证不越拉越远。
-      const step = dt * Math.max(charRate, remaining / 2500);
-      liveBlock.shown = Math.min(target, liveBlock.shown + step);
-      renderLive();
-    }
-    if (liveBlock && liveBlock.shown < liveBlock.raw.length) typewriterRAF = requestAnimationFrame(tick);
-  };
-  typewriterRAF = requestAnimationFrame(tick);
-}
-
 /** The model occasionally leaks its internal tool-call XML into plain prose
  *  (degenerate output after long context/compaction). It's stored that way in
  *  the transcript — fold it into a fenced block so it reads as raw syntax
@@ -369,10 +330,6 @@ function foldLeakedToolXml(text: string): string {
 
 /** Snap the live block to its full text, rendered with syntax highlighting. */
 function finalizeLive() {
-  if (typewriterRAF) {
-    cancelAnimationFrame(typewriterRAF);
-    typewriterRAF = 0;
-  }
   if (!liveBlock) return;
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
@@ -875,10 +832,10 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       removeWorking();
       if (!liveBlock) onBlockStart("text");
       liveBlock!.raw = m.text;
-      liveBlock!.shown = Math.min(liveBlock!.shown, m.text.length);
       liveBlock!.committedLen = 0;
       liveBlock!.committedEl.innerHTML = "";
-      startTypewriter();
+      liveBlock!.shown = m.text.length;
+      renderLive();
       break;
     case "thinking_delta":
       addStreamEst(m.text); // not displayed, but grows the live token estimate
@@ -1114,7 +1071,6 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
   seg.append(committedEl, lineEl);
   body.appendChild(seg);
   liveBlock = { type: "text", raw: "", shown: 0, el: seg, committedEl, lineEl, committedLen: 0 };
-  lastDeltaAt = 0; // 新块重置节奏基准：上一块结束到现在的间隔不代表流速
   maybeScroll();
 }
 
@@ -1122,9 +1078,9 @@ function onTextDelta(text: string) {
   addStreamEst(text); // keep the running token estimate growing
   removeWorking();
   if (!liveBlock) onBlockStart("text");
-  noteDeltaArrival(text.length);
   liveBlock!.raw += text;
-  startTypewriter(); // typewriter reveal, committing each line as it completes
+  liveBlock!.shown = liveBlock!.raw.length;
+  renderLive();
 }
 
 // ---------------------------------------------------------------------------
@@ -2754,20 +2710,12 @@ function hideRestoring() {
   restoringRegen = false;
 }
 
-/** 立刻把直播观感「停」下来：吞掉后续流事件、冻结打字机尾巴、收起活动药丸和
+/** 立刻把直播观感「停」下来：吞掉后续流事件、收起活动药丸和
  *  左侧进度脉冲。Stop 按钮与还原的自动停止（restoring）共用，观感必须一致。
  *  finalizeTurn 也会做后两样，但它要等宿主的 result 落地——那可能比点击晚好
- *  几秒，期间药丸/脉冲还在动就是经典的「停了还在打字」bug。 */
+ *  几秒，期间药丸/脉冲还在动会让用户以为没有停止。 */
 function freezeLiveStream() {
   stoppingView = true;
-  if (liveBlock) {
-    // Freeze the typewriter tail. Don't cut between the two halves of a
-    // surrogate pair (emoji) — that renders as a replacement char.
-    let cut = liveBlock.shown;
-    if (cut > 0 && /[\uD800-\uDBFF]/.test(liveBlock.raw[cut - 1])) cut--;
-    liveBlock.raw = liveBlock.raw.slice(0, cut);
-    liveBlock.shown = cut;
-  }
   removeWorking();
   if (assistantEl) {
     assistantEl.classList.remove("streaming-turn");
