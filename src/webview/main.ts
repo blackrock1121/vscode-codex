@@ -2526,12 +2526,11 @@ function handleSlashCommand(payload: QueueItem): boolean {
     }
     case "/effort": {
       if (!arg) {
-        const supported = modelEfforts[currentModel];
-        appendNotice("可选思考强度：\n" + EFFORTS.filter(e => !e.id || !supported?.length || supported.includes(e.id)).map((e) => `  ${e.id || "default"}  —  ${e.label}：${e.desc}`).join("\n"), "info");
+        appendNotice("可选思考强度：\n" + [...availableEfforts(), EFFORTS.find(e => !e.id)!].map((e) => `  ${e.id || "default"}  —  ${e.label}：${e.desc}`).join("\n"), "info");
         return true;
       }
       const key = arg.toLowerCase();
-      const hit = EFFORTS.find((e) => e.id.toLowerCase() === key || e.label.toLowerCase() === key || (!e.id && key === "default"));
+      const hit = [...availableEfforts(), EFFORTS.find(e => !e.id)!].find((e) => e.id.toLowerCase() === key || e.label.toLowerCase() === key || (!e.id && key === "default"));
       if (!hit) {
         appendNotice(`未知强度「${arg}」。可选：${EFFORTS.map((e) => e.id).join(" / ")}`, "error");
         return true;
@@ -3171,6 +3170,12 @@ const EFFORTS = [
   { id: "ultra", label: "超高", desc: "最充分的推理" },
   { id: "", label: "默认", desc: "使用模型默认推理强度" },
 ];
+function availableEfforts() {
+  const supported = modelEfforts[currentModel];
+  return supported?.length
+    ? supported.map(id => EFFORTS.find(e => e.id === id) ?? { id, label: id, desc: "模型支持的推理强度" })
+    : EFFORTS.filter(e => e.id);
+}
 let currentMode = "default";
 let currentModel = "";
 let currentEffort = "";
@@ -3242,14 +3247,13 @@ function buildModelMenu() {
       tail +
       `</button>`;
   }
-  const supported = modelEfforts[currentModel];
-  const available = EFFORTS.filter(e => e.id && (!supported?.length || supported.includes(e.id)));
+  const available = availableEfforts();
   const selected = EFFORTS.find(e => e.id === currentEffort)?.label || currentEffort || "默认";
   const defaultEffort = modelDefaultEfforts[currentModel];
   const defaultLabel = defaultEffort ? EFFORTS.find(e => e.id === defaultEffort)?.label || defaultEffort : "";
   html += `<div class="pick-sep"></div><div class="pick-effort"><span>推理强度 · ${escapeHtml(selected)}</span><span class="eff-cur">下轮生效</span></div><div class="effort-options">`;
   html += `<button type="button" class="effort-option${!currentEffort ? " on" : ""}" data-effort="" aria-pressed="${!currentEffort}" title="使用模型默认推理强度">默认${defaultLabel ? ` (${escapeHtml(defaultLabel)})` : ""}</button>`;
-  for (const e of available) html += `<button type="button" class="effort-option${currentEffort === e.id ? " on" : ""}" data-effort="${e.id}" aria-pressed="${currentEffort === e.id}" title="${e.label}：${e.desc}">${e.label}</button>`;
+  for (const e of available) html += `<button type="button" class="effort-option${currentEffort === e.id ? " on" : ""}" data-effort="${escapeHtml(e.id)}" aria-pressed="${currentEffort === e.id}" title="${escapeHtml(e.label)}：${escapeHtml(e.desc)}">${escapeHtml(e.label)}</button>`;
   html += `</div>`;
   modelMenu.innerHTML = html;
 }
