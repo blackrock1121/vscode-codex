@@ -1194,6 +1194,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
+        if (!hadSession && ctx.sessionId) {
+            this.store.notePending(ctx.sessionId, text || "(图片)");
+            this.renderSessions();
+        }
         ctx.sendAt = Date.now();
         ctx.lastEventAt = ctx.sendAt;
         ctx.lastUserText = (text || "(图片)").slice(0, 200);
