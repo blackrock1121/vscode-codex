@@ -1631,28 +1631,42 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         rewoundToStart: boolean;
     }> {
         const oldId = ctx.sessionId;
+        // 回退文件时 CheckpointManager 会重写当前会话的快照。先保存原文件，
+        // 让保留在历史列表里的原会话仍能使用自己的还原点。
+        ctx.checkpoints.flush();
+        const oldCheckpointFile = oldId ? path.join(this.storageDir(), `checkpoints-${oldId}.json`) : undefined;
+        const oldCheckpoints = oldCheckpointFile && fs.existsSync(oldCheckpointFile) ? fs.readFileSync(oldCheckpointFile) : undefined;
+        const preserveOldCheckpoints = () => {
+            if (!oldCheckpointFile) return;
+            if (oldCheckpoints) fs.writeFileSync(oldCheckpointFile, oldCheckpoints);
+            else fs.rmSync(oldCheckpointFile, { force: true });
+        };
         const hasEarlierTurn = !!oldId && cutLine > 0 && this.store.userTurnLines(oldId).some((t) => t.line <= cutLine);
         const leaf = hasEarlierTurn ? this.store.rewindLeafFor(oldId!, cutLine) : undefined;
         if (!oldId || !leaf) {
-            const result = this.cpRestore(ctx, checkpointId, cutLine);
+            let result: ReturnType<CheckpointManager["restore"]>;
+            try { result = this.cpRestore(ctx, checkpointId, cutLine); }
+            finally { preserveOldCheckpoints(); }
             if (!result)
                 throw new Error("找不到该还原点");
-            if (oldId)
-                await this.store.archive(oldId);
             ctx.sessionId = undefined;
-            ctx.checkpoints.clear();
+            ctx.checkpoints = new CheckpointManager(this.storageDir());
             if (this.context.workspaceState.get<string>(LAST_SESSION_KEY) === oldId)
                 await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
-            this.refreshSessions();
             return { result, rewoundToStart: true };
         }
         const newId = await this.store.fork(oldId, leaf);
-        const result = this.cpRestore(ctx, checkpointId, cutLine);
+        CheckpointManager.forkFor(this.storageDir(), oldId, newId, cutLine, this.store.userTurnLines(newId));
+        let result: ReturnType<CheckpointManager["restore"]>;
+        try { result = this.cpRestore(ctx, checkpointId, cutLine); }
+        finally { preserveOldCheckpoints(); }
         if (!result) {
             await this.store.delete(newId);
+            CheckpointManager.deleteFor(this.storageDir(), newId);
             throw new Error("找不到该还原点");
         }
-        ctx.checkpoints.migrateTo(newId, this.store.userTurnLines(newId));
+        ctx.checkpoints = new CheckpointManager(this.storageDir());
+        ctx.checkpoints.setSession(newId);
         ctx.sessionId = newId;
         this.store.notePending(newId, this.store.userTurnLines(newId)[0]?.text || this.store.list().find(s => s.id === oldId)?.title || "派生会话");
         this.renderSessions();
@@ -1663,9 +1677,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await det.proc.disposeAndWait();
             this.detached.delete(oldId);
         }
-        await this.store.archive(oldId).catch(e => this.output.appendLine(`[archive] ${String(e)}`));
         this.refreshSessions();
-        this.output.appendLine(`[restore] ${oldId.slice(0, 8)} → 派生 ${newId.slice(0, 8)} 替换（回退点 ${leaf.slice(0, 8)}，还原点 ${ctx.checkpoints.list().length} 个）`);
+        this.output.appendLine(`[restore] ${oldId.slice(0, 8)} → 派生 ${newId.slice(0, 8)}（原会话保留，回退点 ${leaf.slice(0, 8)}，还原点 ${ctx.checkpoints.list().length} 个）`);
         return { result, rewoundToStart: false };
     }
     private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string): Promise<void> {
@@ -1674,8 +1687,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             modal: true,
             detail: (preview ? `消息：${preview.userText}\n\n` : "") +
                 (checkpointId.startsWith("turn:")
-                    ? "把对话回退到这里 —— Codex 会忘记这条消息及之后的所有轮次。这一轮不是从本插件发出的，没有文件快照：只回退对话，工作区文件保持现状。此操作不可撤销。"
-                    : "将回滚此后的文件改动，并把对话回退到这里 —— Codex 会忘记这条消息及之后的所有轮次。此操作不可撤销。") +
+                    ? "当前窗口会从这里开新分支，原会话保留在历史中。这一轮不是从本插件发出的，没有文件快照：只回退对话，工作区文件保持现状。"
+                    : "将回滚此后的文件改动，并从这里开新分支；原会话保留在历史中。文件回滚不可撤销。") +
                 (ctx.proc?.isBusy ? "\n\nCodex 正在回复中，还原会先自动停止本轮。" : ""),
         }, "还原");
         if (confirm !== "还原")
@@ -1728,7 +1741,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         const { result, rewoundToStart } = rewind;
         this.output.appendLine(`[restore] truncateLine=${result.truncateLine} 还原文件=${result.restoredFiles} 自动停止=${wasLive ? "是" : "否"} ` +
-            `${rewoundToStart ? "→ 回到开头，转为新对话" : `→ 已派生替换为 ${ctx.sessionId?.slice(0, 8)}`}`);
+            `${rewoundToStart ? "→ 回到开头，转为新对话（原会话保留）" : `→ 已派生 ${ctx.sessionId?.slice(0, 8)}（原会话保留）`}`);
         if (rewoundToStart) {
             this.post(ctx, { kind: "load_history", items: [], checkpoints: [] });
         }
@@ -1742,7 +1755,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.post(ctx, {
             kind: "notice",
             message: `${wasLive ? "已自动停止进行中的回复。" : ""}` +
-                `已还原 ${result.restoredFiles} 个文件，并把对话回退到这条消息之前。${skippedNote}下一条消息将从这里继续。`,
+                `已还原 ${result.restoredFiles} 个文件，并从这条消息之前继续。原会话保留在历史中。${skippedNote}`,
         });
         const draftText = result.userText === "(图片)" ? "" : result.userText;
         const draftImages = nextTurn?.images.length ? nextTurn.images : undefined;
