@@ -96,6 +96,8 @@ export type ToWebview =
   | { kind: "rate_limit_cleared" }
   | { kind: "error"; message: string }
   | { kind: "notice"; message: string }
+  | { kind: "snapshot_skips"; files: { path: string; rel: string; reason: string }[]; total: number }
+  | { kind: "snapshot_exclude_result"; ok: boolean; message: string; paths: string[] }
   // Full conversation replacement (switching/restoring sessions)
   | { kind: "load_history"; items: TimelineItem[]; sessionId?: string; checkpoints?: CheckpointSummary[] }
   | { kind: "sessions"; list: SessionSummary[]; activeId?: string; runningIds?: string[] }
@@ -182,6 +184,7 @@ export type FromWebview =
   | { type: "checkUpdate"; fromBanner?: boolean }
   | { type: "refreshUsage" }
   | { type: "send"; text: string; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
+  | { type: "excludeSnapshotPaths"; paths?: string[]; all?: boolean }
   /** 从 OS（Finder 等）拖入工作区外的文件/目录：webview 拿不到绝对路径，只能读出
    *  内容传给宿主，由宿主镜像写盘后再按普通路径附加。rel 含顶层名（如 "dir/a.ts"）。 */
   | { type: "importDropped"; roots: { name: string; isDir: boolean }[]; files: { rel: string; base64: string }[]; skipped?: number }

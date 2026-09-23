@@ -198,6 +198,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private usageInFlight = false;
     private lastUsage?: ToWebview;
     private readonly snapshotWarningSignatures = new Map<string, string>();
+    private readonly snapshotWarningPaths = new Map<string, Set<string>>();
     private layoutFixing = false;
     private readonly origChanged = new vscode.EventEmitter<vscode.Uri>();
     private terminal?: vscode.Terminal;
@@ -829,6 +830,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (!m.text)
                         ctx.draftImages = undefined;
                     break;
+                case "excludeSnapshotPaths":
+                    await this.excludeSnapshotPaths(ctx, m.paths, m.all);
+                    break;
                 case "dismissRateLimit": {
                     const until = m.resetsAt ? m.resetsAt * 1000 : Date.now() + 6 * 3600000;
                     const map = { ...this.context.globalState.get<Record<string, number>>("codexChat.rateLimitDismissed") };
@@ -1093,6 +1097,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private reportSnapshotSkips(ctx: SessionCtx, snapshot: WorkspaceSnapshot): void {
         const key = this.workspaceDirs().join("\0");
         const entries = [...snapshot.skipReasons.entries()].sort(([a], [b]) => a.localeCompare(b));
+        this.snapshotWarningPaths.set(key, new Set(entries.map(([file]) => file)));
         if (!entries.length) { this.snapshotWarningSignatures.delete(key); return; }
         const signature = JSON.stringify(entries);
         if (this.snapshotWarningSignatures.get(key) === signature) return;
@@ -1100,9 +1105,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const names: Record<string, string> = { large: "超过 2 MB", binary: "二进制", limit: "扫描或容量上限", symlink: "符号链接", unreadable: "无法读取" };
         const details = entries.map(([file, reason]) => `${vscode.workspace.asRelativePath(file)}（${names[reason]}）`);
         this.output.appendLine(`[snapshot] 未纳入自动回滚快照 ${entries.length} 项：\n${details.join("\n")}`);
-        const preview = details.slice(0, 4).join("、");
-        const more = details.length > 4 ? `等 ${details.length} 项` : "";
-        this.post(ctx, { kind: "notice", message: `未纳入自动回滚快照：${preview}${more}。完整清单见“Codex Chat”输出；这些路径无法用“还原到此处”恢复。` });
+        this.post(ctx, { kind: "snapshot_skips", files: entries.slice(0, 20).map(([file, reason]) => ({ path: file, rel: vscode.workspace.asRelativePath(file), reason: names[reason] })), total: entries.length });
+    }
+    private async excludeSnapshotPaths(ctx: SessionCtx, paths?: string[], all?: boolean): Promise<void> {
+        const key = this.workspaceDirs().join("\0");
+        const warned = this.snapshotWarningPaths.get(key);
+        const selected = all ? [...(warned ?? [])] : [...new Set(paths ?? [])];
+        if (!warned || !selected.length || selected.some(file => !warned.has(file))) {
+            this.post(ctx, { kind: "snapshot_exclude_result", ok: false, message: "快照清单已过期，请在下一轮重新选择。", paths: [] });
+            return;
+        }
+        try {
+            const byFolder = new Map<string, string[]>();
+            for (const file of selected) {
+                const folder = this.workspaceDirs().filter(root => file.startsWith(root + path.sep)).sort((a, b) => b.length - a.length)[0];
+                if (!folder) throw new Error("文件不在当前工作区中");
+                const rel = path.relative(folder, file).split(path.sep).join("/");
+                if (!byFolder.has(folder)) byFolder.set(folder, []);
+                byFolder.get(folder)!.push(rel);
+            }
+            for (const [folder, rels] of byFolder) {
+                const config = vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(folder));
+                const existing = config.get<string[]>("snapshotExclude", []);
+                const next = [...new Set([...existing, ...rels])];
+                const target = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folder))
+                    ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
+                await config.update("snapshotExclude", next, target);
+            }
+            this.post(ctx, { kind: "snapshot_exclude_result", ok: true, message: `已排除 ${selected.length} 项，下一轮快照生效。`, paths: selected });
+        } catch (err) {
+            this.post(ctx, { kind: "snapshot_exclude_result", ok: false, message: `排除失败：${String(err)}`, paths: [] });
+        }
     }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
@@ -1137,8 +1170,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 throw new Error("部分文件未保存，已取消发送，避免覆盖编辑器改动。");
         }
         if (this.config().get<boolean>("snapshotFilesForRestore", true)) {
-            const excludes = vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(this.cwd())).get<string[]>("snapshotExclude", []);
-            const snapshot = new WorkspaceSnapshot(this.workspaceDirs(), 20000, excludes);
+            const roots = this.workspaceDirs();
+            const excludes = new Map(roots.map(root => [root, vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(root)).get<string[]>("snapshotExclude", [])]));
+            const snapshot = new WorkspaceSnapshot(roots, 20000, excludes);
             await snapshot.capture();
             ctx.snapshot = snapshot;
             this.reportSnapshotSkips(ctx, snapshot);
