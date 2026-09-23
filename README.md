@@ -81,7 +81,7 @@ node scripts/smoke-process.cjs
 
 ## 发布
 
-远程仓库：`git@github.com:blackrock1121/vscode-codex.git`。不自动推送。
+远程仓库：`git@github.com:blackrock1121/vscode-codex.git`。按项目 `AGENTS.md` 的发布闭环，每次功能或缺陷修复通过验证后同步打包、提交、推送并安装到本机 VS Code。
 
 更新功能读取仓库根目录 `package.json` 与 `release/vscode-codex.vsix`，发布时两者需要同步更新并推送。私有仓库的未认证 GitHub 请求无法读取更新，需手动分发 VSIX。没有发布新包前，自动更新不会安装任何本地未推送改动。
 
