@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -225,7 +225,9 @@
         },
         "codexChat.snapshotExclude": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "scope": "resource",
           "description": "不纳入文件回滚快照的项目相对路径规则，支持 * 和 **，例如 [\"coverage/**\", \"**/*.log\"]。排除后“还原到此处”也不能恢复这些文件。"

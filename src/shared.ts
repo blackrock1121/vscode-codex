@@ -22,6 +22,7 @@ export const ICONS: Record<string, string> = {
   copy: _s('<rect x="5.4" y="5.4" width="7.1" height="7.1" rx="1.6"/><path d="M3.5 10.4V4a.5.5 0 0 1 .5-.5h6.4"/>'),
   play: _s('<path d="M5 3.8v8.4l7-4.2z"/>'),
   update: _s('<path d="M12.7 8a4.7 4.7 0 1 1-1.4-3.35"/><path d="M12.9 2.8v2.4h-2.4"/>'),
+  undo: _s('<path d="M5.5 4.2 2.5 7l3 2.8"/><path d="M2.7 7h6.1a4.1 4.1 0 0 1 0 8.2H6.7"/>'),
   // Directional/confirm glyphs — the UI used to draw these with text characters
   // ("⌄", "‹", "›", "✓"), which pick up the UI font's own metrics and sit off-centre.
   chevron: _s('<path d="M4.5 6.5 8 10l3.5-3.5"/>'),
