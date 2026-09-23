@@ -339,13 +339,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             else if (stat.size > 0 && budget > 0) {
                 try {
-                    let content = fs.readFileSync(p, "utf8");
-                    let note = "";
-                    if (content.length > MAX_FILE) {
-                        content = content.slice(0, MAX_FILE);
-                        note = `\n…（已截断，完整内容请用 Read 工具读取 ${rel}）`;
-                    }
-                    budget -= content.length;
+                    const limit = Math.min(MAX_FILE, budget);
+                    const fd = fs.openSync(p, "r");
+                    const buf = Buffer.allocUnsafe(limit);
+                    let read: number;
+                    try { read = fs.readSync(fd, buf, 0, limit, 0); }
+                    finally { fs.closeSync(fd); }
+                    const content = buf.subarray(0, read).toString("utf8");
+                    const note = stat.size > read ? `\n…（已截断，完整内容请用 Read 工具读取 ${rel}）` : "";
+                    budget -= read;
                     const ext = path.extname(p).replace(".", "");
                     parts.push(`文件 ${rel}:\n\`\`\`${ext}\n${content}\n\`\`\`${note}`);
                 }
@@ -1141,6 +1143,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         mediaType: string;
         data: string;
     }[], files?: string[]): Promise<void> {
+        const prepareAt = Date.now();
         await ctx.finalizing;
         if (ctx.proc?.isBusy) {
             this.post(ctx, { kind: "error", message: "上一轮尚未结束，请稍后发送。" });
@@ -1162,21 +1165,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
-        if (hadSession && ctx.sessionId)
-            await this.store.hydrate(ctx.sessionId);
         if (this.config().get<boolean>("autosave", true)) {
             const saved = await Promise.all(vscode.workspace.textDocuments.filter(d => d.isDirty && !d.isUntitled && vscode.workspace.getWorkspaceFolder(d.uri)).map(d => d.save()));
             if (saved.some(ok => !ok))
                 throw new Error("部分文件未保存，已取消发送，避免覆盖编辑器改动。");
         }
-        if (this.config().get<boolean>("snapshotFilesForRestore", true)) {
+        const historyReady = hadSession && ctx.sessionId ? this.store.hydrate(ctx.sessionId) : Promise.resolve();
+        const snapshotReady = (async () => {
+            if (!this.config().get<boolean>("snapshotFilesForRestore", true)) return;
             const roots = this.workspaceDirs();
             const excludes = new Map(roots.map(root => [root, vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(root)).get<string[]>("snapshotExclude", [])]));
             const snapshot = new WorkspaceSnapshot(roots, 20000, excludes);
             await snapshot.capture();
             ctx.snapshot = snapshot;
             this.reportSnapshotSkips(ctx, snapshot);
-        }
+        })();
+        await Promise.all([historyReady, snapshotReady]);
         if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
             this.post(ctx, { kind: "busy", busy: false });
             return;
@@ -1194,7 +1198,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastEventAt = ctx.sendAt;
         ctx.lastUserText = (text || "(图片)").slice(0, 200);
         ctx.lastUserActionAt = ctx.sendAt;
-        this.output.appendLine(`[${new Date().toISOString()}] [send] session=${ctx.sessionId?.slice(0, 8)} 正文${text.length}字 附加${attached?.length ?? 0}字 图片${images?.length ?? 0}`);
+        this.output.appendLine(`[${new Date().toISOString()}] [send] session=${ctx.sessionId?.slice(0, 8)} 准备${Date.now() - prepareAt}ms 正文${text.length}字 附加${attached?.length ?? 0}字 图片${images?.length ?? 0}`);
         const checkpointId = ctx.checkpoints.beginTurn(text || "(图片)", lineBefore);
         this.post(ctx, { kind: "checkpoint_marker", checkpointId, userText: text });
     }
