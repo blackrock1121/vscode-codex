@@ -312,8 +312,7 @@ function renderLive() {
     liveBlock.committedEl.innerHTML = mdFast.render(liveBlock.raw.slice(0, commitLen));
   }
   liveBlock.lineEl.textContent = shownText.slice(liveBlock.committedLen);
-  scheduleActiveLine();
-  maybeScroll();
+  scheduleLiveLayout();
 }
 
 /** The model occasionally leaks its internal tool-call XML into plain prose
@@ -340,12 +339,13 @@ function finalizeLive() {
 
 /** Position the pulsing "active" progress segment so it starts at the last
  *  timeline node (dot) and runs down to the current bottom of the thread. */
-let activeLineRAF = 0;
-function scheduleActiveLine() {
-  if (activeLineRAF) return;
-  activeLineRAF = requestAnimationFrame(() => {
-    activeLineRAF = 0;
+let liveLayoutRAF = 0;
+function scheduleLiveLayout() {
+  if (liveLayoutRAF) return;
+  liveLayoutRAF = requestAnimationFrame(() => {
+    liveLayoutRAF = 0;
     updateActiveLine();
+    maybeScroll();
   });
 }
 function updateActiveLine() {

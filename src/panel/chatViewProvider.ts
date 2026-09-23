@@ -4,6 +4,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
 import { WorkspaceSnapshot } from "../snapshot";
+import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
 import { CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents } from "../codex/events";
@@ -166,6 +167,8 @@ interface SessionCtx {
     pendingPrefill?: string;
     pendingPerm?: ToWebview;
     pendingQuestionAt?: number;
+    readOnlyToolIds?: Set<string>;
+    mayHaveModifiedWorkspace?: boolean;
     blank: boolean;
     ready: boolean;
     sendSeq?: number;
@@ -1166,6 +1169,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             attached = attached ? `${fileCtx}\n\n${attached}` : fileCtx;
         }
         const hadSession = !!ctx.sessionId;
+        ctx.mayHaveModifiedWorkspace = false;
         if (this.config().get<boolean>("autosave", true)) {
             const saved = await Promise.all(vscode.workspace.textDocuments.filter(d => d.isDirty && !d.isUntitled && vscode.workspace.getWorkspaceFolder(d.uri)).map(d => d.save()));
             if (saved.some(ok => !ok))
@@ -1536,6 +1540,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             }
             const status: ChangedFile["status"] = original === null ? "added" : exists ? "modified" : "deleted";
+            if (original === current) continue;
             const { added, removed } = diffCounts(original ?? "", current);
             if (added === 0 && removed === 0)
                 continue;
@@ -2126,8 +2131,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await ctx.finalizing;
         if (!ctx.snapshot)
             return;
-        for (const [file, original] of await ctx.snapshot.changed())
-            ctx.checkpoints.recordSnapshot(file, original);
+        if (ctx.mayHaveModifiedWorkspace)
+            for (const [file, original] of await ctx.snapshot.changed())
+                ctx.checkpoints.recordSnapshot(file, original);
         ctx.snapshot = undefined;
         ctx.checkpoints.flush();
     }
@@ -2137,12 +2143,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (e.kind === "result") {
             ctx.finalizing = (async () => {
                 try {
-                    if (ctx.snapshot)
+                    if (ctx.snapshot && ctx.mayHaveModifiedWorkspace)
                         for (const [file, original] of await ctx.snapshot.changed())
                             ctx.checkpoints.recordSnapshot(file, original);
                     ctx.snapshot = undefined;
                     ctx.checkpoints.flush();
-                    this.refreshChangedFiles(ctx);
+                    if (ctx.mayHaveModifiedWorkspace) this.refreshChangedFiles(ctx);
                 }
                 catch (err) {
                     this.post(ctx, { kind: "notice", message: `会话或文件快照刷新失败：${String(err)}` });
@@ -2191,15 +2197,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.sendAt = undefined;
         }
         this.post(ctx, e);
+        if (e.kind === "tool_input") {
+            if (["Read", "WebSearch", "TodoWrite", "Skill"].includes(e.name))
+                (ctx.readOnlyToolIds ??= new Set()).add(e.toolId);
+            else
+                ctx.mayHaveModifiedWorkspace = true;
+        }
         if (e.kind === "permission_resolved" && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === e.requestId) {
             ctx.pendingPerm = undefined;
         }
         if (e.kind === "busy")
             this.broadcastRunning();
-        if (e.kind === "result" || (e.kind === "tool_result" && !e.isError)) {
-            this.refreshChangedFiles(ctx);
+        if (e.kind === "tool_result") {
+            const readOnly = ctx.readOnlyToolIds?.delete(e.toolUseId);
+            if (!readOnly) ctx.mayHaveModifiedWorkspace = true;
+            if (!readOnly && !e.isError) this.refreshChangedFiles(ctx);
         }
         if (e.kind === "result") {
+            ctx.readOnlyToolIds?.clear();
             ctx.sendAt = undefined;
             ctx.lastEventAt = undefined;
             ctx.pendingPerm = undefined;
@@ -3212,29 +3227,4 @@ function firstChangedLine(a: string, b: string): number {
         if (al[i] !== bl[i])
             return i;
     return al.length === bl.length ? 0 : n;
-}
-function diffCounts(oldText: string, newText: string): {
-    added: number;
-    removed: number;
-} {
-    const split = (t: string): string[] => (t === "" ? [] : t.replace(/\n$/, "").split("\n"));
-    const a = split(oldText);
-    const b = split(newText);
-    const n = a.length;
-    const m = b.length;
-    if (n === 0)
-        return { added: m, removed: 0 };
-    if (m === 0)
-        return { added: 0, removed: n };
-    if (n * m > 4000000) {
-        return { added: Math.max(0, m - n), removed: Math.max(0, n - m) };
-    }
-    const dp: Uint32Array[] = Array.from({ length: n + 1 }, () => new Uint32Array(m + 1));
-    for (let i = n - 1; i >= 0; i--) {
-        for (let j = m - 1; j >= 0; j--) {
-            dp[i][j] = a[i] === b[j] ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-        }
-    }
-    const lcs = dp[0][0];
-    return { added: m - lcs, removed: n - lcs };
 }

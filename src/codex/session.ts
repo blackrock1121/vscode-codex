@@ -73,7 +73,7 @@ export class SessionStore {
   private async hydrateWith(rpc: CodexRpc, id: string): Promise<void> {
     const r = await rpc.request('thread/read', { threadId: id, includeTurns: true });
     const thread = r.thread;
-    if (thread.historyMode === 'paginated' || !thread.turns?.length) {
+    if (thread.historyMode === 'paginated' || !Array.isArray(thread.turns)) {
       let cursor: string | null = null; const turns: any[] = [];
       do {
         const page: any = await rpc.request('thread/turns/list', { threadId: id, cursor, limit: 100, sortDirection: 'asc', itemsView: 'full' });
