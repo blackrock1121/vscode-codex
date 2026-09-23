@@ -6,6 +6,17 @@ export function toolView(item: any): { name: string; input: Record<string, unkno
   const input = item.type === 'commandExecution' ? { command: item.command, cwd: item.cwd }
     : item.type === 'fileChange' ? { changes: item.changes, file_path: item.changes?.[0]?.path }
     : item.arguments ?? { ...item, id: undefined, type: undefined };
+  if (item.type === 'dynamicToolCall' && item.tool === 'AskUserQuestion' && item.success) {
+    try {
+      const output = item.contentItems?.find((x: any) => x.type === 'inputText')?.text;
+      const answers = JSON.parse(output).answers;
+      const pairs = (item.arguments?.questions ?? []).map((q: any, i: number) => {
+        const value = answers[q.id || q.question || String(i)]?.answers ?? [];
+        return `${JSON.stringify(q.header || q.question)} = ${JSON.stringify(q.isSecret ? '（已填写）' : value.join('、'))}`;
+      });
+      return { name, input, result: pairs.join('\n'), isError: false };
+    } catch { /* 保留原始结果供排错 */ }
+  }
   const result = item.aggregatedOutput ?? (item.changes ? item.changes.map((c: any) => `${c.path}\n${c.diff ?? ''}`).join('\n') : JSON.stringify(item.result ?? item.contentItems ?? item.error ?? item.status ?? ''));
   return { name, input, result, isError: item.status === 'failed' || item.status === 'declined' || !!item.error || (item.exitCode != null && item.exitCode !== 0) };
 }

@@ -11,7 +11,10 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='initialized')return;
  let result={};
  if(m.method==='account/read')result={account:{type:'chatgpt'},requiresOpenaiAuth:true};
- if(m.method==='thread/start'||m.method==='thread/resume')result={thread:{id:'thread-1'},model:'test-model'};
+ if(m.method==='thread/start'||m.method==='thread/resume'){
+  if(!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
+  result={thread:{id:'thread-1'},model:'test-model'};
+ }
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};
@@ -28,6 +31,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
    note('item/started',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',cwd:'/tmp'}});
    send({id:'approval-1',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'cmd',command:'echo test'}});
   }else if(text==='question'||text==='legacy-question')send({id:17,method:text==='question'?'tool/requestUserInput':'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',itemId:'ask-1',isBlocking:true,questions:[{id:'q1',question:'选择什么？',header:'选择',isOther:true,isSecret:false,options:[{label:'A',description:'选项'}]}]}});
+  else if(text==='dynamic-question')send({id:18,method:'item/tool/call',params:{threadId:'thread-1',turnId:'turn-1',callId:'call-1',namespace:null,tool:'AskUserQuestion',arguments:{questions:[{id:'choice',question:'选择什么？',header:'选择',options:[{label:'A',description:'选项'}]}]}}});
   else if(text!=='wait'){
    note('item/agentMessage/delta',{threadId:'thread-1',itemId:'msg',delta:'你好'});
    note('item/completed',{threadId:'thread-1',item:{type:'agentMessage',id:'msg',text:'你好'}});
