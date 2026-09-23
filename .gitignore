@@ -1,0 +1,7 @@
+node_modules/
+dist/
+media/webview.js*
+.DS_Store
+claude-chat-main/
+*.vsix
+!release/vscode-codex.vsix
