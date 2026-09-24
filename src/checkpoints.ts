@@ -138,6 +138,15 @@ export class CheckpointManager {
     return this.checkpoints.find((x) => x.id === checkpointId)?.truncateLine;
   }
 
+  /** The transcript may gain turns after beginTurn read its cached length. Keep
+   * the stored cut in sync with the turn that the UI actually matched. */
+  alignTurn(checkpointId: string, truncateLine: number): void {
+    const c = this.checkpoints.find((x) => x.id === checkpointId);
+    if (!c || c.truncateLine === truncateLine) return;
+    c.truncateLine = truncateLine;
+    this.persist();
+  }
+
   preview(checkpointId: string): { userText: string } | undefined {
     const c = this.checkpoints.find((x) => x.id === checkpointId);
     return c ? { userText: c.label } : undefined;
