@@ -57,3 +57,16 @@ test('图片在 VS Code 预览，办公文档用系统应用，文本保留行�
   assert.ok(calls.some(c=>Array.isArray(c)&&c[0]==='openTextDocument'&&c[1]==='/tmp/guide.md'));
   assert.equal(calls.some(c=>Array.isArray(c)&&c[0]==='error'),false);
 });
+
+test('本地图片读取为 data URI，只接受图片且限制体积',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-local-image-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const jpg=path.join(root,'qr.jpg'),txt=path.join(root,'secret.txt'),large=path.join(root,'large.png');
+  await fs.writeFile(jpg,Buffer.from([0xff,0xd8,0xff]));
+  await fs.writeFile(txt,'plain text');
+  await fs.writeFile(large,Buffer.alloc(4*1024*1024+1));
+  const ctx={resolveWorkspaceFile:async p=>p,output:{appendLine:()=>{}}};
+  assert.equal(await proto.loadLocalImage.call(ctx,jpg),'data:image/jpeg;base64,/9j/');
+  assert.equal(await proto.loadLocalImage.call(ctx,txt),undefined);
+  assert.equal(await proto.loadLocalImage.call(ctx,large),undefined);
+});
