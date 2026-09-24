@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
