@@ -50,7 +50,6 @@ export class CodexProcess {
   private compacting = false;
   private readonly pending = new Map<string, { id: RpcId; method: string; params: any }>();
   private readonly streamed = new Set<string>();
-  private readonly suppressedWhileWaiting = new Set<string>();
   private activeBlock?: string;
   private readonly tools = new Map<string, any>();
   constructor(private readonly opts: CodexProcessOptions, private readonly hooks: CodexProcessHooks) {
@@ -80,7 +79,7 @@ export class CodexProcess {
   }
   sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[]): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
-    this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.suppressedWhileWaiting.clear(); this.activeBlock = undefined; this.tools.clear();
+    this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
     this.emit({ kind: 'busy', busy: true });
     const input: any[] = [];
     const prompt = context ? `${text}\n\n${CTX_OPEN}\n${context}\n${CTX_CLOSE}` : text;
@@ -99,24 +98,15 @@ export class CodexProcess {
   private block(id: string, type: 'text' | 'thinking') {
     if (this.activeBlock !== id) { this.activeBlock = id; this.emit({ kind: 'block_start', blockType: type }); }
   }
-  private get awaitingQuestion(): boolean {
-    return [...this.pending.values()].some(({ method }) => method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput' || method === 'item/tool/call');
-  }
-  private suppressMessage(id: string): boolean {
-    if (this.awaitingQuestion) this.suppressedWhileWaiting.add(id);
-    return this.suppressedWhileWaiting.has(id);
-  }
   private notification(m: RpcMessage): void {
     const p = m.params ?? {};
     if (p.threadId && this.sessionId && p.threadId !== this.sessionId) return;
     if (m.method === 'turn/started') { this.turnId = p.turn.id; return; }
     if (m.method === 'turn/completed') { if (p.turn.error) this.error(p.turn.error.message); this.finish(p.turn.status === 'failed'); return; }
     if (m.method === 'item/agentMessage/delta' || m.method === 'item/plan/delta') {
-      if (this.suppressMessage(p.itemId)) return;
       this.block(p.itemId, 'text'); this.streamed.add(p.itemId); this.emit({ kind: 'text_delta', text: p.delta }); return;
     }
     if (m.method === 'item/reasoning/summaryTextDelta' || m.method === 'item/reasoning/textDelta') {
-      if (this.suppressMessage(p.itemId)) return;
       this.block(p.itemId, 'thinking'); this.streamed.add(p.itemId); this.emit({ kind: 'thinking_delta', text: p.delta }); return;
     }
     if (m.method === 'thread/tokenUsage/updated') {
@@ -135,7 +125,6 @@ export class CodexProcess {
     const item = p.item; if (!item) return;
     const done = m.method === 'item/completed';
     if (['agentMessage', 'plan', 'reasoning'].includes(item.type)) {
-      if (this.suppressMessage(item.id)) return;
       if (done && !this.streamed.has(item.id)) {
         const thinking = item.type === 'reasoning'; this.block(item.id, thinking ? 'thinking' : 'text');
         this.emit(thinking ? { kind: 'thinking_delta', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n') } : { kind: 'text_delta', text: item.text ?? '' });
