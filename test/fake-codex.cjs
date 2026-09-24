@@ -7,7 +7,14 @@ const note = (method,params) => send({method,params});
 let text='';
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const m=JSON.parse(line);
- if(!m.method) {note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}});return;}
+ if(!m.method) {
+  if(text==='question-with-early-output'){
+   note('item/completed',{threadId:'thread-1',item:{type:'agentMessage',id:'early',text:'用户还没回答，我先继续'}});
+   note('item/agentMessage/delta',{threadId:'thread-1',itemId:'after-answer',delta:'收到答案后继续'});
+   note('item/completed',{threadId:'thread-1',item:{type:'agentMessage',id:'after-answer',text:'收到答案后继续'}});
+  }else note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});
+  note('turn/completed',{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}});return;
+ }
  if(m.method==='initialized')return;
  let result={};
  if(m.method==='account/read')result={account:{type:'chatgpt'},requiresOpenaiAuth:true};
@@ -30,7 +37,14 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(text==='approval'){
    note('item/started',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',cwd:'/tmp'}});
    send({id:'approval-1',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'cmd',command:'echo test'}});
-  }else if(text==='question'||text==='legacy-question')send({id:17,method:text==='question'?'tool/requestUserInput':'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',itemId:'ask-1',isBlocking:true,questions:[{id:'q1',question:'选择什么？',header:'选择',isOther:true,isSecret:false,options:[{label:'A',description:'选项'}]}]}});
+  }else if(text==='question'||text==='legacy-question'||text==='question-with-early-output'){
+   send({id:17,method:text==='question'?'tool/requestUserInput':'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',itemId:'ask-1',isBlocking:true,questions:[{id:'q1',question:'选择什么？',header:'选择',isOther:true,isSecret:false,options:[{label:'A',description:'选项'}]}]}});
+   if(text==='question-with-early-output'){
+    note('item/reasoning/textDelta',{threadId:'thread-1',itemId:'early-thinking',delta:'等待期间的思考'});
+    note('item/completed',{threadId:'thread-1',item:{type:'reasoning',id:'early-thinking',content:['等待期间的思考']}});
+    note('item/agentMessage/delta',{threadId:'thread-1',itemId:'early',delta:'用户还没回答，我先继续'});
+   }
+  }
   else if(text==='dynamic-question')send({id:18,method:'item/tool/call',params:{threadId:'thread-1',turnId:'turn-1',callId:'call-1',namespace:null,tool:'AskUserQuestion',arguments:{questions:[{id:'choice',question:'选择什么？',header:'选择',options:[{label:'A',description:'选项'}]}]}}});
   else if(text!=='wait'){
    note('item/agentMessage/delta',{threadId:'thread-1',itemId:'msg',delta:'你好'});
