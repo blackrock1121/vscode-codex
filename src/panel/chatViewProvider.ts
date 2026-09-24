@@ -193,6 +193,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private view?: vscode.WebviewView;
     private readonly sessions = new Set<SessionCtx>();
     private readonly forking = new Set<SessionCtx>();
+    private readonly restoring = new Set<SessionCtx>();
     private activeCtx?: SessionCtx;
     private store: SessionStore;
     private lastActiveFilePath?: string;
@@ -1646,6 +1647,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 const t = turns[k];
                 const ok = c.userText === "(图片)" ? t.hasImages && !norm(t.text) : norm(t.text) === norm(c.userText);
                 if (ok) {
+                    ctx.checkpoints.alignTurn(c.id, t.line - 1);
                     assigned.set(k, c);
                     from = k + 1;
                     break;
@@ -1764,6 +1766,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return { result, rewoundToStart: false };
     }
     private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string): Promise<void> {
+        if (this.restoring.has(ctx)) return;
+        this.restoring.add(ctx);
+        try {
+            await this.restoreCheckpointInner(ctx, checkpointId);
+        } finally {
+            this.restoring.delete(ctx);
+        }
+    }
+    private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string): Promise<void> {
+        const sourceId = ctx.sessionId;
         const preview = this.cpPreview(ctx, checkpointId);
         const confirm = await vscode.window.showWarningMessage("还原到这条消息之前？", {
             modal: true,
@@ -1775,6 +1787,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }, "还原");
         if (confirm !== "还原")
             return;
+        if (!sourceId || ctx.sessionId !== sourceId) {
+            this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择还原位置。" });
+            return;
+        }
+        await this.store.hydrate(sourceId);
+        if (ctx.sessionId !== sourceId) return;
+        this.checkpointsForView(ctx, sourceId);
         const meta = this.cpMeta(ctx, checkpointId);
         if (!meta) {
             this.post(ctx, { kind: "error", message: "找不到该还原点。" });
