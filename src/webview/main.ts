@@ -32,6 +32,11 @@ window.addEventListener("unhandledrejection", (e) => {
 // ---------------------------------------------------------------------------
 const mdFast = new MarkdownIt({ html: false, linkify: true, breaks: true });
 const mdFull = new MarkdownIt({ html: false, linkify: true, breaks: true });
+// markdown-it 默认拒绝 file://，但本地文件链接要交给扩展宿主解析。
+for (const md of [mdFast, mdFull]) {
+  const validate = md.validateLink.bind(md);
+  md.validateLink = (url) => /^file:\/\//i.test(url) || validate(url);
+}
 
 const COLLAPSE_THRESHOLD = 6; // code blocks longer than this collapse to a 3-line preview
 
@@ -2075,19 +2080,20 @@ function updateEmptyState() {
 // -- Clickable code references in assistant text ------------------------------
 // Turn file-path mentions (e.g. `src/foo.ts:42`) into links that jump to the
 // file (and line) in the editor, reusing the messages' data-action="open" path.
-const CODE_EXT = new Set([
+const FILE_EXT = new Set([
   "ts","tsx","js","jsx","mjs","cjs","vue","svelte","java","kt","kts","py","go","rs","rb","php","cs",
   "cpp","cc","cxx","c","h","hpp","hh","m","mm","swift","scala","dart","lua","r","sh","bash","zsh",
   "html","htm","css","scss","sass","less","json","jsonc","xml","yaml","yml","toml","ini","env",
   "properties","gradle","sql","md","mdx","txt","proto","tf","vy","sol",
+  "png","jpg","jpeg","gif","webp","avif","bmp","ico","tif","tiff","svg","pdf","doc","docx","xls","xlsx","ppt","pptx","odt","ods","odp",
 ]);
 
 function parseCodeRef(s: string): { path: string; line?: number; endLine?: number } | null {
   const t = s.trim();
-  const m = /^([~\w./\\@\-+]+\.[A-Za-z0-9]{1,10})(?::(\d+)(?:[:-](\d+))?)?$/.exec(t);
+  const m = /^([~\w./\\@\-+ ()]+\.[A-Za-z0-9]{1,10})(?::(\d+)(?:[:-](\d+))?)?$/.exec(t);
   if (!m) return null;
   const ext = (m[1].split(".").pop() || "").toLowerCase();
-  if (!CODE_EXT.has(ext)) return null;
+  if (!FILE_EXT.has(ext)) return null;
   return {
     path: m[1],
     line: m[2] ? parseInt(m[2], 10) : undefined,
@@ -2096,7 +2102,7 @@ function parseCodeRef(s: string): { path: string; line?: number; endLine?: numbe
 }
 
 const REF_RE =
-  /(?:[~\w.\-@+]+[/\\])+[\w.\-@+]*\.[A-Za-z0-9]{1,10}(?::\d+(?:[:-]\d+)?)?|[\w.\-@+]+\.[A-Za-z0-9]{1,10}:\d+(?:[:-]\d+)?/g;
+  /\/?(?:[~\w.\-@+]+[/\\])+[\w.\-@+]*\.[A-Za-z0-9]{1,10}(?::\d+(?:[:-]\d+)?)?|[\w.\-@+]+\.[A-Za-z0-9]{1,10}:\d+(?:[:-]\d+)?/g;
 
 function makeRef(text: string, ref: { path: string; line?: number; endLine?: number }): HTMLElement {
   const span = document.createElement("span");
@@ -2132,21 +2138,20 @@ function linkifyRefs(container: HTMLElement) {
   // 0) AI 常输出 markdown 文件链接（[router:651](src/router/index.js#L651)）。
   //    <a> 渲染出来点击本来就无人处理 = 永远的死链接。统一转成文件引用并走
   //    存在性校验：真实存在 → 可点击打开；不存在 → 退化成纯文本（宁可没有
-  //    链接，也不给点不动的链接）。http/命令类真外链保持原样交给 VS Code。
+  //    链接，也不给点不动的链接）。网页和邮件链接由点击事件交给扩展宿主。
   container.querySelectorAll("a").forEach((a) => {
     const href = a.getAttribute("href") || "";
-    if (/^(https?|mailto|command|vscode):/i.test(href)) return;
+    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(href)?.[1].toLowerCase();
+    if (scheme === "http" || scheme === "https" || scheme === "mailto") return;
     const span = document.createElement("span");
     span.textContent = a.textContent || href;
     const m = /^([^#?]+?)(?:#L?(\d+)(?:[-–]L?(\d+))?)?$/.exec(href);
-    if (m && m[1] && m[1] !== "#") {
+    if (m && m[1] && m[1] !== "#" && (!scheme || scheme === "file")) {
       // 非法百分号序列（如 caf%E9.md）会让 decodeURIComponent 抛 URIError——
       // 这里一炸，整段历史/流式渲染就断了，会话永久打不开。原样保留即可。
       let decoded = m[1];
-      try {
-        decoded = decodeURIComponent(m[1]);
-      } catch {
-        /* keep raw */
+      if (!/^file:/i.test(decoded)) {
+        try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
       }
       span.className = "code-ref";
       span.dataset.action = "open";
@@ -3397,6 +3402,13 @@ cfHeader.onclick = (e) => {
 // Event delegation: copy buttons & file links inside the message stream.
 messagesEl.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
+  const link = t.closest("a[href]") as HTMLAnchorElement | null;
+  if (link) {
+    e.preventDefault();
+    const url = link.getAttribute("href") || "";
+    if (/^(https?:\/\/|mailto:)/i.test(url)) send({ type: "openExternalLink", url });
+    return;
+  }
   const action = t.closest("[data-action]") as HTMLElement | null;
   if (!action) return;
   const codeOf = (a: HTMLElement) =>

@@ -217,6 +217,7 @@ export type FromWebview =
   | { type: "acceptAll" }
   | { type: "revertAll" }
   | { type: "openFile"; path: string; line?: number; endLine?: number }
+  | { type: "openExternalLink"; url: string }
   | { type: "openSymbol"; name: string }
   | { type: "validateRefs"; refs: { id: string; path: string }[] }
   | { type: "runInTerminal"; code: string }

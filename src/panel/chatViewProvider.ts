@@ -1001,6 +1001,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "openFile":
                     await this.openFile(ctx, m.path, m.line, m.endLine);
                     break;
+                case "openExternalLink": {
+                    try {
+                        const uri = vscode.Uri.parse(m.url);
+                        if (["http", "https", "mailto"].includes(uri.scheme)) {
+                            if (!(await vscode.env.openExternal(uri)))
+                                vscode.window.showWarningMessage(`系统未能打开链接: ${m.url}`);
+                        }
+                    }
+                    catch (err) {
+                        this.output.appendLine(`[openExternalLink] ${m.url} 打开失败: ${String((err as Error)?.message ?? err)}`);
+                        vscode.window.showErrorMessage(`无法打开链接: ${m.url}`);
+                    }
+                    break;
+                }
                 case "openSymbol":
                     await this.openSymbol(ctx, m.name);
                     break;
@@ -2529,6 +2543,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
     }
     private async resolveWorkspaceFile(p: string, interactive: boolean): Promise<string | undefined> {
+        if (/^file:/i.test(p)) {
+            try { p = vscode.Uri.parse(p).fsPath; }
+            catch { return undefined; }
+        }
+        if (p.startsWith("~/")) p = path.join(os.homedir(), p.slice(2));
+        if (!p || /^[a-z][a-z\d+.-]*:/i.test(p)) return undefined;
         const direct = path.isAbsolute(p)
             ? [p]
             : [path.join(this.cwd(), p), ...this.workspaceDirs().map((d) => path.join(d, p))];
@@ -2540,6 +2560,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             catch {
             }
         }
+        // 绝对路径失效时不能退化为工作区中的同名文件，否则会跳错内容。
+        if (path.isAbsolute(p)) return undefined;
         const base = p.split(/[\\/]/).pop() || "";
         if (!base)
             return undefined;
@@ -2552,13 +2574,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (!uris.length)
             return undefined;
-        const norm = "/" + p.replace(/\\/g, "/");
-        const ranked = uris.map((u) => u.fsPath).sort((a, b) => {
-            const sa = a.replace(/\\/g, "/").endsWith(norm) ? 0 : 1;
-            const sb = b.replace(/\\/g, "/").endsWith(norm) ? 0 : 1;
-            return sa - sb || a.length - b.length;
-        });
-        if (ranked.length === 1 || ranked[0].replace(/\\/g, "/").endsWith(norm) || !interactive)
+        const norm = "/" + path.normalize(p).replace(/\\/g, "/").replace(/^\.\//, "");
+        const hasDir = p.includes("/") || p.includes("\\");
+        const ranked = uris.map((u) => u.fsPath)
+            .filter((f) => !hasDir || f.replace(/\\/g, "/").endsWith(norm))
+            .sort((a, b) => a.length - b.length);
+        if (!ranked.length) return undefined;
+        if (ranked.length === 1 || !interactive)
             return ranked[0];
         const pick = await vscode.window.showQuickPick(ranked.map((f) => ({ label: vscode.workspace.asRelativePath(f), f })), { placeHolder: `找到多个「${base}」，选择要打开的文件` });
         return pick?.f;
@@ -2622,25 +2644,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const abs = await this.resolveWorkspaceFile(p, true);
             if (!abs) {
                 this.output.appendLine(`[openFile] ${p} 未找到 (${Date.now() - t0}ms)`);
-                vscode.window.showWarningMessage(`工作区里找不到文件：${p}`);
+                vscode.window.showWarningMessage(`找不到文件：${p}`);
                 return;
             }
             const resolveMs = Date.now() - t0;
             if (abs !== p || resolveMs > 300)
                 this.output.appendLine(`[openFile] ${p} → ${abs} (解析 ${resolveMs}ms)`);
-            // 图片不能通过 openTextDocument 打开；交给 VS Code 选择图片预览编辑器。
+            // 图片交给 VS Code 预览；办公文档交给系统默认应用。
             if (/\.(?:png|jpe?g|gif|webp|avif|bmp|ico|tiff?|svg)$/i.test(abs)) {
                 await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(abs), {
                     viewColumn: this.codeColumn(ctx), preview: false,
                 });
                 return;
             }
+            if (/\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp)$/i.test(abs)) {
+                if (!(await vscode.env.openExternal(vscode.Uri.file(abs))))
+                    vscode.window.showWarningMessage(`系统未能打开文件: ${abs}`);
+                return;
+            }
             const doc = await vscode.workspace.openTextDocument(abs);
             const editor = await vscode.window.showTextDocument(doc, { viewColumn: this.codeColumn(ctx), preview: false });
             if (line && line > 0) {
-                const start = new vscode.Position(line - 1, 0);
-                const last = endLine && endLine >= line ? endLine - 1 : line - 1;
-                const end = new vscode.Position(last, doc.lineAt(Math.min(last, doc.lineCount - 1)).text.length);
+                const first = Math.min(line - 1, doc.lineCount - 1);
+                const last = Math.min(endLine && endLine >= line ? endLine - 1 : first, doc.lineCount - 1);
+                const start = new vscode.Position(first, 0);
+                const end = new vscode.Position(last, doc.lineAt(last).text.length);
                 editor.selection = new vscode.Selection(start, end);
                 editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
             }
