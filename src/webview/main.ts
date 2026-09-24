@@ -315,8 +315,18 @@ function renderLive() {
   if (commitLen - liveBlock.committedLen >= minGain) {
     liveBlock.committedLen = commitLen;
     liveBlock.committedEl.innerHTML = mdFast.render(liveBlock.raw.slice(0, commitLen));
+    linkifyRefs(liveBlock.committedEl, false);
+    hydrateLocalImages(liveBlock.committedEl);
   }
-  liveBlock.lineEl.textContent = shownText.slice(liveBlock.committedLen);
+  const tail = shownText.slice(liveBlock.committedLen);
+  // 完整的 Markdown 链接/图片一收到右括号就显示，不能等下一次换行或本轮结束。
+  if (/!?\[[^\]]+\]\([^)]*\)/.test(tail)) {
+    liveBlock.lineEl.innerHTML = mdFast.renderInline(tail);
+    linkifyRefs(liveBlock.lineEl, false);
+    hydrateLocalImages(liveBlock.lineEl);
+  } else {
+    liveBlock.lineEl.textContent = tail;
+  }
   scheduleLiveLayout();
 }
 
@@ -337,6 +347,7 @@ function finalizeLive() {
   if (!liveBlock) return;
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
+  hydrateLocalImages(liveBlock.el);
   removeWorking(); // the text block is done — drop the "思考中" pill
   updateActiveLine();
   maybeScroll();
@@ -869,6 +880,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       for (const id of m.invalid) {
         const e = messagesEl.querySelector(`[data-ref-id="${id}"]`) as HTMLElement | null;
         if (e) unlinkRef(e);
+      }
+      break;
+    case "local_image":
+      localImagePending.delete(m.path);
+      localImageCache.set(m.path, m.dataUri ?? null);
+      for (const img of Array.from(messagesEl.querySelectorAll<HTMLImageElement>("img[data-local-src]"))) {
+        if (img.dataset.localSrc === m.path) showLocalImage(img, m.dataUri);
       }
       break;
     case "tool_input":
@@ -2024,6 +2042,7 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       const seg = el("div", "md text-seg");
       seg.innerHTML = mdFull.render(foldLeakedToolXml(it.text));
       linkifyRefs(seg);
+      hydrateLocalImages(seg);
       body.appendChild(seg);
     } else if (it.type === "thinking") {
       // A quiet timeline node, like the official panel — the reply's first
@@ -2133,8 +2152,51 @@ function symbolName(s: string): string | null {
   return id;
 }
 
+const localImageCache = new Map<string, string | null>();
+const localImagePending = new Set<string>();
+
+function showLocalImage(img: HTMLImageElement, dataUri?: string) {
+  const placeholder = img.previousElementSibling;
+  const label = img.alt || img.dataset.localSrc || "图片";
+  if (!dataUri) {
+    const failed = el("span", "local-image-failed", `图片无法加载：${label}`);
+    img.replaceWith(failed);
+    if (placeholder?.classList.contains("local-image-placeholder")) placeholder.remove();
+    return;
+  }
+  img.onload = () => {
+    img.classList.remove("local-image-pending");
+    if (placeholder?.classList.contains("local-image-placeholder")) placeholder.remove();
+  };
+  img.onerror = () => showLocalImage(img);
+  img.src = dataUri;
+}
+
+/** Webview 不能直接读取工作区外的 /tmp 等路径，由扩展宿主传回 data URI。 */
+function hydrateLocalImages(container: HTMLElement) {
+  container.querySelectorAll<HTMLImageElement>("img[src]").forEach((img) => {
+    const src = img.getAttribute("src") || "";
+    if (/^(https?:|data:)/i.test(src)) return;
+    if (/^[a-z][a-z\d+.-]*:/i.test(src) && !/^file:\/\//i.test(src)) return;
+    let imagePath = src;
+    if (!/^file:/i.test(src)) {
+      try { imagePath = decodeURIComponent(src); } catch { /* 保留原路径 */ }
+    }
+    img.dataset.localSrc = imagePath;
+    img.removeAttribute("src");
+    img.classList.add("local-image-pending");
+    img.before(el("span", "local-image-placeholder", `加载图片：${img.alt || imagePath}`));
+    const cached = localImageCache.get(imagePath);
+    if (cached !== undefined) showLocalImage(img, cached ?? undefined);
+    else if (!localImagePending.has(imagePath)) {
+      localImagePending.add(imagePath);
+      send({ type: "loadLocalImage", path: imagePath });
+    }
+  });
+}
+
 /** Make file references inside rendered assistant markdown clickable. */
-function linkifyRefs(container: HTMLElement) {
+function linkifyRefs(container: HTMLElement, validate = true) {
   // 0) AI 常输出 markdown 文件链接（[router:651](src/router/index.js#L651)）。
   //    <a> 渲染出来点击本来就无人处理 = 永远的死链接。统一转成文件引用并走
   //    存在性校验：真实存在 → 可点击打开；不存在 → 退化成纯文本（宁可没有
@@ -2216,7 +2278,7 @@ function linkifyRefs(container: HTMLElement) {
   // 3) Verify file refs actually exist — non-existent ones get unlinked so we
   //    don't show dead "jump to file" links.
   const fileRefs = container.querySelectorAll<HTMLElement>('.code-ref[data-action="open"]:not([data-ref-id])');
-  if (fileRefs.length) {
+  if (validate && fileRefs.length) {
     const refs: { id: string; path: string }[] = [];
     fileRefs.forEach((e) => {
       const id = "ref" + refSeq++;
@@ -2228,7 +2290,7 @@ function linkifyRefs(container: HTMLElement) {
   // 4) 符号引用同样要校验——`@RateLimit` 这类项目里根本不存在的注解以前也会被
   //    加上链接，点了没反应。LSP 索引里查不到的就剥掉链接（宁缺毋滥）。
   const symRefs = container.querySelectorAll<HTMLElement>('.code-ref[data-action="symbol"]:not([data-ref-id])');
-  if (symRefs.length) {
+  if (validate && symRefs.length) {
     const syms: { id: string; name: string }[] = [];
     symRefs.forEach((e) => {
       const id = "ref" + refSeq++;

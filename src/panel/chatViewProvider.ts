@@ -1016,6 +1016,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     break;
                 }
+                case "loadLocalImage": {
+                    const dataUri = await this.loadLocalImage(m.path);
+                    this.post(ctx, { kind: "local_image", path: m.path, dataUri });
+                    break;
+                }
                 case "openSymbol":
                     await this.openSymbol(ctx, m.name);
                     break;
@@ -2656,6 +2661,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (!p)
             return false;
         return !!(await this.resolveWorkspaceFile(p, false));
+    }
+    private async loadLocalImage(ref: string): Promise<string | undefined> {
+        try {
+            const imagePath = await this.resolveWorkspaceFile(ref, false);
+            if (!imagePath) return undefined;
+            const mime: Record<string, string> = {
+                ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+                ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif",
+                ".bmp": "image/bmp", ".svg": "image/svg+xml",
+            };
+            const type = mime[path.extname(imagePath).toLowerCase()];
+            if (!type || (await fs.promises.stat(imagePath)).size > 4 * 1024 * 1024) return undefined;
+            return `data:${type};base64,${(await fs.promises.readFile(imagePath)).toString("base64")}`;
+        }
+        catch (err) {
+            this.output.appendLine(`[loadLocalImage] ${ref} 读取失败: ${String((err as Error)?.message ?? err)}`);
+            return undefined;
+        }
     }
     private async openFile(ctx: SessionCtx, p: string, line?: number, endLine?: number): Promise<void> {
         const t0 = Date.now();

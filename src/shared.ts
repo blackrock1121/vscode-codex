@@ -82,6 +82,7 @@ export type ToWebview =
   | { kind: "update_available"; version: string }
   | { kind: "context"; used: number; total: number }
   | { kind: "refs_validated"; invalid: string[] }
+  | { kind: "local_image"; path: string; dataUri?: string }
   | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number }
   /** weekModel*: 除 "all models" 外的按模型周限额行（CLI 输出哪个模型就显示哪个，
    *  不写死模型名，以服务端返回为准）。 */
@@ -218,6 +219,7 @@ export type FromWebview =
   | { type: "revertAll" }
   | { type: "openFile"; path: string; line?: number; endLine?: number }
   | { type: "openExternalLink"; url: string }
+  | { type: "loadLocalImage"; path: string }
   | { type: "openSymbol"; name: string }
   | { type: "validateRefs"; refs: { id: string; path: string }[] }
   | { type: "runInTerminal"; code: string }

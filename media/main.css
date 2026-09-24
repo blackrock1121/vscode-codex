@@ -547,6 +547,10 @@ code.code-ref {
 code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; }
 .md strong { font-weight: 600; }
 .md img { max-width: 100%; border-radius: 5px; }
+.md img.local-image-pending { display: none; }
+.local-image-placeholder, .local-image-failed {
+  display: inline-block; color: var(--vscode-descriptionForeground); font-size: 0.9em;
+}
 
 .md blockquote {
   margin: 11px 0; padding: 8px 12px;
