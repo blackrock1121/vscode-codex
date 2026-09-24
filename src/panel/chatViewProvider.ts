@@ -2628,6 +2628,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const resolveMs = Date.now() - t0;
             if (abs !== p || resolveMs > 300)
                 this.output.appendLine(`[openFile] ${p} → ${abs} (解析 ${resolveMs}ms)`);
+            // 图片不能通过 openTextDocument 打开；交给 VS Code 选择图片预览编辑器。
+            if (/\.(?:png|jpe?g|gif|webp|avif|bmp|ico|tiff?|svg)$/i.test(abs)) {
+                await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(abs), {
+                    viewColumn: this.codeColumn(ctx), preview: false,
+                });
+                return;
+            }
             const doc = await vscode.workspace.openTextDocument(abs);
             const editor = await vscode.window.showTextDocument(doc, { viewColumn: this.codeColumn(ctx), preview: false });
             if (line && line > 0) {
@@ -2639,6 +2646,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         }
         catch (err) {
+            this.output.appendLine(`[openFile] ${p} 打开失败: ${String((err as Error)?.message ?? err)}`);
             vscode.window.showErrorMessage(`无法打开文件: ${p}`);
         }
     }
