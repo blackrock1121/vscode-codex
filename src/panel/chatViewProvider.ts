@@ -926,7 +926,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.handlePermission(ctx, m.requestId, m.behavior, m.suggestionId);
                     break;
                 case "answerQuestion":
-                    ctx.proc?.answerQuestion(m.requestId, m.answers);
+                    if (!ctx.proc?.answerQuestion(m.requestId, m.answers)) break;
                     if (ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === m.requestId && ctx.pendingQuestionAt !== undefined)
                         this.output.appendLine(`[${new Date().toISOString()}] [question] 用户等待 ${Date.now() - ctx.pendingQuestionAt}ms，答案已转交 Codex`);
                     ctx.pendingQuestionAt = undefined;

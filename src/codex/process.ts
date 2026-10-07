@@ -2,7 +2,7 @@ import { CTX_OPEN, CTX_CLOSE, PermissionSuggestionView, ToWebview } from '../sha
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { toolView, quotaEvents } from './events';
 
-const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，使用 AskUserQuestion 向用户提问并等待其答案。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。';
+const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，使用 AskUserQuestion 向用户提问并等待其答案。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时必须持续等待，不得因为等待时间较长而结束本轮或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
   type: 'function', name: 'AskUserQuestion',
   description: '向用户展示一个或多个可选问题，并等待用户提交答案。需要用户选择或确认时必须调用此工具。',
@@ -69,7 +69,10 @@ export class CodexProcess {
       const account = await this.rpc.request('account/read', {});
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-      const params = { cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
+      // 提问必须作为直接工具调用阻塞模型；code mode 会把未完成调用 yield 给模型，
+      // 模型随后可以提前收尾，导致服务端清理仍在等待用户的请求。
+      const config = { 'features.code_mode': false, 'features.code_mode_host': false, 'features.code_mode_only': false };
+      const params = { config, cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
       const result = await this.rpc.request(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
@@ -119,7 +122,7 @@ export class CodexProcess {
     }
     if (m.method === 'error') { if (p.willRetry) this.emit({kind:'status',label:'Codex 正在重试请求…'}); else this.error(p.error?.message ?? p.message ?? 'Codex 请求失败'); return; }
     if (m.method === 'serverRequest/resolved') {
-      const key = String(p.requestId); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true }); return;
+      const key = String(p.requestId); if (!this.pending.delete(key)) return; this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true }); return;
     }
     if (m.method !== 'item/started' && m.method !== 'item/completed') return;
     const item = p.item; if (!item) return;
@@ -157,21 +160,29 @@ export class CodexProcess {
   respondPermission(key: string, decision: { behavior: 'allow' | 'deny'; suggestionId?: string; message?: string }): void {
     const p = this.pending.get(key); if (!p) return;
     const allow = decision.behavior === 'allow';
-    if (p.method === 'item/tool/requestUserInput' || p.method === 'tool/requestUserInput' || p.method === 'item/tool/call') { this.answerQuestion(key, {}); return; }
+    if (p.method === 'item/tool/requestUserInput' || p.method === 'tool/requestUserInput' || p.method === 'item/tool/call') { if (!allow) void this.interrupt().catch(e => this.error(e)); return; }
     const result = p.method === 'item/permissions/requestApproval' ? { permissions: allow ? p.params.permissions : {}, scope: 'turn' }
       : p.method === 'mcpServer/elicitation/request' ? { action: allow ? 'accept' : 'decline', content: null }
       : { decision: allow ? (decision.suggestionId === 'session' ? 'acceptForSession' : 'accept') : 'decline' };
     this.rpc.respond(p.id, result); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: decision.behavior });
   }
-  answerQuestion(key: string, answers: Record<string, string | string[]>): void {
-    const p = this.pending.get(key); if (!p) return;
+  answerQuestion(key: string, answers: Record<string, string | string[]>): boolean {
+    const p = this.pending.get(key);
+    if (!p || !['item/tool/call', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(p.method)) return false;
     const mapped: Record<string, { answers: string[] }> = {};
     const questions = p.method === 'item/tool/call' ? p.params.arguments?.questions : p.params.questions;
-    for (const [index, q] of (Array.isArray(questions) ? questions : []).entries()) { const a = answers[q.id] ?? answers[q.question] ?? []; mapped[q.id || q.question || String(index)] = { answers: Array.isArray(a) ? a : [a] }; }
+    if (!Array.isArray(questions) || !questions.length) return false;
+    for (const [index, q] of questions.entries()) {
+      const a = answers[q.id] ?? answers[q.question] ?? answers[String(index)] ?? [];
+      const values = Array.isArray(a) ? a : [a];
+      if (!values.length || values.some(value => typeof value !== 'string' || !value.trim())) return false;
+      mapped[q.id || q.question || String(index)] = { answers: values };
+    }
     const response = p.method === 'item/tool/call'
       ? { contentItems: [{ type: 'inputText', text: JSON.stringify({ answers: mapped }) }], success: true }
       : { answers: mapped };
     this.rpc.respond(p.id, response); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
+    return true;
   }
   async interrupt(): Promise<void> {
     await this.startingTurn;

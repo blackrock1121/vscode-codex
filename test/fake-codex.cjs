@@ -13,6 +13,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='account/read')result={account:{type:'chatgpt'},requiresOpenaiAuth:true};
  if(m.method==='thread/start'||m.method==='thread/resume'){
   if(!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
+  if(['code_mode','code_mode_host','code_mode_only'].some(key=>m.params.config?.['features.'+key]!==false)){send({id:m.id,error:{code:-32602,message:'提问仍可能后台执行'}});return;}
   result={thread:{id:'thread-1'},model:'test-model'};
  }
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
