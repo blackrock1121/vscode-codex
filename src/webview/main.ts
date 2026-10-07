@@ -1607,9 +1607,9 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     options?: Array<{ label: string; description?: string }>;
   }>;
   if (!questions.length) {
-    // 畸形输入（没有任何问题）：不渲染 UI 也不应答的话，这个请求就成了
-    // 无法作答的黑洞，本轮永久卡在 waiting。空答案放行让 CLI 继续。
-    send({ type: "answerQuestion", requestId: m.requestId, answers: {} });
+    // 无法作答时停止本轮，不能把空答案当作用户确认。
+    appendNotice("提问内容无效，本轮已停止，请重新发送消息。", "error");
+    send({ type: "interrupt" });
     return;
   }
 
@@ -1624,7 +1624,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const head = el("div", "askp-head");
   const qText = el("span", "askp-q");
   const xBtn = el("button", "askp-x", "×");
-  xBtn.title = "跳过";
+  xBtn.title = "停止本轮";
   head.append(qText, xBtn);
   const optsBox = el("div", "askp-opts");
   const foot = el("div", "askp-foot");
@@ -1784,7 +1784,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
         .filter(([, a]) => a);
       wrap.replaceWith(askQuestionNode(pairs));
     } else {
-      wrap.replaceWith(askQuestionNode([], "已跳过"));
+      wrap.replaceWith(askQuestionNode([], "已停止"));
     }
   };
 
@@ -1801,6 +1801,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     }
   };
   submit.onclick = () => {
+    if (done || !questions.every((_, qi) => answered(qi))) return;
     const answers: Record<string, string | string[]> = {};
     questions.forEach((q, qi) => {
       const picks = [...sel[qi]];
@@ -1811,7 +1812,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     finish(answers);
   };
   xBtn.onclick = () => {
-    send({ type: "answerQuestion", requestId: m.requestId, answers: {} });
+    send({ type: "interrupt" });
     finish(null);
   };
 

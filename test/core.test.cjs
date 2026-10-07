@@ -38,3 +38,25 @@ test('扫描超限后不能把已有但未扫描的文件误判为新增',async 
 test('快照排除规则只影响指定路径，并记录其他跳过原因',async t=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-snapshot-exclude-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));await fs.mkdir(path.join(dir,'generated'));await fs.mkdir(path.join(dir,'nested'));await fs.writeFile(path.join(dir,'generated','auto.ts'),'生成');await fs.writeFile(path.join(dir,'nested','debug.log'),'日志');await fs.writeFile(path.join(dir,'source.ts'),'源码');await fs.writeFile(path.join(dir,'blob.bin'),Buffer.from([1,0,2]));await fs.writeFile(path.join(dir,'huge.txt'),'x'.repeat(2*1024*1024+1));const snap=new WorkspaceSnapshot([dir],20000,['generated/**','**/*.log']);await snap.capture();assert.equal(snap.files.get(path.join(dir,'source.ts')),'源码');assert.equal(snap.files.has(path.join(dir,'generated','auto.ts')),false);assert.equal(snap.skipped.has(path.join(dir,'generated','auto.ts')),false);assert.equal(snap.skipped.has(path.join(dir,'nested','debug.log')),false);assert.equal(snap.skipReasons.get(path.join(dir,'blob.bin')),'binary');assert.equal(snap.skipReasons.get(path.join(dir,'huge.txt')),'large');await fs.writeFile(path.join(dir,'generated','auto.ts'),'变更');await fs.writeFile(path.join(dir,'source.ts'),'修改');const changes=await snap.changed();assert.equal(changes.has(path.join(dir,'generated','auto.ts')),false);assert.equal(changes.get(path.join(dir,'source.ts')),'源码');});
 test('多工作区的快照排除规则按各自目录生效',async t=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-multi-root-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));const a=path.join(dir,'a'),b=path.join(dir,'b');await fs.mkdir(a);await fs.mkdir(b);await fs.writeFile(path.join(a,'icon.png'),'A');await fs.writeFile(path.join(b,'icon.png'),'B');const snap=new WorkspaceSnapshot([a,b],20000,new Map([[a,['icon.png']],[b,[]]]));await snap.capture();assert.equal(snap.files.has(path.join(a,'icon.png')),false);assert.equal(snap.files.get(path.join(b,'icon.png')),'B');});
 test('长文件的小改动只计算变化段，行数保持准确',()=>{const lines=Array.from({length:5000},(_,i)=>`line-${i}`);const before=lines.join('\n');const after=[...lines.slice(0,2500),'inserted',...lines.slice(2500)].join('\n');assert.deepEqual(diffCounts(before,after),{added:1,removed:0});assert.deepEqual(diffCounts('A\nB\nC','A\nX\nC'),{added:1,removed:1});assert.deepEqual(diffCounts(before,before),{added:0,removed:0});const unrelatedA=Array.from({length:2100},(_,i)=>`a-${i}`).join('\n');const unrelatedB=Array.from({length:2100},(_,i)=>`b-${i}`).join('\n');assert.deepEqual(diffCounts(unrelatedA,unrelatedB),{added:1,removed:1});});
+
+test('空答案和普通授权都不能放行提问，拒绝提问会停止本轮',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId;
+ assert.equal(p.answerQuestion(key,{}),false);assert.equal(p.answerQuestion(key,{choice:'  '}),false);
+ p.respondPermission(key,{behavior:'allow'});
+ await new Promise(r=>setTimeout(r,80));assert.equal(events.some(e=>e.kind==='result'),false);assert.equal(p.isBusy,true);
+ p.respondPermission(key,{behavior:'deny'});await waitUntil(()=>events.some(e=>e.kind==='result'));
+ assert.equal(events.some(e=>e.kind==='tool_result'),false);
+});
+test('成功应答后的服务端清理通知不会把答案标为取消',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId;assert.equal(p.answerQuestion(key,{choice:'A'}),true);
+ p.notification({method:'serverRequest/resolved',params:{threadId:'thread-1',requestId:key}});
+ assert.equal(events.some(e=>e.kind==='permission_resolved'&&e.behavior==='deny'),false);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+});
+
+test('恢复旧会话同样关闭后台工具执行',async t=>{
+ const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',resumeSessionId:'thread-1'},{emit:()=>{},onPermission:()=>{},onSessionId:(_,resumed)=>assert.equal(resumed,true),onClose:()=>{}});
+ t.after(()=>p.disposeAndWait());await p.start();assert.equal(p.currentSessionId,'thread-1');
+});
