@@ -15,9 +15,9 @@ function waitUntil(predicate){return new Promise((resolve,reject)=>{const end=Da
 async function client(t){const events=[],requests=[];const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},{emit:e=>events.push(e),onPermission:r=>requests.push(r),onSessionId:()=>{},onClose:()=>{}});t.after(()=>p.disposeAndWait());await p.start();return {p,events,requests};}
 test('初始化不发送预热；流式消息不重复且报告上下文',async t=>{const {p,events}=await client(t);assert.equal(events.some(e=>e.kind==='result'),false);assert.equal(p.sendUserMessage('你好'),true);await waitUntil(()=>events.some(e=>e.kind==='result'));assert.equal(events.filter(e=>e.kind==='text_delta').map(e=>e.text).join(''),'你好');assert.deepEqual(events.find(e=>e.kind==='context'),{kind:'context',used:123,total:1000});});
 test('审批只在用户应答后完成，支持本会话允许',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('approval');await waitUntil(()=>requests.length);assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.respondPermission(requests[0].requestId,{behavior:'allow',suggestionId:'session'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.match(events.find(e=>e.kind==='tool_result').content,/acceptForSession/);});
-test('新版提问协议等待用户输入并按 question ID 回答',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('question');await waitUntil(()=>requests.length);assert.equal(requests[0].toolName,'AskUserQuestion');assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.answerQuestion(requests[0].requestId,{'选择什么？':'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.match(events.find(e=>e.kind==='tool_result').content,/"q1":\{"answers":\["A"\]\}/);});
-test('普通会话注册 AskUserQuestion 并等待选项提交',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);assert.equal(requests[0].toolName,'AskUserQuestion');assert.deepEqual(requests[0].input.questions[0].options,[{label:'A',description:'选项'}]);assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.answerQuestion(requests[0].requestId,{choice:'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));const response=JSON.parse(events.find(e=>e.kind==='tool_result').content);assert.equal(response.success,true);assert.deepEqual(JSON.parse(response.contentItems[0].text),{answers:{choice:{answers:['A']}}});});
-test('兼容旧版提问方法名',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('legacy-question');await waitUntil(()=>requests.length);p.answerQuestion(requests[0].requestId,{q1:'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.match(events.find(e=>e.kind==='tool_result').content,/"q1":\{"answers":\["A"\]\}/);});
+test('新版提问协议等待用户输入并按 question ID 回答',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('question');await waitUntil(()=>requests.length);assert.equal(requests[0].toolName,'AskUserQuestion');assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.answerQuestion(requests[0].requestId,{'选择什么？':'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.deepEqual(JSON.parse(JSON.parse(events.find(e=>e.kind==='tool_result').content).text.split('\n')[1]),[{question:'选择什么？',answers:['A']}]);});
+test('普通会话注册 AskUserQuestion 并等待选项提交',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);assert.equal(requests[0].toolName,'AskUserQuestion');assert.deepEqual(requests[0].input.questions[0].options,[{label:'A',description:'选项'}]);assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.answerQuestion(requests[0].requestId,{choice:'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));const response=JSON.parse(events.find(e=>e.kind==='tool_result').content);assert.equal(response.interruptCount,1);assert.equal(response.answerCount,0);assert.deepEqual(JSON.parse(response.text.split('\n')[1]),[{question:'选择什么？',answers:['A']}]);});
+test('兼容旧版提问方法名',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('legacy-question');await waitUntil(()=>requests.length);p.answerQuestion(requests[0].requestId,{q1:'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.deepEqual(JSON.parse(JSON.parse(events.find(e=>e.kind==='tool_result').content).text.split('\n')[1]),[{question:'选择什么？',answers:['A']}]);});
 test('停止后可继续；压缩完成不重复触发队列',async t=>{const {p,events}=await client(t);p.sendUserMessage('wait');await p.interrupt();await waitUntil(()=>events.some(e=>e.kind==='result'));p.compact();await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);assert.equal(p.isBusy,false);assert.equal(p.sendUserMessage('继续'),true);await waitUntil(()=>events.filter(e=>e.kind==='result').length===3);});
 test('请求超时和进程退出会拒绝挂起请求',async t=>{const rpc=new CodexRpc(executable,process.cwd());t.after(()=>rpc.disposeAndWait());await rpc.start();await assert.rejects(rpc.request('hang',{},30),/超时/);const pending=rpc.request('hang');rpc.dispose();await assert.rejects(pending,/关闭/);});
 test('协议行损坏后释放旧进程，管理连接下次请求自动重连',async t=>{const store=new SessionStore(process.cwd(),()=>executable);t.after(()=>store.dispose());const first=await store.connection();await assert.rejects(first.request('malformed'),/无效协议数据（stdout 行长度 8 字节）/);assert.equal(first.isClosed,true);const next=await store.connection();assert.notEqual(next,first);assert.deepEqual((await next.request('model/list')).data.map(m=>m.model),['test-model']);});
@@ -56,7 +56,36 @@ test('成功应答后的服务端清理通知不会把答案标为取消',async 
  await waitUntil(()=>events.some(e=>e.kind==='result'));
 });
 
-test('恢复旧会话同样关闭后台工具执行',async t=>{
+test('恢复旧会话可正常连接',async t=>{
  const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',resumeSessionId:'thread-1'},{emit:()=>{},onPermission:()=>{},onSessionId:(_,resumed)=>assert.equal(resumed,true),onClose:()=>{}});
  t.after(()=>p.disposeAndWait());await p.start();assert.equal(p.currentSessionId,'thread-1');
+});
+
+test('后台提问先中断且保留卡片，未答复不继续；答案通过新轮次送达',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('background-question');
+ await waitUntil(()=>p.pausedQuestion);assert.equal(requests.length,0,'确认停止前不显示问题');
+ await waitUntil(()=>requests.length);const key=requests[0].requestId;
+ await new Promise(r=>setTimeout(r,120));
+ assert.equal(p.isBusy,true);assert.equal(p.pausedQuestion.ready,true);
+ assert.equal(events.some(e=>e.kind==='result'||e.kind==='text_delta'||e.kind==='permission_resolved'),false);
+ assert.equal(p.sendUserMessage('不应插入'),false);
+ assert.equal(p.answerQuestion(key,{choice:'B'}),true);assert.equal(p.answerQuestion(key,{choice:'B'}),false);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const result=JSON.parse(events.find(e=>e.kind==='tool_result').content);
+ assert.equal(result.interruptCount,1);assert.equal(result.answerCount,0);
+ assert.match(result.text,/B/);
+});
+test('暂停失败不显示问题，也不允许提交后恢复',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('failed-pause');
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+ assert.equal(requests.length,0);assert.equal(p.answerQuestion('18',{choice:'A'}),false);
+ assert.equal(events.find(e=>e.kind==='result').isError,true);
+});
+
+test('用户停止已暂停的问题后不会自动续轮，可以发起新的任务',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('background-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId;await p.interrupt();
+ assert.equal(p.isBusy,false);assert.equal(p.answerQuestion(key,{choice:'A'}),false);
+ assert.equal(events.filter(e=>e.kind==='result').length,1);assert.equal(events.some(e=>e.kind==='tool_result'),false);
+ assert.equal(p.sendUserMessage('新任务'),true);await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
 });
