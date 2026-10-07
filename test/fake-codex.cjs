@@ -16,6 +16,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   result={thread:{id:'thread-1'},model:'test-model'};
  }
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
+ if(m.method==='thread/read')result={thread:{id:'thread-1',turns:[{id:process.env.TEST_LAST_TURN_ID||'turn-1',status:'interrupted',items:[]}]}};
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};
  if(m.method==='hang')return;
@@ -31,7 +32,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
    note('item/started',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',cwd:'/tmp'}});
    send({id:'approval-1',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'cmd',command:'echo test'}});
   }else if(text==='question'||text==='legacy-question')send({id:17,method:text==='question'?'tool/requestUserInput':'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',itemId:'ask-1',isBlocking:true,questions:[{id:'q1',question:'选择什么？',header:'选择',isOther:true,isSecret:false,options:[{label:'A',description:'选项'}]}]}});
-  else if(text==='dynamic-question'||text==='background-question'||text==='failed-pause')send({id:18,method:'item/tool/call',params:{threadId:'thread-1',turnId:'turn-1',callId:'call-1',namespace:null,tool:'AskUserQuestion',arguments:{questions:[{id:'choice',question:'选择什么？',header:'选择',options:[{label:'A',description:'选项'}]}]}}});
+  else if(text==='dynamic-question'||text==='secret-question'||text==='background-question'||text==='failed-pause')send({id:18,method:'item/tool/call',params:{threadId:'thread-1',turnId:'turn-1',callId:'call-1',namespace:null,tool:'AskUserQuestion',arguments:{questions:[{id:'choice',question:'选择什么？',header:'选择',...(text==='secret-question'?{isSecret:true}:{}),options:[{label:'A',description:'选项'}]}]}}});
   else if(text.startsWith('用户已回答')){
    note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'resume',command:'test-resume',aggregatedOutput:JSON.stringify({text,interruptCount,answerCount}),exitCode:0,status:'completed'}});
    note('turn/completed',{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}});

@@ -6,7 +6,7 @@ import * as https from "node:https";
 import { WorkspaceSnapshot } from "../snapshot";
 import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
-import { CodexProcess, PermissionRequest } from "../codex/process";
+import { questionStateFile, deleteQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents } from "../codex/events";
 import { SessionStore } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
@@ -1237,6 +1237,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
+        if (proc.isBusy) {
+            // 初始化可能刚恢复出待答问题，不能把“等待输入”误判为进程退出。
+            ctx.draft = text;
+            ctx.draftImages = images;
+            this.post(ctx, { kind: "draft", text, images });
+            this.post(ctx, { kind: "notice", message: "已恢复等待中的问题，请先提交答案；新消息已保留为草稿。" });
+            return;
+        }
         const lineBefore = ctx.sessionId ? this.store.countLines(ctx.sessionId) : 0;
         if (!proc.sendUserMessage(text, attached, images)) {
             this.output.appendLine("[codex] send dropped: process not writable (exited mid-send)");
@@ -1886,6 +1894,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.checkpoints.setSession(sessionId);
         }
         const proc = new CodexProcess({
+            questionStateDir: this.storageDir(),
             codexPath: this.config().get<string>("codexPath", "codex"),
             cwd: this.cwd(),
             model: this.config().get<string>("model", "") || undefined,
@@ -1938,7 +1947,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return proc;
     }
     private maybePrespawn(ctx: SessionCtx): void {
-        if (!this.config().get<boolean>("prespawnOnOpen", true))
+        if (!this.config().get<boolean>("prespawnOnOpen", true) && !(ctx.sessionId && fs.existsSync(questionStateFile(this.storageDir(), ctx.sessionId))))
             return;
         if (!ctx.sessionId)
             return;
@@ -2456,6 +2465,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (waits.length)
                 await Promise.all(waits);
             await this.store.delete(id);
+            deleteQuestionState(this.storageDir(), id);
             CheckpointManager.deleteFor(this.storageDir(), id);
         }
         this.broadcastRunning();

@@ -17,7 +17,7 @@ const { CodexProcess } = require('../dist/test/codex/process.js');
   try {
     for (const resumed of [false, true]) {
       const events = [], questions = [], raw = [];
-      p = new CodexProcess({ codexPath: 'codex', cwd, model: 'gpt-6-astra', permissionMode: 'bypassPermissions', effort: 'medium', resumeSessionId: resumed ? id : undefined }, {
+      p = new CodexProcess({ codexPath: 'codex', cwd, questionStateDir: path.join(cwd, '.question-state'), model: 'gpt-6-astra', permissionMode: 'bypassPermissions', effort: 'medium', resumeSessionId: resumed ? id : undefined }, {
         emit: e => events.push(e), onPermission: q => questions.push(q), onSessionId: s => id = s, onClose: () => {},
       });
       await p.start();
@@ -28,6 +28,16 @@ const { CodexProcess } = require('../dist/test/codex/process.js');
       await until(() => questions.length || events.some(e => e.kind === 'result'));
       assert.equal(questions.length, 1, '必须收到可回答的问题');
       assert.ok(raw.some(m => m.method === 'turn/completed' && m.params.turn.status === 'interrupted'), '展示问题前服务端必须确认中断');
+      // 在问题仍未回答时模拟窗口重载，而不是等本轮完成后才恢复。
+      await p.disposeAndWait();
+      p = new CodexProcess({ codexPath: 'codex', cwd, questionStateDir: path.join(cwd, '.question-state'), model: 'gpt-6-astra', permissionMode: 'bypassPermissions', effort: 'medium', resumeSessionId: id }, {
+        emit: e => events.push(e), onPermission: q => questions.push(q), onSessionId: s => id = s, onClose: () => {},
+      });
+      await p.start();
+      assert.equal(questions.length, 2, '重载必须恢复未回答问题');
+      assert.equal(p.isBusy, true);
+      p.rpc.on('notification', m => raw.push(m));
+      console.log('等待中的问题在进程重建后恢复成功');
       const from = raw.length;
       console.log('后端已中断，保持 65 秒不应答');
       await new Promise(r => setTimeout(r, 65000));
