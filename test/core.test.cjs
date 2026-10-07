@@ -12,7 +12,7 @@ const {diffCounts}=require('../dist/test/diff.js');
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const executable=path.resolve('test/fake-codex.cjs');
 function waitUntil(predicate){return new Promise((resolve,reject)=>{const end=Date.now()+5000;const tick=()=>{if(predicate())resolve();else if(Date.now()>end)reject(Error('等待超时'));else setTimeout(tick,10);};tick();});}
-async function client(t){const events=[],requests=[];const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},{emit:e=>events.push(e),onPermission:r=>requests.push(r),onSessionId:()=>{},onClose:()=>{}});t.after(()=>p.disposeAndWait());await p.start();return {p,events,requests};}
+async function client(t,extra={}){const events=[],requests=[];const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',...extra},{emit:e=>events.push(e),onPermission:r=>requests.push(r),onSessionId:()=>{},onClose:()=>{}});t.after(()=>p.disposeAndWait());await p.start();return {p,events,requests};}
 test('初始化不发送预热；流式消息不重复且报告上下文',async t=>{const {p,events}=await client(t);assert.equal(events.some(e=>e.kind==='result'),false);assert.equal(p.sendUserMessage('你好'),true);await waitUntil(()=>events.some(e=>e.kind==='result'));assert.equal(events.filter(e=>e.kind==='text_delta').map(e=>e.text).join(''),'你好');assert.deepEqual(events.find(e=>e.kind==='context'),{kind:'context',used:123,total:1000});});
 test('审批只在用户应答后完成，支持本会话允许',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('approval');await waitUntil(()=>requests.length);assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.respondPermission(requests[0].requestId,{behavior:'allow',suggestionId:'session'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.match(events.find(e=>e.kind==='tool_result').content,/acceptForSession/);});
 test('新版提问协议等待用户输入并按 question ID 回答',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('question');await waitUntil(()=>requests.length);assert.equal(requests[0].toolName,'AskUserQuestion');assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.answerQuestion(requests[0].requestId,{'选择什么？':'A'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.deepEqual(JSON.parse(JSON.parse(events.find(e=>e.kind==='tool_result').content).text.split('\n')[1]),[{question:'选择什么？',answers:['A']}]);});
@@ -88,4 +88,66 @@ test('用户停止已暂停的问题后不会自动续轮，可以发起新的�
  assert.equal(p.isBusy,false);assert.equal(p.answerQuestion(key,{choice:'A'}),false);
  assert.equal(events.filter(e=>e.kind==='result').length,1);assert.equal(events.some(e=>e.kind==='tool_result'),false);
  assert.equal(p.sendUserMessage('新任务'),true);await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+});
+
+test('等待问题在进程销毁后恢复，空答仍被拒绝，提交后清除磁盘状态',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-paused-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const first=await client(t,{questionStateDir:dir});first.p.sendUserMessage('dynamic-question');await waitUntil(()=>first.requests.length);
+ const file=path.join(dir,'question-thread-1.json');assert.ok((await fs.stat(file)).isFile());
+ await first.p.disposeAndWait();
+ const restored=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});
+ assert.equal(restored.requests.length,1);assert.equal(restored.p.isBusy,true);assert.equal(restored.events.some(e=>e.kind==='result'),false);
+ const key=restored.requests[0].requestId;assert.equal(restored.p.answerQuestion(key,{}),false);
+ assert.equal(restored.p.answerQuestion(key,{choice:'A'}),true);await waitUntil(()=>restored.events.some(e=>e.kind==='result'));
+ await assert.rejects(fs.access(file));
+});
+test('取消已恢复的问题后不能在下次启动时复活；新轮次使旧问题失效',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-paused-cancel-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const first=await client(t,{questionStateDir:dir});first.p.sendUserMessage('dynamic-question');await waitUntil(()=>first.requests.length);await first.p.disposeAndWait();
+ const stale=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1',env:{TEST_LAST_TURN_ID:'new-turn'}});
+ assert.equal(stale.requests.length,0);assert.equal(stale.p.isBusy,false);
+ const second=await client(t,{questionStateDir:dir});second.p.sendUserMessage('dynamic-question');await waitUntil(()=>second.requests.length);await second.p.disposeAndWait();
+ const restored=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});await restored.p.interrupt();await restored.p.disposeAndWait();
+ const again=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});assert.equal(again.requests.length,0);assert.equal(again.p.isBusy,false);
+});
+test('私密回答保留给模型但历史及用户消息视图遮蔽，并保留普通答案',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
+ p.pending.get(requests[0].requestId).params.arguments.questions[0].isSecret=true;
+ assert.equal(p.answerQuestion(requests[0].requestId,{choice:'SAMPLE_PRIVATE_ANSWER'}),true);await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const text=JSON.parse(events.find(e=>e.kind==='tool_result').content).text;
+ assert.match(text,/SAMPLE_PRIVATE_ANSWER/);assert.match(text,/"isSecret":true/);
+ const visible=timeline([{items:[{type:'userMessage',content:[{type:'text',text}]}]}]);
+ assert.doesNotMatch(JSON.stringify(visible),/SAMPLE_PRIVATE_ANSWER/);assert.match(visible[0].text,/已填写/);
+ const {QUESTION_REPLY_PREFIX}=require('../dist/test/codex/events.js');
+ const mixed=QUESTION_REPLY_PREFIX+JSON.stringify([{question:'秘密',isSecret:true,answers:['PRIVATE']},{question:'普通',answers:['公开答案']}]);
+ const result=timeline([{items:[{type:'userMessage',content:[{type:'text',text:mixed}]}]}]);
+ assert.doesNotMatch(JSON.stringify(result),/PRIVATE/);assert.match(result[0].text,/公开答案/);
+});
+
+test('私密标记随等待状态恢复，保存文件不含用户答案，历史继续遮蔽',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-paused-secret-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const first=await client(t,{questionStateDir:dir});first.p.sendUserMessage('secret-question');await waitUntil(()=>first.requests.length);await first.p.disposeAndWait();
+ const restored=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});
+ assert.equal(restored.requests[0].input.questions[0].isSecret,true);
+ assert.equal(restored.p.answerQuestion(restored.requests[0].requestId,{choice:'SAMPLE_SECRET'}),true);
+ await waitUntil(()=>restored.events.some(e=>e.kind==='result'));
+ assert.deepEqual(await fs.readdir(dir),[]);
+ const text=JSON.parse(restored.events.find(e=>e.kind==='tool_result').content).text;
+ assert.match(text,/SAMPLE_SECRET/);
+ assert.doesNotMatch(JSON.stringify(timeline([{items:[{type:'userMessage',content:[{type:'text',text}]}]}])),/SAMPLE_SECRET/);
+});
+test('损坏的等待状态不阻塞会话初始化',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-paused-broken-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ await fs.writeFile(path.join(dir,'question-thread-1.json'),'broken');
+ const restored=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});
+ assert.equal(restored.p.isBusy,false);assert.equal(restored.requests.length,0);assert.ok(restored.events.some(e=>e.kind==='notice'));
+});
+
+test('合法 JSON 的无效等待状态也不阻塞初始化',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-paused-null-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ for(const value of ['null','[]','{}']){
+  await fs.writeFile(path.join(dir,'question-thread-1.json'),value);
+  const restored=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});
+  assert.equal(restored.p.isBusy,false);assert.equal(restored.requests.length,0);await restored.p.disposeAndWait();
+ }
 });

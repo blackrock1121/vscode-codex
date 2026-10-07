@@ -1,6 +1,8 @@
+import * as fs from 'node:fs';
+import * as path from 'node:path';
 import { CTX_OPEN, CTX_CLOSE, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
-import { toolView, quotaEvents } from './events';
+import { QUESTION_REPLY_PREFIX, toolView, quotaEvents } from './events';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，使用 AskUserQuestion 向用户提问并等待其答案。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时必须持续等待，不得因为等待时间较长而结束本轮或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
@@ -10,7 +12,7 @@ const ASK_USER_QUESTION_TOOL = {
     type: 'object', properties: { questions: { type: 'array', minItems: 1, maxItems: 3, items: {
       type: 'object', properties: {
         id: { type: 'string' }, question: { type: 'string' }, header: { type: 'string' },
-        isOther: { type: 'boolean' }, options: { type: 'array', items: { type: 'object', properties: {
+        isOther: { type: 'boolean' }, isSecret: { type: 'boolean' }, options: { type: 'array', items: { type: 'object', properties: {
           label: { type: 'string' }, description: { type: 'string' },
         }, required: ['label'] } },
       }, required: ['question', 'options'],
@@ -20,7 +22,7 @@ const ASK_USER_QUESTION_TOOL = {
 
 export interface CodexProcessOptions {
   codexPath: string; cwd: string; model?: string; effort?: string; permissionMode: string;
-  resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
+  questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
 }
 export interface PermissionRequest {
   requestId: string; toolUseId?: string; toolName: string; displayName?: string;
@@ -37,6 +39,12 @@ export function permissions(mode: string, roots: string[]) {
   if (mode === 'plan') return { approvalPolicy: 'never', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly', networkAccess: false } };
   if (mode !== 'default') throw new Error(`不支持的权限模式：${mode}`);
   return { approvalPolicy: 'on-request', sandbox: 'read-only', sandboxPolicy: { type: 'readOnly', networkAccess: false } };
+}
+export function questionStateFile(dir: string, sessionId: string): string {
+  return path.join(dir, `question-${encodeURIComponent(sessionId)}.json`);
+}
+export function deleteQuestionState(dir: string, sessionId: string): void {
+  fs.rmSync(questionStateFile(dir, sessionId), { force: true });
 }
 export class CodexProcess {
   private readonly rpc: CodexRpc;
@@ -75,8 +83,45 @@ export class CodexProcess {
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
+      await this.restoreQuestion(result.thread);
       void this.rpc.request('model/list', {}).then(r => this.emit({ kind: 'models', models: r.data.filter((m: any) => !m.hidden).map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault })) })).catch(e => this.error(e));
     } catch (e) { this.exited = true; this.rpc.dispose(); throw e; }
+  }
+  private saveQuestion(): void {
+    const paused = this.pausedQuestion;
+    if (!this.opts.questionStateDir || !this.sessionId || !paused?.ready) return;
+    fs.mkdirSync(this.opts.questionStateDir, { recursive: true, mode: 0o700 });
+    const file = questionStateFile(this.opts.questionStateDir, this.sessionId);
+    const data = { version: 1, sessionId: this.sessionId, turnId: paused.turnId, beganAt: this.beganAt, request: paused.request };
+    fs.writeFileSync(file + '.tmp', JSON.stringify(data), { mode: 0o600 });
+    fs.renameSync(file + '.tmp', file);
+  }
+  private clearSavedQuestion(): void {
+    if (this.opts.questionStateDir && this.sessionId) deleteQuestionState(this.opts.questionStateDir, this.sessionId);
+  }
+  private async restoreQuestion(thread: any): Promise<void> {
+    if (!this.opts.questionStateDir || !this.opts.resumeSessionId || !this.sessionId) return;
+    const file = questionStateFile(this.opts.questionStateDir, this.sessionId);
+    if (!fs.existsSync(file)) return;
+    let saved: any;
+    try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch { this.clearSavedQuestion(); this.emit({ kind: 'notice', message: '保存的提问已损坏，请重新发送消息。' }); return; }
+    const questions = saved?.request?.input?.questions;
+    if (saved?.version !== 1 || saved.sessionId !== this.sessionId || typeof saved.turnId !== 'string' ||
+        saved.request?.toolName !== 'AskUserQuestion' || typeof saved.request.requestId !== 'string' ||
+        !Array.isArray(questions) || !questions.length || questions.some((q: any) => !q || typeof q.question !== 'string')) {
+      this.clearSavedQuestion(); return;
+    }
+    // 只恢复仍停在同一轮的问题，防止用户在其他窗口续聊后复活旧问题。
+    if (!Array.isArray(thread.turns) || !thread.turns.length) thread = (await this.rpc.request('thread/read', { threadId: this.sessionId, includeTurns: true })).thread;
+    const last = thread.turns?.at(-1);
+    if (!last || last.id !== saved.turnId || !['interrupted', 'completed'].includes(last.status)) { this.clearSavedQuestion(); return; }
+    const request: PermissionRequest = saved.request;
+    this.pausedQuestion = { request, turnId: saved.turnId, ready: true };
+    this.pending.set(request.requestId, { id: request.requestId, method: 'item/tool/call', params: { arguments: request.input } });
+    this.busy = true; this.beganAt = typeof saved.beganAt === 'number' ? saved.beganAt : Date.now();
+    this.emit({ kind: 'busy', busy: true });
+    this.hooks.onPermission(request);
   }
   sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[]): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
@@ -110,6 +155,8 @@ export class CodexProcess {
         if (p.turn.status === 'failed') { this.error(p.turn.error?.message ?? '暂停提问失败'); this.finish(true); return; }
         if (!paused.ready) {
           clearTimeout(paused.timer); paused.ready = true; this.turnId = undefined;
+          try { this.saveQuestion(); }
+          catch (e) { this.error(`保存等待中的问题失败：${String(e)}`); this.finish(true); return; }
           this.hooks.onPermission(paused.request);
         }
       }
@@ -214,13 +261,14 @@ export class CodexProcess {
     }
     const paused = this.pausedQuestion;
     if (!paused?.ready || paused.request.requestId !== key) return false;
-    const reply = questions.map((q, index) => ({ question: q.question, answers: mapped[q.id || q.question || String(index)].answers }));
+    const reply = questions.map((q, index) => ({ question: q.question, ...(q.isSecret ? { isSecret: true } : {}), answers: mapped[q.id || q.question || String(index)].answers }));
     // 原工具请求随中断失效。用真实用户消息恢复同一会话，绝不向旧 RPC 伪造成功。
+    this.clearSavedQuestion();
     this.pausedQuestion = undefined;
     this.pending.clear();
     this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
     this.busy = false;
-    return this.sendUserMessage(`用户已回答刚才的问题，请根据以下答案继续原任务：\n${JSON.stringify(reply)}`);
+    return this.sendUserMessage(`${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`);
   }
   async interrupt(): Promise<void> {
     if (this.pausedQuestion?.ready) { this.finish(false); return; }
@@ -234,6 +282,7 @@ export class CodexProcess {
   async setEffort(effort: string) { this.opts.effort = effort; }
   private finish(isError: boolean) {
     if (!this.busy) return;
+    try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
     clearTimeout(this.pausedQuestion?.timer);
     this.busy = false; this.compacting = false; this.turnId = undefined; this.pausedQuestion = undefined;
     for (const key of this.pending.keys()) this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
