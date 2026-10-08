@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, PermissionSuggestionView, ToWebview } from '../shared';
+import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, toolView, quotaEvents } from './events';
 
@@ -21,7 +21,7 @@ const ASK_USER_QUESTION_TOOL = {
 };
 
 export interface CodexProcessOptions {
-  codexPath: string; cwd: string; model?: string; effort?: string; fastMode?: boolean; permissionMode: string;
+  codexPath: string; cwd: string; model?: string; effort?: string; speedMode?: SpeedMode; permissionMode: string;
   questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
 }
 export interface PermissionRequest {
@@ -69,6 +69,7 @@ export class CodexProcess {
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null) => { clearTimeout(this.pausedQuestion?.timer); this.exited = true; this.busy = false; this.hooks.onClose(code); });
   }
+  get modelForNextTurn() { return this.opts.model || this.activeModel; }
   get currentSessionId() { return this.sessionId; }
   get isBusy() { return this.busy; }
   get isExited() { return this.exited; }
@@ -79,8 +80,9 @@ export class CodexProcess {
       await this.rpc.start();
       const account = await this.rpc.request('account/read', {});
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
+      this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type) });
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-      const params = { serviceTier: this.opts.fastMode ? 'priority' : 'default', cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
+      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
       const result = await this.rpc.request(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
       this.activeModel = result.model ?? this.opts.model ?? "";
       this.sessionId = result.thread.id;
@@ -135,16 +137,17 @@ export class CodexProcess {
     this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
     this.emit({ kind: 'busy', busy: true });
     const model = this.opts.model || this.activeModel;
-    const unsupportedFastMode = this.opts.fastMode && this.models.find(m => m.id === model)?.fastModeSupported !== true;
+    const speed = this.opts.speedMode ?? 'default';
+    const unsupportedSpeed = !supportsSpeed(this.models.find(m => m.id === model), speed);
     const input: any[] = [];
     const prompt = context ? `${text}\n\n${CTX_OPEN}\n${context}\n${CTX_CLOSE}` : text;
     if (prompt) input.push({ type: 'text', text: prompt, text_elements: [] });
     for (const image of images ?? []) input.push({ type: 'image', url: `data:${image.mediaType};base64,${image.data}` });
     const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-    this.startingTurn = (unsupportedFastMode
-      ? Promise.reject(new Error(`无法确认模型「${model}」支持快速模式。请关闭快速开关、选择支持的模型，或更新 Codex CLI 后重试。`))
-      : this.rpc.request('turn/start', { threadId: this.sessionId, input, serviceTier: this.opts.fastMode ? 'priority' : 'default', model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy }))
-      .then(r => { this.activeModel = model; return r; })
+    this.startingTurn = (unsupportedSpeed
+      ? Promise.reject(new Error(`无法确认当前账号的模型「${model}」支持${speedLabel(speed)}模式。请改用普通模式、选择提供该档位的模型，或更新 Codex CLI 后重试。`))
+      : this.rpc.request('turn/start', { threadId: this.sessionId, input, serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy }))
+      .then(r => { this.activeModel = model; this.emit({ kind: "speed_context", model }); return r; })
       .then(r => { if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id; }).catch(e => { this.error(e); this.finish(true); }).finally(() => { this.startingTurn = undefined; });
     return true;
   }
@@ -290,9 +293,12 @@ export class CodexProcess {
     else if (this.compacting) { this.dispose(); }
   }
   async setPermissionMode(mode: string) { permissions(mode, []); this.opts.permissionMode = mode; }
-  async setModel(model: string) { this.opts.model = model; }
+  async setModel(model: string) { this.opts.model = model; this.emit({ kind: "speed_context", model: this.modelForNextTurn }); }
   async setEffort(effort: string) { this.opts.effort = effort; }
-  async setFastMode(enabled: boolean) { this.opts.fastMode = enabled; }
+  async setSpeedMode(mode: SpeedMode) {
+    if (!isSpeedMode(mode)) throw new Error("无效的速度模式");
+    this.opts.speedMode = mode;
+  }
   private finish(isError: boolean) {
     if (!this.busy) return;
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }

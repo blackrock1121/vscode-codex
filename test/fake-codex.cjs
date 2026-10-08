@@ -11,12 +11,12 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(!m.method) {answerCount++;note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}});return;}
  if(m.method==='initialized')return;
  let result={};
- if(m.method==='account/read')result={account:{type:'chatgpt'},requiresOpenaiAuth:true};
+ if(m.method==='account/read')result={account:{type:process.env.TEST_API_KEY?'apiKey':'chatgpt'},requiresOpenaiAuth:true};
  if(m.method==='thread/start'||m.method==='thread/resume'){
   if(!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
   result={thread:{id:'thread-1'},model:'test-model'};
  }
- if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',serviceTiers:process.env.TEST_NO_FAST?[]:[{id:'priority',name:'Fast',description:''}],supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
+ if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',serviceTiers:process.env.TEST_NO_FAST?[]:[{id:'priority',name:'Fast',description:''},...(process.env.TEST_ULTRA?[{id:'ultrafast',name:'Ultrafast',description:''}]:[])],supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
  if(m.method==='thread/read')result={thread:{id:'thread-1',turns:[{id:process.env.TEST_LAST_TURN_ID||'turn-1',status:'interrupted',items:[]}]}};
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};

@@ -161,11 +161,11 @@ async function fastClient(t, extra={}) {
 }
 test('快速模式在新建、恢复和续轮传递服务档位，关闭明确恢复普通速度',async t=>{
  for(const resumeSessionId of [undefined,'thread-1']) {
-  const {p,events,read}=await fastClient(t,{resumeSessionId,fastMode:true,model:'test-model',effort:'high'});
+  const {p,events,read}=await fastClient(t,{resumeSessionId,speedMode:'fast',model:'test-model',effort:'high'});
   const init=(await read()).find(m=>m.method===(resumeSessionId?'thread/resume':'thread/start'));
   assert.equal(init.params.serviceTier,'priority');
   p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
-  await p.setFastMode(false);
+  await p.setSpeedMode('default');
   assert.equal((await read()).filter(m=>m.method==='turn/start').length,1);
   assert.equal((await read()).some(m=>m.method==='turn/interrupt'),false,'切换不得中断当前轮次');
   await p.interrupt();await waitUntil(()=>!p.isBusy);
@@ -178,18 +178,43 @@ test('快速模式在新建、恢复和续轮传递服务档位，关闭明确�
 test('快速默认关闭且不继承会话服务档位；运行中开启只影响下轮',async t=>{
  const {p,events,read}=await fastClient(t);
  assert.equal((await read()).find(m=>m.method==='thread/start').params.serviceTier,'default');
- p.sendUserMessage('普通');await waitUntil(()=>!p.isBusy);await p.setFastMode(true);
+ p.sendUserMessage('普通');await waitUntil(()=>!p.isBusy);await p.setSpeedMode('fast');
  p.sendUserMessage('加急');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
  assert.deepEqual((await read()).filter(m=>m.method==='turn/start').map(m=>m.params.serviceTier),['default','priority']);
 });
 test('不支持或未列出的模型不静默降速，也不发送收费请求',async t=>{
  for(const extra of [{env:{TEST_NO_FAST:'1'}},{model:'unlisted-model'}]) {
-  const {p,events,read}=await fastClient(t,{...extra,fastMode:true});
+  const {p,events,read}=await fastClient(t,{...extra,speedMode:'fast'});
   p.sendUserMessage('加急');await waitUntil(()=>events.some(e=>e.kind==='result'));
   assert.equal((await read()).some(m=>m.method==='turn/start'),false);
   assert.match(events.find(e=>e.kind==='error').message,/无法确认.*支持快速模式/);
   assert.equal(events.find(e=>e.kind==='result').isError,true);
-  await p.setFastMode(false);p.sendUserMessage('普通');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+  await p.setSpeedMode('default');p.sendUserMessage('普通');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
   assert.equal((await read()).filter(m=>m.method==='turn/start').length,1);
  }
+});
+
+test('三档速度在已有会话逐轮切换，超高速不能改变模型或推理强度',async t=>{
+ const {p,events,read}=await fastClient(t,{env:{TEST_ULTRA:'1'},model:'test-model',effort:'high',resumeSessionId:'thread-1',speedMode:'ultrafast'});
+ assert.equal((await read()).find(m=>m.method==='thread/resume').params.serviceTier,'ultrafast');
+ for(const mode of ['ultrafast','fast','default']) {
+  await p.setSpeedMode(mode);p.sendUserMessage(mode);await waitUntil(()=>!p.isBusy);
+ }
+ const turns=(await read()).filter(m=>m.method==='turn/start');
+ assert.deepEqual(turns.map(m=>m.params.serviceTier),['ultrafast','priority','default']);
+ assert.ok(turns.every(m=>m.params.model==='test-model'&&m.params.effort==='high'));
+ assert.equal(events.filter(e=>e.kind==='result').length,3);
+});
+test('仅支持快速的模型不能请求超高速，普通模式始终可恢复',async t=>{
+ const {p,events,read}=await fastClient(t,{speedMode:'ultrafast'});
+ p.sendUserMessage('超高速');await waitUntil(()=>!p.isBusy);
+ assert.equal((await read()).some(m=>m.method==='turn/start'),false);
+ assert.match(events.find(e=>e.kind==='error').message,/超高速/);
+ await p.setSpeedMode('default');p.sendUserMessage('普通');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+ assert.equal((await read()).find(m=>m.method==='turn/start').params.serviceTier,'default');
+});
+test('API 登录只发送计费类型，未知速度不能应用到进程',async t=>{
+ const {p,events}=await client(t,{env:{TEST_API_KEY:'1'}});
+ assert.ok(events.some(e=>e.kind==='speed_context'&&e.billing==='api'));
+ await assert.rejects(()=>p.setSpeedMode('invalid'),/无效的速度模式/);
 });

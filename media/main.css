@@ -1927,8 +1927,14 @@ mark.find-hit.current {
   outline: 1px solid var(--vscode-editor-findMatchBorder, #e8b93d); outline-offset: 0;
 }
 
-#fast-toggle[aria-pressed="true"] {
+#speed-trigger[data-accelerated="true"] {
   color: var(--vscode-button-foreground);
   background: var(--vscode-button-background);
   border-color: var(--vscode-focusBorder);
 }
+
+#speed-menu { max-height: min(560px, 75vh); overflow-y: auto; }
+#speed-menu .pick-row:disabled { opacity: .65; cursor: not-allowed; }
+#speed-menu .pick-desc { white-space: normal; line-height: 1.5; }
+.speed-note { padding: 8px 12px; font-size: 11px; line-height: 1.6; color: var(--vscode-descriptionForeground); }
+.speed-note a { color: var(--vscode-textLink-foreground); }
