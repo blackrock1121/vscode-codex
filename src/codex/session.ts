@@ -104,6 +104,13 @@ export class SessionStore {
     });
   }
   rewindLeafFor(id: string, count: number): string | undefined { return this.threads.get(id)?.turns?.[count - 1]?.id; }
+  /** 仅识别末尾确实已中断、且连用户消息都未落盘的空轮次。 */
+  isEmptyInterruptedTail(id: string, count: number): boolean {
+    const turns = this.threads.get(id)?.turns;
+    if (!Array.isArray(turns) || !Number.isInteger(count) || count < 0 || turns.length !== count + 1) return false;
+    const turn = turns[count];
+    return turn.status === 'interrupted' && Array.isArray(turn.items) && turn.items.length === 0;
+  }
   firstUserTurnAfter(id: string, count: number): { text: string; images: { mediaType: string; data: string }[] } | undefined {
     const item = this.threads.get(id)?.turns?.[count]?.items?.find((i: any) => i.type === 'userMessage');
     if (!item) return undefined;
