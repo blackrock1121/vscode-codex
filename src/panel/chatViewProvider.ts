@@ -1219,7 +1219,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // Existing threads can reconnect while the local snapshot is captured.
         // Keep new-thread creation after the snapshot so Stop can still cancel it.
         const processReady = hadSession ? this.ensureProcess(ctx) : undefined;
-        const historyReady = hadSession && ctx.sessionId ? this.store.hydrate(ctx.sessionId) : Promise.resolve();
+        const historyAt = Date.now();
+        const historyReady = hadSession && ctx.sessionId ? this.store.hydrate(ctx.sessionId).finally(() => {
+            this.output.appendLine(`[${new Date().toISOString()}] [prepare] 历史读取 ${Date.now() - historyAt}ms`);
+        }) : Promise.resolve();
         const snapshotReady = (async () => {
             if (!this.config().get<boolean>("snapshotFilesForRestore", true)) return;
             const roots = this.workspaceDirs();
@@ -2257,6 +2260,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         if (e.kind === "result") {
             ctx.finalizing = (async () => {
+                const finalizeAt = Date.now();
                 try {
                     if (ctx.snapshot && ctx.mayHaveModifiedWorkspace)
                         for (const [file, original] of await ctx.snapshot.changed())
@@ -2268,6 +2272,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 catch (err) {
                     this.post(ctx, { kind: "notice", message: `会话或文件快照刷新失败：${String(err)}` });
                 }
+                this.output.appendLine(`[${new Date().toISOString()}] [finalize] 文件差异与还原点整理 ${Date.now() - finalizeAt}ms`);
                 this.handleEmitInner(ctx, { kind: "busy", busy: false });
                 this.handleEmitInner(ctx, e);
             })();

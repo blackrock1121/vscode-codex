@@ -307,6 +307,15 @@ const railObservers: ResizeObserver[] = [];
  *  NOTE: each commit re-renders the whole prefix — O(n²) over a long reply.
  *  Once the text is big, batch commits into larger chunks: the tail lines just
  *  stay as plain text a moment longer, which is visually indistinguishable. */
+let liveRenderRAF = 0;
+function cancelLiveRender() {
+  if (liveRenderRAF) cancelAnimationFrame(liveRenderRAF);
+  liveRenderRAF = 0;
+}
+function scheduleLiveRender() {
+  if (liveRenderRAF) return;
+  liveRenderRAF = requestAnimationFrame(() => { liveRenderRAF = 0; renderLive(); });
+}
 function renderLive() {
   if (!liveBlock) return;
   const shownText = liveBlock.raw.slice(0, Math.floor(liveBlock.shown));
@@ -346,6 +355,7 @@ function foldLeakedToolXml(text: string): string {
 
 /** Snap the live block to its full text, rendered with syntax highlighting. */
 function finalizeLive() {
+  cancelLiveRender();
   if (!liveBlock) return;
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
@@ -856,6 +866,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       onTextDelta(m.text);
       break;
     case "text_snap":
+      cancelLiveRender();
       // 完整消息与 delta 累计不一致时的权威快照：整块替换重排。
       removeWorking();
       if (!liveBlock) onBlockStart("text");
@@ -1120,9 +1131,16 @@ function onTextDelta(text: string) {
   addStreamEst(text); // keep the running token estimate growing
   removeWorking();
   if (!liveBlock) onBlockStart("text");
+  const first = liveBlock!.raw.length === 0;
   liveBlock!.raw += text;
   liveBlock!.shown = liveBlock!.raw.length;
-  renderLive();
+  if (first) renderLive();
+  else {
+    // 新文字先显示，下一帧再合并 Markdown；后台窗口暂停帧回调时也不会吞掉文字。
+    liveBlock!.lineEl.appendChild(document.createTextNode(text));
+    scheduleLiveRender();
+    scheduleLiveLayout();
+  }
 }
 
 // ---------------------------------------------------------------------------
