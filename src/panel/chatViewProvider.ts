@@ -1090,7 +1090,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private renderSessionInto(ctx: SessionCtx, sid: string): void {
         const items = this.store.load(sid);
-        this.post(ctx, { kind: "load_history", items, sessionId: sid, checkpoints: this.checkpointsForView(ctx, sid) });
+        const checkpoints = this.checkpointsForView(ctx, sid);
+        const points = ctx.checkpoints.list();
+        const latest = points[points.length - 1];
+        // 只补界面，不伪造服务端历史；重载后仍能找到未落盘提问的还原入口。
+        if (latest && this.emptyInterruptedCheckpoint(ctx, latest.id)) {
+            items.push({ type: "user", text: latest.userText });
+            checkpoints.push(latest);
+        }
+        this.post(ctx, { kind: "load_history", items, sessionId: sid, checkpoints });
         this.maybePrespawn(ctx);
         if (ctx.proc?.isBusy) {
             this.post(ctx, { kind: "busy", busy: true });
@@ -1701,6 +1709,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ? target.images.length > 0 && !norm(target.text)
             : norm(target.text) === norm(meta.userText);
     }
+    private emptyInterruptedCheckpoint(ctx: SessionCtx, checkpointId: string): boolean {
+        if (!ctx.sessionId || ctx.proc?.isBusy || checkpointId.startsWith("turn:")) return false;
+        const points = ctx.checkpoints.list();
+        const latest = points[points.length - 1];
+        const meta = ctx.checkpoints.metaOf(checkpointId);
+        // 只能处理最后一个无文件改动的本地还原点，不能把任意失配放行。
+        // 同一位置存在多个未落盘还原点时身份有歧义，仍交给原有保护拦截。
+        return latest?.id === checkpointId && latest.fileCount === 0 && latest.userText !== "(图片)" && !!meta
+            && (meta.truncateLine === 0 || points.length > 1)
+            && points.slice(0, -1).every(p => ctx.checkpoints.cutLineOf(p.id)! < meta.truncateLine)
+            && this.store.isEmptyInterruptedTail(ctx.sessionId, meta.truncateLine);
+    }
     private cpPreview(ctx: SessionCtx, checkpointId: string): {
         userText: string;
     } | undefined {
@@ -1815,11 +1835,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const nextTurn = ctx.sessionId
             ? this.store.firstUserTurnAfter(ctx.sessionId, meta.truncateLine)
             : undefined;
-        if (!ctx.sessionId || !this.checkpointAligned(ctx.sessionId, meta)) {
+        if (!ctx.sessionId || (!this.checkpointAligned(ctx.sessionId, meta)
+            && !this.emptyInterruptedCheckpoint(ctx, checkpointId))) {
             this.output.appendLine(`[restore] 中止：还原点与 transcript 对不上 truncateLine=${meta.truncateLine}`);
             this.post(ctx, {
                 kind: "error",
-                message: "这个还原点与当前对话对不上（可能来自更早的会话状态），已中止还原以免误删上下文。",
+                message: "还原点对应的消息未能在当前会话历史中确认，已中止还原以免误删上下文。",
             });
             return;
         }
