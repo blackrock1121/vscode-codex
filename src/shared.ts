@@ -41,25 +41,62 @@ export const ICONS: Record<string, string> = {
 
 // ---- Extension host -> webview --------------------------------------------
 
+export type SpeedMode = "default" | "fast" | "ultrafast";
+export type BillingKind = "chatgpt" | "api" | "unknown";
+export const SPEED_MODES: { id: SpeedMode; label: string }[] = [
+  { id: "default", label: "普通" }, { id: "fast", label: "快速" }, { id: "ultrafast", label: "超高速" },
+];
+export const SPEED_DOCS_URL = "https://learn.chatgpt.com/docs/agent-configuration/speed";
+export function isSpeedMode(value: unknown): value is SpeedMode {
+  return SPEED_MODES.some(mode => mode.id === value);
+}
+/** 新设置优先；只在尚未选择三档速度时兼容 0.1.21 的布尔开关。 */
+export function configuredSpeedMode(value: unknown, legacyFastMode: boolean): SpeedMode {
+  return value === undefined ? (legacyFastMode ? "fast" : "default") : isSpeedMode(value) ? value : "default";
+}
+export function speedServiceTier(mode: SpeedMode): string { return mode === "fast" ? "priority" : mode; }
+export function speedLabel(mode: SpeedMode): string { return SPEED_MODES.find(m => m.id === mode)!.label; }
+export function billingKind(accountType: unknown): BillingKind {
+  return accountType === "apiKey" ? "api" : accountType === "chatgpt" || accountType === "chatgptAuthTokens" ? "chatgpt" : "unknown";
+}
+/** 倍率来自官方 Speed 文档（2026-10-08）；未知模型不套用已知模型价格。 */
+export function speedCost(mode: SpeedMode, model: string, billing: BillingKind): { badge: string; text: string } {
+  if (billing === "api") return { badge: "API 定价", text: "按 API 的模型与服务档位单独计价，不适用 ChatGPT 订阅额度倍率。" };
+  const prefix = billing === "unknown" ? "若使用 ChatGPT：" : "";
+  if (mode === "default") return { badge: "1×", text: `${prefix}订阅内额度 1×；购买额度／企业按量 1×。` };
+  const baseModel = model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  const fastKnown = ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].includes(baseModel);
+  const ultraKnown = baseModel === "gpt-6-astra";
+  if ((mode === "fast" && fastKnown) || (mode === "ultrafast" && ultraKnown)) {
+    const included = mode === "fast" ? "2.5" : "8", credits = mode === "fast" ? "2" : "6";
+    return { badge: `${included}×／${credits}×`, text: `${prefix}订阅内额度 ${included}×；购买额度／企业按量 ${credits}×。` };
+  }
+  return { badge: "倍率待确认", text: `${prefix}当前模型的额度倍率尚未确认，请查看官方说明；不能套用其他模型的倍率。` };
+}
 export interface ModelChoice {
   id: string; name: string; description: string; efforts: string[];
-  defaultEffort?: string; isDefault?: boolean; fastModeSupported?: boolean;
+  defaultEffort?: string; isDefault?: boolean; speedModes?: SpeedMode[];
 }
-
+export function supportsSpeed(model: ModelChoice | undefined, mode: SpeedMode): boolean {
+  return mode === "default" || model?.speedModes?.includes(mode) === true;
+}
 /** 优先使用当前协议的服务档位，兼容旧版速度列表；缺字段表示未知。 */
 export function modelChoices(data: any[]): ModelChoice[] {
   return data.filter(m => !m.hidden).map(m => {
     const tiers = Array.isArray(m.serviceTiers) ? m.serviceTiers.map((t: any) => t.id)
       : Array.isArray(m.additionalSpeedTiers) ? m.additionalSpeedTiers : undefined;
+    const speedModes: SpeedMode[] | undefined = tiers ? ["default"] : undefined;
+    if (tiers?.some((t: string) => t === "fast" || t === "priority")) speedModes!.push("fast");
+    if (tiers?.includes("ultrafast")) speedModes!.push("ultrafast");
     return { id: m.model, name: m.displayName, description: m.description,
       efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort),
-      defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault,
-      fastModeSupported: tiers ? tiers.some((t: string) => t === 'fast' || t === 'priority') : undefined };
+      defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault, speedModes };
   });
 }
 
 export type ToWebview =
   | { kind: "models"; models: ModelChoice[] }
+  | { kind: "speed_context"; model?: string; billing?: BillingKind }
   /** `permissionMode` is the mode the CLI process ACTUALLY runs in (from its
    *  init event) — the picker syncs to this, never to a local guess. */
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }
@@ -124,7 +161,7 @@ export type ToWebview =
   // A restore point was created for the turn just sent (live).
   | { kind: "checkpoint_marker"; checkpointId: string; userText: string }
   /** modEnterToSend：Cmd/Ctrl+Enter 发送、Enter 换行（默认 Enter 发送）。 */
-  | { kind: "config"; permissionMode: string; model: string; effort: string; fastMode?: boolean; modEnterToSend?: boolean }
+  | { kind: "config"; permissionMode: string; model: string; effort: string; speedMode?: SpeedMode; modEnterToSend?: boolean }
   | { kind: "context_added"; label: string; text: string }
   | { kind: "active_file"; path: string | null }
   | { kind: "attach_files"; paths: string[] }
@@ -228,7 +265,7 @@ export type FromWebview =
   | { type: "setPermissionMode"; mode: string }
   | { type: "setModel"; model: string }
   | { type: "setEffort"; effort: string }
-  | { type: "setFastMode"; enabled: boolean }
+  | { type: "setSpeedMode"; mode: SpeedMode }
   | { type: "addContext" }
   | { type: "pickFiles" }
   | { type: "openDiff"; path: string }

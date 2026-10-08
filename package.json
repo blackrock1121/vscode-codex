@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.21",
+  "version": "0.1.22",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -272,7 +272,23 @@
         "codexChat.fastMode": {
           "type": "boolean",
           "default": false,
-          "description": "快速模式（更高额度消耗）：下轮生效，当前工作区会话共用；保留模型与推理强度。模型和账号需支持 Fast 模式，关闭时明确使用普通速度。订阅内额度通常消耗 2.5 倍，购买额度通常按 2 倍计费，实际以账号规则为准。"
+          "description": "旧版快速开关，仅用于兼容。",
+          "deprecationMessage": "请改用 codexChat.speedMode 三档选择器；尚未设置新选项时仍兼容此旧值。"
+        },
+        "codexChat.speedMode": {
+          "type": "string",
+          "enum": [
+            "default",
+            "fast",
+            "ultrafast"
+          ],
+          "default": "default",
+          "enumDescriptions": [
+            "普通：订阅内额度 1×，购买额度／企业按量 1×。",
+            "快速：官方已列模型订阅内额度 2.5×，购买额度／企业按量 2×；需当前账号模型列表提供该档位。",
+            "超高速：GPT-6 Astra 订阅内额度 8×，购买额度／企业按量 6×；需符合套餐、工作区和地区条件且模型列表提供该档位。"
+          ],
+          "description": "速度模式，下轮生效，工作区各会话共用；不改变模型与推理强度。API 按服务档位单独定价，不适用订阅倍率。新设置优先于旧 fastMode 设置。"
         }
       }
     }

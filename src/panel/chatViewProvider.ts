@@ -10,7 +10,7 @@ import { questionStateFile, deleteQuestionState, CodexProcess, PermissionRequest
 import { usageView, quotaEvents } from "../codex/events";
 import { SessionStore } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
-import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SessionSummary, ToWebview } from "../shared";
+import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SpeedMode, configuredSpeedMode, isSpeedMode, speedLabel, supportsSpeed, billingKind, SessionSummary, ToWebview } from "../shared";
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 function stripHeredocs(cmd: string): string {
     const lines = cmd.split("\n");
@@ -249,9 +249,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.postActiveFile(true);
         }));
         this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(ev => {
-            if (!ev.affectsConfiguration("codexChat.fastMode")) return;
-            const enabled = this.config().get<boolean>("fastMode", false);
-            void Promise.all(this.allProcs().map(p => p.setFastMode(enabled)));
+            if (!ev.affectsConfiguration("codexChat.speedMode") && !ev.affectsConfiguration("codexChat.fastMode")) return;
+            const mode = this.speedMode();
+            void Promise.all(this.allProcs().map(p => p.setSpeedMode(mode)));
             this.broadcastModelConfig();
         }));
         this.usageTimer = setInterval(() => this.fetchUsage(), 3 * 60000);
@@ -865,6 +865,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "ready":
                     ctx.ready = true;
+                    void this.store.read("account/read").then(r => {
+                        this.post(ctx, { kind: "speed_context", billing: billingKind(r.account?.type) });
+                    }).catch(() => this.post(ctx, { kind: "speed_context", billing: "unknown" }));
                     void this.store.read("model/list").then(r => {
                         const models = modelChoices(r.data);
                         this.modelCatalog = models;
@@ -875,7 +878,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         permissionMode: this.config().get<string>("permissionMode", "default"),
                         model: this.config().get<string>("model", ""),
                         effort: this.config().get<string>("effort", ""),
-                        fastMode: this.config().get<boolean>("fastMode", false),
+                        speedMode: this.speedMode(),
                         modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
                     });
                     this.loadCtxSession(ctx);
@@ -954,8 +957,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "setModel":
                     await this.setModel(ctx, m.model);
                     break;
-                case "setFastMode":
-                    await this.setFastMode(ctx, m.enabled);
+                case "setSpeedMode":
+                    await this.setSpeedMode(ctx, m.mode);
                     break;
                 case "setEffort":
                     await this.setEffort(ctx, m.effort);
@@ -1244,7 +1247,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         await this.modelSelectionQueue;
-        await proc.setFastMode(this.config().get<boolean>("fastMode", false));
+        await proc.setSpeedMode(this.speedMode());
         if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
             if (!hadSession && ctx.proc === proc) {
                 ctx.proc = undefined;
@@ -1355,7 +1358,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async updateConfig(key: string, value: unknown): Promise<boolean> {
         const insp = this.config().inspect(key);
-        const target = (key === "fastMode" && vscode.workspace.workspaceFolders?.length) || insp?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+        const target = (key === "speedMode" && vscode.workspace.workspaceFolders?.length) || insp?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
         try {
             await this.config().update(key, value, target);
             return true;
@@ -1389,7 +1392,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             permissionMode: this.config().get<string>("permissionMode", "default"),
             model: this.config().get<string>("model", ""),
             effort: this.config().get<string>("effort", ""),
-            fastMode: this.config().get<boolean>("fastMode", false),
+            speedMode: this.speedMode(),
         };
         for (const session of this.sessions) this.post(session, cfg);
     }
@@ -1406,7 +1409,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 permissionMode: m,
                 model: this.config().get<string>("model", ""),
                 effort: this.config().get<string>("effort", ""),
-                fastMode: this.config().get<boolean>("fastMode", false),
+                speedMode: this.speedMode(),
                 modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
             };
             for (const c of this.sessions)
@@ -1457,21 +1460,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         });
     }
-    private setFastMode(ctx: SessionCtx, enabled: boolean): Promise<void> {
+    private speedMode(): SpeedMode {
+        const cfg = this.config();
+        const saved = cfg.inspect<string>("speedMode");
+        const explicit = saved?.workspaceFolderValue ?? saved?.workspaceValue ?? saved?.globalValue;
+        return configuredSpeedMode(explicit, cfg.get<boolean>("fastMode", false));
+    }
+    private setSpeedMode(ctx: SessionCtx, mode: SpeedMode): Promise<void> {
         return this.queueModelSelection(async () => {
-            if (typeof enabled !== "boolean") return;
-            const model = this.config().get<string>("model", "");
-            const details = this.modelCatalog.find(m => m.id === model);
-            if (enabled && details?.fastModeSupported === false) {
-                this.post(ctx, { kind: "error", message: "当前模型不支持快速模式，请先选择支持的模型。" });
+            if (!isSpeedMode(mode)) {
+                this.post(ctx, { kind: "error", message: "无效的速度模式。" });
                 this.broadcastModelConfig();
                 return;
             }
-            if (await this.updateConfig("fastMode", enabled)) {
-                await Promise.all(this.allProcs().map(p => p.setFastMode(enabled)));
-                this.post(ctx, { kind: "notice", message: enabled
-                    ? "已开启快速模式：下轮生效，适用于当前工作区各会话，额度消耗更高；不改变模型与推理强度。"
-                    : "已关闭快速模式：下轮恢复普通速度。" });
+            const model = this.config().get<string>("model", "") || ctx.proc?.modelForNextTurn || "";
+            const details = this.modelCatalog.find(m => m.id === model);
+            if (!supportsSpeed(details, mode)) {
+                this.post(ctx, { kind: "error", message: model
+                    ? `当前账号的模型「${model}」未提供${speedLabel(mode)}档位，或能力尚未确认；请选择可用档位。`
+                    : "默认模型尚未确认，请先选择具体模型再切换加速档位。" });
+                this.broadcastModelConfig();
+                return;
+            }
+            if (await this.updateConfig("speedMode", mode)) {
+                await Promise.all(this.allProcs().map(p => p.setSpeedMode(mode)));
+                this.post(ctx, { kind: "notice", message: `已选择${speedLabel(mode)}模式：当前工作区各会话下轮生效，模型与推理强度保持不变。` });
             }
             this.broadcastModelConfig();
         });
@@ -1953,7 +1966,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             cwd: this.cwd(),
             model: this.config().get<string>("model", "") || undefined,
             effort: this.config().get<string>("effort", "") || undefined,
-            fastMode: this.config().get<boolean>("fastMode", false),
+            speedMode: this.speedMode(),
             permissionMode: this.config().get<string>("permissionMode", "default"),
             resumeSessionId: isResume ? sessionId : undefined,
             addDirs: this.workspaceDirs(),
@@ -2263,6 +2276,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.handleEmitInner(ctx, e);
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview): void {
+        if (e.kind === "models") this.modelCatalog = e.models;
         if (ctx.lastEventAt !== undefined)
             ctx.lastEventAt = Date.now();
         ctx.lastEmitAt = Date.now();
@@ -3325,7 +3339,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="btn-attach-file" class="composer-btn" title="附加文件/目录到会话">${ICONS.attach}</button>
             <span class="composer-sep"></span>
             <button id="model-trigger" class="composer-pick" title="选择模型"><span class="pick-emoji">${ICONS.model}</span><span id="model-label" class="pick-label">默认模型</span><span class="pick-caret">${ICONS.chevron}</span></button>
-            <button id="fast-toggle" class="composer-pick" aria-pressed="false" title="快速模式：关闭；下轮生效，开启后额度消耗更高"><span class="pick-emoji">${ICONS.fast}</span><span id="fast-label" class="pick-label">快速：关</span></button>
+            <button id="speed-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择速度与查看额度倍率"><span class="pick-emoji">${ICONS.fast}</span><span id="speed-label" class="pick-label">普通 · 1×</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="mode-trigger" class="composer-pick" title="选择模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
 
             <span class="composer-state">
@@ -3340,6 +3354,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       <div id="pick-backdrop" class="pick-backdrop hidden"></div>
       <div id="mode-menu" class="pick-menu hidden"></div>
       <div id="model-menu" class="pick-menu hidden"></div>
+      <div id="speed-menu" class="pick-menu hidden"></div>
       <div id="usage-menu" class="pick-menu usage-menu hidden"></div>
       <div class="composer-foot">
         <span class="foot-keys"><kbd>Enter</kbd>发送<kbd>⇧↵</kbd>换行</span>

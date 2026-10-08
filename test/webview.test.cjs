@@ -44,15 +44,53 @@ test('派生仅出现在有前序对话的还原点并传递正确 ID',t=>{const
 test('关闭问题只停止本轮，不提交空答案',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'19',toolName:'AskUserQuestion',input:{questions:[{id:'detail',question:'提供详情',options:[]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker.querySelector('.askp-submit').disabled);picker.querySelector('.askp-x').click();assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
 test('无效提问停止本轮，不自动空答放行',t=>{const {sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'20',toolName:'AskUserQuestion',input:{questions:[]},suggestions:[]});assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);assert.deepEqual(errors,[]);});
 
-test('快速开关等待后端确认，明确显示高用量，失败回执不伪造开启',t=>{
- const {w,sent,emit,errors}=setup(t);const toggle=w.document.getElementById('fast-toggle');
- assert.equal(toggle.getAttribute('aria-pressed'),'false');
- toggle.click();assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))),{type:'setFastMode',enabled:true});
- assert.equal(toggle.getAttribute('aria-pressed'),'false');
- emit({kind:'config',model:'test-model',effort:'high',permissionMode:'default',fastMode:true});
- assert.equal(toggle.getAttribute('aria-pressed'),'true');assert.match(toggle.textContent,/高用量/);assert.match(toggle.title,/2.5/);
- emit({kind:'busy',busy:true});toggle.click();assert.equal(sent.at(-1).enabled,false);
- assert.equal(sent.some(m=>m.type==='setEffort'||m.type==='setModel'||m.type==='stop'),false);
- emit({kind:'config',model:'test-model',effort:'high',permissionMode:'default',fastMode:false});
- assert.equal(toggle.getAttribute('aria-pressed'),'false');assert.deepEqual(errors,[]);
+test('速度菜单完整展示三档倍率并根据模型能力置灰，保存成功才更新当前状态',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'models',models:[{id:'gpt-6-astra',name:'GPT-6 Astra',description:'',efforts:['high'],speedModes:['default','fast']}]});
+ emit({kind:'config',model:'gpt-6-astra',effort:'high',permissionMode:'default',speedMode:'default'});
+ emit({kind:'speed_context',billing:'chatgpt'});
+ const trigger=w.document.getElementById('speed-trigger');trigger.click();
+ const menu=w.document.getElementById('speed-menu');
+ assert.equal(menu.querySelectorAll('[data-speed]').length,3);
+ assert.match(menu.querySelector('[data-speed="default"]').textContent,/1×/);
+ assert.match(menu.querySelector('[data-speed="fast"]').textContent,/2.5×.*2×/);
+ assert.match(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×.*6×/);
+ assert.equal(menu.querySelector('[data-speed="ultrafast"]').disabled,true);
+ menu.querySelector('a').click();assert.equal(sent.at(-1).type,'openExternalLink');assert.match(sent.at(-1).url,/agent-configuration\/speed$/);
+ const count=sent.length;menu.querySelector('[data-speed="ultrafast"]').click();assert.equal(sent.length,count);
+ menu.querySelector('[data-speed="fast"]').click();assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))),{type:'setSpeedMode',mode:'fast'});
+ assert.match(w.document.getElementById('speed-label').textContent,/普通/);
+ emit({kind:'config',model:'gpt-6-astra',effort:'high',permissionMode:'default',speedMode:'fast'});
+ assert.match(w.document.getElementById('speed-label').textContent,/快速/);
+ assert.equal(menu.querySelector('[data-speed="fast"]').getAttribute('aria-pressed'),'true');
+ w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.deepEqual(errors,[]);
+});
+test('超高速能力动态更新，切换模型后不可用状态不伪造为普通；模型菜单显示支持情况',t=>{
+ const {w,sent,emit}=setup(t);
+ emit({kind:'models',models:[{id:'gpt-6-astra',name:'Astra',description:'',efforts:[],speedModes:['default','fast','ultrafast']},{id:'gpt-6-sol',name:'Sol',description:'',efforts:[],speedModes:['default','fast']}]});
+ emit({kind:'config',model:'gpt-6-astra',effort:'',permissionMode:'default',speedMode:'ultrafast'});
+ w.document.getElementById('speed-trigger').click();let menu=w.document.getElementById('speed-menu');
+ assert.equal(menu.querySelector('[data-speed="ultrafast"]').disabled,false);
+ emit({kind:'config',model:'gpt-6-sol',effort:'',permissionMode:'default',speedMode:'ultrafast'});
+ assert.equal(menu.querySelector('[data-speed="ultrafast"]').disabled,true);
+ assert.match(w.document.getElementById('speed-label').textContent,/超高速.*待确认/);
+ emit({kind:'busy',busy:true});menu.querySelector('[data-speed="default"]').click();assert.equal(sent.at(-1).mode,'default');
+ assert.equal(sent.some(m=>['setModel','setEffort','stop'].includes(m.type)),false);
+ w.document.getElementById('model-trigger').click();
+ assert.match(w.document.querySelector('[data-model="gpt-6-astra"]').textContent,/超高速可选/);
+ assert.match(w.document.querySelector('[data-model="gpt-6-sol"]').textContent,/超高速未提供/);
+});
+test('默认模型未确认时不能用目录默认值冒充实际模型，API 提示不套订阅倍率',t=>{
+ const {w,emit}=setup(t);
+ emit({kind:'models',models:[{id:'gpt-6-astra',name:'Astra',description:'',efforts:[],isDefault:true,speedModes:['default','fast','ultrafast']}]});
+ emit({kind:'config',model:'',effort:'',permissionMode:'default',speedMode:'default'});
+ w.document.getElementById('speed-trigger').click();const menu=w.document.getElementById('speed-menu');
+ assert.equal(menu.querySelector('[data-speed="fast"]').disabled,true);
+ emit({kind:'session',sessionId:'s',model:'gpt-6-astra',cwd:'/tmp',tools:[]});
+ assert.equal(menu.querySelector('[data-speed="ultrafast"]').disabled,false);
+ emit({kind:'speed_context',billing:'api'});
+ assert.match(menu.querySelector('[data-speed="ultrafast"]').textContent,/API 定价/);
+ assert.doesNotMatch(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×/);
+ assert.match(menu.textContent,/API.*不适用/);
 });

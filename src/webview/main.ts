@@ -1,7 +1,7 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
-import type { FromWebview, TimelineItem, ToWebview } from "../shared";
-import { ICONS as ICON, GPT_LOGO } from "../shared";
+import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind } from "../shared";
+import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
 // VS Code bridge
@@ -133,7 +133,8 @@ const modeLabel = $("mode-label");
 const modeMenu = $("mode-menu");
 const modelTrigger = $("model-trigger");
 const modelLabel = $("model-label");
-const fastToggle = $("fast-toggle") as HTMLButtonElement;
+const speedTrigger = $("speed-trigger") as HTMLButtonElement;
+const speedMenu = $("speed-menu");
 const modelMenu = $("model-menu");
 const pickBackdrop = $("pick-backdrop");
 const contextChips = $("context-chips");
@@ -814,6 +815,8 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       refreshComposerHint();
       return;
     case "session":
+      actualSpeedModel = m.model;
+      syncPickers();
       statusLine.textContent = `模型 ${m.model} · ${m.cwd}`;
       // The CLI reports the mode its process actually runs in — trust it over
       // our local guess, so the picker can never claim "Auto" while the
@@ -994,7 +997,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "checkpoint_marker":
       onCheckpointMarker(m.checkpointId);
       break;
+    case "speed_context":
+      if (m.model !== undefined) actualSpeedModel = m.model;
+      if (m.billing !== undefined) speedBilling = m.billing;
+      syncPickers();
+      break;
     case "models":
+      speedModels = m.models;
       modelEfforts = Object.fromEntries(m.models.map(x => [x.id, x.efforts]));
       modelDefaultEfforts = Object.fromEntries(m.models.map(x => [x.id, x.defaultEffort || ""]));
       const defaultModel = m.models.find(x => x.isDefault);
@@ -1015,7 +1024,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       currentMode = m.permissionMode || "default";
       currentModel = m.model || "";
       currentEffort = m.effort || "";
-      currentFastMode = m.fastMode === true;
+      currentSpeedMode = m.speedMode ?? "default";
 
       syncPickers();
       if (!modelMenu.classList.contains("hidden")) buildModelMenu();
@@ -3266,13 +3275,44 @@ function availableEfforts() {
 let currentMode = "default";
 let currentModel = "";
 let currentEffort = "";
-let currentFastMode = false;
+let currentSpeedMode: SpeedMode = "default";
+let speedModels: ModelChoice[] = [];
+let actualSpeedModel = "";
+let speedBilling: BillingKind = "unknown";
+function speedModelId() { return currentModel || actualSpeedModel; }
+function speedModel() { return speedModels.find(m => m.id === speedModelId()); }
+function speedAvailability(mode: SpeedMode): string {
+  if (supportsSpeed(speedModel(), mode)) return "当前账号可选";
+  if (!speedModelId()) return "默认模型尚未确认，请先选择具体模型或连接会话";
+  if (!speedModel()?.speedModes) return "尚未取得此模型的速度能力，请更新或重连 Codex 后确认";
+  return "当前账号的此模型未提供该档位";
+}
+function speedSummary(model: ModelChoice | undefined): string {
+  if (!model?.speedModes) return "普通；加速档位待确认";
+  return SPEED_MODES.map(m => `${m.label}${supportsSpeed(model, m.id) ? "可选" : "未提供"}`).join(" · ");
+}
+function buildSpeedMenu() {
+  const model = speedModelId();
+  let html = `<div class="pick-head">速度模式 · 下轮生效</div><div class="speed-note">当前模型：${escapeHtml(model || "默认（尚未确认）")}<br>以下可选状态以本机 Codex 返回的账号模型能力为准。</div>`;
+  for (const mode of SPEED_MODES) {
+    const enabled = supportsSpeed(speedModel(), mode.id);
+    const cost = speedCost(mode.id, model, speedBilling);
+    const on = currentSpeedMode === mode.id;
+    html += `<button type="button" class="pick-row${on ? " on" : ""}" data-speed="${mode.id}" aria-pressed="${on}" ${enabled ? "" : "disabled"} title="${escapeHtml(speedAvailability(mode.id))}"><span class="pick-text"><span class="pick-title">${mode.label} · ${escapeHtml(cost.badge)}</span><span class="pick-desc">${escapeHtml(cost.text)}</span><span class="pick-desc speed-availability">${escapeHtml(speedAvailability(mode.id))}${on && !enabled ? "；当前设置无法使用，请另选" : ""}</span></span><span class="pick-check">${on ? ICON.check : ""}</span></button>`;
+  }
+  html += `<div class="pick-sep"></div><div class="speed-note">ChatGPT 额度参考（订阅内／购买额度或企业按量）：<br>普通 1×／1×；快速 2.5×／2×（官方已列支持模型）；超高速 8×／6×（GPT-6 Astra）。<br><br>超高速需 Pro $500 或符合条件的 Enterprise／Edu，并满足工作区权限及地区条件。模型支持不等于账号已开放。<br>API 按模型及服务档位单独定价，不适用以上订阅倍率。额度倍率不代表提速倍率，工具耗时不保证缩短。<br><a href="${SPEED_DOCS_URL}">官方速度与额度说明</a> · 核对于 2026-10-08</div>`;
+  speedMenu.innerHTML = html;
+}
+
 
 function syncPickers() {
-  $("fast-label").textContent = currentFastMode ? "快速：开 · 高用量" : "快速：关";
-  fastToggle.setAttribute("aria-pressed", String(currentFastMode));
-  fastToggle.setAttribute("aria-label", currentFastMode ? "关闭快速模式（当前高用量）" : "开启快速模式（更高用量）");
-  fastToggle.title = `快速模式：${currentFastMode ? "已开启" : "已关闭"}。当前工作区各会话下轮生效，不改变模型与推理强度。订阅内额度通常按普通模式的 2.5 倍消耗，购买额度通常按 2 倍计费；实际以账号与官方规则为准。模型需支持快速模式，工具执行不会随之加速。`;
+  const cost = speedCost(currentSpeedMode, speedModelId(), speedBilling);
+  const available = supportsSpeed(speedModel(), currentSpeedMode);
+  $("speed-label").textContent = `${speedLabel(currentSpeedMode)} · ${cost.badge}${available ? "" : " · 待确认"}`;
+  speedTrigger.dataset.accelerated = String(currentSpeedMode !== "default");
+  speedTrigger.setAttribute("aria-label", `速度：${speedLabel(currentSpeedMode)}；点击选择普通、快速或超高速`);
+  speedTrigger.title = `${speedLabel(currentSpeedMode)}：${cost.text} ${speedAvailability(currentSpeedMode)}。当前工作区各会话下轮生效，不改变模型与推理强度。`;
+  if (!speedMenu.classList.contains("hidden")) buildSpeedMenu();
 
   // An unknown mode must show ITSELF, never silently degrade to MODES[0] —
   // labelling an unrecognised (possibly permission-skipping) mode "发送前确认"
@@ -3301,6 +3341,8 @@ function syncPickers() {
 syncPickers(); // paint the real labels immediately (host `config` refines them)
 
 function closePickers() {
+  speedMenu.classList.add("hidden");
+  speedTrigger.setAttribute("aria-expanded", "false");
   modeMenu.classList.add("hidden");
   modelMenu.classList.add("hidden");
   usageMenu.classList.add("hidden");
@@ -3337,7 +3379,7 @@ function buildModelMenu() {
       : on ? check : m.id ? `<span class="pick-tag">${escapeHtml(m.short)}</span>` : "";
     html +=
       `<button class="pick-row${on ? " on" : ""}" data-model="${escapeHtml(m.id)}">` +
-      `<span class="pick-text"><span class="pick-title">${escapeHtml(m.label)}</span>${m.desc ? `<span class="pick-desc">${escapeHtml(m.desc)}</span>` : ""}</span>` +
+      `<span class="pick-text"><span class="pick-title">${escapeHtml(m.label)}</span>${m.desc ? `<span class="pick-desc">${escapeHtml(m.desc)}</span>` : ""}<span class="pick-desc">${escapeHtml(m.id ? speedSummary(speedModels.find(x => x.id === m.id)) : "速度能力以会话实际模型为准")}</span></span>` +
       tail +
       `</button>`;
   }
@@ -3421,9 +3463,29 @@ modelTrigger.onclick = (e) => {
   }
 };
 pickBackdrop.onclick = closePickers;
-fastToggle.onclick = () => {
-  send({ type: "setFastMode", enabled: !currentFastMode });
+speedTrigger.onclick = (e) => {
+  e.stopPropagation();
+  const open = !speedMenu.classList.contains("hidden");
+  closePickers();
+  if (!open) {
+    buildSpeedMenu();
+    speedMenu.classList.remove("hidden");
+    speedTrigger.setAttribute("aria-expanded", "true");
+    positionPickMenu(speedMenu, speedTrigger);
+    pickBackdrop.classList.remove("hidden");
+  }
 };
+speedMenu.addEventListener("click", e => {
+  if ((e.target as HTMLElement).closest("a")) {
+    e.preventDefault();
+    send({ type: "openExternalLink", url: SPEED_DOCS_URL });
+    return;
+  }
+  const row = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-speed]");
+  if (!row || row.disabled || !isSpeedMode(row.dataset.speed)) return;
+  send({ type: "setSpeedMode", mode: row.dataset.speed });
+  // 等宿主保存成功后的 config 回执，不伪造已选状态。
+});
 
 modeMenu.addEventListener("click", (e) => {
   const row = (e.target as HTMLElement).closest("[data-mode]") as HTMLElement | null;
