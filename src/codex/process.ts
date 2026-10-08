@@ -51,6 +51,10 @@ export class CodexProcess {
   private sessionId?: string;
   private activeModel = "";
   private models: ModelChoice[] = [];
+  private modelsReady: Promise<void> = Promise.resolve();
+  private modelsLoaded = false;
+  private dispatchSequence = 0;
+  private waitingForCatalog = false;
   private turnId?: string;
   private busy = false;
   private exited = false;
@@ -75,25 +79,42 @@ export class CodexProcess {
   get isExited() { return this.exited; }
   private emit(e: ToWebview) { if (!this.disposed) this.hooks.emit(e); }
   private error(e: unknown) { this.emit({ kind: 'error', message: String(e instanceof Error ? e.message : e) }); }
+  private async timedRequest(method: string, params: unknown = {}): Promise<any> {
+    const at = Date.now();
+    try { return await this.rpc.request(method, params); }
+    finally { this.emit({ kind: 'diag', message: `[rpc] ${method} ${Date.now() - at}ms` }); }
+  }
+  private async loadModels(): Promise<void> {
+    try {
+      const models: ModelChoice[] = [];
+      let cursor: string | null = null;
+      do {
+        const catalog = await this.timedRequest('model/list', { cursor });
+        models.push(...modelChoices(catalog.data));
+        cursor = catalog.nextCursor ?? null;
+      } while (cursor);
+      this.models = models;
+      this.emit({ kind: 'models', models });
+    } catch (e) {
+      if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，普通模式仍可使用：${String(e)}` });
+    } finally { this.modelsLoaded = true; }
+  }
   async start(): Promise<void> {
     try {
       await this.rpc.start();
-      const account = await this.rpc.request('account/read', {});
+      // 模型目录与账号读取并行；普通模式不需要等待目录，加速模式发送前再核对。
+      this.modelsReady = this.loadModels();
+      const account = await this.timedRequest('account/read', {});
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
       this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type) });
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
       const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
-      const result = await this.rpc.request(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
+      const result = await this.timedRequest(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
       this.activeModel = result.model ?? this.opts.model ?? "";
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
       await this.restoreQuestion(result.thread);
-      try {
-        const catalog = await this.rpc.request('model/list', {});
-        this.models = modelChoices(catalog.data);
-        this.emit({ kind: 'models', models: this.models });
-      } catch (e) { this.error(e); }
     } catch (e) { this.exited = true; this.rpc.dispose(); throw e; }
   }
   private saveQuestion(): void {
@@ -138,17 +159,33 @@ export class CodexProcess {
     this.emit({ kind: 'busy', busy: true });
     const model = this.opts.model || this.activeModel;
     const speed = this.opts.speedMode ?? 'default';
-    const unsupportedSpeed = !supportsSpeed(this.models.find(m => m.id === model), speed);
+    const sequence = ++this.dispatchSequence;
     const input: any[] = [];
     const prompt = context ? `${text}\n\n${CTX_OPEN}\n${context}\n${CTX_CLOSE}` : text;
     if (prompt) input.push({ type: 'text', text: prompt, text_elements: [] });
     for (const image of images ?? []) input.push({ type: 'image', url: `data:${image.mediaType};base64,${image.data}` });
     const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-    this.startingTurn = (unsupportedSpeed
-      ? Promise.reject(new Error(`无法确认当前账号的模型「${model}」支持${speedLabel(speed)}模式。请改用普通模式、选择提供该档位的模型，或更新 Codex CLI 后重试。`))
-      : this.rpc.request('turn/start', { threadId: this.sessionId, input, serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy }))
-      .then(r => { this.activeModel = model; this.emit({ kind: "speed_context", model }); return r; })
-      .then(r => { if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id; }).catch(e => { this.error(e); this.finish(true); }).finally(() => { this.startingTurn = undefined; });
+    // 固定本轮参数，等待目录期间的模式切换只影响下一轮。
+    const params = { threadId: this.sessionId, input, serviceTier: speedServiceTier(speed), model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy };
+    this.waitingForCatalog = speed !== 'default' && !this.modelsLoaded;
+    const dispatch = async () => {
+      if (speed !== 'default') await this.modelsReady;
+      if (sequence !== this.dispatchSequence || !this.busy || this.exited) return;
+      this.waitingForCatalog = false;
+      if (!supportsSpeed(this.models.find(m => m.id === model), speed))
+        throw new Error(`无法确认当前账号的模型「${model}」支持${speedLabel(speed)}模式。请改用普通模式、选择提供该档位的模型，或更新 Codex CLI 后重试。`);
+      this.emit({ kind: 'diag', message: `[dispatch] model=${model} speed=${speed} effort=${params.effort ?? 'default'} 目录等待${Date.now() - this.beganAt}ms` });
+      return this.timedRequest('turn/start', params);
+    };
+    this.startingTurn = dispatch().then(r => {
+      if (!r || sequence !== this.dispatchSequence) return;
+      this.activeModel = model; this.emit({ kind: "speed_context", model });
+      if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id;
+    }).catch(e => {
+      if (sequence === this.dispatchSequence && !this.exited) { this.error(e); this.finish(true); }
+    }).finally(() => {
+      if (sequence === this.dispatchSequence) { this.startingTurn = undefined; this.waitingForCatalog = false; }
+    });
     return true;
   }
   compact(): void {
@@ -286,6 +323,10 @@ export class CodexProcess {
     return this.sendUserMessage(`${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`);
   }
   async interrupt(): Promise<void> {
+    if (this.waitingForCatalog) {
+      ++this.dispatchSequence; this.waitingForCatalog = false; this.startingTurn = undefined;
+      this.finish(false); return;
+    }
     if (this.pausedQuestion?.ready) { this.finish(false); return; }
     clearTimeout(this.pausedQuestion?.timer); this.pausedQuestion = undefined;
     await this.startingTurn;

@@ -95,3 +95,24 @@ test('默认模型未确认时不能用目录默认值冒充实际模型，API �
  assert.doesNotMatch(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×/);
  assert.match(menu.textContent,/API.*不适用/);
 });
+
+function manualFrames(w){let next=0;const frames=new Map();w.requestAnimationFrame=f=>{frames.set(++next,f);return next;};w.cancelAnimationFrame=id=>frames.delete(id);return ()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(f=>f(w.performance.now()));};}
+test('突发流式片段立即显示文字，同帧只合并一次完整 Markdown 渲染',t=>{
+ const {w,emit,errors}=setup(t);const flush=manualFrames(w);
+ let renders=0;const desc=Object.getOwnPropertyDescriptor(w.Element.prototype,'innerHTML');
+ Object.defineProperty(w.Element.prototype,'innerHTML',{...desc,set(v){if(this.classList.contains('live-committed'))renders++;desc.set.call(this,v);}});
+ emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'开头\n'});
+ for(let i=0;i<100;i++)emit({kind:'text_delta',text:`第${i}段 **重点**\n`});
+ assert.match(w.document.querySelector('.text-seg').textContent,/第99段/,'未执行动画帧也能看到新文字');
+ assert.equal(renders,1);flush();assert.equal(renders,2);
+ assert.equal(w.document.querySelectorAll('.text-seg strong').length,100);
+ emit({kind:'text_delta',text:'末尾内容'});emit({kind:'result',isError:false,durationMs:1,numTurns:1});
+ const final=w.document.querySelector('.text-seg').innerHTML;flush();assert.equal(w.document.querySelector('.text-seg').innerHTML,final);assert.match(final,/末尾内容/);assert.deepEqual(errors,[]);
+});
+test('待渲染时收到完整文本更正或切换块，不会被旧帧回调覆盖',t=>{
+ const {w,emit,errors}=setup(t);const flush=manualFrames(w);
+ emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'旧文'});emit({kind:'text_delta',text:'旧尾巴'});
+ emit({kind:'text_snap',text:'更正后的 **全文**'});flush();assert.doesNotMatch(w.document.querySelector('.text-seg').textContent,/旧/);
+ emit({kind:'text_delta',text:'段尾'});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'第二块'});flush();
+ const blocks=w.document.querySelectorAll('.text-seg');assert.match(blocks[0].textContent,/全文.*段尾/);assert.equal(blocks[1].textContent,'第二块');assert.deepEqual(errors,[]);
+});

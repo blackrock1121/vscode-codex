@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const send = m => process.stdout.write(JSON.stringify(m)+'\n');
 const note = (method,params) => send({method,params});
+let heldCatalog;
 let text=''; let background; let interruptCount=0; let answerCount=0;
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const m=JSON.parse(line);
@@ -17,6 +18,8 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   result={thread:{id:'thread-1'},model:'test-model'};
  }
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',serviceTiers:process.env.TEST_NO_FAST?[]:[{id:'priority',name:'Fast',description:''},...(process.env.TEST_ULTRA?[{id:'ultrafast',name:'Ultrafast',description:''}]:[])],supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
+ if(m.method==='model/list'&&process.env.TEST_DEFER_MODELS){heldCatalog={id:m.id,result};return;}
+ if(m.method==='release-models'&&heldCatalog){send(heldCatalog);heldCatalog=undefined;}
  if(m.method==='thread/read')result={thread:{id:'thread-1',turns:[{id:process.env.TEST_LAST_TURN_ID||'turn-1',status:'interrupted',items:[]}]}};
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};

@@ -218,3 +218,33 @@ test('API 登录只发送计费类型，未知速度不能应用到进程',async
  assert.ok(events.some(e=>e.kind==='speed_context'&&e.billing==='api'));
  await assert.rejects(()=>p.setSpeedMode('invalid'),/无效的速度模式/);
 });
+
+test('模型目录未返回也能完成普通模式启动并发送，不发送预热请求',async t=>{
+ const {p,events,read}=await fastClient(t,{env:{TEST_DEFER_MODELS:'1'}});
+ assert.equal(events.some(e=>e.kind==='models'),false);
+ assert.equal((await read()).some(m=>m.method==='turn/start'),false);
+ assert.equal(p.sendUserMessage('普通消息'),true);await waitUntil(()=>events.some(e=>e.kind==='result'));
+ assert.equal(events.some(e=>e.kind==='models'),false,'普通消息完成时目录仍被阻塞');
+ assert.equal((await read()).filter(m=>m.method==='turn/start').length,1);
+ await p.rpc.request('release-models');await waitUntil(()=>events.some(e=>e.kind==='models'));
+});
+test('加速发送等待目录校验，等待期间的设置修改仅影响下一轮',async t=>{
+ const {p,events,read}=await fastClient(t,{env:{TEST_DEFER_MODELS:'1'},speedMode:'fast',model:'test-model',effort:'high'});
+ p.sendUserMessage('加速');await p.setSpeedMode('default');await p.setEffort('low');
+ assert.equal((await read()).some(m=>m.method==='turn/start'),false);
+ await p.rpc.request('release-models');await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const first=(await read()).find(m=>m.method==='turn/start');
+ assert.equal(first.params.serviceTier,'priority');assert.equal(first.params.effort,'high');
+ p.sendUserMessage('下一轮');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+ const last=(await read()).filter(m=>m.method==='turn/start').at(-1);
+ assert.equal(last.params.serviceTier,'default');assert.equal(last.params.effort,'low');
+});
+test('等待目录时停止立即完成，目录稍后返回不得复活旧消息或干扰新轮次',async t=>{
+ const {p,events,read}=await fastClient(t,{env:{TEST_DEFER_MODELS:'1'},speedMode:'fast'});
+ p.sendUserMessage('不能送出的旧消息');await p.interrupt();assert.equal(p.isBusy,false);
+ assert.equal(events.some(e=>e.kind==='models'),false,'停止不等待目录');
+ await p.setSpeedMode('default');p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+ await p.rpc.request('release-models');await waitUntil(()=>events.some(e=>e.kind==='models'));
+ const turns=(await read()).filter(m=>m.method==='turn/start');assert.equal(turns.length,1);assert.equal(turns[0].params.input[0].text,'wait');
+ assert.equal(p.isBusy,true);await p.interrupt();await waitUntil(()=>!p.isBusy);
+});
