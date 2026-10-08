@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.20",
+  "version": "0.1.21",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -268,6 +268,11 @@
           "default": 60,
           "minimum": 0,
           "description": "任务执行时长达到该秒数才推送完成通知（默认 60 秒）；等待输入的提醒同用此阈值——距你上次操作超过该秒数才推。"
+        },
+        "codexChat.fastMode": {
+          "type": "boolean",
+          "default": false,
+          "description": "快速模式（更高额度消耗）：下轮生效，当前工作区会话共用；保留模型与推理强度。模型和账号需支持 Fast 模式，关闭时明确使用普通速度。订阅内额度通常消耗 2.5 倍，购买额度通常按 2 倍计费，实际以账号规则为准。"
         }
       }
     }

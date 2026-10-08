@@ -151,3 +151,45 @@ test('合法 JSON 的无效等待状态也不阻塞初始化',async t=>{
   assert.equal(restored.p.isBusy,false);assert.equal(restored.requests.length,0);await restored.p.disposeAndWait();
  }
 });
+
+async function fastClient(t, extra={}) {
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-fast-'));
+ t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const log=path.join(dir,'rpc.jsonl');
+ const c=await client(t,{...extra,env:{...extra.env,TEST_RPC_LOG:log}});
+ return {...c,read:async()=> (await fs.readFile(log,'utf8')).trim().split('\n').map(JSON.parse)};
+}
+test('快速模式在新建、恢复和续轮传递服务档位，关闭明确恢复普通速度',async t=>{
+ for(const resumeSessionId of [undefined,'thread-1']) {
+  const {p,events,read}=await fastClient(t,{resumeSessionId,fastMode:true,model:'test-model',effort:'high'});
+  const init=(await read()).find(m=>m.method===(resumeSessionId?'thread/resume':'thread/start'));
+  assert.equal(init.params.serviceTier,'priority');
+  p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+  await p.setFastMode(false);
+  assert.equal((await read()).filter(m=>m.method==='turn/start').length,1);
+  assert.equal((await read()).some(m=>m.method==='turn/interrupt'),false,'切换不得中断当前轮次');
+  await p.interrupt();await waitUntil(()=>!p.isBusy);
+  p.sendUserMessage('普通速度');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+  const turns=(await read()).filter(m=>m.method==='turn/start');
+  assert.deepEqual(turns.map(m=>m.params.serviceTier),['priority','default']);
+  assert.ok(turns.every(m=>m.params.model==='test-model'&&m.params.effort==='high'));
+ }
+});
+test('快速默认关闭且不继承会话服务档位；运行中开启只影响下轮',async t=>{
+ const {p,events,read}=await fastClient(t);
+ assert.equal((await read()).find(m=>m.method==='thread/start').params.serviceTier,'default');
+ p.sendUserMessage('普通');await waitUntil(()=>!p.isBusy);await p.setFastMode(true);
+ p.sendUserMessage('加急');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+ assert.deepEqual((await read()).filter(m=>m.method==='turn/start').map(m=>m.params.serviceTier),['default','priority']);
+});
+test('不支持或未列出的模型不静默降速，也不发送收费请求',async t=>{
+ for(const extra of [{env:{TEST_NO_FAST:'1'}},{model:'unlisted-model'}]) {
+  const {p,events,read}=await fastClient(t,{...extra,fastMode:true});
+  p.sendUserMessage('加急');await waitUntil(()=>events.some(e=>e.kind==='result'));
+  assert.equal((await read()).some(m=>m.method==='turn/start'),false);
+  assert.match(events.find(e=>e.kind==='error').message,/无法确认.*支持快速模式/);
+  assert.equal(events.find(e=>e.kind==='result').isError,true);
+  await p.setFastMode(false);p.sendUserMessage('普通');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
+  assert.equal((await read()).filter(m=>m.method==='turn/start').length,1);
+ }
+});

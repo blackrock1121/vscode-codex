@@ -1926,3 +1926,9 @@ mark.find-hit.current {
   background: var(--vscode-editor-findMatchBackground, rgba(234,140,45,.7));
   outline: 1px solid var(--vscode-editor-findMatchBorder, #e8b93d); outline-offset: 0;
 }
+
+#fast-toggle[aria-pressed="true"] {
+  color: var(--vscode-button-foreground);
+  background: var(--vscode-button-background);
+  border-color: var(--vscode-focusBorder);
+}

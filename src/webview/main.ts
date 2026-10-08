@@ -133,6 +133,7 @@ const modeLabel = $("mode-label");
 const modeMenu = $("mode-menu");
 const modelTrigger = $("model-trigger");
 const modelLabel = $("model-label");
+const fastToggle = $("fast-toggle") as HTMLButtonElement;
 const modelMenu = $("model-menu");
 const pickBackdrop = $("pick-backdrop");
 const contextChips = $("context-chips");
@@ -1014,6 +1015,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       currentMode = m.permissionMode || "default";
       currentModel = m.model || "";
       currentEffort = m.effort || "";
+      currentFastMode = m.fastMode === true;
 
       syncPickers();
       if (!modelMenu.classList.contains("hidden")) buildModelMenu();
@@ -3264,8 +3266,14 @@ function availableEfforts() {
 let currentMode = "default";
 let currentModel = "";
 let currentEffort = "";
+let currentFastMode = false;
 
 function syncPickers() {
+  $("fast-label").textContent = currentFastMode ? "快速：开 · 高用量" : "快速：关";
+  fastToggle.setAttribute("aria-pressed", String(currentFastMode));
+  fastToggle.setAttribute("aria-label", currentFastMode ? "关闭快速模式（当前高用量）" : "开启快速模式（更高用量）");
+  fastToggle.title = `快速模式：${currentFastMode ? "已开启" : "已关闭"}。当前工作区各会话下轮生效，不改变模型与推理强度。订阅内额度通常按普通模式的 2.5 倍消耗，购买额度通常按 2 倍计费；实际以账号与官方规则为准。模型需支持快速模式，工具执行不会随之加速。`;
+
   // An unknown mode must show ITSELF, never silently degrade to MODES[0] —
   // labelling an unrecognised (possibly permission-skipping) mode "发送前确认"
   // is the most dangerous lie this UI can tell.
@@ -3287,6 +3295,7 @@ function syncPickers() {
     }
   }
   modelLabel.textContent = text || currentModel || MODELS[0].label;
+  refitComposer();
 }
 
 syncPickers(); // paint the real labels immediately (host `config` refines them)
@@ -3412,6 +3421,9 @@ modelTrigger.onclick = (e) => {
   }
 };
 pickBackdrop.onclick = closePickers;
+fastToggle.onclick = () => {
+  send({ type: "setFastMode", enabled: !currentFastMode });
+};
 
 modeMenu.addEventListener("click", (e) => {
   const row = (e.target as HTMLElement).closest("[data-mode]") as HTMLElement | null;
