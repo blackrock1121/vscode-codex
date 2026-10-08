@@ -63,13 +63,13 @@ export function billingKind(accountType: unknown): BillingKind {
 export function speedCost(mode: SpeedMode, model: string, billing: BillingKind): { badge: string; text: string } {
   if (billing === "api") return { badge: "API 定价", text: "按 API 的模型与服务档位单独计价，不适用 ChatGPT 订阅额度倍率。" };
   const prefix = billing === "unknown" ? "若使用 ChatGPT：" : "";
-  if (mode === "default") return { badge: "1×", text: `${prefix}订阅内额度 1×；购买额度／企业按量 1×。` };
+  if (mode === "default") return { badge: "1×", text: `${prefix}订阅内额度 1×。` };
   const baseModel = model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
   const fastKnown = ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].includes(baseModel);
   const ultraKnown = baseModel === "gpt-6-astra";
   if ((mode === "fast" && fastKnown) || (mode === "ultrafast" && ultraKnown)) {
-    const included = mode === "fast" ? "2.5" : "8", credits = mode === "fast" ? "2" : "6";
-    return { badge: `${included}×／${credits}×`, text: `${prefix}订阅内额度 ${included}×；购买额度／企业按量 ${credits}×。` };
+    const included = mode === "fast" ? "2.5" : "8";
+    return { badge: `${included}×`, text: `${prefix}订阅内额度 ${included}×。` };
   }
   return { badge: "倍率待确认", text: `${prefix}当前模型的额度倍率尚未确认，请查看官方说明；不能套用其他模型的倍率。` };
 }

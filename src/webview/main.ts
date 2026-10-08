@@ -3300,7 +3300,7 @@ function buildSpeedMenu() {
     const on = currentSpeedMode === mode.id;
     html += `<button type="button" class="pick-row${on ? " on" : ""}" data-speed="${mode.id}" aria-pressed="${on}" ${enabled ? "" : "disabled"} title="${escapeHtml(speedAvailability(mode.id))}"><span class="pick-text"><span class="pick-title">${mode.label} · ${escapeHtml(cost.badge)}</span><span class="pick-desc">${escapeHtml(cost.text)}</span><span class="pick-desc speed-availability">${escapeHtml(speedAvailability(mode.id))}${on && !enabled ? "；当前设置无法使用，请另选" : ""}</span></span><span class="pick-check">${on ? ICON.check : ""}</span></button>`;
   }
-  html += `<div class="pick-sep"></div><div class="speed-note">ChatGPT 额度参考（订阅内／购买额度或企业按量）：<br>普通 1×／1×；快速 2.5×／2×（官方已列支持模型）；超高速 8×／6×（GPT-6 Astra）。<br><br>超高速需 Pro $500 或符合条件的 Enterprise／Edu，并满足工作区权限及地区条件。模型支持不等于账号已开放。<br>API 按模型及服务档位单独定价，不适用以上订阅倍率。额度倍率不代表提速倍率，工具耗时不保证缩短。<br><a href="${SPEED_DOCS_URL}">官方速度与额度说明</a> · 核对于 2026-10-08</div>`;
+  html += `<div class="pick-sep"></div><div class="speed-note">ChatGPT 订阅内额度：<br>普通 1×；快速 2.5×（官方已列支持模型）；超高速 8×（GPT-6 Astra）。<br><br>超高速需 Pro $500 或符合条件的 Enterprise／Edu，并满足工作区权限及地区条件。模型支持不等于账号已开放。<br>API 按模型及服务档位单独定价，不适用以上订阅倍率。额度倍率不代表提速倍率，工具耗时不保证缩短。<br><a href="${SPEED_DOCS_URL}">官方速度与额度说明</a> · 核对于 2026-10-08</div>`;
   speedMenu.innerHTML = html;
 }
 

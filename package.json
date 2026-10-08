@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.22",
+  "version": "0.1.23",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -284,9 +284,9 @@
           ],
           "default": "default",
           "enumDescriptions": [
-            "普通：订阅内额度 1×，购买额度／企业按量 1×。",
-            "快速：官方已列模型订阅内额度 2.5×，购买额度／企业按量 2×；需当前账号模型列表提供该档位。",
-            "超高速：GPT-6 Astra 订阅内额度 8×，购买额度／企业按量 6×；需符合套餐、工作区和地区条件且模型列表提供该档位。"
+            "普通：订阅内额度 1×。",
+            "快速：官方已列模型订阅内额度 2.5×；需当前账号模型列表提供该档位。",
+            "超高速：GPT-6 Astra 订阅内额度 8×；需符合套餐、工作区和地区条件且模型列表提供该档位。"
           ],
           "description": "速度模式，下轮生效，工作区各会话共用；不改变模型与推理强度。API 按服务档位单独定价，不适用订阅倍率。新设置优先于旧 fastMode 设置。"
         }
