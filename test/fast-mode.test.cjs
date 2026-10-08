@@ -61,8 +61,8 @@ test('能力取自服务档位，兼容旧字段且区分未提供和未知，�
 });
 test('额度倍率按档位和计费方式说明，未知模型不得捏造倍率',()=>{
  assert.equal(speedCost('default','gpt-6-astra','chatgpt').badge,'1×');
- assert.equal(speedCost('fast','gpt-6.1-sol','chatgpt').badge,'2.5×／2×');
- assert.equal(speedCost('ultrafast','gpt-6-astra','chatgpt').badge,'8×／6×');
+ assert.equal(speedCost('fast','gpt-6.1-sol','chatgpt').badge,'2.5×');
+ assert.equal(speedCost('ultrafast','gpt-6-astra','chatgpt').badge,'8×');
  assert.equal(speedCost('ultrafast','new-model','chatgpt').badge,'倍率待确认');
  assert.equal(speedCost('fast','new-model','chatgpt').badge,'倍率待确认');
  assert.equal(speedCost('fast','gpt-6.1-luna','chatgpt').badge,'倍率待确认');

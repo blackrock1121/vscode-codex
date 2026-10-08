@@ -52,9 +52,10 @@ test('速度菜单完整展示三档倍率并根据模型能力置灰，保存�
  const trigger=w.document.getElementById('speed-trigger');trigger.click();
  const menu=w.document.getElementById('speed-menu');
  assert.equal(menu.querySelectorAll('[data-speed]').length,3);
+ assert.doesNotMatch(menu.textContent,/购买额度|企业按量|6×|／2×/);
  assert.match(menu.querySelector('[data-speed="default"]').textContent,/1×/);
- assert.match(menu.querySelector('[data-speed="fast"]').textContent,/2.5×.*2×/);
- assert.match(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×.*6×/);
+ assert.match(menu.querySelector('[data-speed="fast"]').textContent,/2.5×/);
+ assert.match(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×/);
  assert.equal(menu.querySelector('[data-speed="ultrafast"]').disabled,true);
  menu.querySelector('a').click();assert.equal(sent.at(-1).type,'openExternalLink');assert.match(sent.at(-1).url,/agent-configuration\/speed$/);
  const count=sent.length;menu.querySelector('[data-speed="ultrafast"]').click();assert.equal(sent.length,count);
