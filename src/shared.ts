@@ -32,6 +32,7 @@ export const ICONS: Record<string, string> = {
   // git-fork：从一点派生分支（还原点分割线上的「派生新会话」）
   fork: _s('<circle cx="4.5" cy="3.9" r="1.7"/><circle cx="11.5" cy="3.9" r="1.7"/><circle cx="8" cy="12.1" r="1.7"/><path d="M4.5 5.6v.3a2.7 2.7 0 0 0 2.7 2.7h1.6a2.7 2.7 0 0 0 2.7-2.7v-.3"/><path d="M8 8.6v1.8"/>'),
   // four-point sparkle — the model picker's glyph
+  fast: _s('<path d="M9 1.8 3.5 9H7l-.6 5.2L12.5 7H9z"/>'),
   model: _s('<path d="M8 2.2 9.5 6.5 13.8 8 9.5 9.5 8 13.8 6.5 9.5 2.2 8 6.5 6.5z"/>'),
 
 };
@@ -40,8 +41,25 @@ export const ICONS: Record<string, string> = {
 
 // ---- Extension host -> webview --------------------------------------------
 
+export interface ModelChoice {
+  id: string; name: string; description: string; efforts: string[];
+  defaultEffort?: string; isDefault?: boolean; fastModeSupported?: boolean;
+}
+
+/** 优先使用当前协议的服务档位，兼容旧版速度列表；缺字段表示未知。 */
+export function modelChoices(data: any[]): ModelChoice[] {
+  return data.filter(m => !m.hidden).map(m => {
+    const tiers = Array.isArray(m.serviceTiers) ? m.serviceTiers.map((t: any) => t.id)
+      : Array.isArray(m.additionalSpeedTiers) ? m.additionalSpeedTiers : undefined;
+    return { id: m.model, name: m.displayName, description: m.description,
+      efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort),
+      defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault,
+      fastModeSupported: tiers ? tiers.some((t: string) => t === 'fast' || t === 'priority') : undefined };
+  });
+}
+
 export type ToWebview =
-  | { kind: "models"; models: { id: string; name: string; description: string; efforts: string[]; defaultEffort?: string; isDefault?: boolean }[] }
+  | { kind: "models"; models: ModelChoice[] }
   /** `permissionMode` is the mode the CLI process ACTUALLY runs in (from its
    *  init event) — the picker syncs to this, never to a local guess. */
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }
@@ -106,7 +124,7 @@ export type ToWebview =
   // A restore point was created for the turn just sent (live).
   | { kind: "checkpoint_marker"; checkpointId: string; userText: string }
   /** modEnterToSend：Cmd/Ctrl+Enter 发送、Enter 换行（默认 Enter 发送）。 */
-  | { kind: "config"; permissionMode: string; model: string; effort: string; modEnterToSend?: boolean }
+  | { kind: "config"; permissionMode: string; model: string; effort: string; fastMode?: boolean; modEnterToSend?: boolean }
   | { kind: "context_added"; label: string; text: string }
   | { kind: "active_file"; path: string | null }
   | { kind: "attach_files"; paths: string[] }
@@ -210,6 +228,7 @@ export type FromWebview =
   | { type: "setPermissionMode"; mode: string }
   | { type: "setModel"; model: string }
   | { type: "setEffort"; effort: string }
+  | { type: "setFastMode"; enabled: boolean }
   | { type: "addContext" }
   | { type: "pickFiles" }
   | { type: "openDiff"; path: string }

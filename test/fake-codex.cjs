@@ -7,6 +7,7 @@ const note = (method,params) => send({method,params});
 let text=''; let background; let interruptCount=0; let answerCount=0;
 readline.createInterface({input:process.stdin}).on('line',line=>{
  const m=JSON.parse(line);
+ if(process.env.TEST_RPC_LOG)fs.appendFileSync(process.env.TEST_RPC_LOG,JSON.stringify(m)+'\n');
  if(!m.method) {answerCount++;note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:'turn-1',status:'completed'}});return;}
  if(m.method==='initialized')return;
  let result={};
@@ -15,7 +16,7 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
   if(!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
   result={thread:{id:'thread-1'},model:'test-model'};
  }
- if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
+ if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',serviceTiers:process.env.TEST_NO_FAST?[]:[{id:'priority',name:'Fast',description:''}],supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
  if(m.method==='thread/read')result={thread:{id:'thread-1',turns:[{id:process.env.TEST_LAST_TURN_ID||'turn-1',status:'interrupted',items:[]}]}};
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start')result={turn:{id:'turn-1'}};

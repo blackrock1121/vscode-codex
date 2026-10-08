@@ -43,3 +43,16 @@ test('派生仅出现在有前序对话的还原点并传递正确 ID',t=>{const
 
 test('关闭问题只停止本轮，不提交空答案',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'19',toolName:'AskUserQuestion',input:{questions:[{id:'detail',question:'提供详情',options:[]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker.querySelector('.askp-submit').disabled);picker.querySelector('.askp-x').click();assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
 test('无效提问停止本轮，不自动空答放行',t=>{const {sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'20',toolName:'AskUserQuestion',input:{questions:[]},suggestions:[]});assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);assert.deepEqual(errors,[]);});
+
+test('快速开关等待后端确认，明确显示高用量，失败回执不伪造开启',t=>{
+ const {w,sent,emit,errors}=setup(t);const toggle=w.document.getElementById('fast-toggle');
+ assert.equal(toggle.getAttribute('aria-pressed'),'false');
+ toggle.click();assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))),{type:'setFastMode',enabled:true});
+ assert.equal(toggle.getAttribute('aria-pressed'),'false');
+ emit({kind:'config',model:'test-model',effort:'high',permissionMode:'default',fastMode:true});
+ assert.equal(toggle.getAttribute('aria-pressed'),'true');assert.match(toggle.textContent,/高用量/);assert.match(toggle.title,/2.5/);
+ emit({kind:'busy',busy:true});toggle.click();assert.equal(sent.at(-1).enabled,false);
+ assert.equal(sent.some(m=>m.type==='setEffort'||m.type==='setModel'||m.type==='stop'),false);
+ emit({kind:'config',model:'test-model',effort:'high',permissionMode:'default',fastMode:false});
+ assert.equal(toggle.getAttribute('aria-pressed'),'false');assert.deepEqual(errors,[]);
+});

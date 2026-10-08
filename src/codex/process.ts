@@ -1,6 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
-import { CTX_OPEN, CTX_CLOSE, PermissionSuggestionView, ToWebview } from '../shared';
+import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, toolView, quotaEvents } from './events';
 
@@ -21,7 +21,7 @@ const ASK_USER_QUESTION_TOOL = {
 };
 
 export interface CodexProcessOptions {
-  codexPath: string; cwd: string; model?: string; effort?: string; permissionMode: string;
+  codexPath: string; cwd: string; model?: string; effort?: string; fastMode?: boolean; permissionMode: string;
   questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
 }
 export interface PermissionRequest {
@@ -49,6 +49,8 @@ export function deleteQuestionState(dir: string, sessionId: string): void {
 export class CodexProcess {
   private readonly rpc: CodexRpc;
   private sessionId?: string;
+  private activeModel = "";
+  private models: ModelChoice[] = [];
   private turnId?: string;
   private busy = false;
   private exited = false;
@@ -78,13 +80,18 @@ export class CodexProcess {
       const account = await this.rpc.request('account/read', {});
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-      const params = { cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
+      const params = { serviceTier: this.opts.fastMode ? 'priority' : 'default', cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
       const result = await this.rpc.request(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
+      this.activeModel = result.model ?? this.opts.model ?? "";
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
       await this.restoreQuestion(result.thread);
-      void this.rpc.request('model/list', {}).then(r => this.emit({ kind: 'models', models: r.data.filter((m: any) => !m.hidden).map((m: any) => ({ id: m.model, name: m.displayName, description: m.description, efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort), defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault })) })).catch(e => this.error(e));
+      try {
+        const catalog = await this.rpc.request('model/list', {});
+        this.models = modelChoices(catalog.data);
+        this.emit({ kind: 'models', models: this.models });
+      } catch (e) { this.error(e); }
     } catch (e) { this.exited = true; this.rpc.dispose(); throw e; }
   }
   private saveQuestion(): void {
@@ -127,12 +134,17 @@ export class CodexProcess {
     if (!this.sessionId || this.exited || this.busy) return false;
     this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
     this.emit({ kind: 'busy', busy: true });
+    const model = this.opts.model || this.activeModel;
+    const unsupportedFastMode = this.opts.fastMode && this.models.find(m => m.id === model)?.fastModeSupported !== true;
     const input: any[] = [];
     const prompt = context ? `${text}\n\n${CTX_OPEN}\n${context}\n${CTX_CLOSE}` : text;
     if (prompt) input.push({ type: 'text', text: prompt, text_elements: [] });
     for (const image of images ?? []) input.push({ type: 'image', url: `data:${image.mediaType};base64,${image.data}` });
     const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-    this.startingTurn = this.rpc.request('turn/start', { threadId: this.sessionId, input, model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy })
+    this.startingTurn = (unsupportedFastMode
+      ? Promise.reject(new Error(`无法确认模型「${model}」支持快速模式。请关闭快速开关、选择支持的模型，或更新 Codex CLI 后重试。`))
+      : this.rpc.request('turn/start', { threadId: this.sessionId, input, serviceTier: this.opts.fastMode ? 'priority' : 'default', model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy }))
+      .then(r => { this.activeModel = model; return r; })
       .then(r => { if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id; }).catch(e => { this.error(e); this.finish(true); }).finally(() => { this.startingTurn = undefined; });
     return true;
   }
@@ -280,6 +292,7 @@ export class CodexProcess {
   async setPermissionMode(mode: string) { permissions(mode, []); this.opts.permissionMode = mode; }
   async setModel(model: string) { this.opts.model = model; }
   async setEffort(effort: string) { this.opts.effort = effort; }
+  async setFastMode(enabled: boolean) { this.opts.fastMode = enabled; }
   private finish(isError: boolean) {
     if (!this.busy) return;
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
