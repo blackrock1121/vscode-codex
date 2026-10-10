@@ -2,9 +2,9 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
-import { QUESTION_REPLY_PREFIX, toolView, quotaEvents } from './events';
+import { QUESTION_REPLY_PREFIX, asyncQuestions, toolView, quotaEvents } from './events';
 
-const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，使用 AskUserQuestion 向用户提问并等待其答案。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时必须持续等待，不得因为等待时间较长而结束本轮或给出最终答复。';
+const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
   type: 'function', name: 'AskUserQuestion',
   description: '向用户展示一个或多个可选问题，并等待用户提交答案。需要用户选择或确认时必须调用此工具。',
@@ -108,8 +108,9 @@ export class CodexProcess {
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
       this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type) });
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n'), dynamicTools: [ASK_USER_QUESTION_TOOL] };
-      const result = await this.timedRequest(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : params);
+      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
+      // resume 不支持 dynamicTools；旧会话沿用持久化工具，原生异步提问另行接入同一暂停流程。
+      const result = await this.timedRequest(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : { ...params, dynamicTools: [ASK_USER_QUESTION_TOOL] });
       this.activeModel = result.model ?? this.opts.model ?? "";
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
@@ -237,6 +238,18 @@ export class CodexProcess {
     if (m.method !== 'item/started' && m.method !== 'item/completed') return;
     const item = p.item; if (!item) return;
     const done = m.method === 'item/completed';
+    const questions = asyncQuestions(item);
+    if (questions) {
+      if (done && this.busy) {
+        const key = `async-question:${item.id}`;
+        const input = { questions };
+        // 这是通知，不存在待答 RPC。仅建立本地问题，回答时用真实用户消息续轮。
+        this.pending.set(key, { id: key, method: 'item/tool/call', params: { arguments: input } });
+        this.emit({ kind: 'diag', message: '[question] 原生异步提问转入 AskUserQuestion 暂停流程' });
+        void this.pauseForQuestion({ requestId: key, toolUseId: item.id, toolName: 'AskUserQuestion', input, suggestions: [] }, p.turnId);
+      }
+      return;
+    }
     if (['agentMessage', 'plan', 'reasoning'].includes(item.type)) {
       if (done && !this.streamed.has(item.id)) {
         const thinking = item.type === 'reasoning'; this.block(item.id, thinking ? 'thinking' : 'text');
@@ -268,7 +281,10 @@ export class CodexProcess {
     if (!question) await this.hooks.onPreTool?.(name, input);
     const request: PermissionRequest = { requestId: key, toolUseId: p.itemId, toolName: name, input, description: p.reason ?? 'Codex 请求授权', suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] };
     if (!question) { this.hooks.onPermission(request); return; }
-    const paused: NonNullable<CodexProcess['pausedQuestion']> = { request, turnId: p.turnId ?? this.turnId, ready: false };
+    await this.pauseForQuestion(request, p.turnId);
+  }
+  private async pauseForQuestion(request: PermissionRequest, turnId?: string): Promise<void> {
+    const paused: NonNullable<CodexProcess['pausedQuestion']> = { request, turnId: turnId ?? this.turnId, ready: false };
     this.pausedQuestion = paused;
     this.emit({ kind: 'status', label: '正在暂停，等待用户回答…' });
     paused.timer = setTimeout(() => {

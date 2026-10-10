@@ -3,6 +3,8 @@ const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
 const { CodexProcess } = require('../dist/test/codex/process.js');
+const { CodexRpc } = require('../dist/test/codex/rpc.js');
+const native = process.argv.includes('--native');
 
 (async () => {
   const cwd = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-question-'));
@@ -15,7 +17,21 @@ const { CodexProcess } = require('../dist/test/codex/process.js');
     }
   };
   try {
-    for (const resumed of [false, true]) {
+    if (native) {
+      // 模拟从桌面端导入、创建时未注册 AskUserQuestion 的旧会话。
+      const seed = new CodexRpc('codex', cwd);
+      try {
+        await seed.start();
+        const result = await seed.request('thread/start', { cwd, model: 'gpt-6-astra', approvalPolicy: 'never', sandbox: 'danger-full-access' });
+        id = result.thread.id;
+        let finished = false;
+        seed.on('notification', m => { if (m.method === 'turn/completed') finished = true; });
+        await seed.request('turn/start', { threadId: id, input: [{ type: 'text', text: '这是自动化测试准备阶段。只回复“准备完成”，不要调用工具。', text_elements: [] }] });
+        await until(() => finished);
+      } finally { await seed.disposeAndWait(); }
+      console.log('已创建未注册动态工具的真实旧会话');
+    }
+    for (const resumed of native ? [true] : [false, true]) {
       const events = [], questions = [], raw = [];
       p = new CodexProcess({ codexPath: 'codex', cwd, questionStateDir: path.join(cwd, '.question-state'), model: 'gpt-6-astra', permissionMode: 'bypassPermissions', effort: 'medium', resumeSessionId: resumed ? id : undefined }, {
         emit: e => events.push(e), onPermission: q => questions.push(q), onSessionId: s => id = s, onClose: () => {},
@@ -24,9 +40,11 @@ const { CodexProcess } = require('../dist/test/codex/process.js');
       p.rpc.on('notification', m => raw.push(m));
       const marker = resumed ? 'resumed-answer.txt' : 'new-answer.txt';
       console.log(`${resumed ? '恢复旧' : '新建'}会话：gpt-6-astra / medium / bypassPermissions`);
-      p.sendUserMessage(`这是插件等待输入的集成测试。先调用 AskUserQuestion，问题 ID 为 choice，问题为“请选择测试结果”，选项 A 和 B；用户回答后，把答案写入当前目录的 ${marker}，最后回复完成。不要提前创建文件。`);
+      const ask = native ? '先调用 request_user_input_async，title 为“请选择测试结果”，options 为 A 和 B' : '先调用 AskUserQuestion，问题 ID 为 choice，问题为“请选择测试结果”，选项 A 和 B';
+      p.sendUserMessage(`这是插件等待输入的集成测试。${ask}；用户回答后，把答案写入当前目录的 ${marker}，最后回复完成。不要提前创建文件。`);
       await until(() => questions.length || events.some(e => e.kind === 'result'));
       assert.equal(questions.length, 1, '必须收到可回答的问题');
+      if (native) assert.ok(raw.some(m => m.method === 'item/completed' && m.params.item.type === 'agentMessage' && m.params.item.delivery === 'async' && m.params.item.questions?.length), '必须覆盖原生异步提问事件，不能被动态工具路径替代');
       assert.ok(raw.some(m => m.method === 'turn/completed' && m.params.turn.status === 'interrupted'), '展示问题前服务端必须确认中断');
       // 在问题仍未回答时模拟窗口重载，而不是等本轮完成后才恢复。
       await p.disposeAndWait();
@@ -47,7 +65,7 @@ const { CodexProcess } = require('../dist/test/codex/process.js');
       await assert.rejects(fs.access(path.join(cwd, marker)));
       const waiting = await p.rpc.request('thread/read', { threadId: id, includeTurns: true });
       assert.equal(waiting.thread.turns.at(-1).status, 'interrupted');
-      assert.equal(p.answerQuestion(questions[0].requestId, { choice: 'A' }), true);
+      assert.equal(p.answerQuestion(questions[0].requestId, { [questions[0].input.questions[0].id]: 'A' }), true);
       console.log('提交测试答案，检查新轮次恢复执行');
       await until(() => events.some(e => e.kind === 'result'));
       assert.equal(events.find(e => e.kind === 'result').isError, false);

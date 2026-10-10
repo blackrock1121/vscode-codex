@@ -61,6 +61,47 @@ test('恢复旧会话可正常连接',async t=>{
  t.after(()=>p.disposeAndWait());await p.start();assert.equal(p.currentSessionId,'thread-1');
 });
 
+test('旧会话原生异步提问展示 AskUserQuestion 并真正停止后台，提交前不继续',async t=>{
+ const {p,events,requests}=await client(t,{resumeSessionId:'thread-1'});
+ p.sendUserMessage('async-question');
+ await waitUntil(()=>p.pausedQuestion);assert.equal(requests.length,0);
+ await waitUntil(()=>requests.length);
+ const q=requests[0];
+ assert.equal(q.toolName,'AskUserQuestion');
+ assert.deepEqual(q.input.questions,[{id:'0',question:'请选择测试结果',options:[{label:'A'},{label:'B'}]}]);
+ await new Promise(r=>setTimeout(r,120));
+ assert.equal(p.isBusy,true);assert.equal(requests.length,1);
+ assert.equal(events.some(e=>['text_delta','tool_input','result'].includes(e.kind)),false);
+ assert.equal(p.answerQuestion(q.requestId,{}),false);
+ assert.equal(p.answerQuestion(q.requestId,{'0':'B'}),true);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const response=JSON.parse(events.find(e=>e.kind==='tool_result').content);
+ assert.equal(response.interruptCount,1);assert.equal(response.answerCount,0);
+ assert.deepEqual(JSON.parse(response.text.split('\n')[1]),[{question:'请选择测试结果',answers:['B']}]);
+});
+
+test('无选项的原生提问可保存、重载并提交自由文本答案',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-async-question-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const first=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});
+ first.p.sendUserMessage('async-freeform');await waitUntil(()=>first.requests.length);
+ await first.p.disposeAndWait();
+ const restored=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});
+ assert.equal(restored.requests.length,1);assert.deepEqual(restored.requests[0].input.questions[0].options,[]);
+ assert.equal(restored.p.answerQuestion(restored.requests[0].requestId,{'0':'我的答案'}),true);
+ await waitUntil(()=>restored.events.some(e=>e.kind==='result'));
+ assert.match(restored.events.find(e=>e.kind==='tool_result').content,/我的答案/);
+ await assert.rejects(fs.access(path.join(dir,'question-thread-1.json')));
+});
+
+test('只把结构化原生提问映射为历史问题卡片，普通文字不猜测成问题',()=>{
+ const {asyncQuestions}=require('../dist/test/codex/events.js');
+ const item={type:'agentMessage',id:'ask',delivery:'async',text:'选择？',questions:[{title:'选择？',options:['A','B']}]};
+ assert.equal(timeline([{items:[item]}])[0].name,'AskUserQuestion');
+ assert.equal(timeline([{items:[item]}])[0].result,'选择？');
+ for(const invalid of [{...item,delivery:null},{...item,questions:[]},{...item,questions:[{title:''}]},{...item,questions:[{title:'选择？',options:[{}]}]}])assert.equal(asyncQuestions(invalid),undefined);
+ assert.deepEqual(timeline([{items:[{type:'agentMessage',text:'请确认后回复'}]}]),[{type:'assistant_text',text:'请确认后回复'}]);
+});
+
 test('后台提问先中断且保留卡片，未答复不继续；答案通过新轮次送达',async t=>{
  const {p,events,requests}=await client(t);p.sendUserMessage('background-question');
  await waitUntil(()=>p.pausedQuestion);assert.equal(requests.length,0,'确认停止前不显示问题');
