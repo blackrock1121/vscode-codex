@@ -14,7 +14,8 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  let result={};
  if(m.method==='account/read')result={account:{type:process.env.TEST_API_KEY?'apiKey':'chatgpt'},requiresOpenaiAuth:true};
  if(m.method==='thread/start'||m.method==='thread/resume'){
-  if(!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
+  if(m.method==='thread/start'&&!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
+  if(m.method==='thread/resume'&&m.params.dynamicTools){send({id:m.id,error:{code:-32602,message:'thread/resume 不支持 dynamicTools'}});return;}
   result={thread:{id:'thread-1'},model:'test-model'};
  }
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',serviceTiers:process.env.TEST_NO_FAST?[]:[{id:'priority',name:'Fast',description:''},...(process.env.TEST_ULTRA?[{id:'ultrafast',name:'Ultrafast',description:''}]:[])],supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
@@ -32,7 +33,16 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  send({id:m.id,result});
  if(m.method==='turn/start'){
   text=m.params.input.find(x=>x.type==='text')?.text||'';
-  if(text==='approval'){
+  if(text==='async-question'||text==='async-freeform'){
+   const item={type:'agentMessage',id:'async-ask-1',text:'请选择测试结果\n- A\n- B',phase:'final_answer',delivery:'async',questions:[{title:'请选择测试结果',options:text==='async-freeform'?null:['A','B']}]};
+   note('item/started',{threadId:'thread-1',turnId:'turn-1',item});
+   note('item/completed',{threadId:'thread-1',turnId:'turn-1',item});
+   // 若客户端漏接异步提问，模型会继续执行并进入休眠。
+   background=setTimeout(()=>{
+    note('item/started',{threadId:'thread-1',turnId:'turn-1',item:{type:'dynamicToolCall',id:'bad-sleep',tool:'sleep',arguments:{duration_ms:50000}}});
+    note('item/agentMessage/delta',{threadId:'thread-1',itemId:'bad',delta:'仍在等待用户回答'});
+   },80);
+  }else if(text==='approval'){
    note('item/started',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',cwd:'/tmp'}});
    send({id:'approval-1',method:'item/commandExecution/requestApproval',params:{threadId:'thread-1',turnId:'turn-1',itemId:'cmd',command:'echo test'}});
   }else if(text==='question'||text==='legacy-question')send({id:17,method:text==='question'?'tool/requestUserInput':'item/tool/requestUserInput',params:{threadId:'thread-1',turnId:'turn-1',itemId:'ask-1',isBlocking:true,questions:[{id:'q1',question:'选择什么？',header:'选择',isOther:true,isSecret:false,options:[{label:'A',description:'选项'}]}]}});

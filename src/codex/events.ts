@@ -2,6 +2,16 @@ import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview } from '../shared';
 
 export const QUESTION_REPLY_PREFIX = '用户已回答刚才的问题，请根据以下答案继续原任务：\n';
 
+/** 原生异步提问以 agentMessage 通知到达，不会产生 item/tool/call 请求。 */
+export function asyncQuestions(item: any): { id: string; question: string; options: { label: string }[] }[] | undefined {
+  if (item?.type !== 'agentMessage' || item.delivery !== 'async' || !Array.isArray(item.questions) || !item.questions.length) return;
+  if (item.questions.some((q: any) => !q || typeof q.title !== 'string' || !q.title.trim() ||
+      (q.options != null && (!Array.isArray(q.options) || q.options.some((option: unknown) => typeof option !== 'string'))))) return;
+  return item.questions.map((q: any, index: number) => ({
+    id: String(index), question: q.title, options: (q.options ?? []).map((label: string) => ({ label })),
+  }));
+}
+
 /** 原始答案交给模型；界面、搜索及编辑历史统一使用遮蔽后的文本。 */
 function maskQuestionReply(text: string): string {
   if (!text.startsWith(QUESTION_REPLY_PREFIX)) return text;
@@ -44,7 +54,9 @@ export function userView(content: any[]): Extract<TimelineItem, { type: 'user' }
 export function timeline(turns: any[]): TimelineItem[] {
   const out: TimelineItem[] = [];
   for (const turn of turns) for (const item of turn.items ?? []) {
+    const questions = asyncQuestions(item);
     if (item.type === 'userMessage') out.push(userView(item.content ?? []));
+    else if (questions) out.push({ type: 'tool', toolId: item.id, name: 'AskUserQuestion', input: { questions }, result: item.text || questions.map(q => q.question).join('\n') });
     else if (item.type === 'agentMessage' || item.type === 'plan') out.push({ type: 'assistant_text', text: item.text ?? '' });
     else if (item.type === 'reasoning') out.push({ type: 'thinking', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n') });
     else if (item.type === 'contextCompaction') out.push({ type: 'compaction', preTokens: 0, postTokens: 0 });
