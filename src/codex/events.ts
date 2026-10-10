@@ -2,11 +2,20 @@ import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview } from '../shared';
 
 export const QUESTION_REPLY_PREFIX = '用户已回答刚才的问题，请根据以下答案继续原任务：\n';
 
+/** 为缺失或重复的 ID 分配稳定编号，避免多道题的答案互相覆盖。 */
+export function normalizeQuestions(value: any): any[] | undefined {
+  if (!Array.isArray(value) || !value.length || value.some(q => !q || typeof q.question !== 'string' || !q.question.trim() ||
+      (q.options != null && (!Array.isArray(q.options) || q.options.some((o: any) => !o || typeof o.label !== 'string' || !o.label.trim()))))) return;
+  const ids = value.map(q => q.id);
+  const usableIds = ids.every(id => typeof id === 'string' && id.trim()) && new Set(ids).size === ids.length;
+  return value.map((q, index) => ({ ...q, id: usableIds ? q.id : String(index), options: q.options ?? [], multiSelect: false }));
+}
+
 /** 原生异步提问以 agentMessage 通知到达，不会产生 item/tool/call 请求。 */
 export function asyncQuestions(item: any): { id: string; question: string; options: { label: string }[] }[] | undefined {
   if (item?.type !== 'agentMessage' || item.delivery !== 'async' || !Array.isArray(item.questions) || !item.questions.length) return;
   if (item.questions.some((q: any) => !q || typeof q.title !== 'string' || !q.title.trim() ||
-      (q.options != null && (!Array.isArray(q.options) || q.options.some((option: unknown) => typeof option !== 'string'))))) return;
+      (q.options != null && (!Array.isArray(q.options) || q.options.some((option: unknown) => typeof option !== 'string' || !option.trim()))))) return;
   return item.questions.map((q: any, index: number) => ({
     id: String(index), question: q.title, options: (q.options ?? []).map((label: string) => ({ label })),
   }));

@@ -759,11 +759,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const ctx = this.activeCtx;
         if (!ctx)
             return;
+        await this.stopContext(ctx);
+    }
+    private async stopContext(ctx: SessionCtx): Promise<void> {
         ctx.pendingPerm = undefined;
         ctx.lastEventAt = undefined;
+        ctx.lastUserActionAt = Date.now();
         ctx.stopSeq = ctx.sendSeq ?? 0;
-        this.post(ctx, { kind: "busy", busy: false });
-        await ctx.proc?.interrupt();
+        const proc = ctx.proc;
+        if (!proc?.isBusy) { this.post(ctx, { kind: "busy", busy: false }); return; }
+        this.post(ctx, { kind: "status", label: "正在停止，确认后再处理排队消息…" });
+        try { await proc.interrupt(); }
+        catch (err) {
+            this.output.appendLine(`[interrupt] ${String(err)}`);
+            this.post(ctx, { kind: "notice", message: "停止请求失败，正在关闭连接。" });
+            await proc.disposeAndWait();
+        }
     }
     focusInput(): void {
         this.reveal();
@@ -908,12 +919,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     await this.editMessage(ctx, m.checkpointId, m.text, m.images);
                     break;
                 case "interrupt":
-                    ctx.pendingPerm = undefined;
-                    ctx.lastUserActionAt = Date.now();
-                    ctx.lastEventAt = undefined;
-                    ctx.stopSeq = ctx.sendSeq ?? 0;
-                    this.post(ctx, { kind: "busy", busy: false });
-                    void ctx.proc?.interrupt();
+                    await this.stopContext(ctx);
                     break;
                 case "newContext":
                     await this.newContext(ctx, m);
@@ -935,8 +941,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         ctx.lastEventAt = Date.now();
                     this.handlePermission(ctx, m.requestId, m.behavior, m.suggestionId);
                     break;
-                case "answerQuestion":
-                    if (!ctx.proc?.answerQuestion(m.requestId, m.answers)) break;
+                case "answerQuestion": {
+                    try {
+                        const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
+                        if (!proc?.answerQuestion(m.requestId, m.answers)) throw new Error("答案未提交，问题可能已失效。请重试，或停止本轮后重新提问。");
+                    } catch (err) {
+                        this.post(ctx, { kind: "question_answer_rejected", requestId: m.requestId, message: String((err as Error)?.message ?? err) });
+                        break;
+                    }
                     if (ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === m.requestId && ctx.pendingQuestionAt !== undefined)
                         this.output.appendLine(`[${new Date().toISOString()}] [question] 用户等待 ${Date.now() - ctx.pendingQuestionAt}ms，答案已转交 Codex`);
                     ctx.pendingQuestionAt = undefined;
@@ -945,6 +957,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (ctx.lastEventAt !== undefined)
                         ctx.lastEventAt = Date.now();
                     break;
+                }
                 case "restoreCheckpoint":
                     await this.restoreCheckpoint(ctx, m.checkpointId);
                     break;

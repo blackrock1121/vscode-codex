@@ -73,3 +73,22 @@ test('重载后保留未落盘提问及还原入口，但不改写真实历史',
  assert.equal(history.checkpoints.at(-1).id,f.id);
  assert.equal(f.store.firstUserTurnAfter('source',1),undefined);
 });
+
+test('宿主停止时不提前发送空闲状态，避免队列撞上尚未结束的轮次',async t=>{
+ const f=await fixture(t);let interrupted=false;
+ f.ctx.proc={isBusy:true,interrupt:async()=>{interrupted=true;}};
+ await f.provider.stopContext(f.ctx);
+ assert.equal(interrupted,true);assert.equal(f.messages.some(m=>m.kind==='busy'&&!m.busy),false);
+ f.ctx.proc.isBusy=false;await f.provider.stopContext(f.ctx);
+ assert.ok(f.messages.some(m=>m.kind==='busy'&&!m.busy));
+});
+
+test('宿主拒绝答案时只返回可重试错误，不发送结束事件放行队列',async t=>{
+ const f=await fixture(t);f.ctx.proc={isExited:false,answerQuestion:()=>false};
+ await f.provider.onPanelMessage(f.ctx,{type:'answerQuestion',requestId:'missing',answers:{q:'A'}});
+ assert.equal(f.messages.at(-1).kind,'question_answer_rejected');
+ assert.equal(f.messages.some(m=>['busy','result','error'].includes(m.kind)),false);
+ f.ctx.proc.answerQuestion=()=>{throw Error('磁盘写入失败');};
+ await f.provider.onPanelMessage(f.ctx,{type:'answerQuestion',requestId:'missing',answers:{q:'A'}});
+ assert.equal(f.messages.at(-1).message,'磁盘写入失败');
+});

@@ -44,6 +44,47 @@ test('派生仅出现在有前序对话的还原点并传递正确 ID',t=>{const
 test('关闭问题只停止本轮，不提交空答案',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'19',toolName:'AskUserQuestion',input:{questions:[{id:'detail',question:'提供详情',options:[]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker.querySelector('.askp-submit').disabled);picker.querySelector('.askp-x').click();assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
 test('无效提问停止本轮，不自动空答放行',t=>{const {sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'20',toolName:'AskUserQuestion',input:{questions:[]},suggestions:[]});assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);assert.deepEqual(errors,[]);});
 
+test('提交答案等待宿主确认，失败保留选择与自由文本并允许重试',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'busy',busy:true});
+ const request={kind:'permission_request',requestId:'retry',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'提供详情',options:[{label:'A'}]}]},suggestions:[]};
+ emit(request);emit(request);assert.equal(w.document.querySelectorAll('.askp').length,1);
+ let picker=w.document.querySelector('.askp');let input=picker.querySelector('textarea');
+ input.value='我的多行\n回答';input.dispatchEvent(new w.Event('input'));
+ picker.querySelector('.askp-submit').click();picker.querySelector('.askp-submit').click();
+ assert.equal(sent.filter(m=>m.type==='answerQuestion').length,1);
+ assert.ok(w.document.querySelector('.askp'));assert.equal(picker.querySelector('.askp-submit').disabled,true);
+ emit({kind:'question_answer_rejected',requestId:'retry',message:'请切换速度后重试'});
+ assert.equal(picker.querySelector('textarea').value,'我的多行\n回答');
+ assert.match(picker.textContent,/请切换速度后重试/);assert.equal(picker.querySelector('.askp-submit').disabled,false);
+ picker.querySelector('.askp-submit').click();emit({kind:'permission_resolved',requestId:'retry',behavior:'allow'});
+ assert.equal(w.document.querySelector('.askp'),null);assert.match(w.document.querySelector('.askq-card').textContent,/我的多行/);
+ assert.deepEqual(errors,[]);
+});
+
+test('待回答明确显示暂停，不显示推理动画，也不自动发送队列',async t=>{
+ const {w,sent,emit}=setup(t);emit({kind:'busy',busy:true});
+ emit({kind:'permission_request',requestId:'waiting',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'选择？',options:[]}]},suggestions:[]});
+ emit({kind:'busy',busy:true});
+ assert.match(w.document.getElementById('input').placeholder,/已暂停/);
+ assert.equal(w.document.querySelector('.working-pill'),null);
+ const input=w.document.getElementById('input');input.value='下一件事';w.document.getElementById('btn-send').click();
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ assert.equal(w.document.querySelectorAll('.tq-row').length,1);
+});
+
+test('点击停止后保持队列，收到后台停止确认才按顺序发送',async t=>{
+ const {w,sent,emit}=setup(t);emit({kind:'busy',busy:true});const input=w.document.getElementById('input');
+ input.value='已排队';w.document.getElementById('btn-send').click();w.document.getElementById('btn-stop').click();
+ assert.match(input.placeholder,/正在停止/);
+ input.value='停止期间补充';w.document.getElementById('btn-send').click();
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(r=>setTimeout(r,180));
+ assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['已排队']);
+ assert.match(w.document.getElementById('task-queue').textContent,/停止期间补充/);
+});
+
 test('速度菜单完整展示三档倍率并根据模型能力置灰，保存成功才更新当前状态',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'models',models:[{id:'gpt-6-astra',name:'GPT-6 Astra',description:'',efforts:['high'],speedModes:['default','fast']}]});

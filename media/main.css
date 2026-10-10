@@ -1180,6 +1180,11 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 8px 10px 9px 12px; border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25));
 }
+.askp-error {
+  padding: 8px 12px;
+  color: var(--vscode-errorForeground);
+  font-size: 12px;
+}
 .askp-pager { display: flex; align-items: center; gap: 4px; color: var(--vscode-descriptionForeground); font-size: 11.5px; }
 .askp-idx { font-variant-numeric: tabular-nums; }
 .askp-nav {

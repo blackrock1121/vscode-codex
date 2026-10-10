@@ -152,8 +152,7 @@ test('取消已恢复的问题后不能在下次启动时复活；新轮次使�
  const again=await client(t,{questionStateDir:dir,resumeSessionId:'thread-1'});assert.equal(again.requests.length,0);assert.equal(again.p.isBusy,false);
 });
 test('私密回答保留给模型但历史及用户消息视图遮蔽，并保留普通答案',async t=>{
- const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
- p.pending.get(requests[0].requestId).params.arguments.questions[0].isSecret=true;
+ const {p,events,requests}=await client(t);p.sendUserMessage('secret-question');await waitUntil(()=>requests.length);
  assert.equal(p.answerQuestion(requests[0].requestId,{choice:'SAMPLE_PRIVATE_ANSWER'}),true);await waitUntil(()=>events.some(e=>e.kind==='result'));
  const text=JSON.parse(events.find(e=>e.kind==='tool_result').content).text;
  assert.match(text,/SAMPLE_PRIVATE_ANSWER/);assert.match(text,/"isSecret":true/);
@@ -163,6 +162,89 @@ test('私密回答保留给模型但历史及用户消息视图遮蔽，并保�
  const mixed=QUESTION_REPLY_PREFIX+JSON.stringify([{question:'秘密',isSecret:true,answers:['PRIVATE']},{question:'普通',answers:['公开答案']}]);
  const result=timeline([{items:[{type:'userMessage',content:[{type:'text',text:mixed}]}]}]);
  assert.doesNotMatch(JSON.stringify(result),/PRIVATE/);assert.match(result[0].text,/公开答案/);
+});
+
+test('提问续轮不受旧轮次迟到的完成、文字和工具事件影响',async t=>{
+ const {p,events,requests}=await client(t,{env:{TEST_HOLD_REPLY:'1'}});
+ p.sendUserMessage('async-question');await waitUntil(()=>requests.length);
+ const old=p.pausedQuestion.turnId;
+ assert.equal(p.answerQuestion(requests[0].requestId,{'0':'B'}),true);
+ await waitUntil(()=>p.turnId&&p.turnId!==old);
+ const count=events.length;
+ for(const m of [
+  {method:'turn/completed',params:{turn:{id:old,status:'interrupted'}}},
+  {method:'item/agentMessage/delta',params:{turnId:old,itemId:'late',delta:'旧文字'}},
+  {method:'item/started',params:{turnId:old,item:{id:'late-tool',type:'commandExecution',command:'旧工具'}}}
+ ])p.notification({...m,params:{threadId:'thread-1',...m.params}});
+ assert.equal(p.isBusy,true);assert.equal(events.length,count);
+ await p.interrupt();await waitUntil(()=>!p.isBusy);
+});
+
+test('提问暂停期间仍接收账号额度更新，不恢复执行',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('async-question');await waitUntil(()=>requests.length);
+ p.notification({method:'account/rateLimits/updated',params:{rateLimits:{primary:{usedPercent:100}}}});
+ assert.ok(events.some(e=>e.kind==='rate_limit'&&e.level==='exhausted'));
+ assert.equal(p.pausedQuestion.ready,true);assert.equal(events.some(e=>e.kind==='result'),false);
+});
+
+test('不支持的续轮速度不丢失待答问题，切回普通后可再次提交',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-retry-answer-'));t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const {p,events,requests}=await client(t,{questionStateDir:dir});p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId;await p.setSpeedMode('ultrafast');
+ assert.throws(()=>p.answerQuestion(key,{choice:'A'}),/重新提交答案/);
+ assert.equal(p.pausedQuestion.ready,true);assert.equal(p.isBusy,true);
+ assert.ok((await fs.stat(path.join(dir,'question-thread-1.json'))).isFile());
+ assert.equal(events.some(e=>e.kind==='permission_resolved'),false);
+ await p.setSpeedMode('default');assert.equal(p.answerQuestion(key,{choice:'A'}),true);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+});
+
+test('损坏的原生问题或动态问题停止后台，不展示不可回答卡片',async t=>{
+ for(const native of [true,false]){
+  const {p,events,requests}=await client(t);p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+  const turnId=p.turnId;
+  if(native)p.notification({method:'item/completed',params:{threadId:'thread-1',turnId,item:{id:'broken',type:'agentMessage',delivery:'async',text:'等你回答',questions:[{title:'选择？',options:{bad:true}}]}}});
+  else await p.request({id:'invalid',method:'item/tool/call',params:{threadId:'thread-1',turnId,tool:'AskUserQuestion',arguments:{questions:[{question:'选择？',options:{bad:true}}]}}});
+  await waitUntil(()=>!p.isBusy);
+  assert.equal(requests.length,0);assert.ok(events.some(e=>e.kind==='notice'&&/提问格式无效/.test(e.message)));
+ }
+});
+
+test('重复问题 ID 规范化后，各题答案不会被覆盖',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+ await p.request({id:'duplicate',method:'item/tool/call',params:{threadId:'thread-1',turnId:p.turnId,tool:'AskUserQuestion',arguments:{questions:[{id:'same',question:'第一题',options:[]},{id:'same',question:'第二题',options:[]}]}}});
+ await waitUntil(()=>requests.length);
+ assert.deepEqual(requests[0].input.questions.map(q=>q.id),['0','1']);
+ assert.equal(p.answerQuestion('duplicate',{'0':'答案一','1':'答案二'}),true);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const text=JSON.parse(events.find(e=>e.kind==='tool_result').content).text;
+ assert.deepEqual(JSON.parse(text.split('\n')[1]),[{question:'第一题',answers:['答案一']},{question:'第二题',answers:['答案二']}]);
+});
+
+test('停止 RPC 应答不等于轮次结束，确认结束前保持忙碌',async t=>{
+ const {p,events}=await client(t,{env:{TEST_INTERRUPT_DELAY:'180'}});p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+ await p.interrupt();assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);
+ await waitUntil(()=>!p.isBusy);assert.equal(p.stopTimer,undefined);
+});
+
+test('没有结构化问题的异步消息照常显示，停止中的迟到问题不再弹卡片',async t=>{
+ const {p,events,requests}=await client(t,{env:{TEST_INTERRUPT_DELAY:'180'}});p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+ p.notification({method:'item/completed',params:{threadId:'thread-1',turnId:p.turnId,item:{id:'notice',type:'agentMessage',delivery:'async',questions:[],text:'普通异步通知'}}});
+ assert.ok(events.some(e=>e.kind==='text_delta'&&e.text==='普通异步通知'));assert.equal(p.stopTimer,undefined);
+ await p.interrupt();
+ p.notification({method:'item/completed',params:{threadId:'thread-1',turnId:p.turnId,item:{id:'late-question',type:'agentMessage',delivery:'async',questions:[{title:'迟到的问题',options:['A']}]}}});
+ assert.equal(p.pausedQuestion,undefined);assert.equal(requests.length,0);
+ await waitUntil(()=>!p.isBusy);
+});
+
+test('停止一直没有完成通知时关闭连接，释放发送锁',async t=>{
+ const {p,events}=await client(t,{env:{TEST_INTERRUPT_NO_COMPLETE:'1'}});p.sendUserMessage('wait');await waitUntil(()=>p.turnId);
+ t.mock.timers.enable({apis:['setTimeout']});
+ try {
+  await p.interrupt();t.mock.timers.tick(10000);
+  assert.equal(p.isExited,true);assert.equal(p.isBusy,false);
+  assert.ok(events.some(e=>e.kind==='error'&&/确认本轮停止/.test(e.message)));
+ } finally {t.mock.timers.reset();}
 });
 
 test('私密标记随等待状态恢复，保存文件不含用户答案，历史继续遮蔽',async t=>{
