@@ -124,6 +124,7 @@ export type ToWebview =
       suggestions: PermissionSuggestionView[];
     }
   | { kind: "permission_resolved"; requestId: string; behavior: "allow" | "deny"; auto?: boolean }
+  | { kind: "question_answer_rejected"; requestId: string; message: string }
   | { kind: "tokens"; output: number }
   | { kind: "thinking_tokens"; tokens: number }
   /** 纯诊断信息：只进输出通道日志，绝不显示到界面。 */

@@ -2,7 +2,7 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
-import { QUESTION_REPLY_PREFIX, asyncQuestions, toolView, quotaEvents } from './events';
+import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
@@ -56,12 +56,14 @@ export class CodexProcess {
   private dispatchSequence = 0;
   private waitingForCatalog = false;
   private turnId?: string;
+  private readonly endedTurns = new Set<string>();
   private busy = false;
   private exited = false;
   private disposed = false;
   private startingTurn?: Promise<void>;
   private beganAt = 0;
   private compacting = false;
+  private stopTimer?: NodeJS.Timeout;
   private readonly pending = new Map<string, { id: RpcId; method: string; params: any }>();
   private pausedQuestion?: { request: PermissionRequest; turnId?: string; ready: boolean; timer?: NodeJS.Timeout };
   private readonly streamed = new Set<string>();
@@ -71,7 +73,7 @@ export class CodexProcess {
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env);
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
-    this.rpc.on('close', (code: number | null) => { clearTimeout(this.pausedQuestion?.timer); this.exited = true; this.busy = false; this.hooks.onClose(code); });
+    this.rpc.on('close', (code: number | null) => { clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.exited = true; this.busy = false; this.hooks.onClose(code); });
   }
   get modelForNextTurn() { return this.opts.model || this.activeModel; }
   get currentSessionId() { return this.sessionId; }
@@ -137,10 +139,10 @@ export class CodexProcess {
     let saved: any;
     try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); }
     catch { this.clearSavedQuestion(); this.emit({ kind: 'notice', message: '保存的提问已损坏，请重新发送消息。' }); return; }
-    const questions = saved?.request?.input?.questions;
+    const questions = normalizeQuestions(saved?.request?.input?.questions);
     if (saved?.version !== 1 || saved.sessionId !== this.sessionId || typeof saved.turnId !== 'string' ||
         saved.request?.toolName !== 'AskUserQuestion' || typeof saved.request.requestId !== 'string' ||
-        !Array.isArray(questions) || !questions.length || questions.some((q: any) => !q || typeof q.question !== 'string')) {
+        !questions) {
       this.clearSavedQuestion(); return;
     }
     // 只恢复仍停在同一轮的问题，防止用户在其他窗口续聊后复活旧问题。
@@ -148,6 +150,7 @@ export class CodexProcess {
     const last = thread.turns?.at(-1);
     if (!last || last.id !== saved.turnId || !['interrupted', 'completed'].includes(last.status)) { this.clearSavedQuestion(); return; }
     const request: PermissionRequest = saved.request;
+    request.input = { ...request.input, questions };
     this.pausedQuestion = { request, turnId: saved.turnId, ready: true };
     this.pending.set(request.requestId, { id: request.requestId, method: 'item/tool/call', params: { arguments: request.input } });
     this.busy = true; this.beganAt = typeof saved.beganAt === 'number' ? saved.beganAt : Date.now();
@@ -197,9 +200,22 @@ export class CodexProcess {
   private block(id: string, type: 'text' | 'thinking') {
     if (this.activeBlock !== id) { this.activeBlock = id; this.emit({ kind: 'block_start', blockType: type }); }
   }
+  private rememberEndedTurn(id?: string): void {
+    if (!id) return;
+    this.endedTurns.add(id);
+    if (this.endedTurns.size > 128) this.endedTurns.delete(this.endedTurns.values().next().value!);
+  }
+  private stopInvalidQuestion(): void {
+    this.emit({ kind: 'notice', message: '提问格式无效，正在停止本轮，请重新发送消息。' });
+    void this.interrupt().catch(e => { this.rpc.dispose(); this.error(e); });
+  }
   private notification(m: RpcMessage): void {
     const p = m.params ?? {};
     if (p.threadId && this.sessionId && p.threadId !== this.sessionId) return;
+    const eventTurnId = p.turnId ?? p.turn?.id;
+    if (eventTurnId && this.endedTurns.has(eventTurnId)) return;
+    // 账号通知不属于被暂停的轮次；等待期间仍需更新额度。
+    if (m.method === 'account/rateLimits/updated') { for (const event of quotaEvents(p.rateLimits)) this.emit(event); return; }
     // 用户问题不交给后台工具等待：先中断模型，保留本地问题，收到答案才开启续轮。
     // 等待中忽略旧轮次的尾部事件；真正停止由 turn/completed 确认，而非隐藏 UI。
     if (this.pausedQuestion) {
@@ -207,6 +223,7 @@ export class CodexProcess {
       if (m.method === 'turn/completed' && (!paused.turnId || p.turn.id === paused.turnId)) {
         if (p.turn.status === 'failed') { this.error(p.turn.error?.message ?? '暂停提问失败'); this.finish(true); return; }
         if (!paused.ready) {
+          this.rememberEndedTurn(p.turn.id);
           clearTimeout(paused.timer); paused.ready = true; this.turnId = undefined;
           try { this.saveQuestion(); }
           catch (e) { this.error(`保存等待中的问题失败：${String(e)}`); this.finish(true); return; }
@@ -216,7 +233,7 @@ export class CodexProcess {
       return;
     }
     if (m.method === 'turn/started') { this.turnId = p.turn.id; return; }
-    if (m.method === 'turn/completed') { if (p.turn.error) this.error(p.turn.error.message); this.finish(p.turn.status === 'failed'); return; }
+    if (m.method === 'turn/completed') { this.rememberEndedTurn(p.turn.id); if (p.turn.error) this.error(p.turn.error.message); this.finish(p.turn.status === 'failed'); return; }
     if (m.method === 'item/agentMessage/delta' || m.method === 'item/plan/delta') {
       this.block(p.itemId, 'text'); this.streamed.add(p.itemId); this.emit({ kind: 'text_delta', text: p.delta }); return;
     }
@@ -227,7 +244,6 @@ export class CodexProcess {
       const u = p.tokenUsage; if (u?.modelContextWindow) this.emit({ kind: 'context', used: u.last?.totalTokens ?? 0, total: u.modelContextWindow });
       this.emit({ kind: 'tokens', output: u?.last?.outputTokens ?? 0 }); return;
     }
-    if (m.method === 'account/rateLimits/updated') { for (const event of quotaEvents(p.rateLimits)) this.emit(event); return; }
     if (m.method === 'turn/plan/updated') {
       this.emit({ kind: 'tool_input', toolId: 'plan', name: 'TodoWrite', input: { todos: (p.plan ?? []).map((x: any) => ({ content: x.step, status: x.status, activeForm: x.step })) } }); return;
     }
@@ -240,7 +256,7 @@ export class CodexProcess {
     const done = m.method === 'item/completed';
     const questions = asyncQuestions(item);
     if (questions) {
-      if (done && this.busy) {
+      if (done && this.busy && !this.stopTimer) {
         const key = `async-question:${item.id}`;
         const input = { questions };
         // 这是通知，不存在待答 RPC。仅建立本地问题，回答时用真实用户消息续轮。
@@ -248,6 +264,12 @@ export class CodexProcess {
         this.emit({ kind: 'diag', message: '[question] 原生异步提问转入 AskUserQuestion 暂停流程' });
         void this.pauseForQuestion({ requestId: key, toolUseId: item.id, toolName: 'AskUserQuestion', input, suggestions: [] }, p.turnId);
       }
+      return;
+    }
+    if (done && item.type === 'agentMessage' && item.delivery === 'async' && item.questions != null &&
+        (!Array.isArray(item.questions) || item.questions.length > 0)) {
+      // 结构化问题损坏时不能退化成普通文字，让模型继续 sleep 等待。
+      this.stopInvalidQuestion();
       return;
     }
     if (['agentMessage', 'plan', 'reasoning'].includes(item.type)) {
@@ -268,7 +290,8 @@ export class CodexProcess {
   private async request(m: RpcMessage): Promise<void> {
     const p = m.params ?? {}, key = String(m.id);
     if (p.threadId && p.threadId !== this.sessionId) { this.rpc.reject(m.id!, '会话不匹配'); return; }
-    if (this.pausedQuestion) { this.rpc.reject(m.id!, '正在暂停等待用户回答'); return; }
+    if (p.turnId && this.endedTurns.has(p.turnId)) { this.rpc.reject(m.id!, '该轮次已经结束'); return; }
+    if (this.pausedQuestion || this.stopTimer) { this.rpc.reject(m.id!, '正在停止或等待用户回答'); return; }
     const method = m.method!;
     if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput', 'item/tool/call', 'item/permissions/requestApproval', 'mcpServer/elicitation/request'].includes(method)) { this.rpc.reject(m.id!); return; }
     if (method === 'item/tool/call' && p.tool !== 'AskUserQuestion') { this.rpc.reject(m.id!, '未知工具'); return; }
@@ -277,7 +300,9 @@ export class CodexProcess {
     const name = question ? 'AskUserQuestion' : method.includes('commandExecution') ? 'Bash' : method.includes('fileChange') ? 'Edit' : '权限请求';
     const item = this.tools.get(p.itemId);
     const rawQuestions = method === 'item/tool/call' ? p.arguments?.questions : p.questions;
-    const input = question ? { questions: (Array.isArray(rawQuestions) ? rawQuestions : []).map((q: any) => ({ ...q, multiSelect: false })) } : item ? toolView(item).input : { command: p.command, ...p };
+    const questions = question ? normalizeQuestions(rawQuestions) : undefined;
+    if (question && !questions) { this.stopInvalidQuestion(); return; }
+    const input = question ? { questions: questions! } : item ? toolView(item).input : { command: p.command, ...p };
     if (!question) await this.hooks.onPreTool?.(name, input);
     const request: PermissionRequest = { requestId: key, toolUseId: p.itemId, toolName: name, input, description: p.reason ?? 'Codex 请求授权', suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] };
     if (!question) { this.hooks.onPermission(request); return; }
@@ -319,7 +344,7 @@ export class CodexProcess {
     const p = this.pending.get(key);
     if (!p || !['item/tool/call', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(p.method)) return false;
     const mapped: Record<string, { answers: string[] }> = {};
-    const questions = p.method === 'item/tool/call' ? p.params.arguments?.questions : p.params.questions;
+    const questions = this.pausedQuestion?.request.input.questions as any[] | undefined;
     if (!Array.isArray(questions) || !questions.length) return false;
     for (const [index, q] of questions.entries()) {
       const a = answers[q.id] ?? answers[q.question] ?? answers[String(index)] ?? [];
@@ -329,6 +354,10 @@ export class CodexProcess {
     }
     const paused = this.pausedQuestion;
     if (!paused?.ready || paused.request.requestId !== key) return false;
+    const speed = this.opts.speedMode ?? 'default';
+    if (speed !== 'default' && !this.modelsLoaded) throw new Error('模型列表仍在加载，请稍后重新提交答案。');
+    if (!supportsSpeed(this.models.find(m => m.id === this.modelForNextTurn), speed))
+      throw new Error(`当前模型无法使用${speedLabel(speed)}模式，请切换速度或模型后重新提交答案。`);
     const reply = questions.map((q, index) => ({ question: q.question, ...(q.isSecret ? { isSecret: true } : {}), answers: mapped[q.id || q.question || String(index)].answers }));
     // 原工具请求随中断失效。用真实用户消息恢复同一会话，绝不向旧 RPC 伪造成功。
     this.clearSavedQuestion();
@@ -339,14 +368,22 @@ export class CodexProcess {
     return this.sendUserMessage(`${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`);
   }
   async interrupt(): Promise<void> {
+    if (this.stopTimer || !this.busy) return;
     if (this.waitingForCatalog) {
       ++this.dispatchSequence; this.waitingForCatalog = false; this.startingTurn = undefined;
       this.finish(false); return;
     }
     if (this.pausedQuestion?.ready) { this.finish(false); return; }
     clearTimeout(this.pausedQuestion?.timer); this.pausedQuestion = undefined;
+    this.stopTimer = setTimeout(() => {
+      this.exited = true; this.rpc.dispose();
+      this.error('未能确认本轮停止，已关闭连接。下一条消息会重新连接。'); this.finish(true);
+    }, 10000);
+    this.stopTimer.unref();
     await this.startingTurn;
-    if (this.turnId && this.busy) await this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId });
+    if (this.turnId && this.busy) {
+      await this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId });
+    }
     else if (this.compacting) { this.dispose(); }
   }
   async setPermissionMode(mode: string) { permissions(mode, []); this.opts.permissionMode = mode; }
@@ -358,13 +395,15 @@ export class CodexProcess {
   }
   private finish(isError: boolean) {
     if (!this.busy) return;
+    this.rememberEndedTurn(this.turnId);
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
     clearTimeout(this.pausedQuestion?.timer);
+    clearTimeout(this.stopTimer); this.stopTimer = undefined;
     this.busy = false; this.compacting = false; this.turnId = undefined; this.pausedQuestion = undefined;
     for (const key of this.pending.keys()) this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
   }
-  dispose() { clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.rpc.dispose(); }
-  async disposeAndWait() { clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; await this.rpc.disposeAndWait(); }
+  dispose() { clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.rpc.dispose(); }
+  async disposeAndWait() { clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; await this.rpc.disposeAndWait(); }
 }

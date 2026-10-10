@@ -126,6 +126,9 @@ const stopBtn = $<HTMLButtonElement>("btn-stop");
 const queueHint = $("queue-hint");
 const PLACEHOLDER_IDLE = inputEl.placeholder;
 const PLACEHOLDER_BUSY = "任务进行中 · 回车将内容加入等待队列";
+let waitingQuestionId: string | undefined;
+let stopPending = false;
+const questionInteractions = new Map<string, { resolve: (behavior: "allow" | "deny") => void; retry: (message: string) => void }>();
 const statusLine = $("status-line");
 const modeTrigger = $("mode-trigger");
 const modeIcon = $("mode-icon");
@@ -916,11 +919,24 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "permission_request":
       setGlow("waiting"); // parked on the user — the rim pulses faster
+      if (m.toolName === "AskUserQuestion") {
+        waitingQuestionId = m.requestId;
+        statusLine.textContent = "已暂停 · 等待提交问题答案";
+        removeWorking();
+        if (assistantEl) assistantEl.classList.remove("streaming-turn");
+        refreshComposerHint();
+      }
       attachPermission(m);
       break;
     case "permission_resolved":
+      if (waitingQuestionId === m.requestId) { waitingQuestionId = undefined; statusLine.textContent = ""; }
       if (isBusy) setGlow("running"); // answered — back to work
       resolvePermission(m.requestId, m.behavior);
+      refreshComposerHint();
+      break;
+    case "question_answer_rejected":
+      questionInteractions.get(m.requestId)?.retry(m.message);
+      if (waitingQuestionId === m.requestId) setGlow("waiting");
       break;
     case "result":
       // A turn the user cancelled is not a failure: no red rim.
@@ -1624,6 +1640,7 @@ function renderAnsweredQuestion(parent: HTMLElement, result: string) {
 
 /** Render an AskUserQuestion tool as a compact paginated option picker. */
 function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
+  if (questionInteractions.has(m.requestId)) return;
   const body = ensureAssistant();
   removeWorking();
   const questions = ((m.input as { questions?: any[] })?.questions || []) as Array<{
@@ -1646,6 +1663,8 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const custom = questions.map(() => ""); // custom answer text per question
   let cur = 0;
   let done = false;
+  let submitting = false;
+  let submittedAnswers: Record<string, string | string[]> | undefined;
 
   const wrap = el("div", "askp");
   wrap.dataset.requestId = m.requestId;
@@ -1667,6 +1686,8 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const submit = el("button", "askp-submit", "提交") as HTMLButtonElement;
   foot.append(pager, submit);
   card.append(head, optsBox, foot);
+  const submitError = el("div", "askp-error hidden");
+  card.append(submitError);
   wrap.append(card);
 
   const answered = (qi: number) => sel[qi].size > 0 || custom[qi].trim().length > 0;
@@ -1804,6 +1825,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const finish = (answers: Record<string, string | string[]> | null) => {
     if (done) return;
     done = true;
+    questionInteractions.delete(m.requestId);
     if (answers) {
       const pairs = questions
         .map((q): [string, string] => {
@@ -1830,20 +1852,43 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     }
   };
   submit.onclick = () => {
-    if (done || !questions.every((_, qi) => answered(qi))) return;
+    if (done || submitting || !questions.every((_, qi) => answered(qi))) return;
     const answers: Record<string, string | string[]> = {};
     questions.forEach((q, qi) => {
       const picks = [...sel[qi]];
       if (custom[qi].trim()) picks.push(custom[qi].trim());
       answers[q.id || q.question] = q.multiSelect ? picks : picks[0] || "";
     });
+    submitting = true;
+    submittedAnswers = answers;
+    submitError.classList.add("hidden");
+    wrap.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>("button, input, textarea").forEach(control => control.disabled = true);
+    submit.textContent = "提交中…";
     send({ type: "answerQuestion", requestId: m.requestId, answers });
-    finish(answers);
   };
   xBtn.onclick = () => {
+    stopPending = true;
+    waitingQuestionId = undefined;
+    refreshComposerHint();
     send({ type: "interrupt" });
     finish(null);
   };
+  questionInteractions.set(m.requestId, {
+    resolve: behavior => {
+      if (behavior === "allow") finish(submittedAnswers ?? null);
+      else { done = true; questionInteractions.delete(m.requestId); }
+    },
+    retry: message => {
+      if (done) return;
+      submitting = false;
+      submittedAnswers = undefined;
+      xBtn.disabled = false;
+      submit.textContent = "提交";
+      paint();
+      submitError.textContent = message;
+      submitError.classList.remove("hidden");
+    },
+  });
 
   paint();
   // The picker is a step on the timeline like any other tool — blue node
@@ -1856,10 +1901,11 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 }
 
 function resolvePermission(requestId: string, behavior: "allow" | "deny") {
+  questionInteractions.get(requestId)?.resolve(behavior);
   const ask = Array.from(messagesEl.querySelectorAll<HTMLElement>(".askp")).find(node => node.dataset.requestId === requestId);
   if (ask && behavior === "deny") {
     ask.classList.add("interaction-cancelled");
-    ask.querySelectorAll("button, textarea").forEach(control => ((control as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
+    ask.querySelectorAll("button, input, textarea").forEach(control => ((control as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
   }
   const bar = messagesEl.querySelector(`.perm-bar[data-request-id="${requestId}"]`) as HTMLElement;
   if (!bar) return;
@@ -1881,6 +1927,8 @@ const HISTORY_CHUNK = 30; // 「加载更多」每次只向上渲染 30 轮—�
 let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: string; userText?: string }[] } | null = null;
 
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
+  questionInteractions.clear();
+  waitingQuestionId = undefined;
   historyState = { items, checkpoints: checkpoints || [] };
   seedInputHistory(items); // ↑ 能调回本会话之前发过的消息
   if (sessionId) vscode.setState({ sessionId });
@@ -2845,10 +2893,9 @@ stopBtn.onclick = () => {
     assistantEl.remove();
     assistantEl = null;
   }
+  // 显示立刻停止，但保留发送锁，直到宿主确认后台真正结束。
+  stopPending = true;
   send({ type: "interrupt" });
-  // Optimistic: react to the click itself with zero latency. The host confirms
-  // with a busy:false, and the final `result` appends the interrupted marker.
-  isBusy = false;
   refreshComposerHint();
 };
 /** True from Stop-click until the next turn starts: render nothing new. */
@@ -2898,6 +2945,7 @@ inputEl.addEventListener("input", () => {
  *  toggle send/stop buttons accordingly. */
 function refreshComposerHint() {
   const hasContent = inputEl.value.trim().length > 0 || pendingImages.length > 0;
+  stopBtn.disabled = stopPending;
   // A permanently-filled send button next to an empty box is a call to action
   // with nothing behind it — keep it quiet until there is content.
   sendBtn.classList.toggle("ready", hasContent);
@@ -2913,7 +2961,8 @@ function refreshComposerHint() {
     stopBtn.classList.remove("hidden");
     sendBtn.classList.toggle("hidden", !hasContent); // clickable "add to queue" when there's content
     sendBtn.title = "加入等待队列";
-    inputEl.placeholder = PLACEHOLDER_BUSY;
+    inputEl.placeholder = stopPending ? "正在停止 · 新消息暂存队列" : waitingQuestionId ? "已暂停 · 请在问题卡片提交答案；新任务可排队" : PLACEHOLDER_BUSY;
+    queueHint.textContent = stopPending ? "正在停止 · 确认停止后处理队列" : waitingQuestionId ? "等待回答 · 提交问题答案后继续，排队任务暂不执行" : PLACEHOLDER_BUSY;
     queueHint.classList.toggle("hidden", !hasContent);
   } else {
     sendBtn.classList.remove("hidden");
@@ -3994,6 +4043,8 @@ inputEl.addEventListener("mousedown", ackGlow);
 
 function setBusy(busy: boolean) {
   isBusy = busy;
+  stopPending = false;
+  if (!busy) waitingQuestionId = undefined;
   // Only light UP here. Turning the glow off is the job of whoever ends the turn
   // (`result` / `error` / Stop), which knows WHY it ended — `setBusy(false)`
   // fires on all of them and would otherwise erase the red/green rim instantly.
@@ -4004,8 +4055,11 @@ function setBusy(busy: boolean) {
   if (busy) changedFiles.classList.add("collapsed");
   refreshComposerHint(); // toggles send/stop + the "加入等待队列" hint
   if (busy) {
-    showWorking();
-    if (assistantEl) assistantEl.classList.add("streaming-turn");
+    if (waitingQuestionId) removeWorking();
+    else {
+      showWorking();
+      if (assistantEl) assistantEl.classList.add("streaming-turn");
+    }
   } else {
     removeWorking();
     // Turn finished — kick off the next queued task (slight delay so the result
