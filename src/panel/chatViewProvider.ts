@@ -3361,7 +3361,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="mode-trigger" class="composer-pick" title="选择模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
 
             <span class="composer-state">
-              <span id="ctx-gauge" class="ctx-gauge hidden" title="上下文使用量"><span class="cg-ring"><span class="cg-pct"></span></span></span>
+              <button id="ctx-gauge" type="button" class="ctx-gauge hidden" aria-label="上下文使用量，点击压缩" aria-describedby="ctx-tooltip"><span class="cg-ring"><span class="cg-pct"></span></span><span id="ctx-tooltip" class="ctx-tooltip" role="tooltip"></span></button>
               <button id="usage-pill" class="usage-pill hidden" title="Codex 订阅用量 · 点击查看详情"></button>
             </span>
           </div>

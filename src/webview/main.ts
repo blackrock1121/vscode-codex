@@ -497,6 +497,22 @@ function addStreamEst(text: string) {
 }
 
 const ctxGauge = $("ctx-gauge");
+const ctxTooltip = $("ctx-tooltip");
+ctxTooltip.addEventListener("click", (event) => event.stopPropagation());
+function positionContextTooltip() {
+  const rect = ctxGauge.getBoundingClientRect();
+  const width = ctxTooltip.getBoundingClientRect().width;
+  ctxTooltip.style.left = `${Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8))}px`;
+  ctxTooltip.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+}
+for (const event of ["mouseenter", "focus"]) ctxGauge.addEventListener(event, () => {
+  ctxGauge.classList.remove("tooltip-dismissed");
+  positionContextTooltip();
+});
+window.addEventListener("resize", positionContextTooltip);
+ctxGauge.addEventListener("keydown", (event) => {
+  if (event.key === "Escape") ctxGauge.classList.add("tooltip-dismissed");
+});
 let lastCtxTotal = 1_000_000; // remembered so we can repaint the gauge after a /compact
 let compacting = false;
 /** Circular context-usage gauge next to the mode picker (hidden below 10%).
@@ -513,7 +529,13 @@ function updateContextGauge(used: number, total: number) {
   ctxGauge.style.setProperty("--cg-color", pct >= 85 ? "#e5534b" : pct >= 60 ? "#e0a33e" : "#d97757");
   const lbl = ctxGauge.querySelector(".cg-pct") as HTMLElement | null;
   if (lbl) lbl.textContent = String(pct);
-  ctxGauge.title = `上下文使用 ${pct}%（约 ${fmtTokens(used)} / ${fmtTokens(total)} tokens）\n点击压缩上下文（/compact）`;
+  ctxGauge.setAttribute("aria-label", `上下文已用 ${pct}%，${used.toLocaleString("zh-CN")} tokens，点击压缩`);
+  const detail = (label: string, value: number) =>
+    `<span class="ctx-detail"><span>${label}</span><span><strong>${fmtTokens(value)}</strong><small>${value.toLocaleString("zh-CN")} tokens</small></span></span>`;
+  ctxTooltip.innerHTML = `<span class="ctx-heading">上下文使用情况 <strong>${pct}%</strong></span>` +
+    detail("已使用", used) + detail("总容量", total) + detail("剩余", Math.max(0, total - used)) +
+    `<span class="ctx-hint">1k = 1,000 tokens · 按最新上报值更新</span><span class="ctx-hint ctx-action">点击圆环压缩上下文</span>`;
+  positionContextTooltip();
 }
 ctxGauge.addEventListener("click", () => {
   if (compacting || isBusy) return; // already working

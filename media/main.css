@@ -1578,9 +1578,29 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .ctx-gauge {
   flex: 0 0 auto; position: relative; width: 22px; height: 22px; padding: 0;
   display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+  border: none; background: transparent; color: inherit; font: inherit;
 }
-.ctx-gauge:hover { opacity: .82; }
+.ctx-gauge:hover .cg-ring { opacity: .82; }
+.ctx-gauge:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 3px; border-radius: 50%; }
 .ctx-gauge.hidden { display: none; }
+.ctx-tooltip {
+  visibility: hidden; position: fixed; z-index: 43; width: min(270px, calc(100vw - 16px));
+  padding: 12px; box-sizing: border-box; border-radius: 9px; cursor: default;
+  background: var(--vscode-editorHoverWidget-background, var(--vscode-editorWidget-background, #252526));
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  border: 1px solid var(--vscode-editorHoverWidget-border, var(--vscode-widget-border, #454545));
+  box-shadow: 0 4px 16px rgba(0,0,0,.35); text-align: left; font-size: 12px; line-height: 1.5;
+}
+.ctx-gauge:not(.tooltip-dismissed):is(:hover, :focus-visible) .ctx-tooltip { visibility: visible; }
+.ctx-tooltip::after { content: ""; position: absolute; top: 100%; left: 0; right: 0; height: 10px; }
+.ctx-heading, .ctx-detail { display: flex; justify-content: space-between; gap: 12px; }
+.ctx-heading { font-weight: 600; margin-bottom: 8px; }
+.ctx-detail { margin-top: 6px; }
+.ctx-detail > span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.ctx-detail strong { font-size: 13px; }
+.ctx-detail small { display: block; font-size: 10px; color: var(--vscode-descriptionForeground); }
+.ctx-hint { display: block; margin-top: 10px; font-size: 10px; color: var(--vscode-descriptionForeground); }
+.ctx-action { margin-top: 4px; }
 /* spin only the colored ring while /compact runs; keep the center number still */
 .ctx-gauge.compacting { cursor: progress; }
 .ctx-gauge.compacting .cg-ring { animation: cg-spin 1s linear infinite; }
