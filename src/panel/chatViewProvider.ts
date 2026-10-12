@@ -4,7 +4,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
-import { localNotificationsSupported, sendLocalNotification } from "../notifications";
+import { formatLocalNotification, localNotificationsSupported, sendLocalNotification } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
@@ -2614,8 +2614,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
         }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
         if (cfg.get<boolean>("notifyLocal")) {
-            const [title, ...body] = msg.split("\n");
-            void this.sendLocalNotice(title, body.join("\n"), ctx.sessionId).then(() => {
+            const { title, body } = formatLocalNotification(msg, extra);
+            void this.sendLocalNotice(title, body, ctx.sessionId).then(() => {
                 this.output.appendLine("[notify] 系统已接受本机通知");
             }).catch(error => this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`));
         }

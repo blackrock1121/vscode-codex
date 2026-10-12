@@ -9,6 +9,36 @@ import { randomUUID } from "node:crypto";
 const exec = promisify(execFile);
 export const NOTIFIER_APP = "Codex Copilot Notifications.app";
 
+/** 桌面横幅只放状态、项目和一行摘要，完整内容在点击后的会话里查看。 */
+export function formatLocalNotification(message: string, extra: Record<string, unknown>): { title: string; body: string } {
+    const compact = (value: string, limit: number): string => {
+        const segments = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value.replace(/\s+/g, " ").trim())];
+        const width = (value: string) => /[^\x00-\xff]/.test(value) ? 2 : value.length;
+        if (segments.reduce((total, item) => total + width(item.segment), 0) <= limit) return segments.map(item => item.segment).join("");
+        let text = "", used = 0;
+        for (const { segment } of segments) {
+            if (used + width(segment) > limit - 2) break;
+            text += segment;
+            used += width(segment);
+        }
+        return text + "…";
+    };
+    const [originalTitle, ...lines] = message.split("\n");
+    const duration = originalTitle.match(/（(?:耗时|距上次操作)\s*(.*?)）/)?.[1]
+        .replace(/\s+/g, "").replace(/分0秒$/, "分");
+    let title = originalTitle;
+    if (originalTitle.startsWith("⏳ Codex 正在等你输入")) title = typeof extra.ask === "string" && extra.ask.startsWith("待授权：") ? "⏳ 待授权" : "⏳ 待回答";
+    else if (originalTitle.startsWith("✅ Codex 任务完成")) title = "✅ 任务完成";
+    else if (originalTitle.startsWith("⚠️ Codex 任务出错")) title = "⚠️ 任务出错";
+    if (title !== originalTitle && duration) title += ` · ${duration}`;
+    const project = typeof extra.project === "string" ? extra.project : "";
+    const detail = extra.waiting && typeof extra.ask === "string" ? extra.ask.replace(/^待(?:回答|授权)：/, "")
+        : typeof extra.question === "string" ? extra.question : "";
+    const body = project || detail ? [project, detail].filter(Boolean).map(value => compact(value, 40)).join("\n")
+        : compact(lines.join(" "), 80);
+    return { title: compact(title, 40), body };
+}
+
 export function localNotificationsSupported(): boolean {
     return process.platform === "darwin" && !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop;
 }
