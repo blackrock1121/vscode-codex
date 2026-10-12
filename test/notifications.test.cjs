@@ -245,3 +245,51 @@ test('日历异常时飞书照常发送，不影响本机通知', async () => {
   await flush();
   assert.equal(remote, 1); assert.equal(local, 1);
 });
+
+test('本机通知未开启时即使静默规则已开启也不允许暂停飞书，关闭后即时恢复', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test',
+    notifyFeishuQuietHours: { enabled: true, start: '08:30', end: '18:00' } };
+  const p = provider(); let remote = 0, local = 0, checked = 0;
+  p.workdayCalendar = { refresh: async () => {}, shouldMute: () => { checked++; return true; } };
+  p.sendWebhook = async () => { remote++; return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async () => { local++; };
+  for (const value of [undefined, false, true, false]) {
+    config.notifyLocal = value;
+    p.dispatchNotification({}, '完成', { isError: false });
+    p.dispatchNotification({}, '等待输入', { waiting: true });
+    await flush();
+  }
+  assert.equal(remote, 6, '仅本机通知开启的两条消息允许静默');
+  assert.equal(local, 2);
+  assert.equal(checked, 2, '关闭本机通知时不进行静默判断');
+});
+
+test('配置界面仅在本机通知开启后允许静默，关闭后保留规则并显示不生效', t => {
+  const dom = new JSDOM(provider().notifyHtml(), { runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const w = dom.window, sent = [];
+  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message) });
+  w.eval(w.document.querySelector('script').textContent);
+  const el = id => w.document.getElementById(id);
+  const emit = local => w.dispatchEvent(new w.MessageEvent('message', { data: {
+    kind: 'notify_config', webhook: 'https://open.feishu.cn/test', minSec: 60,
+    local, localSupported: true, quietHours: { enabled: true, start: '09:15', end: '18:30' },
+  } }));
+  emit(false);
+  for (const id of ['quiet', 'quietstart', 'quietend']) assert.equal(el(id).disabled, true);
+  assert.match(el('quiethint').textContent, /飞书不会暂停/);
+  el('local').checked = true;
+  el('local').dispatchEvent(new w.Event('change'));
+  for (const id of ['quiet', 'quietstart', 'quietend']) assert.equal(el(id).disabled, false);
+  assert.equal(el('quietstart').value, '09:15');
+  emit(false);
+  assert.equal(el('quiet').disabled, true, '设置面板从外部关闭本机通知也同步禁用');
+  emit(true);
+  assert.equal(el('quiet').disabled, false);
+  el('local').checked = false;
+  el('local').dispatchEvent(new w.Event('change'));
+  el('save').click();
+  assert.equal(sent.at(-1).local, false);
+  assert.equal(sent.at(-1).quietHours.enabled, true, '保留原规则，由发送端检查前置条件');
+  assert.equal(el('quietstart').disabled, true);
+});

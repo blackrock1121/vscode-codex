@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.36",
+  "version": "0.1.37",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -313,7 +313,7 @@
             "enabled": {
               "type": "boolean",
               "default": false,
-              "description": "仅在中国大陆工作日的指定时段暂停飞书推送（含调休上班日），不影响本机通知。"
+              "description": "须先开启本机通知，才可在中国大陆工作日的指定时段暂停飞书推送（含调休上班日）。"
             },
             "start": {
               "type": "string",
@@ -328,7 +328,7 @@
               "description": "北京时间结束时刻，到此时刻恢复推送；须晚于开始时刻，不跨天。"
             }
           },
-          "description": "可选飞书静默时段，默认关闭。每日联网更新中国大陆节假日与调休，失败使用七天内缓存，无有效日历则照常推送。静默提醒不补发，手动测试不受限制。"
+          "description": "可选飞书静默时段，默认关闭；仅当 codexChat.notifyLocal 已开启时生效，关闭本机通知后飞书照常推送。每日联网更新中国大陆节假日与调休，失败使用七天内缓存，无有效日历则照常推送。静默提醒不补发，手动测试不受限制。"
         }
       }
     }

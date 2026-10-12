@@ -221,11 +221,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
         this.workdayCalendar = new WorkdayCalendar(path.join(context.globalStorageUri.fsPath, "holiday-cn"),
             message => this.output.appendLine(message), () => this.postNotifyCalendar());
-        const configureCalendar = () => this.workdayCalendar.configure(
-            parseQuietHours(vscode.workspace.getConfiguration("codexChat").get("notifyFeishuQuietHours"))?.enabled === true);
+        const configureCalendar = () => {
+            const cfg = vscode.workspace.getConfiguration("codexChat");
+            this.workdayCalendar.configure(cfg.get<boolean>("notifyLocal") === true &&
+                parseQuietHours(cfg.get("notifyFeishuQuietHours"))?.enabled === true);
+        };
         configureCalendar();
         this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
-            if (event.affectsConfiguration("codexChat.notifyFeishuQuietHours")) configureCalendar();
+            if (event.affectsConfiguration("codexChat.notifyFeishuQuietHours") || event.affectsConfiguration("codexChat.notifyLocal")) configureCalendar();
         }));
         this.store = new SessionStore(this.cwd(), () => this.config().get<string>("codexPath", "codex"));
         const origChanged = this.origChanged;
@@ -2300,6 +2303,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <label><input id="local" type="checkbox" /> 同时开启本机通知（可选）</label>
   <div class="sub" id="localhint">默认关闭，不影响飞书提醒。开启后，点击本机通知回到对应 VS Code 窗口和会话；首次使用请允许 macOS 通知。窗口关闭或重载后，旧通知可能失效。</div>
   <label><input id="quiet" type="checkbox" /> 工作日的工作时间内暂停飞书推送（可选）</label>
+  <div class="sub" id="quiethint">需先开启本机通知；关闭本机通知后，飞书照常推送。</div>
   <div class="acts">
     <label class="f"><span>开始时间（北京时间）</span><input id="quietstart" type="time" value="08:30" step="60" /></label>
     <label class="f"><span>结束时间（北京时间）</span><input id="quietend" type="time" value="18:00" step="60" /></label>
@@ -2337,8 +2341,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       $("quiet").checked = quiet.enabled;
       $("quietstart").value = quiet.start;
       $("quietend").value = quiet.end;
-      updateQuietFields();
       $("local").checked = m.local;
+      updateQuietFields();
       $("local").disabled = !m.localSupported;
       $("testlocal").disabled = !m.localSupported;
       if (!m.localSupported) $("localhint").textContent = "本机通知目前仅支持本机 macOS 的 VS Code。SSH、容器、浏览器及其他系统请继续使用飞书等远程推送。";
@@ -2350,9 +2354,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   });
   function updateQuietFields() {
-    $("quietstart").disabled = !$("quiet").checked;
-    $("quietend").disabled = !$("quiet").checked;
+    const localEnabled = $("local").checked;
+    $("quiet").disabled = !localEnabled;
+    $("quietstart").disabled = !localEnabled || !$("quiet").checked;
+    $("quietend").disabled = !localEnabled || !$("quiet").checked;
+    $("quiethint").textContent = localEnabled
+      ? "仅在本机通知开启时生效；关闭本机通知后，飞书照常推送。"
+      : "本机通知未开启，飞书不会暂停推送。原静默设置保留，重新开启本机通知后才可生效。";
   }
+  $("local").addEventListener("change", updateQuietFields);
   $("quiet").addEventListener("change", updateQuietFields);
   $("refreshcalendar").addEventListener("click", () => {
     $("calendarstatus").textContent = "正在更新节假日与调休日历…";
@@ -2591,7 +2601,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
         let muted = false;
-        if (isFeishuWebhook(url) && quiet?.enabled) {
+        if (cfg.get<boolean>("notifyLocal") === true && isFeishuWebhook(url) && quiet?.enabled) {
             try {
                 void this.workdayCalendar.refresh();
                 muted = this.workdayCalendar.shouldMute(quiet);
