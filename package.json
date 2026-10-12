@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.35",
+  "version": "0.1.36",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -295,6 +295,40 @@
           "type": "boolean",
           "default": false,
           "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主。"
+        },
+        "codexChat.notifyFeishuQuietHours": {
+          "type": "object",
+          "default": {
+            "enabled": false,
+            "start": "08:30",
+            "end": "18:00"
+          },
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "start",
+            "end"
+          ],
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "default": false,
+              "description": "仅在中国大陆工作日的指定时段暂停飞书推送（含调休上班日），不影响本机通知。"
+            },
+            "start": {
+              "type": "string",
+              "default": "08:30",
+              "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+              "description": "北京时间开始时刻，含此时刻。"
+            },
+            "end": {
+              "type": "string",
+              "default": "18:00",
+              "pattern": "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+              "description": "北京时间结束时刻，到此时刻恢复推送；须晚于开始时刻，不跨天。"
+            }
+          },
+          "description": "可选飞书静默时段，默认关闭。每日联网更新中国大陆节假日与调休，失败使用七天内缓存，无有效日历则照常推送。静默提醒不补发，手动测试不受限制。"
         }
       }
     }

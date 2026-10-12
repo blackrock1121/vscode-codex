@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
+import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { localNotificationsSupported, sendLocalNotification } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { diffCounts } from "../diff";
@@ -214,9 +215,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private watchdogTimer?: ReturnType<typeof setInterval>;
     private sidebarMissedPings = 0;
     private notifyPanel?: vscode.WebviewPanel;
+    private readonly workdayCalendar: WorkdayCalendar;
     private readonly notificationWindowKey = randomUUID();
     private readonly notifyTimers = new Set<ReturnType<typeof setTimeout>>();
     constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
+        this.workdayCalendar = new WorkdayCalendar(path.join(context.globalStorageUri.fsPath, "holiday-cn"),
+            message => this.output.appendLine(message), () => this.postNotifyCalendar());
+        const configureCalendar = () => this.workdayCalendar.configure(
+            parseQuietHours(vscode.workspace.getConfiguration("codexChat").get("notifyFeishuQuietHours"))?.enabled === true);
+        configureCalendar();
+        this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
+            if (event.affectsConfiguration("codexChat.notifyFeishuQuietHours")) configureCalendar();
+        }));
         this.store = new SessionStore(this.cwd(), () => this.config().get<string>("codexPath", "codex"));
         const origChanged = this.origChanged;
         const sessions = this.sessions;
@@ -2179,11 +2189,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         this.postNotifyConfig();
                         break;
                     case "notifySave": {
+                        const quietHours = parseQuietHours(m.quietHours);
+                        if (!quietHours) {
+                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: "工作时间必须是同一天的 HH:mm，结束时间须晚于开始时间，例如 08:30–18:00。" } satisfies ToWebview);
+                            break;
+                        }
                         const cfg = vscode.workspace.getConfiguration("codexChat");
                         await cfg.update("notifyWebhook", m.webhook.trim(), vscode.ConfigurationTarget.Global);
                         await cfg.update("notifyMinDurationSec", Math.max(0, Math.round(m.minSec) || 0), vscode.ConfigurationTarget.Global);
                         await cfg.update("notifyLocal", m.local === true, vscode.ConfigurationTarget.Global);
+                        await cfg.update("notifyFeishuQuietHours", quietHours, vscode.ConfigurationTarget.Global);
                         panel.webview.postMessage({ kind: "notify_result", ok: true, message: "已保存。" } satisfies ToWebview);
+                        break;
+                    }
+                    case "notifyCalendarRefresh": {
+                        await this.workdayCalendar.refresh(true);
+                        this.postNotifyCalendar();
                         break;
                     }
                     case "notifyLocalTest": {
@@ -2216,7 +2237,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         });
         const cfgSub = vscode.workspace.onDidChangeConfiguration((ev) => {
-            if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec") || ev.affectsConfiguration("codexChat.notifyLocal")) {
+            if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec") || ev.affectsConfiguration("codexChat.notifyLocal") || ev.affectsConfiguration("codexChat.notifyFeishuQuietHours")) {
                 this.postNotifyConfig();
             }
         });
@@ -2230,11 +2251,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const cfg = vscode.workspace.getConfiguration("codexChat");
         this.notifyPanel?.webview.postMessage({
             kind: "notify_config",
+            quietHours: parseQuietHours(cfg.get("notifyFeishuQuietHours")) ?? DEFAULT_QUIET_HOURS,
             local: cfg.get<boolean>("notifyLocal") ?? false,
             localSupported: localNotificationsSupported(),
             webhook: cfg.get<string>("notifyWebhook") ?? "",
             minSec: cfg.get<number>("notifyMinDurationSec") ?? 60,
         } satisfies ToWebview);
+        this.postNotifyCalendar();
+    }
+    private postNotifyCalendar(): void {
+        this.notifyPanel?.webview.postMessage({ kind: "notify_calendar", message: this.workdayCalendar.status() } satisfies ToWebview);
     }
     private notifyHtml(): string {
         const nonce = randomUUID().replace(/-/g, "");
@@ -2249,7 +2275,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   h2 { margin: 0; font-size: 16px; }
   label.f { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
   label.f > span { font-weight: 600; opacity: .85; }
-  input[type=text], input[type=number] { width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground);
+  input[type=text], input[type=number], input[type=time] { width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground);
     border: 1px solid var(--vscode-input-border, rgba(127,127,127,.35)); border-radius: 6px; padding: 7px 9px; font: inherit; font-size: 12.5px; }
   input:focus { outline: none; border-color: var(--vscode-focusBorder, #3794ff); }
   .status { font-size: 12px; line-height: 1.6; padding: 7px 10px; border-radius: 6px; white-space: pre-wrap; word-break: break-all;
@@ -2273,6 +2299,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <label class="f"><span>耗时阈值（秒）</span><input id="minsec" type="number" min="0" step="10" placeholder="60" /></label>
   <label><input id="local" type="checkbox" /> 同时开启本机通知（可选）</label>
   <div class="sub" id="localhint">默认关闭，不影响飞书提醒。开启后，点击本机通知回到对应 VS Code 窗口和会话；首次使用请允许 macOS 通知。窗口关闭或重载后，旧通知可能失效。</div>
+  <label><input id="quiet" type="checkbox" /> 工作日的工作时间内暂停飞书推送（可选）</label>
+  <div class="acts">
+    <label class="f"><span>开始时间（北京时间）</span><input id="quietstart" type="time" value="08:30" step="60" /></label>
+    <label class="f"><span>结束时间（北京时间）</span><input id="quietend" type="time" value="18:00" step="60" /></label>
+  </div>
+  <div class="sub">默认关闭。按中国大陆节假日和调休判断工作日，开始时刻起暂停，结束时刻恢复；仅影响飞书的任务完成和等待输入提醒，本机通知不受影响。静默期间的提醒不会在下班后补发；“测试远程推送”始终发送。</div>
+  <div class="sub">启用后每天联网更新日历，断网最多使用七天内缓存；无有效日历时照常推送。请保持本机通知开启，以便上班时收到提醒。</div>
+  <div class="sub" id="calendarstatus">日历尚未加载。</div>
+  <button id="refreshcalendar" class="btn">立即更新节假日与调休日历</button>
   <div id="status" class="status hidden"></div>
   <div class="acts">
     <button id="test" class="btn">测试远程推送</button>
@@ -2298,18 +2333,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (m.kind === "notify_config") {
       $("webhook").value = m.webhook || "";
       $("minsec").value = m.minSec;
+      const quiet = m.quietHours || { enabled: false, start: "08:30", end: "18:00" };
+      $("quiet").checked = quiet.enabled;
+      $("quietstart").value = quiet.start;
+      $("quietend").value = quiet.end;
+      updateQuietFields();
       $("local").checked = m.local;
       $("local").disabled = !m.localSupported;
       $("testlocal").disabled = !m.localSupported;
       if (!m.localSupported) $("localhint").textContent = "本机通知目前仅支持本机 macOS 的 VS Code。SSH、容器、浏览器及其他系统请继续使用飞书等远程推送。";
+    } else if (m.kind === "notify_calendar") {
+      $("calendarstatus").textContent = m.message;
+      $("refreshcalendar").disabled = false;
     } else if (m.kind === "notify_result") {
       status(m.message, m.ok ? "ok" : "err");
     }
   });
+  function updateQuietFields() {
+    $("quietstart").disabled = !$("quiet").checked;
+    $("quietend").disabled = !$("quiet").checked;
+  }
+  $("quiet").addEventListener("change", updateQuietFields);
+  $("refreshcalendar").addEventListener("click", () => {
+    $("calendarstatus").textContent = "正在更新节假日与调休日历…";
+    $("refreshcalendar").disabled = true;
+    vscode.postMessage({ type: "notifyCalendarRefresh" });
+  });
   $("save").addEventListener("click", () => {
     // 阈值留空按默认 60 处理——空值存成 0 会变成"任何时长都推"，与占位符暗示不符
     const raw = $("minsec").value.trim();
-    vscode.postMessage({ type: "notifySave", webhook: $("webhook").value, minSec: raw === "" ? 60 : Number(raw), local: $("local").checked });
+    vscode.postMessage({ type: "notifySave", webhook: $("webhook").value, minSec: raw === "" ? 60 : Number(raw), local: $("local").checked,
+      quietHours: { enabled: $("quiet").checked, start: $("quietstart").value, end: $("quietend").value } });
   });
   $("test").addEventListener("click", () => {
     status("发送中…");
@@ -2535,7 +2589,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private dispatchNotification(ctx: SessionCtx, msg: string, extra: Record<string, unknown>): void {
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
-        if (url) void this.sendWebhook(url, msg, extra).then(r => {
+        const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
+        let muted = false;
+        if (isFeishuWebhook(url) && quiet?.enabled) {
+            try {
+                void this.workdayCalendar.refresh();
+                muted = this.workdayCalendar.shouldMute(quiet);
+            } catch (error) {
+                this.output.appendLine(`[notify] 日历判断失败，飞书照常推送: ${String(error)}`);
+            }
+        }
+        if (muted) this.output.appendLine("[notify] 当前为中国大陆工作日的配置时段，已跳过飞书推送（本机通知不受影响）");
+        if (url && !muted) void this.sendWebhook(url, msg, extra).then(r => {
             this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
         }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
         if (cfg.get<boolean>("notifyLocal")) {
@@ -3210,6 +3275,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return this.context.globalStorageUri.fsPath;
     }
     dispose(): void {
+        this.workdayCalendar.dispose();
         for (const timer of this.notifyTimers) clearTimeout(timer);
         this.notifyTimers.clear();
         this.store.dispose();

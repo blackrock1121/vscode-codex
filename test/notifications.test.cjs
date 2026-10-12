@@ -186,8 +186,62 @@ test('配置面板保存两个独立渠道，测试本机不会触发飞书测�
   assert.equal(w.document.querySelector('#local').checked, false);
   w.document.querySelector('#local').checked = true;
   w.document.querySelector('#save').click();
-  assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))), { type: 'notifySave', webhook: 'https://example.invalid/hook', minSec: 60, local: true });
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))), { type: 'notifySave', webhook: 'https://example.invalid/hook', minSec: 60, local: true, quietHours: { enabled: false, start: '08:30', end: '18:00' } });
   w.document.querySelector('#testlocal').click();
   assert.equal(sent.at(-1).type, 'notifyLocalTest');
   assert.equal(sent.some(m => m.type === 'notifyTest'), false);
+});
+
+
+test('飞书静默同时覆盖完成和等待输入，本机通知仍发送；其他 webhook 不受影响', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyLocal: true,
+    notifyFeishuQuietHours: { enabled: true, start: '08:30', end: '18:00' } };
+  const p = provider(); let remote = 0, local = 0, checks = 0;
+  p.workdayCalendar = { refresh: async () => {}, shouldMute: () => { checks++; return true; } };
+  p.sendWebhook = async () => { remote++; return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async () => { local++; };
+  p.dispatchNotification({}, '完成', { isError: false });
+  p.dispatchNotification({}, '等待输入', { waiting: true });
+  await flush();
+  assert.equal(remote, 0); assert.equal(local, 2); assert.equal(checks, 2);
+  config.notifyWebhook = 'https://example.invalid/other';
+  p.dispatchNotification({}, '其他渠道', {}); await flush();
+  assert.equal(remote, 1); assert.equal(checks, 2);
+  config.notifyWebhook = 'https://open.feishu.cn/open-apis/bot/v2/hook/test';
+  config.notifyFeishuQuietHours.enabled = false;
+  p.dispatchNotification({}, '关闭静默', {}); await flush();
+  assert.equal(remote, 2);
+});
+
+test('配置面板可调整静默时间，日历刷新结果不覆盖尚未保存的输入', t => {
+  const dom = new JSDOM(provider().notifyHtml(), { runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const w = dom.window, sent = [];
+  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message) });
+  w.eval(w.document.querySelector('script').textContent);
+  const emit = data => w.dispatchEvent(new w.MessageEvent('message', { data }));
+  emit({ kind: 'notify_config', minSec: 60, local: true, localSupported: true, quietHours: { enabled: false, start: '08:30', end: '18:00' } });
+  assert.equal(w.document.querySelector('#quietstart').disabled, true);
+  w.document.querySelector('#quiet').checked = true;
+  w.document.querySelector('#quiet').dispatchEvent(new w.Event('change'));
+  assert.equal(w.document.querySelector('#quietstart').disabled, false);
+  w.document.querySelector('#quietstart').value = '09:15';
+  w.document.querySelector('#refreshcalendar').click();
+  assert.equal(sent.at(-1).type, 'notifyCalendarRefresh');
+  emit({ kind: 'notify_calendar', message: '日历已更新' });
+  assert.equal(w.document.querySelector('#quietstart').value, '09:15');
+  w.document.querySelector('#save').click();
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1).quietHours)), { enabled: true, start: '09:15', end: '18:00' });
+});
+
+test('日历异常时飞书照常发送，不影响本机通知', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyLocal: true,
+    notifyFeishuQuietHours: { enabled: true, start: '08:30', end: '18:00' } };
+  const p = provider(); let remote = 0, local = 0;
+  p.workdayCalendar = { refresh: async () => {}, shouldMute: () => { throw new Error('未知日历错误'); } };
+  p.sendWebhook = async () => { remote++; return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async () => { local++; };
+  p.dispatchNotification({}, '完成', {});
+  await flush();
+  assert.equal(remote, 1); assert.equal(local, 1);
 });
