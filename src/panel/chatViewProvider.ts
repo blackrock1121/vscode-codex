@@ -657,8 +657,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.speedMode(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
-        this.activeCtx = ctx;
-        await this.lockChatGroup(panel);
+        // 重载时分组位置、锁定状态和焦点由 VS Code 恢复。反序列化期间
+        // viewColumn 尚可能是内部的 0 起始编号，不能调用 reveal/lockChatGroup，
+        // 否则会把会话移到其他组并合并原有分屏。后台标签也不能覆盖当前会话。
+        if (panel.active)
+            this.activeCtx = ctx;
     }
     private async keepFilesLeft(ed?: vscode.TextEditor): Promise<void> {
         if (this.layoutFixing || !ed || ed.viewColumn === undefined)
