@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.29",
+  "version": "0.1.30",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -27,7 +27,8 @@
   "main": "./dist/extension.js",
   "activationEvents": [
     "onStartupFinished",
-    "onWebviewPanel:codex-chat.editor"
+    "onWebviewPanel:codex-chat.editor",
+    "onUri"
   ],
   "contributes": {
     "viewsContainers": {
@@ -289,6 +290,11 @@
             "超高速：GPT-6 Astra 订阅内额度 8×；需符合套餐、工作区和地区条件且模型列表提供该档位。"
           ],
           "description": "速度模式，下轮生效，工作区各会话共用；不改变模型与推理强度。API 按服务档位单独定价，不适用订阅倍率。新设置优先于旧 fastMode 设置。"
+        },
+        "codexChat.notifyLocal": {
+          "type": "boolean",
+          "default": false,
+          "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主。"
         }
       }
     }
@@ -299,10 +305,11 @@
     "compile": "node esbuild.js",
     "watch": "node esbuild.js --watch",
     "check-types": "tsc --noEmit",
-    "package": "vsce package --no-dependencies --out release/vscode-codex.vsix",
+    "package": "npm run build:native && vsce package --no-dependencies --out release/vscode-codex.vsix",
     "test": "npm run build && node scripts/build-test.cjs && node --test test/*.test.cjs",
     "smoke": "node scripts/build-test.cjs && node scripts/smoke.cjs --turn",
-    "smoke:question": "node scripts/build-test.cjs && node scripts/smoke-question.cjs"
+    "smoke:question": "node scripts/build-test.cjs && node scripts/smoke-question.cjs",
+    "build:native": "node scripts/build-native.cjs"
   },
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",

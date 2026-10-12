@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
+import { localNotificationsSupported, sendLocalNotification } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
@@ -212,6 +213,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private watchdogTimer?: ReturnType<typeof setInterval>;
     private sidebarMissedPings = 0;
     private notifyPanel?: vscode.WebviewPanel;
+    private readonly notificationWindowKey = randomUUID();
+    private readonly notifyTimers = new Set<ReturnType<typeof setTimeout>>();
     constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
         this.store = new SessionStore(this.cwd(), () => this.config().get<string>("codexPath", "codex"));
         const origChanged = this.origChanged;
@@ -2101,7 +2104,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         const cfg = vscode.workspace.getConfiguration("codexChat");
                         await cfg.update("notifyWebhook", m.webhook.trim(), vscode.ConfigurationTarget.Global);
                         await cfg.update("notifyMinDurationSec", Math.max(0, Math.round(m.minSec) || 0), vscode.ConfigurationTarget.Global);
+                        await cfg.update("notifyLocal", m.local === true, vscode.ConfigurationTarget.Global);
                         panel.webview.postMessage({ kind: "notify_result", ok: true, message: "已保存。" } satisfies ToWebview);
+                        break;
+                    }
+                    case "notifyLocalTest": {
+                        try {
+                            await this.sendLocalNotice("🔔 Codex Copilot 本机通知测试", "点击返回当前 VS Code 窗口的任务推送设置。");
+                            panel.webview.postMessage({ kind: "notify_result", ok: true, message: "系统已接受本机通知，请点击通知验证返回本窗口。若未显示，请检查系统通知设置或专注模式。" } satisfies ToWebview);
+                        } catch (error) {
+                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: `本机通知失败：${String((error as Error).message ?? error)}；飞书推送不受影响。` } satisfies ToWebview);
+                        }
                         break;
                     }
                     case "notifyTest": {
@@ -2125,7 +2138,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         });
         const cfgSub = vscode.workspace.onDidChangeConfiguration((ev) => {
-            if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec")) {
+            if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec") || ev.affectsConfiguration("codexChat.notifyLocal")) {
                 this.postNotifyConfig();
             }
         });
@@ -2139,6 +2152,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const cfg = vscode.workspace.getConfiguration("codexChat");
         this.notifyPanel?.webview.postMessage({
             kind: "notify_config",
+            local: cfg.get<boolean>("notifyLocal") ?? false,
+            localSupported: localNotificationsSupported(),
             webhook: cfg.get<string>("notifyWebhook") ?? "",
             minSec: cfg.get<number>("notifyMinDurationSec") ?? 60,
         } satisfies ToWebview);
@@ -2176,11 +2191,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 <div class="wrap">
   <h2>🔔 任务推送</h2>
   <div class="sub">长任务跑完时向 webhook 推一条通知：任务耗时达到阈值即推送。Codex 停下来等你输入（工具授权 / 选项提问）且你离开超过同一阈值时，也会推一条「等你输入」。</div>
-  <label class="f"><span>Webhook 地址</span><input id="webhook" type="text" spellcheck="false" placeholder="飞书/企业微信/钉钉群机器人的 webhook，或任意接收 JSON 的地址" /></label>
+  <label class="f"><span>飞书等远程推送 Webhook 地址（主要提醒渠道）</span><input id="webhook" type="text" spellcheck="false" placeholder="飞书/企业微信/钉钉群机器人的 webhook，或任意接收 JSON 的地址" /></label>
   <label class="f"><span>耗时阈值（秒）</span><input id="minsec" type="number" min="0" step="10" placeholder="60" /></label>
+  <label><input id="local" type="checkbox" /> 同时开启本机通知（可选）</label>
+  <div class="sub" id="localhint">默认关闭，不影响飞书提醒。开启后，点击本机通知回到对应 VS Code 窗口和会话；首次使用请允许 macOS 通知。窗口关闭或重载后，旧通知可能失效。</div>
   <div id="status" class="status hidden"></div>
   <div class="acts">
-    <button id="test" class="btn">发送测试消息</button>
+    <button id="test" class="btn">测试远程推送</button>
+    <button id="testlocal" class="btn">测试本机通知</button>
     <button id="save" class="btn primary">保存</button>
   </div>
   <div class="sub">飞书 / 企业微信 / 钉钉的群机器人按域名自动适配报文格式，直接收到文本；其他地址收到通用 JSON：{ text, isError, durationMs, project, question }（等待输入的推送另带 waiting:true 与 ask）。配置与 VS Code 设置（codexChat.notifyWebhook / notifyMinDurationSec）互通。</div>
@@ -2202,6 +2220,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (m.kind === "notify_config") {
       $("webhook").value = m.webhook || "";
       $("minsec").value = m.minSec;
+      $("local").checked = m.local;
+      $("local").disabled = !m.localSupported;
+      $("testlocal").disabled = !m.localSupported;
+      if (!m.localSupported) $("localhint").textContent = "本机通知目前仅支持本机 macOS 的 VS Code。SSH、容器、浏览器及其他系统请继续使用飞书等远程推送。";
     } else if (m.kind === "notify_result") {
       status(m.message, m.ok ? "ok" : "err");
     }
@@ -2209,11 +2231,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   $("save").addEventListener("click", () => {
     // 阈值留空按默认 60 处理——空值存成 0 会变成"任何时长都推"，与占位符暗示不符
     const raw = $("minsec").value.trim();
-    vscode.postMessage({ type: "notifySave", webhook: $("webhook").value, minSec: raw === "" ? 60 : Number(raw) });
+    vscode.postMessage({ type: "notifySave", webhook: $("webhook").value, minSec: raw === "" ? 60 : Number(raw), local: $("local").checked });
   });
   $("test").addEventListener("click", () => {
     status("发送中…");
     vscode.postMessage({ type: "notifyTest", webhook: $("webhook").value });
+  });
+  $("testlocal").addEventListener("click", () => {
+    status("发送本机通知中，如有系统权限提示请允许…");
+    vscode.postMessage({ type: "notifyLocalTest" });
   });
   vscode.postMessage({ type: "notifyLoad" });
 </script>
@@ -2370,7 +2396,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
-        if (!url)
+        if (!url && !cfg.get<boolean>("notifyLocal"))
             return;
         const minSec = cfg.get<number>("notifyMinDurationSec") ?? 60;
         const dur = e.durationMs ?? 0;
@@ -2383,18 +2409,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const q = lastText.replace(/\s+/g, " ").slice(0, 80);
         const msg = `${e.isError ? "⚠️ Codex 任务出错" : "✅ Codex 任务完成"}（耗时 ${durText}）` +
             `${proj ? `\n项目：${proj}` : ""}${q ? `\n提问：${q}` : ""}`;
-        void this.sendWebhook(url, msg, { isError: e.isError, durationMs: dur, project: proj, question: q }).then((r) => this.output.appendLine(`[${new Date().toISOString()}] [notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`));
+        this.dispatchNotification(ctx, msg, { isError: e.isError, durationMs: dur, project: proj, question: q });
     }
     private maybeNotifyWaiting(ctx: SessionCtx, req: PermissionRequest): void {
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
-        if (!url)
+        if (!url && !cfg.get<boolean>("notifyLocal"))
             return;
         const minSec = cfg.get<number>("notifyMinDurationSec") ?? 60;
         const since = ctx.lastUserActionAt ?? Date.now();
         const delay = Math.max(0, minSec * 1000 - (Date.now() - since));
         const proc = ctx.proc;
-        setTimeout(() => {
+        const timer = setTimeout(() => {
+            this.notifyTimers.delete(timer);
             if (ctx.proc !== proc)
                 return;
             const pend = ctx.pendingPerm;
@@ -2421,8 +2448,57 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             const msg = `⏳ Codex 正在等你输入（距上次操作 ${durText}）` +
                 `${proj ? `\n项目：${proj}` : ""}\n${ask}${q ? `\n本轮提问：${q}` : ""}`;
-            void this.sendWebhook(url, msg, { waiting: true, project: proj, question: q, ask }).then((r) => this.output.appendLine(`[${new Date().toISOString()}] [notify] ${r.ok ? `等待输入推送 HTTP ${r.status}` : `等待输入推送失败: ${r.error}`}`));
+            this.dispatchNotification(ctx, msg, { waiting: true, project: proj, question: q, ask });
         }, delay);
+        this.notifyTimers.add(timer);
+    }
+    /** 两个通道分别执行：本机通知权限/跳转异常不能阻断飞书提醒。 */
+    private dispatchNotification(ctx: SessionCtx, msg: string, extra: Record<string, unknown>): void {
+        const cfg = vscode.workspace.getConfiguration("codexChat");
+        const url = (cfg.get<string>("notifyWebhook") || "").trim();
+        if (url) void this.sendWebhook(url, msg, extra).then(r => {
+            this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
+        }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
+        if (cfg.get<boolean>("notifyLocal")) {
+            const [title, ...body] = msg.split("\n");
+            void this.sendLocalNotice(title, body.join("\n"), ctx.sessionId).then(() => {
+                this.output.appendLine("[notify] 系统已接受本机通知");
+            }).catch(error => this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`));
+        }
+    }
+    private async sendLocalNotice(title: string, body: string, sessionId?: string): Promise<void> {
+        const query = new URLSearchParams({ window: this.notificationWindowKey });
+        if (sessionId) query.set("session", sessionId);
+        // asExternalUri 让 VS Code 加入来源窗口路由信息，不能自行拼接或修改返回值。
+        const uri = await vscode.env.asExternalUri(vscode.Uri.from({
+            scheme: vscode.env.uriScheme,
+            authority: this.context.extension.id,
+            path: "/notification",
+            query: query.toString(),
+        }));
+        await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString());
+    }
+    async handleNotificationUri(uri: vscode.Uri): Promise<void> {
+        if (uri.path !== "/notification") return;
+        const query = new URLSearchParams(uri.query);
+        if (query.get("window") !== this.notificationWindowKey) {
+            void vscode.window.showWarningMessage("该通知所属的 VS Code 窗口已关闭或重载，请在对应项目的会话历史中打开任务。");
+            return;
+        }
+        const sessionId = query.get("session");
+        try {
+            if (!sessionId) {
+                this.showNotifyConfig();
+            } else if ([...this.sessions].some(ctx => ctx.sessionId === sessionId) || this.detached.has(sessionId) ||
+                       this.store.list().some(session => session.id === sessionId)) {
+                await this.openSession(sessionId);
+            } else {
+                void vscode.window.showWarningMessage("该通知对应的会话已不在当前项目的历史中。");
+            }
+        } catch (error) {
+            this.output.appendLine(`[notify] 返回会话失败: ${String(error)}`);
+            void vscode.window.showWarningMessage("未能打开通知对应的会话，请从会话历史重试。");
+        }
     }
     private async sendWebhook(url: string, msg: string, extra: Record<string, unknown> = {}): Promise<{
         ok: boolean;
@@ -3051,6 +3127,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return this.context.globalStorageUri.fsPath;
     }
     dispose(): void {
+        for (const timer of this.notifyTimers) clearTimeout(timer);
+        this.notifyTimers.clear();
         this.store.dispose();
         if (this.usageTimer)
             clearInterval(this.usageTimer);

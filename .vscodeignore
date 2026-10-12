@@ -13,3 +13,4 @@ scripts/**
 package-lock.json
 esbuild.js
 tsconfig.json
+native/**

@@ -62,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("codex-chat.login", () => provider.login()),
     vscode.commands.registerCommand("codex-chat.account", () => provider.account()),
     provider,
+    vscode.window.registerUriHandler({ handleUri: uri => provider.handleNotificationUri(uri) }),
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
