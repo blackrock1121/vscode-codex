@@ -3400,7 +3400,7 @@ function syncPickers() {
   $("speed-label").textContent = `${speedLabel(currentSpeedMode)} · ${cost.badge}${available ? "" : " · 待确认"}`;
   speedTrigger.dataset.accelerated = String(currentSpeedMode !== "default");
   speedTrigger.setAttribute("aria-label", `速度：${speedLabel(currentSpeedMode)}；点击选择普通、快速或超高速`);
-  speedTrigger.title = `${speedLabel(currentSpeedMode)}：${cost.text} ${speedAvailability(currentSpeedMode)}。当前工作区各会话下轮生效，不改变模型与推理强度。`;
+  speedTrigger.title = `${speedLabel(currentSpeedMode)}：${cost.text} ${speedAvailability(currentSpeedMode)}。仅当前会话下轮生效，不改变模型与推理强度。`;
   if (!speedMenu.classList.contains("hidden")) buildSpeedMenu();
 
   // An unknown mode must show ITSELF, never silently degrade to MODES[0] —

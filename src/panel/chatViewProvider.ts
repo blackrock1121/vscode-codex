@@ -158,6 +158,7 @@ interface SessionCtx {
     panel: vscode.WebviewPanel;
     webview: vscode.Webview;
     sessionId?: string;
+    speedMode?: SpeedMode;
     proc?: CodexProcess;
     starting?: Promise<CodexProcess | undefined>;
     checkpoints: CheckpointManager;
@@ -250,12 +251,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             } | undefined)?.uri?.fsPath ?? "") === p));
             if (!stillOpen)
                 this.postActiveFile(true);
-        }));
-        this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(ev => {
-            if (!ev.affectsConfiguration("codexChat.speedMode") && !ev.affectsConfiguration("codexChat.fastMode")) return;
-            const mode = this.speedMode();
-            void Promise.all(this.allProcs().map(p => p.setSpeedMode(mode)));
-            this.broadcastModelConfig();
         }));
         this.usageTimer = setInterval(() => this.fetchUsage(), 3 * 60000);
         this.watchdogTimer = setInterval(() => {
@@ -551,6 +546,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         if (sessionId)
             ctx.checkpoints.setSession(sessionId);
+        this.speedMode(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
         this.activeCtx = ctx;
@@ -658,6 +654,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         if (sid)
             ctx.checkpoints.setSession(sid);
+        this.speedMode(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
         this.activeCtx = ctx;
@@ -887,15 +884,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         this.modelCatalog = models;
                         this.post(ctx, { kind: "models", models });
                     }).catch(e => this.post(ctx, { kind: "notice", message: `模型列表读取失败：${String(e)}` }));
+                    this.loadCtxSession(ctx);
                     this.post(ctx, {
                         kind: "config",
                         permissionMode: this.config().get<string>("permissionMode", "default"),
                         model: this.config().get<string>("model", ""),
                         effort: this.config().get<string>("effort", ""),
-                        speedMode: this.speedMode(),
+                        speedMode: this.speedMode(ctx),
                         modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
                     });
-                    this.loadCtxSession(ctx);
                     this.postActiveFile();
                     if (ctx.pendingContext) {
                         this.post(ctx, { kind: "context_added", ...ctx.pendingContext });
@@ -1105,6 +1102,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (sid && this.store.findFile(sid)) {
             ctx.sessionId = sid;
+            ctx.speedMode = undefined;
+            this.speedMode(ctx);
             ctx.checkpoints.setSession(sid);
             this.loadSessionInto(ctx, sid);
         }
@@ -1114,6 +1113,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
     private loadSessionInto(ctx: SessionCtx, sid: string): void {
+        this.rememberSessionSpeed(ctx);
         void this.store.hydrate(sid).then(() => { if (ctx.sessionId === sid)
             this.renderSessionInto(ctx, sid); }).catch(e => this.post(ctx, { kind: "error", message: `读取历史失败：${String(e)}` }));
     }
@@ -1151,6 +1151,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.proc = undefined;
         ctx.starting = undefined;
         ctx.sessionId = undefined;
+        ctx.speedMode = undefined;
+        this.postModelConfig(ctx);
         ctx.blank = true;
         ctx.coldStart = false;
         ctx.pendingPerm = undefined;
@@ -1266,7 +1268,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         await this.modelSelectionQueue;
-        await proc.setSpeedMode(this.speedMode());
+        await proc.setSpeedMode(this.speedMode(ctx));
         if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
             if (!hadSession && ctx.proc === proc) {
                 ctx.proc = undefined;
@@ -1377,7 +1379,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async updateConfig(key: string, value: unknown): Promise<boolean> {
         const insp = this.config().inspect(key);
-        const target = (key === "speedMode" && vscode.workspace.workspaceFolders?.length) || insp?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
+        const target = insp?.workspaceValue !== undefined ? vscode.ConfigurationTarget.Workspace : vscode.ConfigurationTarget.Global;
         try {
             await this.config().update(key, value, target);
             return true;
@@ -1405,15 +1407,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.modelSelectionQueue = task.catch(() => undefined);
         return task;
     }
-    private broadcastModelConfig(): void {
+    private postModelConfig(ctx: SessionCtx): void {
         const cfg: ToWebview = {
             kind: "config",
             permissionMode: this.config().get<string>("permissionMode", "default"),
             model: this.config().get<string>("model", ""),
             effort: this.config().get<string>("effort", ""),
-            speedMode: this.speedMode(),
+            speedMode: this.speedMode(ctx),
         };
-        for (const session of this.sessions) this.post(session, cfg);
+        this.post(ctx, cfg);
+    }
+    private broadcastModelConfig(): void {
+        for (const session of this.sessions) this.postModelConfig(session);
     }
     private modeSeq = 0;
     private async setPermissionMode(_ctx: SessionCtx, mode: string): Promise<void> {
@@ -1423,16 +1428,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (seq !== this.modeSeq)
             return;
         const broadcast = (m: string): void => {
-            const cfg: ToWebview = {
-                kind: "config",
-                permissionMode: m,
-                model: this.config().get<string>("model", ""),
-                effort: this.config().get<string>("effort", ""),
-                speedMode: this.speedMode(),
-                modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
-            };
-            for (const c of this.sessions)
-                this.post(c, cfg);
+            for (const ctx of this.sessions) {
+                const cfg: ToWebview = {
+                    kind: "config",
+                    permissionMode: m,
+                    model: this.config().get<string>("model", ""),
+                    effort: this.config().get<string>("effort", ""),
+                    speedMode: this.speedMode(ctx),
+                    modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
+                };
+                this.post(ctx, cfg);
+            }
         };
         broadcast(mode);
         const results = await Promise.allSettled(this.allProcs().map((p) => p.setPermissionMode(mode)));
@@ -1479,7 +1485,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         });
     }
-    private speedMode(): SpeedMode {
+    private speedMode(ctx: SessionCtx): SpeedMode {
+        if (ctx.speedMode !== undefined) return ctx.speedMode;
+        const savedMode = ctx.sessionId
+            ? this.context.workspaceState.get<SpeedMode>(`codexChat.sessionSpeed.${ctx.sessionId}`) : undefined;
+        const mode = isSpeedMode(savedMode) ? savedMode : this.defaultSpeedMode();
+        ctx.speedMode = mode;
+        return mode;
+    }
+    private async saveSessionSpeed(ctx: Pick<SessionCtx, "sessionId">, mode: SpeedMode): Promise<void> {
+        if (ctx.sessionId)
+            await this.context.workspaceState.update(`codexChat.sessionSpeed.${ctx.sessionId}`, mode);
+    }
+    private rememberSessionSpeed(ctx: SessionCtx): void {
+        void this.saveSessionSpeed(ctx, this.speedMode(ctx)).catch(err => {
+            this.output.appendLine(`[sessionSpeed] ${String(err)}`);
+            this.post(ctx, { kind: "error", message: "无法保存此会话的速度模式，重新打开后可能丢失，请重新选择。" });
+        });
+    }
+    private defaultSpeedMode(): SpeedMode {
         const cfg = this.config();
         const saved = cfg.inspect<string>("speedMode");
         const explicit = saved?.workspaceFolderValue ?? saved?.workspaceValue ?? saved?.globalValue;
@@ -1489,7 +1513,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return this.queueModelSelection(async () => {
             if (!isSpeedMode(mode)) {
                 this.post(ctx, { kind: "error", message: "无效的速度模式。" });
-                this.broadcastModelConfig();
+                this.postModelConfig(ctx);
                 return;
             }
             const model = this.config().get<string>("model", "") || ctx.proc?.modelForNextTurn || "";
@@ -1498,14 +1522,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.post(ctx, { kind: "error", message: model
                     ? `当前账号的模型「${model}」未提供${speedLabel(mode)}档位，或能力尚未确认；请选择可用档位。`
                     : "默认模型尚未确认，请先选择具体模型再切换加速档位。" });
-                this.broadcastModelConfig();
+                this.postModelConfig(ctx);
                 return;
             }
-            if (await this.updateConfig("speedMode", mode)) {
-                await Promise.all(this.allProcs().map(p => p.setSpeedMode(mode)));
-                this.post(ctx, { kind: "notice", message: `已选择${speedLabel(mode)}模式：当前工作区各会话下轮生效，模型与推理强度保持不变。` });
+            // 有会话 ID 时先保存，失败不能改变正在使用的档位。
+            try {
+                await this.saveSessionSpeed(ctx, mode);
+            } catch (err) {
+                this.output.appendLine(`[sessionSpeed] ${String(err)}`);
+                this.post(ctx, { kind: "error", message: "无法保存此会话的速度模式，请重试。" });
+                this.postModelConfig(ctx);
+                return;
             }
-            this.broadcastModelConfig();
+            ctx.speedMode = mode;
+            await ctx.proc?.setSpeedMode(mode);
+            this.post(ctx, { kind: "notice", message: `已选择${speedLabel(mode)}模式：仅当前会话下轮生效，模型与推理强度保持不变。` });
+            this.postModelConfig(ctx);
         });
     }
     private setEffort(ctx: SessionCtx, effort: string): Promise<void> {
@@ -1713,6 +1745,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         try {
+            await this.saveSessionSpeed({ sessionId: newId }, this.speedMode(ctx));
+        } catch (err) {
+            this.output.appendLine(`[sessionSpeed] ${String(err)}`);
+            this.post(ctx, { kind: "error", message: "派生会话已创建，但速度模式未能保存，请在新会话中重新选择。" });
+        }
+        try {
             await this.openSession(newId);
         } catch (err) {
             this.output.appendLine(String(err));
@@ -1808,6 +1846,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         rewoundToStart: boolean;
     }> {
         const oldId = ctx.sessionId;
+        this.speedMode(ctx);
         // 回退文件时 CheckpointManager 会重写当前会话的快照。先保存原文件，
         // 让保留在历史列表里的原会话仍能使用自己的还原点。
         ctx.checkpoints.flush();
@@ -1850,6 +1889,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.checkpoints = new CheckpointManager(this.storageDir());
         ctx.checkpoints.setSession(newId);
         ctx.sessionId = newId;
+        this.rememberSessionSpeed(ctx);
         this.store.notePending(newId, this.store.userTurnLines(newId)[0]?.text || this.store.list().find(s => s.id === oldId)?.title || "派生会话");
         this.renderSessions();
         void this.context.workspaceState.update(LAST_SESSION_KEY, newId);
@@ -1973,6 +2013,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return ctx.starting;
     }
     private async spawnProcess(ctx: SessionCtx): Promise<CodexProcess | undefined> {
+        this.speedMode(ctx);
         const isResume = !!ctx.sessionId;
         const sessionId = ctx.sessionId ?? randomUUID();
         if (!isResume) {
@@ -1985,7 +2026,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             cwd: this.cwd(),
             model: this.config().get<string>("model", "") || undefined,
             effort: this.config().get<string>("effort", "") || undefined,
-            speedMode: this.speedMode(),
+            speedMode: this.speedMode(ctx),
             permissionMode: this.config().get<string>("permissionMode", "default"),
             resumeSessionId: isResume ? sessionId : undefined,
             addDirs: this.workspaceDirs(),
@@ -2575,8 +2616,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private onSessionId(ctx: SessionCtx, id: string, resumed: boolean): void {
         const isNew = ctx.sessionId !== id;
+        this.speedMode(ctx);
         ctx.blank = false;
         ctx.sessionId = id;
+        this.rememberSessionSpeed(ctx);
         ctx.checkpoints.setSession(id);
         void this.context.workspaceState.update(LAST_SESSION_KEY, id);
         if (!resumed || isNew) {
@@ -2628,6 +2671,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (waits.length)
                 await Promise.all(waits);
             await this.store.delete(id);
+            await this.context.workspaceState.update(`codexChat.sessionSpeed.${id}`, undefined);
             deleteQuestionState(this.storageDir(), id);
             CheckpointManager.deleteFor(this.storageDir(), id);
         }
