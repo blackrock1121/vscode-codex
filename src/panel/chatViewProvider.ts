@@ -1711,14 +1711,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async forkCheckpointInner(ctx: SessionCtx, checkpointId: string): Promise<void> {
         const sourceId = ctx.sessionId;
-        const meta = this.cpMeta(ctx, checkpointId);
-        const cut = meta?.truncateLine;
-        if (cut === undefined || !sourceId) {
+        if (!sourceId || !this.cpMeta(ctx, checkpointId)) {
             this.post(ctx, { kind: "error", message: "找不到该还原点，无法派生。" });
-            return;
-        }
-        if (cut <= 0) {
-            this.post(ctx, { kind: "notice", message: "该点之前没有对话内容，无法派生新会话。" });
             return;
         }
         const preview = this.cpPreview(ctx, checkpointId);
@@ -1734,8 +1728,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择派生位置。" });
             return;
         }
-        if (!this.checkpointAligned(sourceId, meta!)) {
+        // 直播期间缓存可能尚未包含当前轮次；确认期间还原点位置也可能更新。
+        // 与还原流程一致，读取最新历史并重新对齐后，再取元数据校验和截断。
+        await this.store.hydrate(sourceId);
+        if (ctx.sessionId !== sourceId) {
+            this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择派生位置。" });
+            return;
+        }
+        this.checkpointsForView(ctx, sourceId);
+        const meta = this.cpMeta(ctx, checkpointId);
+        if (!meta) {
+            this.post(ctx, { kind: "error", message: "找不到该还原点，无法派生。" });
+            return;
+        }
+        if (!this.checkpointAligned(sourceId, meta)) {
             this.post(ctx, { kind: "error", message: "还原点与当前对话不匹配，已取消派生。" });
+            return;
+        }
+        const cut = meta.truncateLine;
+        if (cut <= 0) {
+            this.post(ctx, { kind: "notice", message: "该点之前没有对话内容，无法派生新会话。" });
             return;
         }
         const leaf = this.store.rewindLeafFor(sourceId, cut);
