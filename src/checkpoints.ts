@@ -211,10 +211,6 @@ export class CheckpointManager {
     for (let i = idx; i < this.checkpoints.length; i++) {
       for (const s of this.checkpoints[i].skipped ?? []) skippedSet.add(s);
     }
-    // Restoring the OLDEST surviving checkpoint means going back to the session
-    // baseline — pruned turns' un-snapshottable files must be reported too.
-    if (idx === 0) for (const s of this.baselineSkipped) skippedSet.add(s);
-
     // Earliest backup per path across checkpoints[idx..] == pre-turn content.
     const target = new Map<string, string | null>();
     for (let i = idx; i < this.checkpoints.length; i++) {
@@ -222,11 +218,10 @@ export class CheckpointManager {
         if (!target.has(b.path)) target.set(b.path, b.content);
       }
     }
-    // Rewinding to the oldest surviving turn == rewinding to the session start:
-    // files whose only snapshot lived in a pruned turn must revert to baseline.
-    if (idx === 0) for (const [p, c] of this.baseline) if (!target.has(p)) target.set(p, c);
-
+    // 最早保留点未必是会话开头：被裁剪轮次的改动在该点之前，不能回滚。
+    // baseline 只供“已更改文件”的会话级回滚使用，仍需保留。
     let restored = 0;
+    const failed: string[] = [];
     for (const [p, content] of target) {
       try {
         if (content === null) {
@@ -239,19 +234,17 @@ export class CheckpointManager {
           fs.writeFileSync(p, content, "utf8");
           restored++;
         }
-      } catch {
-        /* best effort per file */
+      } catch (err) {
+        failed.push(`${p}（${String(err)}）`);
       }
+    }
+    if (failed.length) {
+      this.flush();
+      throw new Error(`文件还原未完成：已还原 ${restored} 个，失败 ${failed.length} 个。还原点已保留，可重试：${failed.join("、")}`);
     }
 
     const userText = this.checkpoints[idx].userText;
     this.checkpoints = this.checkpoints.slice(0, idx);
-    // Everything at/after idx is undone; if we went all the way back, the
-    // baseline has been applied to disk and is no longer pending.
-    if (idx === 0) {
-      this.baseline.clear();
-      this.baselineSkipped.clear();
-    }
     this.persist();
     return { restoredFiles: restored, skipped: [...skippedSet], userText, truncateLine };
   }

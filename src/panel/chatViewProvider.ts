@@ -578,8 +578,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         panel.webview.html = this.html(panel.webview);
         ctx.webview = panel.webview;
         panel.webview.onDidReceiveMessage((m: FromWebview) => {
-            this.activeCtx = ctx;
+            // 心跳、历史读取和其他后台消息不能改变命令的目标会话。
+            if (panel.active)
+                this.activeCtx = ctx;
             this.onPanelMessage(ctx, m);
+        });
+        panel.onDidChangeViewState(() => {
+            if (panel.active) {
+                this.activeCtx = ctx;
+                this.postActiveFile();
+            }
         });
         panel.onDidDispose(() => this.onPanelClosed(ctx));
     }
@@ -649,7 +657,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             webview: panel.webview,
             sessionId: sid,
             checkpoints: new CheckpointManager(this.storageDir()),
-            blank: !sid && !!sessionId,
+            blank: !sid,
             ready: false,
         };
         if (sid)
@@ -1427,7 +1435,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async setPermissionMode(_ctx: SessionCtx, mode: string): Promise<void> {
         const seq = ++this.modeSeq;
         const prev = this.config().get<string>("permissionMode", "default");
-        await this.updateConfig("permissionMode", mode);
+        if (!await this.updateConfig("permissionMode", mode)) {
+            if (seq === this.modeSeq) this.broadcastModelConfig();
+            return;
+        }
         if (seq !== this.modeSeq)
             return;
         const broadcast = (m: string): void => {
@@ -1607,6 +1618,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         catch (err) {
             this.output.appendLine(`[revertFile] ${absPath}: ${String(err)}`);
+            this.post(ctx, { kind: "notice", message: `回滚失败，已保留文件备份，可修复后重试：${absPath}（${String(err)}）` });
+            return;
         }
         ctx.checkpoints.accept(absPath);
         this.origChanged.fire(vscode.Uri.from({ scheme: ORIG_SCHEME, path: absPath }));
@@ -1883,6 +1896,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         let result: ReturnType<CheckpointManager["restore"]>;
         try { result = this.cpRestore(ctx, checkpointId, cutLine); }
+        catch (err) {
+            try {
+                await this.store.delete(newId);
+                CheckpointManager.deleteFor(this.storageDir(), newId);
+            } catch (cleanupError) {
+                this.output.appendLine(`[restore] 清理未完成分支 ${newId} 失败：${String(cleanupError)}`);
+            }
+            throw err;
+        }
         finally { preserveOldCheckpoints(); }
         if (!result) {
             await this.store.delete(newId);
@@ -2365,7 +2387,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview): void {
         if (e.kind === "models") this.modelCatalog = e.models;
-        if (ctx.lastEventAt !== undefined)
+        // 定时额度查询与账号通知不是任务进展，否则每三分钟刷新一次就永不超时。
+        if (ctx.lastEventAt !== undefined && !["usage", "rate_limit", "rate_limit_cleared", "models", "speed_context"].includes(e.kind))
             ctx.lastEventAt = Date.now();
         ctx.lastEmitAt = Date.now();
         if (e.kind === "tool_input" && ctx.snapshot) {
@@ -3130,7 +3153,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private post(ctx: SessionCtx, e: ToWebview): void {
         if (!this.alive(ctx))
             return;
-        ctx.webview.postMessage(e);
+        // 设置、链接等操作报错不代表当前轮次结束，发送队列只能由真实结束事件放行。
+        ctx.webview.postMessage(e.kind === "error" && ctx.proc?.isBusy ? { ...e, keepBusy: true } : e);
     }
     private config(): vscode.WorkspaceConfiguration {
         return vscode.workspace.getConfiguration("codexChat");

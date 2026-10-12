@@ -151,7 +151,7 @@ export type ToWebview =
   | { kind: "rate_limit"; level: "warning" | "exhausted"; limitLabel: string; resetsAt?: number; modelScoped?: boolean }
   /** The quota window reset — unlock the composer. */
   | { kind: "rate_limit_cleared" }
-  | { kind: "error"; message: string }
+  | { kind: "error"; message: string; keepBusy?: boolean }
   | { kind: "notice"; message: string }
   | { kind: "snapshot_skips"; files: { path: string; rel: string; reason: string }[]; total: number }
   | { kind: "snapshot_exclude_result"; ok: boolean; message: string; paths: string[] }

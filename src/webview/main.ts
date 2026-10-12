@@ -1000,6 +1000,10 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       clearRateLimit();
       break;
     case "error":
+      if (m.keepBusy) {
+        appendNotice(m.message, "error");
+        break;
+      }
       hideRestoring(); // 还原失败也要撤掉遮罩
       setGlow("error");
       finalizeTurn();
@@ -1953,7 +1957,8 @@ function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: s
   waitingQuestionId = undefined;
   historyState = { items, checkpoints: checkpoints || [] };
   seedInputHistory(items); // ↑ 能调回本会话之前发过的消息
-  if (sessionId) vscode.setState({ sessionId });
+  // 空历史也必须解除旧绑定，避免 /clear 或还原到开头后重载又复活旧会话。
+  vscode.setState({ sessionId });
   // 整页重载是从 transcript 权威重建，绝不能带出合成标记：还原过渡那几秒里用
   // 户若又点了停止，残留的 userStopped 会让 renderHistory 收尾的 finalizeTurn
   // 给最后一轮错盖「[Request interrupted by user]」。

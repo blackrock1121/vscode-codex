@@ -27,7 +27,7 @@ async function fixture(t){
   sessions:new Set(),detached:new Map(),
   context:{extensionUri:dir},output:{appendLine:()=>{}},
   store:{hydrate:async()=>{},findFile:id=>id},
-  storageDir:()=>dir,speedMode:()=> 'default',html:()=> '<html>会话</html>',
+  storageDir:()=>dir,speedMode:()=> 'default',html:()=> '<html>会话</html>',postActiveFile:()=>{},
  });
  return provider;
 }
@@ -35,7 +35,8 @@ async function fixture(t){
 function panel(column,active,visible=true){
  return {
   viewColumn:column,active,visible,reveals:[],
-  webview:{onDidReceiveMessage:()=>{}},onDidDispose:()=>{},
+  webview:{onDidReceiveMessage(listener){this.receive=listener;}},onDidDispose:()=>{},
+  onDidChangeViewState(listener){this.changeState=listener;},
   reveal(column,preserveFocus){
    this.reveals.push({column,preserveFocus});
    this.active=!preserveFocus;
@@ -85,4 +86,33 @@ test('新建会话仍在旁边打开并锁定分组',async t=>{
  assert.deepEqual(commands,['workbench.action.lockEditorGroup']);
  assert.equal(provider.activeCtx.panel,fresh);
  assert.equal(provider.sessions.size,1);
+});
+
+test('后台心跳不改变停止命令的目标，点击会话标签即可切换目标',async t=>{
+ const provider=await fixture(t);
+ const left=panel(1,true),right=panel(2,false);
+ await provider.revivePanel(left,'left');
+ await provider.revivePanel(right,'right');
+ provider.activeCtx=[...provider.sessions].find(ctx=>ctx.panel===left);
+ right.webview.receive({type:'pong',id:1});
+ const stopped=[];
+ provider.stopContext=async ctx=>stopped.push(ctx.sessionId);
+ await provider.stop();
+ assert.deepEqual(stopped,['left']);
+ left.active=false;right.active=true;
+ right.changeState({webviewPanel:right});
+ left.webview.receive({type:'pong',id:2});
+ await provider.stop();
+ assert.deepEqual(stopped,['left','right']);
+});
+
+test('重载空白标签不会自动绑定到上一个会话',async t=>{
+ const provider=await fixture(t);
+ provider.context.workspaceState={get:()=> 'old-session'};
+ provider.post=()=>{};provider.refreshChangedFiles=()=>{};
+ provider.loadSessionInto=()=>assert.fail('空白标签不应读取旧历史');
+ const blank=panel(1,true);
+ await provider.revivePanel(blank);
+ provider.loadCtxSession(provider.activeCtx);
+ assert.equal(provider.activeCtx.sessionId,undefined);
 });

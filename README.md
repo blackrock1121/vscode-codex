@@ -91,6 +91,8 @@ code --install-extension release/vscode-codex.vsix --force
 
 ## 开发与验证
 
+开发与打包需要 Node.js 22 或更新版本。
+
 ```bash
 npm ci
 npm run check-types

@@ -7,10 +7,10 @@ function setup(t){
  const section=source.slice(source.indexOf('  private html('));
  const raw=section.match(/return (?:\/\* html \*\/ )?`([\s\S]*?)`;\s*\n\s+}/)[1];
  const html=raw.replace(/\$\{[^}]+\}/g,'').replace(/<script[^>]*><\/script>/g,'');
- const sent=[],errors=[];
+ const sent=[],errors=[],states=[];
  const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true,url:'https://webview.test/'});
  t.after(()=>dom.window.close());
- const w=dom.window; w.acquireVsCodeApi=()=>({postMessage:m=>sent.push(m),getState:()=>({}),setState:()=>{}});
+ const w=dom.window; w.acquireVsCodeApi=()=>({postMessage:m=>sent.push(m),getState:()=>states.at(-1)??{},setState:s=>states.push(JSON.parse(JSON.stringify(s)))});
  w.ResizeObserver=class{observe(){}disconnect(){}};
  w.IntersectionObserver=class{observe(){}disconnect(){}};
  w.HTMLElement.prototype.scrollIntoView=function(){};
@@ -20,8 +20,31 @@ function setup(t){
  w.addEventListener('error',e=>errors.push(e.message));
  w.eval(fs.readFileSync('media/webview.js','utf8'));
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
- return {w,sent,errors,emit};
+ return {w,sent,errors,emit,states};
 }
+test('清空上下文或还原到开头后，持久化状态不再指向旧会话',t=>{
+ const {emit,states}=setup(t);
+ emit({kind:'session',sessionId:'old',model:'test',cwd:'/tmp'});
+ assert.equal(states.at(-1).sessionId,'old');
+ emit({kind:'load_history',items:[],checkpoints:[]});
+ assert.equal(states.at(-1).sessionId,undefined);
+ emit({kind:'load_history',sessionId:'branch',items:[],checkpoints:[]});
+ assert.equal(states.at(-1).sessionId,'branch');
+});
+test('运行中切换设置失败只显示错误，任务和排队消息继续等待真实完成',async t=>{
+ const {w,sent,emit}=setup(t);
+ emit({kind:'busy',busy:true});
+ const input=w.document.getElementById('input');input.value='下一项';
+ w.document.getElementById('btn-send').click();
+ emit({kind:'error',message:'当前模型不支持该速度',keepBusy:true});
+ await new Promise(resolve=>setTimeout(resolve,180));
+ assert.equal(sent.some(event=>event.type==='send'),false);
+ assert.equal(w.document.querySelectorAll('.tq-row').length,1);
+ assert.match(w.document.getElementById('messages').textContent,/不支持该速度/);
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(resolve=>setTimeout(resolve,180));
+ assert.deepEqual(sent.filter(event=>event.type==='send').map(event=>event.text),['下一项']);
+});
 test('真实聊天 HTML 和构建脚本可加载，无 QQ/SLS 入口',t=>{const {w,sent,errors}=setup(t);assert.ok(sent.some(m=>m.type==='ready'));assert.deepEqual(errors,[]);assert.equal(w.document.querySelector('[id*=sls],[id*=qq]'),null);});
 test('动态模型、流式 Markdown、代码块和工具卡片可渲染',async t=>{const {w,errors,emit}=setup(t);emit({kind:'models',models:[{id:'test-model',name:'测试模型',description:'测试',efforts:['low']}]});w.document.getElementById('model-trigger').click();assert.match(w.document.getElementById('model-menu').textContent,/测试模型/);emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'你好 **世界**\n\n```js\nconst a = 1;\n```'});emit({kind:'tool_input',toolId:'tool',name:'Bash',input:{command:'echo hello'}});emit({kind:'tool_result',toolUseId:'tool',content:'hello',isError:false});emit({kind:'result',isError:false,durationMs:1,numTurns:1});await new Promise(r=>setTimeout(r,80));assert.match(w.document.getElementById('messages').textContent,/世界/);assert.match(w.document.getElementById('messages').textContent,/echo hello/);assert.deepEqual(errors,[]);});
 test('流式文字收到后立即可见，无需等待动画帧',t=>{const {w,emit,errors}=setup(t);emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'第一批即时文字'});assert.match(w.document.getElementById('messages').textContent,/第一批即时文字/);emit({kind:'text_delta',text:'，第二批'});assert.match(w.document.getElementById('messages').textContent,/第一批即时文字，第二批/);assert.deepEqual(errors,[]);});
