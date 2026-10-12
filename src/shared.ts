@@ -106,6 +106,7 @@ export type ToWebview =
   | { kind: "restoring" }
   | { kind: "status"; label: string }
   | { kind: "block_start"; blockType: "text" | "thinking" | "tool_use"; toolId?: string; toolName?: string }
+  | { kind: "block_end" }
   | { kind: "text_delta"; text: string }
   /** 完整消息与 delta 累计不一致时的权威快照：整块替换当前直播文本。 */
   | { kind: "text_snap"; text: string }

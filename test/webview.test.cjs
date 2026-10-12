@@ -161,6 +161,51 @@ test('默认模型未确认时不能用目录默认值冒充实际模型，API �
 });
 
 function manualFrames(w){let next=0;const frames=new Map();w.requestAnimationFrame=f=>{frames.set(++next,f);return next;};w.cancelAnimationFrame=id=>frames.delete(id);return ()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(f=>f(w.performance.now()));};}
+function manualSeconds(w){
+ let now=0,next=0;const intervals=new Map();
+ Object.defineProperty(w.performance,'now',{value:()=>now});
+ w.setInterval=f=>{intervals.set(++next,f);return next;};w.clearInterval=id=>intervals.delete(id);
+ return seconds=>{now+=seconds*1000;[...intervals.values()].forEach(f=>f());};
+}
+test('中途说明后长时间无新事件，状态与秒数持续显示，下一次思考及时接续',t=>{
+ const {w,emit,errors}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
+ emit({kind:'busy',busy:true});
+ assert.match(w.document.querySelector('.wk-tokens').textContent,/待回传/);
+ emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'首轮回归已通过，继续检查。'});flush();
+ assert.match(w.document.querySelector('.wk-label').textContent,/正在回复/);
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'5s');
+ emit({kind:'block_end'});
+ assert.match(w.document.querySelector('.wk-label').textContent,/等待后续响应/);
+ advance(60);assert.equal(w.document.querySelector('.wk-time').textContent,'65s');
+ assert.match(w.document.querySelector('.wk-tokens').textContent,/≈.*tokens/);
+ emit({kind:'block_start',blockType:'thinking'});advance(20);
+ assert.equal(w.document.querySelector('.wk-time').textContent,'85s');
+ emit({kind:'block_end'});assert.match(w.document.querySelector('.think-node').textContent,/20s/);
+ assert.equal(w.document.querySelector('.msg-body').lastElementChild.className,'working-pill');
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});advance(10);
+ assert.equal(w.document.querySelector('.working-pill'),null);assert.deepEqual(errors,[]);
+});
+test('文件工具等待期间也显示计时，重建状态保留已收到的思考 token',t=>{
+ const {w,emit}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
+ emit({kind:'busy',busy:true});emit({kind:'thinking_tokens',tokens:123});
+ emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/tmp/a.txt'}});
+ advance(12);assert.equal(w.document.querySelector('.wk-time').textContent,'12s');
+ assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
+ flush();assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
+ emit({kind:'tool_result',toolUseId:'read',content:'ok',isError:false});
+ assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
+});
+test('等待用户、停止和错误后，迟到的块结束或计时器不会恢复运行状态',t=>{
+ for(const ending of ['question','stop','error']){
+  const {w,emit,errors}=setup(t);const advance=manualSeconds(w);
+  emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'阶段说明'});
+  if(ending==='question')emit({kind:'permission_request',requestId:'q',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'继续？',options:[]}]},suggestions:[]});
+  else if(ending==='stop')w.document.getElementById('btn-stop').click();
+  else emit({kind:'error',message:'连接失败'});
+  emit({kind:'block_end'});advance(60);
+  assert.equal(w.document.querySelector('.working-pill'),null,ending);assert.deepEqual(errors,[]);
+ }
+});
 test('突发流式片段立即显示文字，同帧只合并一次完整 Markdown 渲染',t=>{
  const {w,emit,errors}=setup(t);const flush=manualFrames(w);
  let renders=0;const desc=Object.getOwnPropertyDescriptor(w.Element.prototype,'innerHTML');

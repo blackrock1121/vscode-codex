@@ -277,9 +277,14 @@ export class CodexProcess {
       return;
     }
     if (['agentMessage', 'plan', 'reasoning'].includes(item.type)) {
+      if (!done) this.block(item.id, item.type === 'reasoning' ? 'thinking' : 'text');
       if (done && !this.streamed.has(item.id)) {
         const thinking = item.type === 'reasoning'; this.block(item.id, thinking ? 'thinking' : 'text');
         this.emit(thinking ? { kind: 'thinking_delta', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n') } : { kind: 'text_delta', text: item.text ?? '' });
+      }
+      if (done && this.activeBlock === item.id) {
+        this.activeBlock = undefined;
+        this.emit({ kind: 'block_end' });
       }
       return;
     }

@@ -6,6 +6,25 @@ const {CodexRpc}=require('../dist/test/codex/rpc.js');
 const {CodexProcess}=require('../dist/test/codex/process.js');
 const executable=path.resolve('test/fake-codex.cjs');
 
+test('思考和正文从 item/started 即进入活动状态，完成后发出块结束且不重复正文',()=>{
+ const events=[];
+ const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},
+  {emit:e=>events.push(e),onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});
+ const note=(method,params)=>p.notification({method,params});
+ note('item/started',{item:{id:'think',type:'reasoning'}});
+ assert.deepEqual(events,[{kind:'block_start',blockType:'thinking'}]);
+ note('item/completed',{item:{id:'think',type:'reasoning',summary:[],content:[]}});
+ assert.equal(events.at(-1).kind,'block_end');
+ note('item/started',{item:{id:'text',type:'agentMessage'}});
+ note('item/agentMessage/delta',{itemId:'text',delta:'阶段说明'});
+ note('item/completed',{item:{id:'text',type:'agentMessage',text:'阶段说明'}});
+ assert.equal(events.at(-1).kind,'block_end');
+ assert.equal(events.filter(e=>e.kind==='block_start'&&e.blockType==='text').length,1);
+ assert.deepEqual(events.filter(e=>e.kind==='text_delta'),[{kind:'text_delta',text:'阶段说明'}]);
+ note('item/completed',{item:{id:'snapshot',type:'agentMessage',text:'仅有完成事件'}});
+ assert.deepEqual(events.slice(-3),[{kind:'block_start',blockType:'text'},{kind:'text_delta',text:'仅有完成事件'},{kind:'block_end'}]);
+});
+
 async function client(t){
  const rpc=new CodexRpc(executable,process.cwd());
  t.after(()=>rpc.disposeAndWait());

@@ -363,7 +363,6 @@ function finalizeLive() {
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
   hydrateLocalImages(liveBlock.el);
-  removeWorking(); // the text block is done — drop the "思考中" pill
   updateActiveLine();
   maybeScroll();
 }
@@ -442,6 +441,11 @@ let workingFixed = ""; // a fixed phase label (e.g. preparing options) — no ro
 function fmtTokens(n: number): string {
   return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
 }
+function pillTokenText(n: number): string {
+  if (n <= 0) return "token 待回传";
+  const estimated = Math.round(turnEst) > Math.max(turnTokens, turnThinkTokens);
+  return `${estimated ? "≈" : ""}${fmtTokens(Math.round(n))} tokens`;
+}
 // The CLI reports tokens in coarse jumps (≈50 at a time); showing them raw
 // makes the counter lurch. Ease the DISPLAYED value toward the real target on
 // each frame so it climbs smoothly, like the official panel.
@@ -455,12 +459,12 @@ function paintTokens() {
   // approach ~18%/frame, but always move at least 1 so it can't stall just shy
   if (Math.abs(diff) < 1) {
     tokenShown = tokenTarget;
-    tk.textContent = tokenShown > 0 ? `${fmtTokens(Math.round(tokenShown))} tokens` : "";
+    tk.textContent = pillTokenText(tokenShown);
     tokenRAF = 0;
     return;
   }
   tokenShown += diff * 0.18 + Math.sign(diff);
-  tk.textContent = tokenShown > 0 ? `${fmtTokens(Math.round(tokenShown))} tokens` : "";
+  tk.textContent = pillTokenText(tokenShown);
   tokenRAF = requestAnimationFrame(paintTokens);
 }
 function setPillTokens() {
@@ -818,6 +822,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
   if (
     stoppingView &&
     (m.kind === "block_start" ||
+      m.kind === "block_end" ||
       m.kind === "text_delta" ||
       m.kind === "text_snap" ||
       m.kind === "thinking_delta" ||
@@ -887,13 +892,18 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       statusLine.textContent = "";
       onBlockStart(m.blockType, m.toolId, m.toolName);
       break;
+    case "block_end":
+      flushThinkNode();
+      finalizeLive();
+      liveBlock = null;
+      if (isBusy) showWorking("等待后续响应…");
+      break;
     case "text_delta":
       onTextDelta(m.text);
       break;
     case "text_snap":
       cancelLiveRender();
       // 完整消息与 delta 累计不一致时的权威快照：整块替换重排。
-      removeWorking();
       if (!liveBlock) onBlockStart("text");
       liveBlock!.raw = m.text;
       liveBlock!.committedLen = 0;
@@ -930,6 +940,8 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       }
       break;
     case "tool_input":
+      // app-server 可直接发完整工具输入，没有单独的 block_start。
+      if (isBusy && !toolCards.has(m.toolId)) onBlockStart("tool_use", m.toolId, m.name);
       updateToolInput(m.toolId, m.name, m.input);
       break;
     case "tool_input_partial":
@@ -1142,11 +1154,9 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
       liveBlock = null;
       return;
     }
-    removeWorking();
     createToolCard(body, toolId, toolName || "tool");
-    // Non-file tools (e.g. Bash) can run a while — keep a live status pill below
-    // the card so it's clearly executing, not frozen. File tools are instant.
-    if (!FILE_VIEW_TOOLS.has(toolName || "")) showWorking();
+    // 文件操作也可能等待后端，所有工具执行期间都保留实时反馈。
+    showWorking("正在执行工具…");
     liveBlock = null;
     return;
   }
@@ -1159,19 +1169,18 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
     return;
   }
   finalizeLive(); // finalize previous text block with full highlighting
-  removeWorking(); // text is starting — drop the "思考中" pill
   const seg = el("div", "md text-seg");
   const committedEl = el("div", "live-committed");
   const lineEl = el("span", "live-line");
   seg.append(committedEl, lineEl);
   body.appendChild(seg);
   liveBlock = { type: "text", raw: "", shown: 0, el: seg, committedEl, lineEl, committedLen: 0 };
+  showWorking("正在回复…");
   maybeScroll();
 }
 
 function onTextDelta(text: string) {
   addStreamEst(text); // keep the running token estimate growing
-  removeWorking();
   if (!liveBlock) onBlockStart("text");
   const first = liveBlock!.raw.length === 0;
   liveBlock!.raw += text;
@@ -4096,11 +4105,11 @@ function setBusy(busy: boolean) {
   if (!busy && !statusLine.textContent?.startsWith("完成")) statusLine.textContent = "";
 }
 
-/** A live "思考中 · Ns" pill shown whenever the model is working but not
- *  currently writing visible text (turn start, thinking, between tool steps). */
+/** 本轮尚未结束时持续保留状态，正文暂停或块间等待也不会失去计时反馈。 */
 /** Show the live activity pill. With no arg it cycles "thinking" verbs; pass a
  *  fixed `label` for a specific phase (e.g. preparing the option picker). */
 function showWorking(label?: string) {
+  if (stoppingView || waitingQuestionId) return;
   const body = ensureAssistant();
   let w = body.querySelector(".working-pill") as HTMLElement | null;
   if (!w) {
@@ -4118,7 +4127,10 @@ function showWorking(label?: string) {
   const seed = Number(w.dataset.wseed || 0);
   if (lbl) lbl.textContent = label ?? `${THINKING_WORDS[seed % THINKING_WORDS.length]}…`;
   const tk = w.querySelector(".wk-tokens") as HTMLElement;
-  if (tk) tk.textContent = turnTokens > 0 ? `${fmtTokens(turnTokens)} tokens` : "";
+  setPillTokens();
+  // 阶段切换时直接接续当前数值，旧动画帧不能把已显示的计数拉回零。
+  tokenShown = tokenTarget;
+  if (tk) tk.textContent = pillTokenText(tokenShown);
   // Always keep the pill as the last element so it sits below the latest output.
   if (body.lastElementChild !== w) body.appendChild(w);
   startTick();
