@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-const readline = require('node:readline');
+const {readJsonl} = require('./jsonl.cjs');
 const fs = require('node:fs');
 const path = require('node:path');
 const send = m => process.stdout.write(JSON.stringify(m)+'\n');
@@ -7,8 +7,7 @@ const note = (method,params) => send({method,params});
 let heldCatalog;
 let text=''; let background; let interruptCount=0; let answerCount=0;
 let turnNumber=0, turnId='turn-1';
-readline.createInterface({input:process.stdin}).on('line',line=>{
- const m=JSON.parse(line);
+readJsonl(process.stdin,m=>{
  if(process.env.TEST_RPC_LOG)fs.appendFileSync(process.env.TEST_RPC_LOG,JSON.stringify(m)+'\n');
  if(!m.method) {answerCount++;note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:turnId,status:'completed'}});return;}
  if(m.method==='initialized')return;
@@ -40,6 +39,13 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(m.method==='thread/list')result={data:[],nextCursor:null};
  if(m.method==='turn/start'){turnId=`turn-${++turnNumber}`;result={turn:{id:turnId}};}
  if(m.method==='hang')return;
+ if(m.method==='echo'){send({id:m.id,result:m.params});return;}
+ if(m.method==='invalid-envelope'){send(m.params.value);send({id:m.id,result:{unexpected:true}});return;}
+ if(m.method==='truncated-output'){process.stdout.end('{"id":');return;}
+ if(m.method==='closed-output'){process.stdout.end();return;}
+ if(m.method==='unterminated-output'){process.stdout.end(JSON.stringify({id:m.id,result:{text:'末尾\u2028🙂'}}));return;}
+ if(m.method==='stubborn-output'){process.on('SIGTERM',()=>{});process.stdout.write('not-json\n');return;}
+ if(m.method==='corrupt-background'){send({id:m.id,result:{}});setTimeout(()=>send(null),10);return;}
  if(m.method==='malformed'){process.stdout.write('not-json\n');return;}
  if(m.method==='malformed-once'){
   const marker=path.join(process.cwd(),'.malformed-once');

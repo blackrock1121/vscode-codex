@@ -7,6 +7,19 @@ import * as path from 'node:path';
 export type RpcId = string | number;
 export interface RpcMessage { id?: RpcId; method?: string; params?: any; result?: any; error?: { code: number; message: string }; }
 
+function isRpcMessage(value: unknown): value is RpcMessage {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const msg = value as RpcMessage;
+  const hasId = Object.hasOwn(msg, 'id');
+  if (hasId && typeof msg.id !== 'string' && (typeof msg.id !== 'number' || !Number.isSafeInteger(msg.id))) return false;
+  const hasResult = Object.hasOwn(msg, 'result');
+  const hasError = Object.hasOwn(msg, 'error');
+  if (Object.hasOwn(msg, 'method')) return typeof msg.method === 'string' && msg.method.length > 0 && !hasResult && !hasError;
+  if (!hasId || hasResult === hasError) return false;
+  return !hasError || (!!msg.error && typeof msg.error === 'object' && !Array.isArray(msg.error)
+    && Number.isInteger(msg.error.code) && typeof msg.error.message === 'string');
+}
+
 /** 只传输 JSONL，不记录提示词、凭据或完整 RPC 内容。 */
 export class CodexRpc extends EventEmitter {
   private child?: ChildProcessWithoutNullStreams;
@@ -14,6 +27,8 @@ export class CodexRpc extends EventEmitter {
   private pending = new Map<RpcId, { resolve: (v: any) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
   private starting?: Promise<void>;
   private closed = false;
+  private closeReason?: Error;
+  private killTimer?: NodeJS.Timeout;
   constructor(private readonly executable: string, private readonly cwd: string, private readonly env?: NodeJS.ProcessEnv) { super(); }
   get isClosed(): boolean { return this.closed; }
   start(): Promise<void> {
@@ -27,8 +42,13 @@ export class CodexRpc extends EventEmitter {
     this.child = child;
     child.on('error', e => this.fail(e));
     child.stdin.on('error', e => this.fail(e));
+    child.stdout.on('error', e => this.fail(e));
     child.stderr.on('data', () => { /* CLI stderr 可能含配置和路径，不写入聊天日志。 */ });
-    child.once('close', code => { this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`)); this.emit('close', code); });
+    child.once('close', code => {
+      this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`));
+      clearTimeout(this.killTimer);
+      this.emit('close', code, this.closeReason);
+    });
     // JSONL 只以 LF 分帧。Node 24 的 readline 还会拆分 U+2028/U+2029，
     // 但这两个字符可以合法出现在 JSON 字符串中，拆开会破坏历史和工具输出。
     // setEncoding 保留跨数据块的 UTF-8 字符；片段在完整一行到达时才合并。
@@ -37,6 +57,7 @@ export class CodexRpc extends EventEmitter {
       if (this.closed) return;
       let msg: RpcMessage;
       try { msg = JSON.parse(line); } catch { this.fail(new Error(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
+      if (!isRpcMessage(msg)) { this.fail(new Error(`Codex 返回了无效协议消息结构（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       if (msg.method) {
         this.emit(msg.id === undefined ? 'notification' : 'request', msg);
       } else if (msg.id !== undefined) {
@@ -64,6 +85,7 @@ export class CodexRpc extends EventEmitter {
     child.stdout.on('end', () => {
       if (fragments.length) receiveLine(fragments.join(''));
       fragments = [];
+      this.fail(new Error('Codex 输出通道已关闭'));
     });
     await this.request('initialize', { clientInfo: { name: 'vscode_codex_copilot', title: 'Codex Copilot', version: '0.1.0' }, capabilities: { experimentalApi: true } });
     this.write({ method: 'initialized' });
@@ -86,18 +108,22 @@ export class CodexRpc extends EventEmitter {
   private fail(e: Error): void {
     if (this.closed) return;
     this.closed = true;
+    this.closeReason = e;
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(e); }
     this.pending.clear();
     // 协议损坏时子进程可能仍存活；释放它，避免后续请求复用失效连接。
-    this.child?.kill();
+    const child = this.child;
+    if (child && child.exitCode === null && child.signalCode === null) {
+      child.kill();
+      this.killTimer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 2000);
+      this.killTimer.unref();
+    }
   }
   dispose(): void {
     this.fail(new Error('Codex 连接已关闭'));
     const child = this.child;
     if (!child) return;
-    child.stdin.end(); child.kill();
-    const timer = setTimeout(() => { if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL'); }, 2000);
-    timer.unref(); child.once('close', () => clearTimeout(timer));
+    child.stdin.end();
   }
   async disposeAndWait(): Promise<void> {
     const child = this.child;

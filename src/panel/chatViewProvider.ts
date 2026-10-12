@@ -2643,6 +2643,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return reject(new Error("重定向次数过多"));
             const headers = { "User-Agent": "codex-chat", Accept: "application/vnd.github+json" };
             const req = https.get(url, { headers }, (res) => {
+                res.on("error", reject);
+                res.once("aborted", () => reject(new Error("下载响应提前中断")));
                 const code = res.statusCode ?? 0;
                 if (code >= 300 && code < 400 && res.headers.location) {
                     res.resume();

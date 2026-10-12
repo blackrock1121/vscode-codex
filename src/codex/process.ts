@@ -73,7 +73,11 @@ export class CodexProcess {
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env);
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
-    this.rpc.on('close', (code: number | null) => { clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.exited = true; this.busy = false; this.hooks.onClose(code); });
+    this.rpc.on('close', (code: number | null, reason: Error) => {
+      clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer);
+      if (this.busy && !this.disposed) this.error(reason);
+      this.exited = true; this.busy = false; this.hooks.onClose(code);
+    });
   }
   get modelForNextTurn() { return this.opts.model || this.activeModel; }
   get currentSessionId() { return this.sessionId; }
