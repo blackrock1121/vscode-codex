@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 const exec = promisify(execFile);
 export const NOTIFIER_APP = "Codex Copilot Notifications.app";
 
-/** 桌面横幅只放状态、项目和一行摘要，完整内容在点击后的会话里查看。 */
+/** 标题突出来源工作区，正文只放耗时和一行摘要，完整内容在会话里查看。 */
 export function formatLocalNotification(message: string, extra: Record<string, unknown>): { title: string; body: string } {
     const compact = (value: string, limit: number): string => {
         const segments = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value.replace(/\s+/g, " ").trim())];
@@ -26,15 +26,21 @@ export function formatLocalNotification(message: string, extra: Record<string, u
     const [originalTitle, ...lines] = message.split("\n");
     const duration = originalTitle.match(/（(?:耗时|距上次操作)\s*(.*?)）/)?.[1]
         .replace(/\s+/g, "").replace(/分0秒$/, "分");
-    let title = originalTitle;
-    if (originalTitle.startsWith("⏳ Codex 正在等你输入")) title = typeof extra.ask === "string" && extra.ask.startsWith("待授权：") ? "⏳ 待授权" : "⏳ 待回答";
-    else if (originalTitle.startsWith("✅ Codex 任务完成")) title = "✅ 任务完成";
-    else if (originalTitle.startsWith("⚠️ Codex 任务出错")) title = "⚠️ 任务出错";
-    if (title !== originalTitle && duration) title += ` · ${duration}`;
     const project = typeof extra.project === "string" ? extra.project : "";
+    let status = "", icon = "";
+    if (originalTitle.startsWith("⏳ Codex 正在等你输入")) {
+        icon = "⏳";
+        status = typeof extra.ask === "string" && extra.ask.startsWith("待授权：") ? "待授权" : "待回答";
+    } else if (originalTitle.startsWith("✅ Codex 任务完成")) { icon = "✅"; status = "已完成"; }
+    else if (originalTitle.startsWith("⚠️ Codex 任务出错")) { icon = "⚠️"; status = "出错"; }
+    else if (originalTitle === "🔔 Codex Copilot 本机通知测试") { icon = "🔔"; status = "通知测试"; }
+    // 给状态留出空间，长工作区名只截断名称，避免标题换行或丢失状态。
+    const title = status ? `${icon} ${compact(project || "未命名工作区", 24)} · ${status}` : originalTitle;
     const detail = extra.waiting && typeof extra.ask === "string" ? extra.ask.replace(/^待(?:回答|授权)：/, "")
         : typeof extra.question === "string" ? extra.question : "";
-    const body = project || detail ? [project, detail].filter(Boolean).map(value => compact(value, 40)).join("\n")
+    const timing = duration ? `${extra.waiting ? "等待" : "耗时"} ${duration}` : "";
+    const body = status ? [timing, detail || lines.join(" ")].filter(Boolean).map(value => compact(value, 40)).join("\n")
+        : project || detail ? [project, detail].filter(Boolean).map(value => compact(value, 40)).join("\n")
         : compact(lines.join(" "), 80);
     return { title: compact(title, 40), body };
 }

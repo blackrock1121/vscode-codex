@@ -2212,7 +2212,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     }
                     case "notifyLocalTest": {
                         try {
-                            await this.sendLocalNotice("🔔 Codex Copilot 本机通知测试", "点击返回当前 VS Code 窗口的任务推送设置。");
+                            const notice = formatLocalNotification("🔔 Codex Copilot 本机通知测试", {
+                                project: vscode.workspace.name || vscode.workspace.workspaceFolders?.[0]?.name || "",
+                                question: "点击返回当前窗口的任务推送设置。",
+                            });
+                            await this.sendLocalNotice(notice.title, notice.body);
                             panel.webview.postMessage({ kind: "notify_result", ok: true, message: "系统已接受本机通知，请点击通知验证返回本窗口。若未显示，请检查系统通知设置或专注模式。" } satisfies ToWebview);
                         } catch (error) {
                             panel.webview.postMessage({ kind: "notify_result", ok: false, message: `本机通知失败：${String((error as Error).message ?? error)}；飞书推送不受影响。` } satisfies ToWebview);
@@ -2614,7 +2618,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
         }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
         if (cfg.get<boolean>("notifyLocal")) {
-            const { title, body } = formatLocalNotification(msg, extra);
+            const { title, body } = formatLocalNotification(msg, {
+                ...extra,
+                project: typeof extra.project === "string" ? vscode.workspace.name || extra.project : extra.project,
+            });
             void this.sendLocalNotice(title, body, ctx.sessionId).then(() => {
                 this.output.appendLine("[notify] 系统已接受本机通知");
             }).catch(error => this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`));

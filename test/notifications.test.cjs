@@ -88,6 +88,30 @@ test('远程失败不阻断本机通知；关闭本机后仍发送远程通知',
   assert.equal(remote, 2);
 });
 
+test('本机通知用自定义工作区名称区分窗口，保留会话路由和飞书正文', async t => {
+  config = { notifyWebhook: 'https://example.invalid/hook', notifyLocal: true };
+  const p = provider(), local = [], remote = [];
+  const previousName = vscode.workspace.name;
+  t.after(() => { vscode.workspace.name = previousName; });
+  p.sendLocalNotice = async (...args) => local.push(args);
+  p.sendWebhook = async (_url, text) => { remote.push(text); return { ok: true, status: 200 }; };
+  const msg = '⏳ Codex 正在等你输入（距上次操作 2 分 0 秒）\n项目：公司项目\n待回答：是否继续？\n本轮提问：原始任务';
+  vscode.workspace.name = '前端工作区';
+  p.dispatchNotification({ sessionId: 'session-A' }, msg, { waiting: true, project: '公司项目', ask: '待回答：是否继续？', question: '原始任务' });
+  vscode.workspace.name = '服务端工作区';
+  p.dispatchNotification({ sessionId: 'session-B' }, msg, { waiting: true, project: '公司项目', ask: '待回答：是否继续？' });
+  await flush();
+  assert.deepEqual(local, [
+    ['⏳ 前端工作区 · 待回答', '等待 2分\n是否继续？', 'session-A'],
+    ['⏳ 服务端工作区 · 待回答', '等待 2分\n是否继续？', 'session-B'],
+  ]);
+  assert.deepEqual(remote, [msg, msg]);
+  vscode.workspace.name = undefined;
+  p.dispatchNotification({ sessionId: 'session-A' }, '✅ Codex 任务完成（耗时 1 分 5 秒）', { project: '公司项目', question: '修复通知' });
+  await flush();
+  assert.deepEqual(local.at(-1), ['✅ 公司项目 · 已完成', '耗时 1分5秒\n修复通知', 'session-A']);
+});
+
 test('完成通知仍遵守阈值，无 webhook 时也能单独选择本机通知', () => {
   config = { notifyLocal: true, notifyMinDurationSec: 60 };
   const p = provider(), calls = [];
