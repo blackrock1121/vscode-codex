@@ -2638,9 +2638,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         }
         if (muted) this.output.appendLine("[notify] 当前为中国大陆工作日的配置时段，已跳过飞书推送（本机通知不受影响）");
-        if (url && !muted) void this.sendWebhook(url, msg, extra).then(r => {
-            this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
-        }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
+        const sendRemote = () => {
+            void this.sendWebhook(url, msg, extra).then(r => {
+                this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
+            }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
+        };
+        if (url && !muted) sendRemote();
         if (cfg.get<boolean>("notifyLocal")) {
             const { title, body } = formatLocalNotification(msg, {
                 ...extra,
@@ -2648,7 +2651,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             });
             void this.sendLocalNotice(title, body, ctx.sessionId).then(() => {
                 this.output.appendLine("[notify] 系统已接受本机通知");
-            }).catch(error => this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`));
+            }).catch(error => {
+                this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`);
+                if (muted) {
+                    this.output.appendLine("[notify] 本机通知未成功，取消本条消息的飞书静默并补发");
+                    sendRemote();
+                }
+            });
         }
     }
     private async sendLocalNotice(title: string, body: string, sessionId?: string): Promise<void> {

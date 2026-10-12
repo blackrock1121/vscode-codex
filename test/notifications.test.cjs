@@ -408,3 +408,21 @@ test('远程宿主即使同步了本机通知开关，也不能静默飞书', as
   p.dispatchNotification({}, '完成', {}); await flush();
   assert.equal(remote, 1);
 });
+
+test('工作时段本机通知失败时补发飞书，成功时保持静默，非静默时不重复发送', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyLocal: true,
+    notifyFeishuQuietHours: { enabled: true, start: '08:30', end: '18:00' } };
+  const p = provider(), sent = [];
+  p.workdayCalendar = { refresh: async () => {}, shouldMute: () => true };
+  p.sendWebhook = async (...args) => { sent.push(args); return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async () => {};
+  p.dispatchNotification({}, '本机成功', {}); await flush();
+  assert.equal(sent.length, 0);
+  p.sendLocalNotice = async () => { throw new Error('系统拒绝通知权限'); };
+  const extra = { waiting: true };
+  p.dispatchNotification({}, '等待输入', extra); await flush();
+  assert.deepEqual(sent, [[config.notifyWebhook, '等待输入', extra]]);
+  config.notifyFeishuQuietHours.enabled = false;
+  p.dispatchNotification({}, '非静默完成', {}); await flush();
+  assert.equal(sent.length, 2, '已发送的远程提醒不能因本机失败再次发送');
+});
