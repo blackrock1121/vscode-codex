@@ -5,6 +5,7 @@ claude-chat-main/**
 node_modules/**
 .vscode/**
 .git/**
+.cache/**
 *.vsix
 release/**
 dist/test/**

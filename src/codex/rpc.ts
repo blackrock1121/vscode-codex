@@ -1,5 +1,4 @@
 import { spawn, ChildProcessWithoutNullStreams } from 'node:child_process';
-import { createInterface } from 'node:readline';
 import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -30,7 +29,12 @@ export class CodexRpc extends EventEmitter {
     child.stdin.on('error', e => this.fail(e));
     child.stderr.on('data', () => { /* CLI stderr 可能含配置和路径，不写入聊天日志。 */ });
     child.once('close', code => { this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`)); this.emit('close', code); });
-    createInterface({ input: child.stdout }).on('line', line => {
+    // JSONL 只以 LF 分帧。Node 24 的 readline 还会拆分 U+2028/U+2029，
+    // 但这两个字符可以合法出现在 JSON 字符串中，拆开会破坏历史和工具输出。
+    // setEncoding 保留跨数据块的 UTF-8 字符；片段在完整一行到达时才合并。
+    let fragments: string[] = [];
+    const receiveLine = (line: string) => {
+      if (this.closed) return;
       let msg: RpcMessage;
       try { msg = JSON.parse(line); } catch { this.fail(new Error(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       if (msg.method) {
@@ -41,6 +45,25 @@ export class CodexRpc extends EventEmitter {
         clearTimeout(p.timer); this.pending.delete(msg.id);
         if (msg.error) p.reject(new Error(`${msg.error.message} (${msg.error.code})`)); else p.resolve(msg.result);
       }
+    };
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data', (chunk: string) => {
+      if (this.closed) return;
+      let start = 0;
+      let end: number;
+      while ((end = chunk.indexOf('\n', start)) !== -1) {
+        fragments.push(chunk.slice(start, end));
+        const line = fragments.join('');
+        fragments = [];
+        receiveLine(line);
+        if (this.closed) return;
+        start = end + 1;
+      }
+      if (start < chunk.length) fragments.push(chunk.slice(start));
+    });
+    child.stdout.on('end', () => {
+      if (fragments.length) receiveLine(fragments.join(''));
+      fragments = [];
     });
     await this.request('initialize', { clientInfo: { name: 'vscode_codex_copilot', title: 'Codex Copilot', version: '0.1.0' }, capabilities: { experimentalApi: true } });
     this.write({ method: 'initialized' });

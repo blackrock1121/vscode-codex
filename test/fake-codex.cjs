@@ -13,6 +13,20 @@ readline.createInterface({input:process.stdin}).on('line',line=>{
  if(!m.method) {answerCount++;note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:turnId,status:'completed'}});return;}
  if(m.method==='initialized')return;
  let result={};
+ if(m.method==='initialize'&&process.env.TEST_UNICODE_INITIALIZE)result={text:'初始化\u2028行分隔符\u2029段分隔符'};
+ if(m.method==='unicode-output'){
+  const text='中文🙂\u2028行分隔符\u2029段分隔符\r\n'.repeat(8000);
+  const output=Buffer.from(JSON.stringify({id:m.id,result:{text}})+'\r\n'+JSON.stringify({method:'unicode/notification',params:{text:'完整\u2028通知\u2029'}})+'\n');
+  // 把首个汉字及 CRLF 分隔符拆到不同的数据块，覆盖真实管道分块。
+  const split=output.indexOf(Buffer.from('中'))+1;
+  process.stdout.write(output.subarray(0,split));
+  setTimeout(()=>{
+   const cr=output.indexOf('\r\n')+1;
+   process.stdout.write(output.subarray(split,cr));
+   setTimeout(()=>process.stdout.write(output.subarray(cr)),10);
+  },10);
+  return;
+ }
  if(m.method==='account/read')result={account:{type:process.env.TEST_API_KEY?'apiKey':'chatgpt'},requiresOpenaiAuth:true};
  if(m.method==='thread/start'||m.method==='thread/resume'){
   if(m.method==='thread/start'&&!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
