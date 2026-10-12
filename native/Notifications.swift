@@ -1,4 +1,5 @@
 import AppKit
+import CoreServices
 import UserNotifications
 
 struct Notice: Decodable {
@@ -76,6 +77,8 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
 }
 
 let app = NSApplication.shared
+// 升级后辅助应用所在的扩展目录会变化，先让系统登记当前完整应用及其图标。
+LSRegisterURL(Bundle.main.bundleURL as CFURL, true)
 let delegate = NotificationApp()
 app.delegate = delegate
 app.setActivationPolicy(.accessory)

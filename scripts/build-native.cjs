@@ -14,7 +14,9 @@ const { version, icon } = require('../package.json');
 fs.writeFileSync(path.join(contents, 'Info.plist'), `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
-<key>CFBundleIdentifier</key><string>com.blackrock1121.codex-copilot.notifications</string>
+<!-- 旧 notifications 标识首次登记时没有图标，部分 macOS 会持续使用默认图标；
+     使用从首次登记就包含图标的独立标识，后续版本必须保持这个标识稳定。 -->
+<key>CFBundleIdentifier</key><string>com.blackrock1121.codex-copilot.notifier</string>
 <key>CFBundleName</key><string>Codex Copilot Notifications</string>
 <key>CFBundleDisplayName</key><string>Codex Copilot Notifications</string>
 <key>CFBundleExecutable</key><string>codex-notifications</string>
