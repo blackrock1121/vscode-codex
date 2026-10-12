@@ -73,6 +73,11 @@ export function activate(context: vscode.ExtensionContext): void {
         await provider.revivePanel(panel, state?.sessionId);
       },
     }),
+    vscode.window.registerWebviewPanelSerializer("codex-chat.notify", {
+      async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> {
+        provider.reviveNotifyPanel(panel);
+      },
+    }),
     vscode.commands.registerCommand("codex-chat.newSession", () => provider.newSession()),
     vscode.commands.registerCommand("codex-chat.showSessions", () => provider.showSessions()),
     vscode.commands.registerCommand("codex-chat.stop", () => provider.stop()),

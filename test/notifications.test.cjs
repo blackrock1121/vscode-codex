@@ -8,6 +8,8 @@ const { JSDOM } = require('jsdom');
 let config = {}, warnings = [], nativeCalls = [], resultError;
 const vscode = {
   UIKind: { Desktop: 1 },
+  ConfigurationTarget: { Global: 1 },
+  ViewColumn: { Active: -1 },
   Uri: { from: parts => ({ ...parts, toString: () => `${parts.scheme}://${parts.authority}${parts.path}?${parts.query}` }) },
   env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => ({ toString: () => uri.toString() + '&windowId=42' }) },
   workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目' }] },
@@ -204,7 +206,7 @@ test('配置面板保存两个独立渠道，测试本机不会触发飞书测�
   const dom = new JSDOM(provider().notifyHtml(), { runScripts: 'outside-only' });
   t.after(() => dom.window.close());
   const w = dom.window, sent = [];
-  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message) });
+  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message), setState: () => {} });
   w.eval(w.document.querySelector('script').textContent);
   w.dispatchEvent(new w.MessageEvent('message', { data: { kind: 'notify_config', webhook: 'https://example.invalid/hook', minSec: 60, local: false, localSupported: true } }));
   assert.equal(w.document.querySelector('#local').checked, false);
@@ -241,7 +243,7 @@ test('配置面板可调整静默时间，日历刷新结果不覆盖尚未保�
   const dom = new JSDOM(provider().notifyHtml(), { runScripts: 'outside-only' });
   t.after(() => dom.window.close());
   const w = dom.window, sent = [];
-  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message) });
+  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message), setState: () => {} });
   w.eval(w.document.querySelector('script').textContent);
   const emit = data => w.dispatchEvent(new w.MessageEvent('message', { data }));
   emit({ kind: 'notify_config', minSec: 60, local: true, localSupported: true, quietHours: { enabled: false, start: '08:30', end: '18:00' } });
@@ -292,7 +294,7 @@ test('配置界面仅在本机通知开启后允许静默，关闭后保留规�
   const dom = new JSDOM(provider().notifyHtml(), { runScripts: 'outside-only' });
   t.after(() => dom.window.close());
   const w = dom.window, sent = [];
-  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message) });
+  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message), setState: () => {} });
   w.eval(w.document.querySelector('script').textContent);
   const el = id => w.document.getElementById(id);
   const emit = local => w.dispatchEvent(new w.MessageEvent('message', { data: {
@@ -316,4 +318,93 @@ test('配置界面仅在本机通知开启后允许静默，关闭后保留规�
   assert.equal(sent.at(-1).local, false);
   assert.equal(sent.at(-1).quietHours.enabled, true, '保留原规则，由发送端检查前置条件');
   assert.equal(el('quietstart').disabled, true);
+});
+
+test('重建推送面板后恢复表单与已保存设置，绑定消息早于脚本加载，关闭时释放订阅', async t => {
+  config = { notifyWebhook: 'https://example.invalid/test', notifyMinDurationSec: 30, notifyLocal: true,
+    notifyFeishuQuietHours: { enabled: true, start: '09:00', end: '18:30' } };
+  const callbacks = new Set(), panels = [];
+  const previous = { change: vscode.workspace.onDidChangeConfiguration, get: vscode.workspace.getConfiguration, create: vscode.window.createWebviewPanel };
+  t.after(() => {
+    vscode.workspace.onDidChangeConfiguration = previous.change;
+    vscode.workspace.getConfiguration = previous.get;
+    vscode.window.createWebviewPanel = previous.create;
+    for (const panel of panels) panel.dom?.window.close();
+  });
+  vscode.workspace.onDidChangeConfiguration = callback => {
+    callbacks.add(callback);
+    return { dispose: () => callbacks.delete(callback) };
+  };
+  let saveError;
+  vscode.workspace.getConfiguration = () => ({ get: key => config[key], update: async (key, value) => {
+    if (saveError) throw new Error(saveError);
+    config[key] = value;
+    for (const callback of callbacks) callback({ affectsConfiguration: name => name === 'codexChat.' + key });
+  } });
+  function panel() {
+    const p = { sent: [], tasks: [], reveals: 0, listenerCount: 0, disposed: false,
+      reveal() { this.reveals++; }, onDidDispose(fn) { this.onDispose = fn; },
+      dispose() { this.disposed = true; this.onDispose?.(); this.dom?.window.close(); },
+    };
+    p.webview = {
+      options: {},
+      onDidReceiveMessage(fn) { p.receive = fn; p.listenerCount++; return { dispose() { p.listenerCount--; } }; },
+      postMessage(message) { p.sent.push(message); p.dom?.window.dispatchEvent(new p.dom.window.MessageEvent('message', { data: message })); },
+      set html(value) {
+        assert.equal(typeof p.receive, 'function', '页面运行前必须先接收 notifyLoad');
+        p.dom = new JSDOM(value, { runScripts: 'outside-only' });
+        p.dom.window.acquireVsCodeApi = () => ({ setState: state => { p.state = state; }, postMessage: m => p.tasks.push(p.receive(m)) });
+        p.dom.window.eval(p.dom.window.document.querySelector('script').textContent);
+      },
+    };
+    panels.push(p); return p;
+  }
+  const calendar = { status: () => '日历已同步', refresh: async () => {} };
+  const a = provider(); a.workdayCalendar = calendar;
+  const first = panel(); a.reviveNotifyPanel(first); await Promise.all(first.tasks);
+  assert.equal(first.title, '任务推送');
+  assert.equal(first.webview.options.enableScripts, true);
+  assert.equal(JSON.stringify(first.state), '{"view":"notify","version":1}', '恢复标记不含 webhook');
+  const el = id => first.dom.window.document.getElementById(id);
+  assert.equal(el('webhook').value, config.notifyWebhook);
+  assert.equal(el('minsec').value, '30');
+  assert.equal(el('quietstart').value, '09:00');
+  const before = first.sent.filter(m => m.kind === 'notify_config').length;
+  await first.receive({ type: 'notifySave', webhook: 'https://example.invalid/updated', minSec: 90, local: false,
+    quietHours: { enabled: true, start: '10:00', end: '19:00' } });
+  assert.equal(first.sent.filter(m => m.kind === 'notify_config').length - before, 1, '保存多个字段后一次性同步，不用中间状态刷新表单');
+  assert.equal(el('minsec').value, '90');
+  saveError = '模拟保存失败';
+  await first.receive({ type: 'notifySave', webhook: '', minSec: 30, local: false,
+    quietHours: { enabled: false, start: '08:30', end: '18:00' } });
+  assert.match(el('status').textContent, /模拟保存失败/);
+  calendar.refresh = async () => { throw new Error('模拟日历失败'); };
+  el('refreshcalendar').click(); await Promise.all(first.tasks);
+  assert.equal(el('refreshcalendar').disabled, false);
+  assert.match(el('status').textContent, /模拟日历失败/);
+  first.dispose(); assert.equal(callbacks.size, 0); assert.equal(first.listenerCount, 0);
+  const b = provider(); b.workdayCalendar = calendar;
+  const restored = panel(); b.reviveNotifyPanel(restored); await Promise.all(restored.tasks);
+  assert.equal(restored.dom.window.document.getElementById('webhook').value, 'https://example.invalid/updated');
+  assert.equal(restored.dom.window.document.getElementById('minsec').value, '90');
+  assert.equal(restored.dom.window.document.getElementById('quietstart').value, '10:00');
+  vscode.window.createWebviewPanel = () => assert.fail('已恢复的配置页不能重复新建');
+  b.showNotifyConfig(); assert.equal(restored.reveals, 1);
+  const duplicate = panel(); b.reviveNotifyPanel(duplicate);
+  assert.equal(duplicate.disposed, true); assert.equal(b.notifyPanel, restored);
+  restored.dispose(); assert.equal(callbacks.size, 0);
+  assert.ok(require('../package.json').activationEvents.includes('onWebviewPanel:codex-chat.notify'));
+});
+
+test('远程宿主即使同步了本机通知开关，也不能静默飞书', async t => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyLocal: true,
+    notifyFeishuQuietHours: { enabled: true, start: '08:30', end: '18:00' } };
+  const p = provider(); let remote = 0;
+  p.workdayCalendar = { refresh: () => assert.fail('不支持本机通知时无需读取静默日历'), shouldMute: () => assert.fail('不能静默') };
+  p.sendWebhook = async () => { remote++; return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async () => { throw new Error('不支持本机通知'); };
+  vscode.env.remoteName = 'ssh-remote';
+  t.after(() => { vscode.env.remoteName = undefined; });
+  p.dispatchNotification({}, '完成', {}); await flush();
+  assert.equal(remote, 1);
 });

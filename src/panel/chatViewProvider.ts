@@ -223,7 +223,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             message => this.output.appendLine(message), () => this.postNotifyCalendar());
         const configureCalendar = () => {
             const cfg = vscode.workspace.getConfiguration("codexChat");
-            this.workdayCalendar.configure(cfg.get<boolean>("notifyLocal") === true &&
+            this.workdayCalendar.configure(localNotificationsSupported() && cfg.get<boolean>("notifyLocal") === true &&
                 parseQuietHours(cfg.get("notifyFeishuQuietHours"))?.enabled === true);
         };
         configureCalendar();
@@ -2180,9 +2180,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         const panel = vscode.window.createWebviewPanel("codex-chat.notify", "任务推送", { viewColumn: vscode.ViewColumn.Active, preserveFocus: false }, { enableScripts: true, retainContextWhenHidden: true });
+        this.reviveNotifyPanel(panel);
+    }
+    /** 新建与窗口重载共用完整初始化：恢复 HTML、消息监听和配置订阅。 */
+    reviveNotifyPanel(panel: vscode.WebviewPanel): void {
+        if (this.notifyPanel === panel) return;
+        // 命令可能先于 VS Code 的恢复回调创建面板，只保留已可用的那一个。
+        if (this.notifyPanel) {
+            panel.dispose();
+            return;
+        }
         this.notifyPanel = panel;
-        panel.webview.html = this.notifyHtml();
-        panel.webview.onDidReceiveMessage(async (m: FromWebview) => {
+        panel.title = "任务推送";
+        panel.webview.options = { enableScripts: true };
+        let saving = false;
+        const messageSub = panel.webview.onDidReceiveMessage(async (m: FromWebview) => {
             try {
                 switch (m.type) {
                     case "webviewError":
@@ -2192,16 +2204,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         this.postNotifyConfig();
                         break;
                     case "notifySave": {
+                        if (saving) break;
                         const quietHours = parseQuietHours(m.quietHours);
                         if (!quietHours) {
                             panel.webview.postMessage({ kind: "notify_result", ok: false, message: "工作时间必须是同一天的 HH:mm，结束时间须晚于开始时间，例如 08:30–18:00。" } satisfies ToWebview);
                             break;
                         }
-                        const cfg = vscode.workspace.getConfiguration("codexChat");
-                        await cfg.update("notifyWebhook", m.webhook.trim(), vscode.ConfigurationTarget.Global);
-                        await cfg.update("notifyMinDurationSec", Math.max(0, Math.round(m.minSec) || 0), vscode.ConfigurationTarget.Global);
-                        await cfg.update("notifyLocal", m.local === true, vscode.ConfigurationTarget.Global);
-                        await cfg.update("notifyFeishuQuietHours", quietHours, vscode.ConfigurationTarget.Global);
+                        saving = true;
+                        try {
+                            const cfg = vscode.workspace.getConfiguration("codexChat");
+                            await cfg.update("notifyWebhook", m.webhook.trim(), vscode.ConfigurationTarget.Global);
+                            await cfg.update("notifyMinDurationSec", Math.max(0, Math.round(m.minSec) || 0), vscode.ConfigurationTarget.Global);
+                            await cfg.update("notifyLocal", m.local === true, vscode.ConfigurationTarget.Global);
+                            await cfg.update("notifyFeishuQuietHours", quietHours, vscode.ConfigurationTarget.Global);
+                        } finally { saving = false; }
+                        this.postNotifyConfig();
                         panel.webview.postMessage({ kind: "notify_result", ok: true, message: "已保存。" } satisfies ToWebview);
                         break;
                     }
@@ -2241,18 +2258,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             catch (err) {
                 this.output.appendLine(`[notify] 面板消息处理失败(${m.type}): ${String(err)}`);
+                panel.webview.postMessage({ kind: "notify_result", ok: false, message: `操作失败：${String((err as Error).message ?? err)}` } satisfies ToWebview);
+                if (m.type === "notifyCalendarRefresh") this.postNotifyCalendar();
             }
         });
         const cfgSub = vscode.workspace.onDidChangeConfiguration((ev) => {
             if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec") || ev.affectsConfiguration("codexChat.notifyLocal") || ev.affectsConfiguration("codexChat.notifyFeishuQuietHours")) {
-                this.postNotifyConfig();
+                if (!saving) this.postNotifyConfig();
             }
         });
         panel.onDidDispose(() => {
+            messageSub.dispose();
             cfgSub.dispose();
             if (this.notifyPanel === panel)
                 this.notifyPanel = undefined;
         });
+        // 必须先绑定接收器，页面脚本加载后立即发送 notifyLoad。
+        panel.webview.html = this.notifyHtml();
     }
     private postNotifyConfig(): void {
         const cfg = vscode.workspace.getConfiguration("codexChat");
@@ -2326,6 +2348,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </div>
 <script nonce="${nonce}">
   const vscode = acquireVsCodeApi();
+  // 只保存恢复标记；已保存配置从 VS Code 设置重新读取，不复制 webhook。
+  vscode.setState({ view: "notify", version: 1 });
   window.addEventListener("error", (e) => {
     try { vscode.postMessage({ type: "webviewError", message: (e.message || "?") + " @notify:" + e.lineno }); } catch {}
   });
@@ -2605,7 +2629,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
         let muted = false;
-        if (cfg.get<boolean>("notifyLocal") === true && isFeishuWebhook(url) && quiet?.enabled) {
+        if (cfg.get<boolean>("notifyLocal") === true && localNotificationsSupported() && isFeishuWebhook(url) && quiet?.enabled) {
             try {
                 void this.workdayCalendar.refresh();
                 muted = this.workdayCalendar.shouldMute(quiet);
