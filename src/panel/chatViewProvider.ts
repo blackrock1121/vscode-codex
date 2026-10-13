@@ -1370,7 +1370,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastUserText = (text || "(图片)").slice(0, 200);
         ctx.lastUserActionAt = ctx.sendAt;
         this.output.appendLine(`[${new Date().toISOString()}] [send] session=${ctx.sessionId?.slice(0, 8)} 准备${Date.now() - prepareAt}ms 正文${text.length}字 附加${attached?.length ?? 0}字 图片${images?.length ?? 0}`);
-        const checkpointId = ctx.checkpoints.beginTurn(text || "(图片)", lineBefore);
+        const checkpointId = ctx.checkpoints.beginTurn(text || "(图片)", lineBefore, !!ctx.snapshot);
         this.post(ctx, { kind: "checkpoint_marker", checkpointId, userText: text });
     }
     private async editMessage(ctx: SessionCtx, checkpointId: string, text: string, images?: {
@@ -2013,7 +2013,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers)) throw new Error("提交已取消，原问题或会话状态已变化。");
         const displayText = userView([{ type: "text", text: answer.text }]).text;
-        const checkpointId = ctx.checkpoints.beginTurn(displayText, cut);
+        const checkpointId = ctx.checkpoints.beginTurn(displayText, cut, !!snapshot);
         ctx.snapshot = snapshot;
         try {
             if (!proc.answerQuestion(requestId, answers)) throw new Error("问题已失效，答案未提交。");
@@ -2039,11 +2039,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string, reanswer = false): Promise<void> {
         const sourceId = ctx.sessionId;
+        const blocked = reanswer ? ctx.checkpoints.restoreBlockReason(checkpointId, false) : undefined;
+        if (blocked) {
+            this.post(ctx, { kind: "notice", message: `无法完整还原并重新回答：${blocked}。未回退对话或修改文件；请使用更早且具备文件快照的还原点。` });
+            return;
+        }
         const preview = this.cpPreview(ctx, checkpointId);
         const confirm = await vscode.window.showWarningMessage(reanswer ? "还原到提交这次答案之前，重新回答？" : "还原到这条消息之前？", {
             modal: true,
             detail: (preview ? `消息：${preview.userText}\n\n` : "") +
-                (reanswer ? "将移除当前分支中旧答案及之后的回复，重新展示问题卡，提交新答案后才继续。\n\n" : "") + (checkpointId.startsWith("turn:")
+                (reanswer ? "将撤回旧答案及之后的全部对话，并回滚旧答案提交后的文件改动（包括后续轮次和已点击保留的改动）。完成还原后重新展示问题卡，提交新答案后才继续。\n\n" : "") + (checkpointId.startsWith("turn:")
                     ? "当前窗口会从这里开新分支，原会话保留在历史中。此处没有可用的文件快照：只回退对话，工作区文件保持现状。"
                     : "将回滚此后的文件改动，并从这里开新分支；原会话保留在历史中。文件回滚不可撤销。") +
                 (ctx.proc?.isBusy ? "\n\nCodex 正在回复中，还原会先自动停止本轮。" : ""),
@@ -2087,7 +2092,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.proc = undefined;
             ctx.starting = undefined;
             await dying.disposeAndWait();
-            await this.captureFinalSnapshot(ctx);
         }
         if (!reanswer) this.post(ctx, { kind: "busy", busy: false });
         let rewind: {
@@ -2095,6 +2099,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             rewoundToStart: boolean;
         };
         try {
+            await this.captureFinalSnapshot(ctx);
+            if (reanswer) {
+                // 停止进行中的工具并收齐最后一批文件变更后，再做一次完整性检查。
+                const reason = ctx.checkpoints.restoreBlockReason(checkpointId);
+                if (reason) throw new Error(`无法完整回滚文件，未回退对话：${reason}`);
+                const cuts = new Set(ctx.checkpoints.list().map(cp => ctx.checkpoints.cutLineOf(cp.id)));
+                if (this.store.userTurnLines(sourceId).some(turn => turn.line - 1 >= meta.truncateLine && !cuts.has(turn.line - 1)))
+                    throw new Error("后续轮次缺少文件还原点，未回退对话");
+            }
             rewind = await this.forkRewind(ctx, checkpointId, meta.truncateLine);
         }
         catch (err) {
@@ -2563,9 +2576,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await ctx.finalizing;
         if (!snapshot || ctx.snapshot !== snapshot || ctx.checkpoints !== checkpoints)
             return;
-        if (ctx.mayHaveModifiedWorkspace)
+        if (ctx.mayHaveModifiedWorkspace) {
             for (const [file, original] of await snapshot.changed())
                 checkpoints.recordSnapshot(file, original);
+            checkpoints.recordUnrestorable(snapshot.unrestorableChanges);
+        }
+        checkpoints.completeSnapshot();
         if (ctx.snapshot === snapshot) ctx.snapshot = undefined;
         checkpoints.flush();
     }
@@ -2576,9 +2592,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.finalizing = (async () => {
                 const finalizeAt = Date.now();
                 try {
-                    if (ctx.snapshot && ctx.mayHaveModifiedWorkspace)
+                    if (ctx.snapshot && ctx.mayHaveModifiedWorkspace) {
                         for (const [file, original] of await ctx.snapshot.changed())
                             ctx.checkpoints.recordSnapshot(file, original);
+                        ctx.checkpoints.recordUnrestorable(ctx.snapshot.unrestorableChanges);
+                    }
+                    if (ctx.snapshot) ctx.checkpoints.completeSnapshot();
                     ctx.snapshot = undefined;
                     ctx.checkpoints.flush();
                     if (ctx.mayHaveModifiedWorkspace) this.refreshChangedFiles(ctx);
@@ -2610,9 +2629,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastEmitAt = Date.now();
         if (e.kind === "tool_input" && ctx.snapshot) {
             const paths = Array.isArray(e.input.changes) ? e.input.changes.map((c: any) => c.path) : [e.input.file_path];
-            for (const file of paths)
-                if (typeof file === "string" && ctx.snapshot.files.has(file))
+            for (const file of paths) {
+                if (typeof file !== "string") continue;
+                if (ctx.snapshot.files.has(file))
                     ctx.checkpoints.recordSnapshot(file, ctx.snapshot.files.get(file)!);
+                else if (!["Read", "WebSearch", "TodoWrite", "Skill"].includes(e.name))
+                    ctx.checkpoints.recordUnrestorable([file]);
+            }
         }
         if (e.kind === "rate_limit" && (e.level === "warning" || (e.level === "exhausted" && e.modelScoped))) {
             const until = this.context.globalState.get<Record<string, number>>("codexChat.rateLimitDismissed")?.[e.limitLabel] ?? 0;

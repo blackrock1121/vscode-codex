@@ -25,6 +25,8 @@ export class WorkspaceSnapshot {
   readonly files = new Map<string, string>();
   readonly skipped = new Set<string>();
   readonly skipReasons = new Map<string, SnapshotSkipReason>();
+  readonly unrestorableChanges = new Set<string>();
+  private skippedBaseline = new Map<string, string | undefined>();
   private bytes = 0;
   private completeScan = true;
   private readonly excluded: Map<string, RegExp[]>;
@@ -83,6 +85,12 @@ export class WorkspaceSnapshot {
       catch { return { reason: 'binary' }; }
     } catch { return { reason: 'unreadable' }; }
   }
+  private async fingerprint(file: string): Promise<string | undefined> {
+    try {
+      const s = await fs.lstat(file, { bigint: true });
+      return [s.ino, s.size, s.mtimeNs, s.ctimeNs, s.mode].join(":");
+    } catch { return undefined; }
+  }
   /** Overlap disk reads while bounding transient buffers and preserving file order. */
   private async readBatch(files: string[], visit: (file: string, result: { text?: string; reason?: SnapshotSkipReason }) => void): Promise<void> {
     for (let i = 0; i < files.length; i += this.readConcurrency) {
@@ -98,6 +106,7 @@ export class WorkspaceSnapshot {
       if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); return; }
       this.files.set(file, text); this.bytes += size;
     });
+    for (const file of this.skipped) this.skippedBaseline.set(file, await this.fingerprint(file));
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();
@@ -107,14 +116,20 @@ export class WorkspaceSnapshot {
     });
     const scansReady = Promise.all(this.roots.map(root => this.walk(root)));
     const [, scans] = await Promise.all([existingReady, scansReady]);
+    for (const file of this.skipped) {
+      const before = this.skippedBaseline.get(file);
+      if (!before || before !== await this.fingerprint(file)) this.unrestorableChanges.add(file);
+    }
     // An incomplete scan cannot distinguish a newly created file from an
     // original file that the baseline missed because of the file cap.
-    if (!this.completeScan) return changes;
+    if (!this.completeScan) {
+      for (const root of this.roots) this.unrestorableChanges.add(root);
+      return changes;
+    }
     for (const files of scans) {
       const newFiles = files.filter(file => !this.files.has(file) && !this.skipped.has(file));
-      await this.readBatch(newFiles, (file, { text }) => {
-        if (text !== undefined) changes.set(file, null);
-      });
+      // 完整基线里不存在的新文件，无论文本还是二进制，回滚都应删除。
+      for (const file of newFiles) changes.set(file, null);
     }
     return changes;
   }

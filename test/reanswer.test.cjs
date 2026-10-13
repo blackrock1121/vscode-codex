@@ -28,7 +28,7 @@ async function fixture(t){
  const store=new SessionStore(workspace,()=>'/unused');store.threads.set('source',{id:'source',turns});store.hydrate=async()=>{};
  const checkpoints=new CheckpointManager(dir);checkpoints.setSession('source');
  checkpoints.beginTurn('完成安装',0);checkpoints.recordSnapshot(file,'任务开始前');
- const id=checkpoints.beginTurn(reply('A'),1);checkpoints.recordSnapshot(file,'提问前已完成的修改');checkpoints.flush();
+ const id=checkpoints.beginTurn(reply('A'),1,true);checkpoints.recordSnapshot(file,'提问前已完成的修改');checkpoints.completeSnapshot();checkpoints.flush();
  const ctx={sessionId:'source',checkpoints};const messages=[],forks=[];
  const provider=Object.create(ChatViewProvider.prototype);
  Object.assign(provider,{store,sessions:new Set([ctx]),detached:new Map(),restoring:new Set(),
@@ -73,17 +73,97 @@ test('重新回答准确回到答案之前，只撤销答案后的文件，保�
  await assert.rejects(fs.access(questionStateFile(f.dir,'branch')));
  p.dispose();
 });
-test('旧会话无文件快照时明确说明只回退对话，取消或不匹配不产生分支',async t=>{
+test('无文件快照时阻止重新回答，不提供只回退对话的降级',async t=>{
  const f=await fixture(t);f.checkpoints.clear();
  choice=undefined;await f.provider.restoreCheckpoint(f.ctx,'turn:2',true);
  assert.deepEqual(f.forks,[]);assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
  choice='还原';await f.provider.restoreCheckpoint(f.ctx,'turn:2',true);
- assert.match(dialogs.at(-1)[1].detail,/没有可用的文件快照.*只回退对话/);
+ assert.equal(dialogs.length,0);
+ assert.match(f.messages.at(-1).message,/无法完整还原并重新回答/);
+ assert.deepEqual(f.forks,[]);
  assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
- assert.equal(f.messages.some(m=>m.kind==='permission_request'),true);
+ assert.equal(f.messages.some(m=>m.kind==='permission_request'),false);
  const g=await fixture(t);g.turns[1].items=[user('普通消息')];
  await g.provider.restoreCheckpoint(g.ctx,g.id,true);
  assert.deepEqual(g.forks,[]);assert.match(g.messages.at(-1).message,/无法准确还原/);
+});
+test('重新回答回滚后续所有轮次及已保留的改动，恢复删除文件并删除新增文件',async t=>{
+ const f=await fixture(t);
+ const added=path.join(f.workspace,'added.bin'),deleted=path.join(f.workspace,'deleted.txt');
+ f.checkpoints.recordSnapshot(added,null);await fs.writeFile(added,Buffer.from([0,1,2]));
+ f.checkpoints.accept(f.file);
+ assert.equal(f.checkpoints.changedPaths().includes(f.file),false);
+ f.turns.push({id:'later-turn',status:'completed',items:[user('继续改'),{type:'agentMessage',text:'再下一轮的回复'}]});
+ f.checkpoints.beginTurn('继续改',2,true);
+ f.checkpoints.recordSnapshot(f.file,'按旧答案修改后');await fs.writeFile(f.file,'后续再次修改');
+ f.checkpoints.recordSnapshot(deleted,'删除前内容');
+ f.checkpoints.accept(f.file);f.checkpoints.completeSnapshot();f.checkpoints.flush();
+ // 经落盘重载后，已保留改动的还原原文仍在。
+ f.ctx.checkpoints=new CheckpointManager(f.dir);f.ctx.checkpoints.setSession('source');
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(await fs.readFile(f.file,'utf8'),'提问前已完成的修改');
+ assert.equal(await fs.readFile(deleted,'utf8'),'删除前内容');await assert.rejects(fs.access(added));
+ assert.equal(f.store.threads.get('branch').turns.length,1);
+ assert.equal(f.store.threads.get('source').turns.length,3);
+ assert.match(dialogs[0][1].detail,/包括后续轮次和已点击保留的改动/);
+});
+test('缺少可验证基线、后续关闭快照或丢失还原点时不能只回退对话',async t=>{
+ for(const mode of ['legacy','disabled','missing']){
+  const f=await fixture(t);
+  if(mode==='legacy'){
+   f.checkpoints.clear();f.id=f.checkpoints.beginTurn(reply('A'),1);
+   f.checkpoints.recordSnapshot(f.file,'仅有部分备份');
+  }else{
+   f.turns.push({id:'later',status:'completed',items:[user('后续修改')]});
+   if(mode==='disabled')f.checkpoints.beginTurn('后续修改',2,false);
+  }
+  await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+  assert.equal(f.forks.length,0);assert.equal(f.ctx.sessionId,'source');
+  assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
+  assert.equal(f.messages.some(m=>m.kind==='permission_request'),false);
+ }
+});
+test('停止后发现无法备份的二进制改动时，其他文件也不能先回滚',async t=>{
+ const f=await fixture(t);const binary=path.join(f.workspace,'binary.dat');
+ await fs.writeFile(binary,Buffer.from([0,1]));
+ f.ctx.snapshot=new WorkspaceSnapshot([f.workspace]);await f.ctx.snapshot.capture();
+ f.ctx.mayHaveModifiedWorkspace=true;
+ f.ctx.proc={isBusy:true,disposeAndWait:async()=>{await fs.writeFile(binary,Buffer.from([0,2,3]));}};
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(f.forks.length,0);assert.equal(f.ctx.sessionId,'source');
+ assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
+ assert.match(f.messages.at(-1).message,/无法完整回滚文件/);
+ assert.equal(f.messages.some(m=>m.kind==='permission_request'),false);
+});
+test('取消完整还原时不停止生成、不改文件、不创建分支',async t=>{
+ const f=await fixture(t);choice=undefined;let stopped=false;
+ f.ctx.proc={isBusy:true,disposeAndWait:async()=>{stopped=true;}};
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(stopped,false);assert.equal(f.forks.length,0);
+ assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
+});
+test('快照未修改的二进制不阻止还原，新增二进制可删除，扫描超限明确阻止',async t=>{
+ const f=await fixture(t);const old=path.join(f.workspace,'old.bin'),added=path.join(f.workspace,'new.bin');
+ await fs.writeFile(old,Buffer.from([0,1]));const snapshot=new WorkspaceSnapshot([f.workspace]);await snapshot.capture();
+ await fs.writeFile(added,Buffer.from([0,2]));
+ const changes=await snapshot.changed();assert.equal(changes.get(added),null);assert.equal(snapshot.unrestorableChanges.size,0);
+ const limited=new WorkspaceSnapshot([f.workspace],1);await limited.capture();await limited.changed();
+ assert.equal(limited.unrestorableChanges.has(f.workspace),true);
+});
+test('活动轮次的新建文件收齐差异后可以还原，丢失内存基线的未归档轮次会阻止还原',async t=>{
+ const f=await fixture(t);const added=path.join(f.workspace,'new.txt');
+ f.ctx.snapshot=new WorkspaceSnapshot([f.workspace]);await f.ctx.snapshot.capture();
+ f.ctx.mayHaveModifiedWorkspace=true;
+ f.checkpoints.recordUnrestorable([added]);await fs.writeFile(added,'工具新建文件');
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(f.forks.length,1);await assert.rejects(fs.access(added));
+ assert.equal(f.messages.some(m=>m.kind==='permission_request'),true);
+ const g=await fixture(t);g.checkpoints.clear();g.id=g.checkpoints.beginTurn(reply('A'),1,true);
+ g.checkpoints.recordSnapshot(g.file,'提问前已完成的修改');g.checkpoints.flush();
+ g.ctx.checkpoints=new CheckpointManager(g.dir);g.ctx.checkpoints.setSession('source');
+ await g.provider.restoreCheckpoint(g.ctx,g.id,true);
+ assert.equal(g.forks.length,0);assert.equal(await fs.readFile(g.file,'utf8'),'按旧答案修改后');
+ assert.match(g.messages.at(-1).message,/未完整归档/);
 });
 test('提交答案前建立独立文件基线，重试失败不会遗留虚假的回答还原点',async t=>{
  const f=await fixture(t);f.checkpoints.clear();f.checkpoints.beginTurn('完成安装',0);

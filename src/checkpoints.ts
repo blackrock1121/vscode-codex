@@ -16,6 +16,12 @@ interface Checkpoint {
   createdAt: number;
   userText: string;
   files: FileBackup[];
+  /** “保留改动”只清理待审列表，仍保留时间点还原所需的原文。 */
+  acceptedFiles?: FileBackup[];
+  /** 新版确实采集了工作区基线；旧记录不能据空 files 推断没有改动。 */
+  workspaceSnapshot?: boolean;
+  /** 最终差异已归档；异常退出丢失内存基线时不能声称能完整还原。 */
+  snapshotComplete?: boolean;
   /** Files touched this turn that could NOT be snapshotted (too large / binary).
    *  Restore must surface these — silently reporting success while a file keeps
    *  Codex's edits is a lie. */
@@ -59,7 +65,7 @@ export class CheckpointManager {
    * Open a new checkpoint for a user turn.
    * @param truncateLine line count of the session transcript before this turn.
    */
-  beginTurn(userText: string, truncateLine: number): string {
+  beginTurn(userText: string, truncateLine: number, workspaceSnapshot?: boolean): string {
     const id = randomUUID();
     this.checkpoints.push({
       id,
@@ -67,6 +73,7 @@ export class CheckpointManager {
       createdAt: Date.now(),
       userText,
       files: [],
+      workspaceSnapshot,
       truncateLine,
     });
     if (this.checkpoints.length > MAX_CHECKPOINTS) {
@@ -87,7 +94,7 @@ export class CheckpointManager {
   /** 答案提交失败时，只撤掉刚创建且尚未记录任何改动的还原点。 */
   discardEmpty(checkpointId: string): void {
     const cp = this.current();
-    if (cp?.id !== checkpointId || cp.files.length || cp.skipped?.length) return;
+    if (cp?.id !== checkpointId || cp.files.length || cp.acceptedFiles?.length || cp.skipped?.length) return;
     this.checkpoints.pop();
     this.persist();
   }
@@ -128,13 +135,44 @@ export class CheckpointManager {
     cp.files.push({ path: file, content }); this.persistSoon();
   }
 
+  recordUnrestorable(files: Iterable<string>): void {
+    const cp = this.current();
+    if (!cp) return;
+    cp.skipped = [...new Set([...(cp.skipped ?? []), ...files])];
+    this.persistSoon();
+  }
+
+  completeSnapshot(): void {
+    const cp = this.current();
+    if (!cp) return;
+    cp.snapshotComplete = true;
+    this.persistSoon();
+  }
+
+  /** 重新回答必须能回退文件，不能静默降级成只修改对话。 */
+  restoreBlockReason(checkpointId: string, checkFiles = true): string | undefined {
+    const index = this.checkpoints.findIndex(c => c.id === checkpointId);
+    if (index < 0) return "缺少回答前的文件还原点";
+    const later = this.checkpoints.slice(index);
+    if (later.some(c => c.workspaceSnapshot !== true)) return "回答或后续轮次缺少可验证的工作区快照（旧记录或当时未开启快照）";
+    if (!checkFiles) return undefined;
+    if (later.some(c => !c.snapshotComplete)) return "回答后的文件差异未完整归档，无法确认全部后续改动";
+    const covered = new Set<string>();
+    for (const cp of later) {
+      for (const f of [...(cp.acceptedFiles ?? []), ...cp.files]) covered.add(f.path);
+      const missing = (cp.skipped ?? []).filter(file => !covered.has(file));
+      if (missing.length) return `以下路径缺少可还原的原文：${missing.join("、")}`;
+    }
+    return undefined;
+  }
+
   list(): CheckpointSummary[] {
     return this.checkpoints.map((c) => ({
       id: c.id,
       label: c.label,
       createdAt: c.createdAt,
       userText: c.userText,
-      fileCount: c.files.length,
+      fileCount: new Set([...c.files, ...(c.acceptedFiles ?? [])].map(f => f.path)).size,
     }));
   }
 
@@ -176,14 +214,15 @@ export class CheckpointManager {
   }
 
   /**
-   * Accept a file's changes: drop its snapshots so it no longer appears as a
-   * pending change (the on-disk content is kept as the new baseline).
+   * Accept a file's changes in the review list, retaining its restore backups.
    */
   accept(path: string): void {
     let changed = this.baseline.delete(path);
     this.baselineSkipped.delete(path);
     for (const c of this.checkpoints) {
       const before = c.files.length;
+      const backup = c.files.find(f => f.path === path);
+      if (backup && !c.acceptedFiles?.some(f => f.path === path)) (c.acceptedFiles ??= []).push(backup);
       c.files = c.files.filter((f) => f.path !== path);
       if (c.files.length !== before) changed = true;
     }
@@ -223,10 +262,11 @@ export class CheckpointManager {
     // Earliest backup per path across checkpoints[idx..] == pre-turn content.
     const target = new Map<string, string | null>();
     for (let i = idx; i < this.checkpoints.length; i++) {
-      for (const b of this.checkpoints[i].files) {
+      for (const b of [...(this.checkpoints[i].acceptedFiles ?? []), ...this.checkpoints[i].files]) {
         if (!target.has(b.path)) target.set(b.path, b.content);
       }
     }
+    for (const file of target.keys()) skippedSet.delete(file);
     // 最早保留点未必是会话开头：被裁剪轮次的改动在该点之前，不能回滚。
     // baseline 只供“已更改文件”的会话级回滚使用，仍需保留。
     let restored = 0;
