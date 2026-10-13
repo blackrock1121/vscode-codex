@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
+import { performance } from "node:perf_hooks";
 import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification } from "../notifications";
@@ -965,13 +966,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     await this.newContext(ctx, m);
                     break;
                 case "compact": {
-                    const proc = await this.ensureProcess(ctx);
-                    if (proc) {
-                        proc.compact();
-                        ctx.lastEventAt = Date.now();
-                    }
-                    else
-                        this.post(ctx, { kind: "busy", busy: false });
+                    await this.compactSession(ctx);
                     break;
                 }
                 case "permission":
@@ -2273,7 +2268,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showInformationMessage("当前会话正在回复中，等这一轮结束再压缩。");
             return;
         }
-        const proc = await this.ensureProcess(ctx);
+        const startedAt = performance.now();
+        const reusedProcess = !!ctx.proc && !ctx.proc.isExited;
+        const logPreparation = (stage: string, outcome?: string) => this.output.appendLine(
+            `[${new Date().toISOString()}] [diag] session=${ctx.sessionId?.slice(0, 8)} [compaction_prepare] ${JSON.stringify({ stage, elapsedMs: Math.round(performance.now() - startedAt), reusedProcess, outcome })}`);
+        logPreparation("start");
+        let proc: CodexProcess | undefined;
+        try { proc = await this.ensureProcess(ctx); }
+        finally { logPreparation("end", proc ? "ready" : "failed"); }
         if (!proc) {
             this.post(ctx, { kind: "busy", busy: false });
             vscode.window.showErrorMessage("启动 Codex 失败，无法压缩。");
@@ -2283,7 +2285,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showInformationMessage("会话窗口已关闭，本次压缩已取消。");
             return;
         }
-        this.post(ctx, { kind: "busy", busy: true });
+        if (proc.isBusy || proc.isExited) return;
         proc.compact();
         ctx.lastEventAt = Date.now();
     }

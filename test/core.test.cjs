@@ -38,7 +38,7 @@ test('自动压缩开始立即提示，完成后仍等待本轮回复，不能�
  p.busy=true;
  const item={id:'auto-compact',type:'contextCompaction'};
  p.notification({method:'item/started',params:{item}});
- assert.deepEqual(events,[{kind:'compacting'}]);
+ assert.deepEqual(events.filter(e=>e.kind!=='diag'),[{kind:'compacting'}]);
  p.notification({method:'item/completed',params:{item}});
  assert.equal(events.at(-1).trigger,'auto');
  assert.equal(p.isBusy,true);

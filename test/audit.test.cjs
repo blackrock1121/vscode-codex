@@ -13,6 +13,32 @@ const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const {quotaEvents}=require('../dist/test/codex/events.js');
 const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 
+test('手动压缩准备日志覆盖连接复用和失败，准备期间关闭或忙碌不会触发压缩',async()=>{
+ for(const mode of ['reuse','cold','failed','closed','busy']){
+  const provider=Object.create(ChatViewProvider.prototype),logs=[];
+  let alive=true,calls=0;
+  const proc={isExited:false,isBusy:false,compact:()=>{calls++;}};
+  const ctx={sessionId:'test-session',proc:mode==='reuse'?proc:undefined};
+  Object.assign(provider,{
+   output:{appendLine:x=>logs.push(x)},alive:()=>alive,post:()=>{},
+   ensureProcess:async()=>{
+    if(mode==='closed')alive=false;
+    if(mode==='busy')proc.isBusy=true;
+    return mode==='failed'?undefined:proc;
+   },
+  });
+  const previous=vscode.window.showErrorMessage;
+  vscode.window.showErrorMessage=()=>{};
+  try{await provider.compactSession(ctx);}finally{vscode.window.showErrorMessage=previous;}
+  const data=logs.map(x=>JSON.parse(x.split('[compaction_prepare] ')[1]));
+  assert.deepEqual(data.map(x=>x.stage),['start','end']);
+  assert.equal(data[0].reusedProcess,mode==='reuse');
+  assert.equal(data[1].outcome,mode==='failed'?'failed':'ready');
+  assert.ok(data[1].elapsedMs>=0);
+  assert.equal(calls,['reuse','cold'].includes(mode)?1:0);
+ }
+});
+
 function providerFixture(){
  const provider=Object.create(ChatViewProvider.prototype),messages=[];
  Object.assign(provider,{

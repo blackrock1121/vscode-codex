@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
@@ -72,6 +73,14 @@ export class CodexProcess {
   private startingTurn?: Promise<void>;
   private beganAt = 0;
   private compacting = false;
+  private contextUsage?: { used: number; total: number };
+  private compactionSequence = 0;
+  private compactionTrace?: {
+    id: number; trigger: 'manual' | 'auto'; startedAt: number; serverStartedAt?: number;
+    preTokens?: number; contextWindow?: number; latestTokens?: number; usageUpdates: number;
+    retries: number; errors: number; model: string;
+  };
+  private compactionTimer?: NodeJS.Timeout;
   private stopTimer?: NodeJS.Timeout;
   private readonly pending = new Map<string, { id: RpcId; method: string; params: any }>();
   private pausedQuestion?: { request: PermissionRequest; turnId?: string; ready: boolean; timer?: NodeJS.Timeout };
@@ -83,6 +92,7 @@ export class CodexProcess {
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
+      this.endCompactionTrace('connection_closed');
       clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer);
       if (this.busy && !this.disposed) this.error(reason);
       this.exited = true; this.busy = false; this.hooks.onClose(code);
@@ -203,9 +213,48 @@ export class CodexProcess {
     return true;
   }
   compact(): void {
-    if (!this.sessionId || this.busy) return;
+    if (!this.sessionId || this.busy || this.exited) return;
+    const trace = this.beginCompactionTrace('manual');
     this.busy = true; this.compacting = true; this.beganAt = Date.now(); this.emit({ kind: 'busy', busy: true }); this.emit({ kind: 'compacting' });
-    void this.rpc.request('thread/compact/start', { threadId: this.sessionId }).catch(e => { this.error(e); this.finish(true); });
+    void this.rpc.request('thread/compact/start', { threadId: this.sessionId }).then(() => {
+      // RPC 响应只表示请求已受理，可能晚于完成通知，必须关联原来的压缩记录。
+      this.logCompactionTrace('request_accepted', trace);
+    }).catch(e => {
+      this.logCompactionTrace('request_failed', trace, { timeout: /请求超时/.test(String(e)) });
+      if (this.compactionTrace !== trace) return;
+      this.endCompactionTrace('request_failed'); this.error(e); this.finish(true);
+    });
+  }
+  private beginCompactionTrace(trigger: 'manual' | 'auto'): NonNullable<CodexProcess['compactionTrace']> {
+    if (this.compactionTrace) return this.compactionTrace;
+    const trace = this.compactionTrace = {
+      id: ++this.compactionSequence, trigger, startedAt: performance.now(),
+      preTokens: this.contextUsage?.used, contextWindow: this.contextUsage?.total,
+      usageUpdates: 0, retries: 0, errors: 0,
+      model: this.activeModel,
+    };
+    this.logCompactionTrace('start', trace);
+    this.compactionTimer = setInterval(() => this.logCompactionTrace('waiting', trace), 30_000);
+    this.compactionTimer.unref();
+    return trace;
+  }
+  private logCompactionTrace(stage: string, trace: NonNullable<CodexProcess['compactionTrace']>, extra = {}) {
+    const now = performance.now();
+    this.emit({ kind: 'diag', message: `[compaction] ${JSON.stringify({
+      id: trace.id, trigger: trace.trigger, stage, model: trace.model,
+      elapsedMs: Math.round(now - trace.startedAt),
+      serverElapsedMs: trace.serverStartedAt === undefined ? null : Math.round(now - trace.serverStartedAt),
+      preTokens: trace.preTokens ?? null, contextWindow: trace.contextWindow ?? null,
+      // 仅记录收到的用量快照；通知可能延后，不冒充压缩后精确用量。
+      latestTokens: trace.latestTokens ?? null, usageUpdates: trace.usageUpdates,
+      retries: trace.retries, errors: trace.errors, ...extra,
+    })}` });
+  }
+  private endCompactionTrace(outcome: string) {
+    clearInterval(this.compactionTimer); this.compactionTimer = undefined;
+    const trace = this.compactionTrace;
+    this.compactionTrace = undefined;
+    if (trace) this.logCompactionTrace('end', trace, { outcome });
   }
   private block(id: string, type: 'text' | 'thinking') {
     if (this.activeBlock !== id) { this.activeBlock = id; this.emit({ kind: 'block_start', blockType: type }); }
@@ -243,7 +292,10 @@ export class CodexProcess {
       return;
     }
     if (m.method === 'turn/started') { this.turnId = p.turn.id; return; }
-    if (m.method === 'turn/completed') { this.rememberEndedTurn(p.turn.id); if (p.turn.error) this.error(p.turn.error.message); this.finish(p.turn.status === 'failed'); return; }
+    if (m.method === 'turn/completed') {
+      this.endCompactionTrace(p.turn.status === 'failed' ? 'failed' : p.turn.status === 'interrupted' ? 'interrupted' : 'turn_ended_without_compaction_completed');
+      this.rememberEndedTurn(p.turn.id); if (p.turn.error) this.error(p.turn.error.message); this.finish(p.turn.status === 'failed'); return;
+    }
     if (m.method === 'item/agentMessage/delta' || m.method === 'item/plan/delta') {
       this.block(p.itemId, 'text'); this.streamed.add(p.itemId); this.emit({ kind: 'text_delta', text: p.delta }); return;
     }
@@ -251,13 +303,27 @@ export class CodexProcess {
       this.block(p.itemId, 'thinking'); this.streamed.add(p.itemId); this.emit({ kind: 'thinking_delta', text: p.delta }); return;
     }
     if (m.method === 'thread/tokenUsage/updated') {
-      const u = p.tokenUsage; if (u?.modelContextWindow) this.emit({ kind: 'context', used: u.last?.totalTokens ?? 0, total: u.modelContextWindow });
+      const u = p.tokenUsage;
+      if (typeof u?.last?.totalTokens === 'number') {
+        this.contextUsage = { used: u.last.totalTokens, total: u.modelContextWindow };
+        if (this.compactionTrace) {
+          this.compactionTrace.latestTokens = u.last.totalTokens;
+          this.compactionTrace.usageUpdates++;
+        }
+      }
+      if (u?.modelContextWindow) this.emit({ kind: 'context', used: u.last?.totalTokens ?? 0, total: u.modelContextWindow });
       this.emit({ kind: 'tokens', output: u?.last?.outputTokens ?? 0 }); return;
     }
     if (m.method === 'turn/plan/updated') {
       this.emit({ kind: 'tool_input', toolId: 'plan', name: 'TodoWrite', input: { todos: (p.plan ?? []).map((x: any) => ({ content: x.step, status: x.status, activeForm: x.step })) } }); return;
     }
-    if (m.method === 'error') { if (p.willRetry) this.emit({kind:'status',label:'Codex 正在重试请求…'}); else this.error(p.error?.message ?? p.message ?? 'Codex 请求失败'); return; }
+    if (m.method === 'error') {
+      if (this.compactionTrace) {
+        if (p.willRetry) this.compactionTrace.retries++; else this.compactionTrace.errors++;
+        this.logCompactionTrace(p.willRetry ? 'retry' : 'error', this.compactionTrace);
+      }
+      if (p.willRetry) this.emit({kind:'status',label:'Codex 正在重试请求…'}); else this.error(p.error?.message ?? p.message ?? 'Codex 请求失败'); return;
+    }
     if (m.method === 'serverRequest/resolved') {
       const key = String(p.requestId); if (!this.pending.delete(key)) return; this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true }); return;
     }
@@ -295,8 +361,16 @@ export class CodexProcess {
       return;
     }
     if (item.type === 'contextCompaction') {
-      if (!done) this.emit({ kind: 'compacting' });
+      if (!done) {
+        const trace = this.beginCompactionTrace(this.compacting ? 'manual' : 'auto');
+        if (trace.serverStartedAt === undefined) {
+          trace.serverStartedAt = performance.now();
+          this.logCompactionTrace('server_started', trace);
+        }
+        this.emit({ kind: 'compacting' });
+      }
       else {
+        this.endCompactionTrace('completed');
         this.emit({ kind: 'compacted', trigger: this.compacting ? 'manual' : 'auto', preTokens: 0, postTokens: 0 });
         // 自动压缩只是轮次中的一个阶段，后面还要继续回复。
         if (this.compacting) this.finish(false);
@@ -410,6 +484,7 @@ export class CodexProcess {
   }
   async interrupt(): Promise<void> {
     if (this.stopTimer || !this.busy) return;
+    if (this.compactionTrace) this.logCompactionTrace('interrupt_requested', this.compactionTrace);
     if (this.waitingForCatalog) {
       ++this.dispatchSequence; this.waitingForCatalog = false; this.startingTurn = undefined;
       this.finish(false); return;
@@ -436,6 +511,7 @@ export class CodexProcess {
   }
   private finish(isError: boolean) {
     if (!this.busy) return;
+    this.endCompactionTrace(isError ? 'failed' : 'turn_ended_without_compaction_completed');
     this.rememberEndedTurn(this.turnId);
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
     clearTimeout(this.pausedQuestion?.timer);
@@ -445,6 +521,6 @@ export class CodexProcess {
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
   }
-  dispose() { clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.rpc.dispose(); }
-  async disposeAndWait() { clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; await this.rpc.disposeAndWait(); }
+  dispose() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.rpc.dispose(); }
+  async disposeAndWait() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; await this.rpc.disposeAndWait(); }
 }

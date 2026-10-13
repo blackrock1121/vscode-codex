@@ -130,6 +130,8 @@ npm run smoke:question
 
 日志位于 `~/.codex-chat/logs/`；命令面板“Codex: 打开日志文件夹”可直达。插件快照保存在 VS Code 扩展全局存储中。
 
+上下文压缩诊断写入同一份本机日志：`[compaction_prepare]` 记录手动压缩前的连接准备时间；`[compaction]` 记录手动／自动触发、模型、请求受理、服务端开始通知、重试、结束结果与耗时，等待期间每 30 秒记录一次。`elapsedMs` 是从插件请求（自动压缩则从开始通知）起算的时间，`serverElapsedMs` 从服务端开始通知起算，均不是服务端内部计算耗时。`preTokens` 为开始前最近上报用量；`latestTokens` 仅为压缩期间收到的用量，不能保证是压缩后值，未上报为 `null`。埋点不记录对话、工具输出或错误正文，不发送到外部统计服务，也不改变压缩阈值。排查时按日志中的会话、时间和压缩 `id` 关联阶段；请求受理不代表压缩完成。
+
 ## 发布
 
 远程仓库：`git@github.com:blackrock1121/vscode-codex.git`。按项目 `AGENTS.md` 的发布闭环，每次功能或缺陷修复通过验证后同步打包、提交、推送并安装到本机 VS Code。
