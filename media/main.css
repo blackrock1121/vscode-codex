@@ -879,6 +879,16 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   overflow-wrap: anywhere;
 }
 .askq-skip { font-size: 12px; color: var(--vscode-descriptionForeground); padding: 2px; }
+.askq-reanswer {
+  margin-left: auto; flex-shrink: 0; padding: 3px 7px; border-radius: 4px;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
+  background: transparent; color: var(--vscode-descriptionForeground); font: inherit;
+  font-size: 11px; cursor: pointer;
+}
+.askq-reanswer:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
+.askq-reanswer:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.msg.user.question-reply { justify-content: flex-start; }
+.msg.user.question-reply .msg-body { max-width: 100%; width: 100%; padding: 0; background: transparent; color: var(--vscode-foreground); }
 /* user-stopped marker at the end of an AI reply */
 .msg-interrupted {
   margin: 6px 0 2px; font-size: 12px; font-style: italic;

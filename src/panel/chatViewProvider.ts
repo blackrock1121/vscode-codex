@@ -9,8 +9,8 @@ import { formatLocalNotification, localNotificationProject, localNotificationsSu
 import { WorkspaceSnapshot } from "../snapshot";
 import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
-import { questionStateFile, deleteQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
-import { usageView, quotaEvents } from "../codex/events";
+import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
+import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
 import { SessionStore, sessionTabTitle } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
 import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SpeedMode, configuredSpeedMode, isSpeedMode, speedLabel, supportsSpeed, billingKind, SessionSummary, ToWebview } from "../shared";
@@ -172,6 +172,8 @@ interface SessionCtx {
     pendingPrefill?: string;
     pendingPerm?: ToWebview;
     pendingQuestionAt?: number;
+    answeringQuestion?: boolean;
+    questionAnswerSeq?: number;
     readOnlyToolIds?: Set<string>;
     mayHaveModifiedWorkspace?: boolean;
     blank: boolean;
@@ -796,6 +798,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.stopContext(ctx);
     }
     private async stopContext(ctx: SessionCtx): Promise<void> {
+        ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
+        if (!ctx.proc && ctx.sessionId && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.toolName === "AskUserQuestion")
+            deleteQuestionState(this.storageDir(), ctx.sessionId);
         ctx.pendingPerm = undefined;
         ctx.lastEventAt = undefined;
         ctx.lastUserActionAt = Date.now();
@@ -976,12 +981,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.handlePermission(ctx, m.requestId, m.behavior, m.suggestionId);
                     break;
                 case "answerQuestion": {
+                    if (ctx.answeringQuestion) break;
+                    ctx.answeringQuestion = true;
                     try {
-                        const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
-                        if (!proc?.answerQuestion(m.requestId, m.answers)) throw new Error("答案未提交，问题可能已失效。请重试，或停止本轮后重新提问。");
+                        await this.submitQuestionAnswer(ctx, m.requestId, m.answers);
                     } catch (err) {
                         this.post(ctx, { kind: "question_answer_rejected", requestId: m.requestId, message: String((err as Error)?.message ?? err) });
                         break;
+                    } finally {
+                        ctx.answeringQuestion = false;
                     }
                     if (ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === m.requestId && ctx.pendingQuestionAt !== undefined)
                         this.output.appendLine(`[${new Date().toISOString()}] [question] 用户等待 ${Date.now() - ctx.pendingQuestionAt}ms，答案已转交 Codex`);
@@ -994,6 +1002,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 case "restoreCheckpoint":
                     await this.restoreCheckpoint(ctx, m.checkpointId);
+                    break;
+                case "reanswerQuestion":
+                    await this.restoreCheckpoint(ctx, m.checkpointId, true);
                     break;
                 case "forkCheckpoint":
                     await this.forkCheckpoint(ctx, m.checkpointId);
@@ -1264,8 +1275,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }[], files?: string[]): Promise<void> {
         const prepareAt = Date.now();
         await ctx.finalizing;
-        if (ctx.proc?.isBusy) {
-            this.post(ctx, { kind: "error", message: "上一轮尚未结束，请稍后发送。" });
+        if (ctx.proc?.isBusy || ctx.pendingPerm?.kind === "permission_request") {
+            this.post(ctx, { kind: "error", message: "上一轮尚未结束，请先完成问题或审批。", keepBusy: true });
             return;
         }
         let attached = context;
@@ -1827,12 +1838,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private checkpointsForView(ctx: SessionCtx, sid: string): CheckpointSummary[] {
         const real = ctx.checkpoints.list();
         const turns = this.store.userTurnLines(sid);
-        const norm = (t: string) => t.replace(/\s+/g, " ").trim().slice(0, 80);
+        const norm = checkpointTextKey;
         const assigned = new Map<number, CheckpointSummary>();
         let from = 0;
         for (const c of real) {
             for (let k = from; k < turns.length; k++) {
                 const t = turns[k];
+                if (c.userText.startsWith(QUESTION_REPLY_PREFIX) && t.line - 1 !== ctx.checkpoints.cutLineOf(c.id)) continue;
                 const ok = c.userText === "(图片)" ? t.hasImages && !norm(t.text) : norm(t.text) === norm(c.userText);
                 if (ok) {
                     ctx.checkpoints.alignTurn(c.id, t.line - 1);
@@ -1871,7 +1883,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private checkpointAligned(sessionId: string, meta: { truncateLine: number; userText: string }): boolean {
         const target = this.store.firstUserTurnAfter(sessionId, meta.truncateLine);
         if (!target) return false;
-        const norm = (text: string) => text.replace(/\s+/g, " ").trim().slice(0, 80);
+        const norm = checkpointTextKey;
         return meta.userText === "(图片)"
             ? target.images.length > 0 && !norm(target.text)
             : norm(target.text) === norm(meta.userText);
@@ -1976,23 +1988,63 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[restore] ${oldId.slice(0, 8)} → 派生 ${newId.slice(0, 8)}（原会话保留，回退点 ${leaf.slice(0, 8)}，还原点 ${ctx.checkpoints.list().length} 个）`);
         return { result, rewoundToStart: false };
     }
-    private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string): Promise<void> {
+    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>): Promise<void> {
+        const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
+        const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
+        if (ctx.questionAnswerSeq !== seq) {
+            if (ctx.proc === proc && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === requestId) await proc?.interrupt();
+            throw new Error("答案提交已取消。");
+        }
+        const sourceId = ctx.sessionId;
+        const answer = proc?.prepareQuestionAnswer(requestId, answers);
+        if (!sourceId || !proc || !answer) throw new Error("答案未提交，问题可能已失效，请重新打开会话后重试。");
+        await this.store.hydrate(sourceId);
+        const cut = this.store.countLines(sourceId);
+        if (this.store.rewindLeafFor(sourceId, cut) !== answer.turnId) throw new Error("问题与当前会话进度不一致，未提交答案，请重新打开会话。");
+        if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId) throw new Error("提交已取消，原问题或会话状态已变化。");
+        // 将问题之前的改动先归入原还原点，再为答案之后的改动建立独立基线。
+        await this.captureFinalSnapshot(ctx);
+        let snapshot: WorkspaceSnapshot | undefined;
+        if (this.config().get<boolean>("snapshotFilesForRestore", true)) {
+            const roots = this.workspaceDirs();
+            const excludes = new Map(roots.map(root => [root, vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(root)).get<string[]>("snapshotExclude", [])]));
+            snapshot = new WorkspaceSnapshot(roots, 20000, excludes, this.localSnapshotExcludedPaths(roots));
+            await snapshot.capture();
+        }
+        if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers)) throw new Error("提交已取消，原问题或会话状态已变化。");
+        const displayText = userView([{ type: "text", text: answer.text }]).text;
+        const checkpointId = ctx.checkpoints.beginTurn(displayText, cut);
+        ctx.snapshot = snapshot;
+        try {
+            if (!proc.answerQuestion(requestId, answers)) throw new Error("问题已失效，答案未提交。");
+        } catch (err) {
+            ctx.checkpoints.discardEmpty(checkpointId);
+            throw err;
+        }
+        this.post(ctx, { kind: "question_checkpoint", requestId, checkpointId });
+        if (snapshot) this.reportSnapshotSkips(ctx, snapshot);
+    }
+    private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string, reanswer = false): Promise<void> {
+        if (ctx.answeringQuestion) {
+            this.post(ctx, { kind: "notice", message: "答案正在提交，请等提交完成后再还原或重新回答。" });
+            return;
+        }
         if (this.restoring.has(ctx)) return;
         this.restoring.add(ctx);
         try {
-            await this.restoreCheckpointInner(ctx, checkpointId);
+            await this.restoreCheckpointInner(ctx, checkpointId, reanswer);
         } finally {
             this.restoring.delete(ctx);
         }
     }
-    private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string): Promise<void> {
+    private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string, reanswer = false): Promise<void> {
         const sourceId = ctx.sessionId;
         const preview = this.cpPreview(ctx, checkpointId);
-        const confirm = await vscode.window.showWarningMessage("还原到这条消息之前？", {
+        const confirm = await vscode.window.showWarningMessage(reanswer ? "还原到提交这次答案之前，重新回答？" : "还原到这条消息之前？", {
             modal: true,
             detail: (preview ? `消息：${preview.userText}\n\n` : "") +
-                (checkpointId.startsWith("turn:")
-                    ? "当前窗口会从这里开新分支，原会话保留在历史中。这一轮不是从本插件发出的，没有文件快照：只回退对话，工作区文件保持现状。"
+                (reanswer ? "将移除当前分支中旧答案及之后的回复，重新展示问题卡，提交新答案后才继续。\n\n" : "") + (checkpointId.startsWith("turn:")
+                    ? "当前窗口会从这里开新分支，原会话保留在历史中。此处没有可用的文件快照：只回退对话，工作区文件保持现状。"
                     : "将回滚此后的文件改动，并从这里开新分支；原会话保留在历史中。文件回滚不可撤销。") +
                 (ctx.proc?.isBusy ? "\n\nCodex 正在回复中，还原会先自动停止本轮。" : ""),
         }, "还原");
@@ -2010,6 +2062,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "找不到该还原点。" });
             return;
         }
+        const question = reanswer ? this.store.questionBeforeAnswer(sourceId, meta.truncateLine) : undefined;
+        if (reanswer && !question) {
+            this.post(ctx, { kind: "notice", message: "这条旧问题没有可确认的独立回答轮次，无法准确还原到回答前。可以还原到它之前的用户消息重新提问。" });
+            return;
+        }
         const nextTurn = ctx.sessionId
             ? this.store.firstUserTurnAfter(ctx.sessionId, meta.truncateLine)
             : undefined;
@@ -2023,6 +2080,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         const wasLive = !!ctx.proc?.isBusy;
+        if (reanswer) this.post(ctx, { kind: "busy", busy: true });
         this.post(ctx, { kind: "restoring" });
         while (ctx.proc) {
             const dying = ctx.proc;
@@ -2031,7 +2089,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             await dying.disposeAndWait();
             await this.captureFinalSnapshot(ctx);
         }
-        this.post(ctx, { kind: "busy", busy: false });
+        if (!reanswer) this.post(ctx, { kind: "busy", busy: false });
         let rewind: {
             result: NonNullable<ReturnType<CheckpointManager["restore"]>>;
             rewoundToStart: boolean;
@@ -2045,6 +2103,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         const { result, rewoundToStart } = rewind;
+        let restoredQuestion: PermissionRequest | undefined;
+        if (question && ctx.sessionId && !rewoundToStart) {
+            const turnId = this.store.rewindLeafFor(ctx.sessionId, this.store.countLines(ctx.sessionId));
+            if (!turnId) throw new Error("新分支缺少提问轮次，无法重新回答。");
+            restoredQuestion = { requestId: randomUUID(), toolName: "AskUserQuestion", ...question, suggestions: [] };
+            // 先落盘；关闭窗口或重载后仍停在问题卡，不会自动沿旧答案续聊。
+            saveQuestionState(this.storageDir(), ctx.sessionId, turnId, restoredQuestion);
+        }
         this.output.appendLine(`[restore] truncateLine=${result.truncateLine} 还原文件=${result.restoredFiles} 自动停止=${wasLive ? "是" : "否"} ` +
             `${rewoundToStart ? "→ 回到开头，转为新对话（原会话保留）" : `→ 已派生 ${ctx.sessionId?.slice(0, 8)}（原会话保留）`}`);
         if (rewoundToStart) {
@@ -2060,8 +2126,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.post(ctx, {
             kind: "notice",
             message: `${wasLive ? "已自动停止进行中的回复。" : ""}` +
-                `已还原 ${result.restoredFiles} 个文件，并从这条消息之前继续。原会话保留在历史中。${skippedNote}`,
+                `已还原 ${result.restoredFiles} 个文件，${reanswer ? "请修改问题卡中的答案并重新提交" : "从这条消息之前继续"}。原会话保留在历史中。${skippedNote}`,
         });
+        if (restoredQuestion) {
+            ctx.draft = undefined;
+            ctx.draftImages = undefined;
+            this.post(ctx, { kind: "busy", busy: true });
+            this.onPermission(ctx, restoredQuestion);
+            this.refreshChangedFiles(ctx);
+            return;
+        }
         const draftText = result.userText === "(图片)" ? "" : result.userText;
         const draftImages = nextTurn?.images.length ? nextTurn.images : undefined;
         if (draftText || draftImages) {
@@ -2484,14 +2558,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return this.sessions.has(ctx);
     }
     private async captureFinalSnapshot(ctx: SessionCtx): Promise<void> {
+        const snapshot = ctx.snapshot;
+        const checkpoints = ctx.checkpoints;
         await ctx.finalizing;
-        if (!ctx.snapshot)
+        if (!snapshot || ctx.snapshot !== snapshot || ctx.checkpoints !== checkpoints)
             return;
         if (ctx.mayHaveModifiedWorkspace)
-            for (const [file, original] of await ctx.snapshot.changed())
-                ctx.checkpoints.recordSnapshot(file, original);
-        ctx.snapshot = undefined;
-        ctx.checkpoints.flush();
+            for (const [file, original] of await snapshot.changed())
+                checkpoints.recordSnapshot(file, original);
+        if (ctx.snapshot === snapshot) ctx.snapshot = undefined;
+        checkpoints.flush();
     }
     private handleEmit(ctx: SessionCtx, e: ToWebview): void {
         if (e.kind === "busy" && !e.busy)
@@ -2796,6 +2872,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             toolName: req.toolName,
             displayName: req.displayName,
             input: req.input,
+            initialAnswers: req.initialAnswers,
             description: req.description,
             suggestions: req.suggestions,
         };

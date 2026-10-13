@@ -27,6 +27,7 @@ export interface CodexProcessOptions {
 export interface PermissionRequest {
   requestId: string; toolUseId?: string; toolName: string; displayName?: string;
   input: Record<string, unknown>; description?: string; suggestions: PermissionSuggestionView[];
+  initialAnswers?: Record<string, string | string[]>;
 }
 export interface CodexProcessHooks {
   emit: (event: ToWebview) => void; onPermission: (request: PermissionRequest) => void;
@@ -45,6 +46,12 @@ export function questionStateFile(dir: string, sessionId: string): string {
 }
 export function deleteQuestionState(dir: string, sessionId: string): void {
   fs.rmSync(questionStateFile(dir, sessionId), { force: true });
+}
+export function saveQuestionState(dir: string, sessionId: string, turnId: string, request: PermissionRequest, beganAt = Date.now()): void {
+  fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+  const file = questionStateFile(dir, sessionId);
+  fs.writeFileSync(file + '.tmp', JSON.stringify({ version: 1, sessionId, turnId, beganAt, request }), { mode: 0o600 });
+  fs.renameSync(file + '.tmp', file);
 }
 export class CodexProcess {
   private readonly rpc: CodexRpc;
@@ -127,11 +134,8 @@ export class CodexProcess {
   private saveQuestion(): void {
     const paused = this.pausedQuestion;
     if (!this.opts.questionStateDir || !this.sessionId || !paused?.ready) return;
-    fs.mkdirSync(this.opts.questionStateDir, { recursive: true, mode: 0o700 });
-    const file = questionStateFile(this.opts.questionStateDir, this.sessionId);
-    const data = { version: 1, sessionId: this.sessionId, turnId: paused.turnId, beganAt: this.beganAt, request: paused.request };
-    fs.writeFileSync(file + '.tmp', JSON.stringify(data), { mode: 0o600 });
-    fs.renameSync(file + '.tmp', file);
+    if (!paused.turnId) throw new Error('问题缺少暂停轮次');
+    saveQuestionState(this.opts.questionStateDir, this.sessionId, paused.turnId, paused.request, this.beganAt);
   }
   private clearSavedQuestion(): void {
     if (this.opts.questionStateDir && this.sessionId) deleteQuestionState(this.opts.questionStateDir, this.sessionId);
@@ -356,33 +360,38 @@ export class CodexProcess {
       : { decision: allow ? (decision.suggestionId === 'session' ? 'acceptForSession' : 'accept') : 'decline' };
     this.rpc.respond(p.id, result); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: decision.behavior });
   }
-  answerQuestion(key: string, answers: Record<string, string | string[]>): boolean {
-    if (this.exited || this.disposed || !this.busy) return false;
+  prepareQuestionAnswer(key: string, answers: Record<string, string | string[]>): { text: string; turnId: string } | undefined {
+    if (this.exited || this.disposed || !this.busy) return;
     const p = this.pending.get(key);
-    if (!p || !['item/tool/call', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(p.method)) return false;
+    if (!p || !['item/tool/call', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(p.method)) return;
     const mapped: Record<string, { answers: string[] }> = {};
     const questions = this.pausedQuestion?.request.input.questions as any[] | undefined;
-    if (!Array.isArray(questions) || !questions.length) return false;
+    if (!Array.isArray(questions) || !questions.length) return;
     for (const [index, q] of questions.entries()) {
       const a = answers[q.id] ?? answers[q.question] ?? answers[String(index)] ?? [];
       const values = Array.isArray(a) ? a : [a];
-      if (!values.length || values.some(value => typeof value !== 'string' || !value.trim())) return false;
+      if (!values.length || values.some(value => typeof value !== 'string' || !value.trim())) return;
       mapped[q.id || q.question || String(index)] = { answers: values };
     }
     const paused = this.pausedQuestion;
-    if (!paused?.ready || paused.request.requestId !== key) return false;
+    if (!paused?.ready || !paused.turnId || paused.request.requestId !== key) return;
     const speed = this.opts.speedMode ?? 'default';
     if (speed !== 'default' && !this.modelsLoaded) throw new Error('模型列表仍在加载，请稍后重新提交答案。');
     if (!supportsSpeed(this.models.find(m => m.id === this.modelForNextTurn), speed))
       throw new Error(`当前模型无法使用${speedLabel(speed)}模式，请切换速度或模型后重新提交答案。`);
     const reply = questions.map((q, index) => ({ question: q.question, ...(q.isSecret ? { isSecret: true } : {}), answers: mapped[q.id || q.question || String(index)].answers }));
+    return { text: `${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`, turnId: paused.turnId };
+  }
+  answerQuestion(key: string, answers: Record<string, string | string[]>): boolean {
+    const answer = this.prepareQuestionAnswer(key, answers);
+    if (!answer) return false;
     // 原工具请求随中断失效。用真实用户消息恢复同一会话，绝不向旧 RPC 伪造成功。
     this.clearSavedQuestion();
     this.pausedQuestion = undefined;
     this.pending.clear();
     this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
     this.busy = false;
-    return this.sendUserMessage(`${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`);
+    return this.sendUserMessage(answer.text);
   }
   async interrupt(): Promise<void> {
     if (this.stopTimer || !this.busy) return;

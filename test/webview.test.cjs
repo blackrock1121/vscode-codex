@@ -313,6 +313,54 @@ test('提交答案等待宿主确认，失败保留选择与自由文本并允�
  assert.deepEqual(errors,[]);
 });
 
+test('已提交问题卡收到还原点后可重新回答，按钮不会直接提交旧答案',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'busy',busy:true});
+ emit({kind:'permission_request',requestId:'reanswer',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'安装来源',options:[]}]},suggestions:[]});
+ const input=w.document.querySelector('.askp textarea');input.value='旧答案';input.dispatchEvent(new w.Event('input'));
+ w.document.querySelector('.askp-submit').click();
+ emit({kind:'permission_resolved',requestId:'reanswer',behavior:'allow'});
+ emit({kind:'question_checkpoint',requestId:'reanswer',checkpointId:'answer-point'});
+ emit({kind:'question_checkpoint',requestId:'reanswer',checkpointId:'answer-point'});
+ assert.equal(w.document.querySelectorAll('.askq-reanswer').length,1);
+ w.document.querySelector('.askq-reanswer').click();
+ assert.equal(sent.at(-1).type,'reanswerQuestion');assert.equal(sent.at(-1).checkpointId,'answer-point');
+ assert.equal(sent.filter(m=>m.type==='answerQuestion').length,1);
+ assert.deepEqual(errors,[]);
+});
+test('历史结构化回答显示为可重新回答的卡片，不重复显示原问题或泄露秘密答案',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ const prefix='用户已回答刚才的问题，请根据以下答案继续原任务：\n';
+ const text=prefix+JSON.stringify([{question:'安装来源',answers:['A']},{question:'密码',isSecret:true,answers:['PRIVATE']}]);
+ emit({kind:'load_history',sessionId:'source',items:[
+  {type:'user',text:'原任务'},
+  {type:'tool',toolId:'q',name:'AskUserQuestion',input:{questions:[{question:'安装来源'},{question:'密码'}]},result:'问题原始输出'},
+  {type:'user',text},
+ ],checkpoints:[{id:'turn:2',synthetic:true,userText:text,label:'回答'}]});
+ assert.equal(w.document.querySelectorAll('.askq-card').length,1);
+ assert.doesNotMatch(w.document.getElementById('messages').textContent,/PRIVATE|问题原始输出|用户已回答刚才的问题/);
+ w.document.querySelector('.askq-reanswer').click();assert.equal(sent.at(-1).checkpointId,'turn:2');
+ assert.deepEqual(errors,[]);
+});
+test('重新回答回填原选择和自由文本，必须主动提交，秘密答案始终留空',async t=>{
+ const {w,sent,emit}=setup(t);emit({kind:'busy',busy:true});
+ const composer=w.document.getElementById('input');composer.value='排队任务';w.document.getElementById('btn-send').click();
+ emit({kind:'restoring'});emit({kind:'load_history',items:[],checkpoints:[]});emit({kind:'busy',busy:true});
+ emit({kind:'permission_request',requestId:'restored-q',toolName:'AskUserQuestion',input:{questions:[
+  {id:'choice',question:'来源',options:[{label:'A'},{label:'B'}]},
+  {id:'text',question:'补充',options:[]},
+  {id:'secret',question:'密码',isSecret:true,options:[]},
+ ]},initialAnswers:{choice:'B',text:'原答案\n第二行',secret:'PRIVATE'},suggestions:[]});
+ assert.match(w.document.querySelector('.askp-opt.on').textContent,/B/);
+ w.document.querySelectorAll('.askp-nav')[1].click();
+ assert.equal(w.document.querySelector('.askp textarea').value,'原答案\n第二行');
+ w.document.querySelectorAll('.askp-nav')[1].click();
+ assert.equal(w.document.querySelector('.askp input[type="password"]').value,'');
+ assert.equal(w.document.querySelector('.askp-submit').disabled,true);
+ await new Promise(r=>setTimeout(r,180));
+ assert.equal(sent.some(m=>m.type==='answerQuestion'||m.type==='send'),false);
+});
+
 test('待回答明确显示暂停，不显示推理动画，也不自动发送队列',async t=>{
  const {w,sent,emit}=setup(t);emit({kind:'busy',busy:true});
  emit({kind:'permission_request',requestId:'waiting',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'选择？',options:[]}]},suggestions:[]});

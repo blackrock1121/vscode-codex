@@ -2,6 +2,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { CheckpointSummary } from "./shared";
+import { checkpointTextKey, QUESTION_REPLY_PREFIX } from "./codex/events";
 
 interface FileBackup {
   path: string;
@@ -81,6 +82,14 @@ export class CheckpointManager {
     }
     this.persist();
     return id;
+  }
+
+  /** 答案提交失败时，只撤掉刚创建且尚未记录任何改动的还原点。 */
+  discardEmpty(checkpointId: string): void {
+    const cp = this.current();
+    if (cp?.id !== checkpointId || cp.files.length || cp.skipped?.length) return;
+    this.checkpoints.pop();
+    this.persist();
   }
 
   /** Snapshot a file before it is modified (idempotent within a checkpoint). */
@@ -290,13 +299,15 @@ export class CheckpointManager {
   /** 按提问文本把还原点的 truncateLine 重对齐到另一份 transcript（单调向前匹配；
    *  纯图片轮次按「带图且无正文」）；对不上的丢弃。 */
   private static rebase(cps: Checkpoint[], turns: { text: string; hasImages: boolean; line: number }[]): Checkpoint[] {
-    const norm = (t: string) => t.replace(/\s+/g, " ").trim().slice(0, 80);
+    const norm = checkpointTextKey;
     const kept: Checkpoint[] = [];
     let from = 0;
     for (const c of cps) {
       let hit = -1;
       for (let k = from; k < turns.length; k++) {
         const t = turns[k];
+        // 回答（尤其是遮蔽后的秘密答案）可能完全相同；只认原轮次边界。
+        if (c.userText.startsWith(QUESTION_REPLY_PREFIX) && t.line - 1 !== c.truncateLine) continue;
         const ok = c.userText === "(图片)" ? t.hasImages && !norm(t.text) : norm(t.text) === norm(c.userText);
         if (ok) {
           hit = k;

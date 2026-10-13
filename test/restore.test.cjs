@@ -84,11 +84,11 @@ test('宿主停止时不提前发送空闲状态，避免队列撞上尚未结�
 });
 
 test('宿主拒绝答案时只返回可重试错误，不发送结束事件放行队列',async t=>{
- const f=await fixture(t);f.ctx.proc={isExited:false,answerQuestion:()=>false};
+ const f=await fixture(t);f.ctx.proc={isExited:false,prepareQuestionAnswer:()=>undefined,answerQuestion:()=>false};
  await f.provider.onPanelMessage(f.ctx,{type:'answerQuestion',requestId:'missing',answers:{q:'A'}});
  assert.equal(f.messages.at(-1).kind,'question_answer_rejected');
  assert.equal(f.messages.some(m=>['busy','result','error'].includes(m.kind)),false);
- f.ctx.proc.answerQuestion=()=>{throw Error('磁盘写入失败');};
+ f.ctx.proc.prepareQuestionAnswer=()=>{throw Error('磁盘写入失败');};
  await f.provider.onPanelMessage(f.ctx,{type:'answerQuestion',requestId:'missing',answers:{q:'A'}});
  assert.equal(f.messages.at(-1).message,'磁盘写入失败');
 });

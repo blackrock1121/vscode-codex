@@ -2,6 +2,24 @@ import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview } from '../shared';
 
 export const QUESTION_REPLY_PREFIX = '用户已回答刚才的问题，请根据以下答案继续原任务：\n';
 
+/** 回答的公共前缀很长；截成 80 字会把不同答案误认成同一还原点。 */
+export function checkpointTextKey(text: string): string {
+  const normalized = text.replace(/\s+/g, ' ').trim();
+  return text.startsWith(QUESTION_REPLY_PREFIX) ? normalized : normalized.slice(0, 80);
+}
+
+export interface QuestionReply { question: string; isSecret?: boolean; answers: string[] }
+/** 只接受插件实际提交的结构化回答，不把普通消息当作可还原的问题。 */
+export function parseQuestionReply(text: string): QuestionReply[] | undefined {
+  if (!text.startsWith(QUESTION_REPLY_PREFIX)) return;
+  try {
+    const value = JSON.parse(text.slice(QUESTION_REPLY_PREFIX.length));
+    if (!Array.isArray(value) || !value.length || value.some(r => !r || typeof r.question !== 'string' || !r.question.trim() ||
+        !Array.isArray(r.answers) || !r.answers.length || r.answers.some((a: unknown) => typeof a !== 'string' || !a.trim()))) return;
+    return value.map(r => ({ question: r.question, isSecret: r.isSecret === true, answers: r.isSecret ? ['（已填写）'] : r.answers }));
+  } catch { return; }
+}
+
 /** 为缺失或重复的 ID 分配稳定编号，避免多道题的答案互相覆盖。 */
 export function normalizeQuestions(value: any): any[] | undefined {
   if (!Array.isArray(value) || !value.length || value.some(q => !q || typeof q.question !== 'string' || !q.question.trim() ||

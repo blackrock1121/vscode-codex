@@ -1,6 +1,7 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
 import { parseFileRef } from "../fileRef";
+import { parseQuestionReply } from "../codex/events";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind } from "../shared";
 import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, supportsSpeed } from "../shared";
 
@@ -1090,6 +1091,11 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       questionInteractions.get(m.requestId)?.retry(m.message);
       if (waitingQuestionId === m.requestId) setGlow("waiting");
       break;
+    case "question_checkpoint":
+      for (const card of Array.from(messagesEl.querySelectorAll<HTMLElement>(".askq-card"))) {
+        if (card.dataset.requestId === m.requestId) attachReanswer(card, m.checkpointId);
+      }
+      break;
     case "result":
       // A turn the user cancelled is not a failure: no red rim.
       if (userStopped) setGlow("idle");
@@ -1783,6 +1789,17 @@ function askQuestionNode(pairs: [string, string][], emptyText = ""): HTMLElement
   step.append(el("div", "step-dot"), card);
   return step;
 }
+function attachReanswer(card: HTMLElement, checkpointId: string) {
+  if (card.querySelector(".askq-reanswer")) return;
+  const button = el("button", "askq-reanswer", "重新回答");
+  button.type = "button";
+  button.title = "还原到提交这次答案之前，修改答案后继续";
+  button.addEventListener("click", event => {
+    event.stopPropagation();
+    send({ type: "reanswerQuestion", checkpointId });
+  });
+  card.querySelector(".tool-head")!.appendChild(button);
+}
 
 /** Render a previously-answered AskUserQuestion (from history) as a clean node,
  *  instead of the raw "Your questions have been answered: …" tool output. */
@@ -1815,6 +1832,16 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 
   const sel = questions.map(() => new Set<string>()); // chosen built-in labels per question
   const custom = questions.map(() => ""); // custom answer text per question
+  questions.forEach((q, i) => {
+    if (q.isSecret) return; // 秘密答案必须重新填写，不回填遮蔽占位文字。
+    const value = m.initialAnswers?.[q.id || q.question];
+    if (value == null) return;
+    const values = Array.isArray(value) ? value : [value];
+    for (const answer of values) {
+      if (q.options?.some(option => option.label === answer)) sel[i].add(answer);
+      else custom[i] = custom[i] ? `${custom[i]}、${answer}` : answer;
+    }
+  });
   let cur = 0;
   let done = false;
   let submitting = false;
@@ -1987,7 +2014,9 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
           return [q.header || q.question, q.isSecret && v ? "（已填写）" : Array.isArray(v) ? v.join("、") : v || ""];
         })
         .filter(([, a]) => a);
-      wrap.replaceWith(askQuestionNode(pairs));
+      const answered = askQuestionNode(pairs);
+      answered.querySelector<HTMLElement>(".askq-card")!.dataset.requestId = m.requestId;
+      wrap.replaceWith(answered);
     } else {
       wrap.replaceWith(askQuestionNode([], "已停止"));
     }
@@ -2266,6 +2295,8 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       if (cp) messagesEl.appendChild(renderCheckpointDivider(cp.id, cp.synthetic, userOrdinal > 0)); // 第一条前也画：还原到它之前 = 清空对话重来
       const m = appendUser(it.text, it.files || [], it.images || []);
       if (cp) m.dataset.checkpointId = cp.id; // link message -> checkpoint (for edit)
+      const answerCard = m.querySelector<HTMLElement>(".askq-card");
+      if (cp && answerCard) attachReanswer(answerCard, cp.id);
     } else if (it.type === "image") {
       const body = ensureAssistant();
       const grid = el("div", "msg-images");
@@ -2292,6 +2323,11 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       messagesEl.appendChild(renderCompactionDivider(it.preTokens, it.postTokens));
     } else if (it.type === "tool") {
       if (it.name === "AskUserQuestion") {
+        // 插件把回答保存为下一轮的用户消息；由那条消息画完整回答卡，避免重复。
+        const nextUser = items.slice(i + 1).find(item => item.type === "user");
+        const replies = nextUser?.type === "user" ? parseQuestionReply(nextUser.text) : undefined;
+        const questions = it.input?.questions;
+        if (Array.isArray(questions) && replies?.length === questions.length && questions.every((q, index) => q.question === replies[index].question)) continue;
         if (it.isError) {
           // The call itself failed (e.g. unparsable JSON): show it as a normal
           // error step — red node, title, collapsible error output — instead of
@@ -3830,7 +3866,11 @@ function appendUser(text: string, contextLabels: string[] = [], images: string[]
     for (const src of images) grid.appendChild(makeImageChip(src));
     body.appendChild(grid);
   }
-  if (text.trim()) {
+  const replies = parseQuestionReply(text);
+  if (replies) {
+    msg.classList.add("question-reply");
+    body.appendChild(askQuestionNode(replies.map(reply => [reply.question, reply.answers.join("、")])));
+  } else if (text.trim()) {
     // to ~4 lines with a fade + "展开全部 N 行", same mechanic as a long Bash
     // command. Wrapper (not the .md itself) carries the collapse so the text
     // element's display mode never changes — a -webkit-line-clamp switch to

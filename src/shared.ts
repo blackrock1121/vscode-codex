@@ -124,11 +124,13 @@ export type ToWebview =
       toolName: string;
       displayName?: string;
       input: Record<string, unknown>;
+      initialAnswers?: Record<string, string | string[]>;
       description?: string;
       suggestions: PermissionSuggestionView[];
     }
   | { kind: "permission_resolved"; requestId: string; behavior: "allow" | "deny"; auto?: boolean }
   | { kind: "question_answer_rejected"; requestId: string; message: string }
+  | { kind: "question_checkpoint"; requestId: string; checkpointId: string }
   | { kind: "tokens"; output: number }
   | { kind: "thinking_tokens"; tokens: number }
   /** 纯诊断信息：只进输出通道日志，绝不显示到界面。 */
@@ -258,6 +260,7 @@ export type FromWebview =
   | { type: "newContext"; text?: string; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "permission"; requestId: string; behavior: "allow" | "deny"; suggestionId?: string }
   | { type: "answerQuestion"; requestId: string; answers: Record<string, string | string[]> }
+  | { type: "reanswerQuestion"; checkpointId: string }
   | { type: "listSessions" }
   | { type: "openSession"; sessionId: string }
   | { type: "newInEditor" }
