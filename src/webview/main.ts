@@ -235,6 +235,8 @@ function updateReplyOutline(msg: HTMLElement | null) {
   }
   toc.querySelector("summary")!.textContent = `回复目录 · ${headings.length} 节`;
   const list = toc.querySelector("nav")!;
+  const focusedIndex = Array.from(list.children).indexOf(document.activeElement as Element);
+  const scrollTop = list.scrollTop;
   const baseLevel = Math.min(...headings.map(h => Number(h.tagName.slice(1))));
   const buttons = headings.map((heading, index) => {
     const button = el("button", "reply-toc-item", heading.textContent!.trim());
@@ -256,6 +258,10 @@ function updateReplyOutline(msg: HTMLElement | null) {
     return button;
   });
   list.replaceChildren(...buttons);
+  if (focusedIndex >= 0) {
+    (buttons[focusedIndex] ?? toc.querySelector("summary")!).focus({ preventScroll: true });
+    list.scrollTop = scrollTop;
+  }
   replyOutlineSignatures.set(msg, signature);
 }
 
@@ -4010,7 +4016,7 @@ function renderSnapshotSkips(m: Extract<ToWebview, { kind: "snapshot_skips" }>) 
   card.dataset.total = String(m.total);
   const head = el("div", "ss-head");
   head.append(el("strong", "", "未纳入自动回滚快照"), el("span", "ss-count", `${m.total} 项`));
-  card.append(head, el("div", "ss-desc", "这些路径无法用“还原到此处”恢复。可逐项排除，或忽略本次提醒。"));
+  card.append(head, el("div", "ss-desc", "这些路径无法用“还原到此处”恢复。排除记录仅保存在本机，不修改项目文件。"));
   const list = el("div", "ss-list");
   for (const file of m.files) {
     const row = el("div", "ss-row");
@@ -4019,7 +4025,7 @@ function renderSnapshotSkips(m: Extract<ToWebview, { kind: "snapshot_skips" }>) 
     name.title = file.path;
     const reason = el("span", "ss-reason", file.reason);
     const exclude = el("button", "ss-action", "排除");
-    exclude.title = "加入当前项目的快照排除规则，之后不再提醒";
+    exclude.title = "仅在本机记住此路径，之后不再提醒；不修改项目文件";
     exclude.onclick = () => {
       card.querySelectorAll<HTMLButtonElement>("button").forEach(btn => btn.disabled = true);
       send({ type: "excludeSnapshotPaths", paths: [file.path] });
@@ -4031,7 +4037,7 @@ function renderSnapshotSkips(m: Extract<ToWebview, { kind: "snapshot_skips" }>) 
   if (m.total > m.files.length) card.appendChild(el("div", "ss-more", `另有 ${m.total - m.files.length} 项，完整清单见“Codex Chat”输出。`));
   const actions = el("div", "ss-actions");
   const all = el("button", "ss-action", "排除全部");
-  all.title = "将本次清单中的路径加入当前项目的快照排除规则";
+  all.title = "仅在本机记住本次清单中的全部路径；不修改项目文件";
   all.onclick = () => {
     card.querySelectorAll<HTMLButtonElement>("button").forEach(btn => btn.disabled = true);
     send({ type: "excludeSnapshotPaths", all: true });

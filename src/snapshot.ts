@@ -29,7 +29,7 @@ export class WorkspaceSnapshot {
   private completeScan = true;
   private readonly excluded: Map<string, RegExp[]>;
   private readonly readConcurrency = 16;
-  constructor(private readonly roots: string[], private readonly maxFiles = 20000, excludePatterns: string[] | Map<string, string[]> = []) {
+  constructor(private readonly roots: string[], private readonly maxFiles = 20000, excludePatterns: string[] | Map<string, string[]> = [], private readonly excludePaths: ReadonlySet<string> = new Set()) {
     const compile = (patterns: string[]) => patterns.flatMap(pattern => {
       const normalized = pattern.trim().replace(/\\/g, '/').replace(/\/+$/, '');
       const full = globRegex(normalized);
@@ -43,6 +43,7 @@ export class WorkspaceSnapshot {
     this.skipReasons.set(file, reason);
   }
   private isExcluded(root: string, file: string): boolean {
+    if (this.excludePaths.has(file)) return true;
     const relative = path.relative(root, file).split(path.sep).join('/');
     return (this.excluded.get(root) ?? []).some(re => re.test(relative));
   }

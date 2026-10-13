@@ -61,10 +61,14 @@ test('流式目录保持展开、更新新增标题，正文重绘后仍跳到�
  emit({kind:'text_delta',text:'## 同名标题\n第一段\n## 同名标题\n第二段\n'});
  const toc=w.document.querySelector('.reply-toc');
  toc.querySelector('summary').click();assert.equal(toc.open,true);
+ toc.querySelectorAll('button')[1].focus();
+ toc.querySelector('nav').scrollTop=60;
  const oldHeading=w.document.querySelectorAll('.text-seg h2')[1];
  emit({kind:'text_delta',text:'## 测试结果\n通过\n'});
  await new Promise(r=>setTimeout(r,40));
  assert.equal(toc.open,true);assert.equal(toc.querySelectorAll('button').length,3);
+ assert.equal(w.document.activeElement,toc.querySelectorAll('button')[1],'新增标题后保留正在操作的目录焦点');
+ assert.equal(toc.querySelector('nav').scrollTop,60);
  assert.equal(oldHeading.isConnected,false);
  const headings=w.document.querySelectorAll('.text-seg h2');
  scroll(100);

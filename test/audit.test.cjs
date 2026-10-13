@@ -4,13 +4,14 @@ const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
 const Module=require('node:module');
-const vscode={workspace:{textDocuments:[]},Uri:{from:x=>x}};
+const vscode={workspace:{textDocuments:[]},Uri:{from:x=>x},window:{showInformationMessage:()=>{}}};
 const originalLoad=Module._load;
 Module._load=function(id,...args){if(id==='vscode')return vscode;return originalLoad.call(this,id,...args);};
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const {quotaEvents}=require('../dist/test/codex/events.js');
+const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 
 function providerFixture(){
  const provider=Object.create(ChatViewProvider.prototype),messages=[];
@@ -28,6 +29,77 @@ async function checkpointFixture(t){
  t.after(()=>{checkpoints.flush();return fs.rm(dir,{recursive:true,force:true});});
  return {dir,checkpoints};
 }
+
+function exclusionFixture(roots){
+ const {provider,messages}=providerFixture(),state=new Map();
+ provider.context.workspaceState={get:(key,fallback)=>state.get(key)??fallback,update:async(key,value)=>{
+  await Promise.resolve();
+  if(value===undefined)state.delete(key);else state.set(key,JSON.parse(JSON.stringify(value)));
+ }};
+ provider.snapshotWarningPaths=new Map([[roots.join('\0'),new Set()]]);
+ provider.snapshotWarningSignatures=new Map();
+ provider.snapshotExclusionUpdate=Promise.resolve();
+ provider.workspaceDirs=()=>roots;
+ return {provider,messages,state,warned:provider.snapshotWarningPaths.get(roots.join('\0'))};
+}
+
+test('排除按钮只保存本机记录，并发选择不会覆盖，重载后按工作区根目录隔离',async()=>{
+ const {provider,messages,state,warned}=exclusionFixture(['/project','/project/nested']);
+ warned.add('/project/a.bin');warned.add('/project/nested/b.bin');
+ await Promise.all([
+  provider.excludeSnapshotPaths({},['/project/a.bin']),
+  provider.excludeSnapshotPaths({},['/project/nested/b.bin']),
+ ]);
+ assert.equal(messages.filter(e=>e.kind==='snapshot_exclude_result'&&e.ok).length,2);
+ assert.deepEqual([...provider.localSnapshotExcludedPaths(['/project'])],['/project/a.bin']);
+ const reloaded=exclusionFixture(['/project/nested']).provider;
+ reloaded.context.workspaceState.get=(key,fallback)=>state.get(key)??fallback;
+ assert.deepEqual([...reloaded.localSnapshotExcludedPaths(['/project/nested'])],['/project/nested/b.bin']);
+ assert.deepEqual([...reloaded.localSnapshotExcludedPaths(['/unrelated'])],[]);
+});
+
+test('本机排除不会生成项目配置，文件名通配符按字面匹配并兼容手动规则',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-local-excludes-'));
+ t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ await fs.writeFile(path.join(root,'a?.txt'),'选中路径');
+ await fs.writeFile(path.join(root,'ab.txt'),'应保留');
+ await fs.writeFile(path.join(root,'debug.log'),'手动排除');
+ const {provider,warned}=exclusionFixture([root]);warned.add(path.join(root,'a?.txt'));
+ await provider.excludeSnapshotPaths({},undefined,true);
+ const snapshot=new WorkspaceSnapshot([root],20000,['*.log'],provider.localSnapshotExcludedPaths([root]));
+ await snapshot.capture();
+ assert.deepEqual([...snapshot.files.keys()],[path.join(root,'ab.txt')]);
+ await assert.rejects(fs.access(path.join(root,'.vscode/settings.json')));
+ assert.equal((await snapshot.changed()).size,0);
+});
+
+test('本机排除保存失败不伪报成功，下一次可重试，过期或伪造路径不写入',async()=>{
+ const {provider,messages,warned,state}=exclusionFixture(['/project']);warned.add('/project/a.bin');
+ const update=provider.context.workspaceState.update;
+ provider.context.workspaceState.update=async()=>{throw new Error('保存失败');};
+ await provider.excludeSnapshotPaths({},['/project/a.bin']);
+ assert.equal(messages.at(-1).ok,false);assert.equal(state.size,0);
+ provider.context.workspaceState.update=update;
+ await provider.excludeSnapshotPaths({},['/outside/b.bin']);
+ assert.equal(messages.at(-1).ok,false);assert.equal(state.size,0);
+ await provider.excludeSnapshotPaths({},['/project/a.bin']);
+ assert.equal(messages.at(-1).ok,true);
+});
+
+test('清除本机排除后下一轮恢复扫描，不改动已有设置文件',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-reset-excludes-'));
+ t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ await fs.mkdir(path.join(root,'.vscode'));
+ const settings=path.join(root,'.vscode/settings.json'),original='{"codexChat.snapshotExclude":["*.log"],"editor.tabSize":2}';
+ await fs.writeFile(settings,original);await fs.writeFile(path.join(root,'a.txt'),'正文');
+ const {provider,warned}=exclusionFixture([root]);warned.add(path.join(root,'a.txt'));
+ await provider.excludeSnapshotPaths({},undefined,true);
+ await provider.resetLocalSnapshotExcludes();
+ assert.equal(provider.localSnapshotExcludedPaths([root]).size,0);
+ assert.equal(await fs.readFile(settings,'utf8'),original);
+ const snapshot=new WorkspaceSnapshot([root]);await snapshot.capture();
+ assert.equal(snapshot.files.get(path.join(root,'a.txt')),'正文');
+});
 
 test('额度定时刷新不会掩盖超过十二分钟无进展的任务',()=>{
  const {provider,messages}=providerFixture();

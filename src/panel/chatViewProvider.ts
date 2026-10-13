@@ -153,6 +153,7 @@ function bashWritePaths(cmd: string, cwd: string): string[] {
 }
 const ORIG_SCHEME = "codex-orig";
 const LAST_SESSION_KEY = "codexChat.lastSession";
+const LOCAL_SNAPSHOT_EXCLUDES_KEY = "codexChat.localSnapshotExcludes";
 interface SessionCtx {
     snapshot?: WorkspaceSnapshot;
     finalizing?: Promise<void>;
@@ -209,6 +210,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private lastUsage?: ToWebview;
     private readonly snapshotWarningSignatures = new Map<string, string>();
     private readonly snapshotWarningPaths = new Map<string, Set<string>>();
+    private snapshotExclusionUpdate: Promise<void> = Promise.resolve();
     private layoutFixing = false;
     private readonly origChanged = new vscode.EventEmitter<vscode.Uri>();
     private terminal?: vscode.Terminal;
@@ -1223,18 +1225,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 if (!byFolder.has(folder)) byFolder.set(folder, []);
                 byFolder.get(folder)!.push(rel);
             }
-            for (const [folder, rels] of byFolder) {
-                const config = vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(folder));
-                const existing = config.get<string[]>("snapshotExclude", []);
-                const next = [...new Set([...existing, ...rels])];
-                const target = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(folder))
-                    ? vscode.ConfigurationTarget.WorkspaceFolder : vscode.ConfigurationTarget.Workspace;
-                await config.update("snapshotExclude", next, target);
-            }
-            this.post(ctx, { kind: "snapshot_exclude_result", ok: true, message: `已排除 ${selected.length} 项，下一轮快照生效。`, paths: selected });
+            await this.queueSnapshotExclusionUpdate(async () => {
+                const saved = { ...this.context.workspaceState.get<Record<string, string[]>>(LOCAL_SNAPSHOT_EXCLUDES_KEY, {}) };
+                for (const [folder, rels] of byFolder)
+                    saved[folder] = [...new Set([...(saved[folder] ?? []), ...rels])];
+                // 用户从提示卡选择的排除项属于本机偏好，不能写入项目 settings.json。
+                await this.context.workspaceState.update(LOCAL_SNAPSHOT_EXCLUDES_KEY, saved);
+            });
+            this.post(ctx, { kind: "snapshot_exclude_result", ok: true, message: `已在本机排除 ${selected.length} 项，下一轮快照生效；未修改项目文件。`, paths: selected });
         } catch (err) {
             this.post(ctx, { kind: "snapshot_exclude_result", ok: false, message: `排除失败：${String(err)}`, paths: [] });
         }
+    }
+    private queueSnapshotExclusionUpdate(update: () => Promise<void>): Promise<void> {
+        const pending = this.snapshotExclusionUpdate.then(update);
+        this.snapshotExclusionUpdate = pending.catch(() => {});
+        return pending;
+    }
+    private localSnapshotExcludedPaths(roots: string[]): Set<string> {
+        const saved = this.context.workspaceState.get<Record<string, string[]>>(LOCAL_SNAPSHOT_EXCLUDES_KEY, {});
+        return new Set(roots.flatMap(root => (saved[root] ?? []).map(rel => path.join(root, rel))));
+    }
+    async resetLocalSnapshotExcludes(): Promise<void> {
+        await this.queueSnapshotExclusionUpdate(async () => { await this.context.workspaceState.update(LOCAL_SNAPSHOT_EXCLUDES_KEY, undefined); });
+        this.snapshotWarningSignatures.clear();
+        vscode.window.showInformationMessage("已清除当前工作区的本机快照排除记录，下一轮生效。settings.json 中已有的手动规则保持不变。");
     }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
@@ -1270,7 +1285,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (!this.config().get<boolean>("snapshotFilesForRestore", true)) return;
             const roots = this.workspaceDirs();
             const excludes = new Map(roots.map(root => [root, vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(root)).get<string[]>("snapshotExclude", [])]));
-            const snapshot = new WorkspaceSnapshot(roots, 20000, excludes);
+            const snapshot = new WorkspaceSnapshot(roots, 20000, excludes, this.localSnapshotExcludedPaths(roots));
             const snapshotAt = Date.now();
             await snapshot.capture();
             ctx.snapshot = snapshot;

@@ -89,6 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 
     vscode.commands.registerCommand("codex-chat.notifyConfig", () => provider.showNotifyConfig()),
+    vscode.commands.registerCommand("codex-chat.resetLocalSnapshotExcludes", () => provider.resetLocalSnapshotExcludes()),
     vscode.commands.registerCommand("codex-chat.openLogs", () => {
       try {
         fs.mkdirSync(LOG_DIR, { recursive: true });
