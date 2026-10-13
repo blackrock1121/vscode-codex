@@ -11,7 +11,7 @@ import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
 import { questionStateFile, deleteQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents } from "../codex/events";
-import { SessionStore } from "../codex/session";
+import { SessionStore, sessionTabTitle } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
 import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SpeedMode, configuredSpeedMode, isSpeedMode, speedLabel, supportsSpeed, billingKind, SessionSummary, ToWebview } from "../shared";
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -529,7 +529,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const title = ctx.sessionId
             ? (list ?? this.store.list()).find((s) => s.id === ctx.sessionId)?.title
             : undefined;
-        ctx.panel.title = title?.trim() || "Codex Copilot";
+        ctx.panel.title = sessionTabTitle(title);
+    }
+    closeActiveSession(): void {
+        // 只关闭当前聚焦的会话，不能误用切到文件编辑器前残留的 activeCtx。
+        const ctx = [...this.sessions].find(session => session.panel.active);
+        ctx?.panel.dispose();
     }
     async openSession(sessionId?: string): Promise<void> {
         this.output.appendLine(`[${new Date().toISOString()}] [open] ${sessionId ? sessionId.slice(0, 8) : "新会话"}`);

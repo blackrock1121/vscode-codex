@@ -17,6 +17,35 @@ const originalLoad=Module._load;
 Module._load=function(id,...args){if(id==='vscode')return vscode;return originalLoad.call(this,id,...args);};
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
+const {sessionTabTitle}=require('../dist/test/codex/session.js');
+
+test('长标签限制显示宽度，保留完整会话名和完整表情',()=>{
+ const title='现在是的飞书通知点击是跳转到了飞书的页面';
+ const list=[{id:'long',title}];
+ const provider=Object.create(ChatViewProvider.prototype);
+ const ctx={sessionId:'long',panel:{}};
+ provider.setPanelTitle(ctx,list);
+ assert.equal(ctx.panel.title,'现在是的飞书通知点击是…');
+ assert.equal(list[0].title,title);
+ assert.equal(sessionTabTitle('  短标题  '),'短标题');
+ assert.equal(sessionTabTitle(''),'Codex Copilot');
+ assert.equal(sessionTabTitle('a'.repeat(25)),'a'.repeat(22)+'…');
+ assert.equal(sessionTabTitle('👨‍👩‍👧‍👦'.repeat(13)),'👨‍👩‍👧‍👦'.repeat(11)+'…');
+});
+
+test('固定关闭入口只关闭当前聚焦会话，不误关后台会话或删除历史',async t=>{
+ const provider=await fixture(t),closed=[];
+ const background={sessionId:'background',panel:{active:false,dispose:()=>closed.push('background')}};
+ const current={sessionId:'current',panel:{active:true,dispose:()=>closed.push('current')}};
+ provider.sessions=new Set([background,current]);
+ provider.activeCtx=background;
+ provider.store.delete=()=>assert.fail('关闭标签不能删除会话历史');
+ provider.closeActiveSession();
+ assert.deepEqual(closed,['current']);
+ current.panel.active=false;
+ provider.closeActiveSession();
+ assert.deepEqual(closed,['current']);
+});
 
 async function fixture(t){
  commands.length=0;

@@ -80,6 +80,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("codex-chat.newSession", () => provider.newSession()),
     vscode.commands.registerCommand("codex-chat.showSessions", () => provider.showSessions()),
+    vscode.commands.registerCommand("codex-chat.closeSession", () => provider.closeActiveSession()),
     vscode.commands.registerCommand("codex-chat.stop", () => provider.stop()),
     vscode.commands.registerCommand("codex-chat.focusInput", () => provider.focusInput()),
     vscode.commands.registerCommand("codex-chat.addSelectionToChat", () => provider.addSelection()),

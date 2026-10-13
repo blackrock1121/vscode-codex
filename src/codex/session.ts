@@ -2,6 +2,21 @@ import { CodexRpc } from './rpc';
 import { timeline, userView } from './events';
 import { SessionSummary, TimelineItem } from '../shared';
 
+/** 仅缩短编辑器标签，不改会话名称；为原生关闭按钮留出空间。 */
+export function sessionTabTitle(title?: string): string {
+  const text = title?.replace(/\s+/g, ' ').trim() || 'Codex Copilot';
+  const parts = Array.from(new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text), s => s.segment);
+  const width = (s: string) => /^[\x20-\x7e]+$/.test(s) ? s.length : 2;
+  if (parts.reduce((n, s) => n + width(s), 0) <= 24) return text;
+  let result = '', used = 0;
+  for (const part of parts) {
+    if (used + width(part) > 22) break;
+    result += part;
+    used += width(part);
+  }
+  return result.trimEnd() + '…';
+}
+
 /** Codex 的 preview 是首条消息正文，直接作为标签名会把整段提问塞进标题栏。 */
 export function previewTitle(preview: string): string {
   const firstLine = String(preview || '').split(/\r?\n/).map(line => line.trim()).find(Boolean) || '';

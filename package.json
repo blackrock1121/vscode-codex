@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.54",
+  "version": "0.1.55",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -68,6 +68,11 @@
         "command": "codex-chat.stop",
         "title": "Codex: 停止当前轮次",
         "icon": "$(stop-circle)"
+      },
+      {
+        "command": "codex-chat.closeSession",
+        "title": "Codex: 关闭当前会话标签页",
+        "icon": "$(close)"
       },
       {
         "command": "codex-chat.focusInput",
@@ -140,6 +145,11 @@
         }
       ],
       "editor/title": [
+        {
+          "command": "codex-chat.closeSession",
+          "when": "activeWebviewPanelId == 'codex-chat.editor'",
+          "group": "navigation@0"
+        },
         {
           "command": "codex-chat.open",
           "when": "resourceScheme == file",
