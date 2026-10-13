@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
+import { parseFileRef } from "../fileRef";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind } from "../shared";
 import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, supportsSpeed } from "../shared";
 
@@ -2334,16 +2335,12 @@ const FILE_EXT = new Set([
 ]);
 
 function parseCodeRef(s: string): { path: string; line?: number; endLine?: number } | null {
-  const t = s.trim();
-  const m = /^([~\w./\\@\-+ ()]+\.[A-Za-z0-9]{1,10})(?::(\d+)(?:[:-](\d+))?)?$/.exec(t);
+  const ref = parseFileRef(s);
+  const m = /^([~\w./\\@\-+ ()]+\.[A-Za-z0-9]{1,10})$/.exec(ref.path);
   if (!m) return null;
   const ext = (m[1].split(".").pop() || "").toLowerCase();
   if (!FILE_EXT.has(ext)) return null;
-  return {
-    path: m[1],
-    line: m[2] ? parseInt(m[2], 10) : undefined,
-    endLine: m[3] ? parseInt(m[3], 10) : undefined,
-  };
+  return ref;
 }
 
 const REF_RE =
@@ -2429,24 +2426,24 @@ function linkifyRefs(container: HTMLElement, validate = true) {
   //    链接，也不给点不动的链接）。网页和邮件链接由点击事件交给扩展宿主。
   container.querySelectorAll("a").forEach((a) => {
     const href = a.getAttribute("href") || "";
-    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(href)?.[1].toLowerCase();
+    const ref = parseFileRef(href);
+    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(ref.path)?.[1].toLowerCase();
     if (scheme === "http" || scheme === "https" || scheme === "mailto") return;
     const span = document.createElement("span");
     span.textContent = a.textContent || href;
-    const m = /^([^#?]+?)(?:#L?(\d+)(?:[-–]L?(\d+))?)?$/.exec(href);
-    if (m && m[1] && m[1] !== "#" && (!scheme || scheme === "file")) {
+    if (ref.path && !/[#?]/.test(ref.path) && (!scheme || scheme === "file")) {
       // 非法百分号序列（如 caf%E9.md）会让 decodeURIComponent 抛 URIError——
       // 这里一炸，整段历史/流式渲染就断了，会话永久打不开。原样保留即可。
-      let decoded = m[1];
+      let decoded = ref.path;
       if (!/^file:/i.test(decoded)) {
         try { decoded = decodeURIComponent(decoded); } catch { /* keep raw */ }
       }
       span.className = "code-ref";
       span.dataset.action = "open";
       span.dataset.path = decoded;
-      if (m[2]) span.dataset.line = m[2];
-      if (m[3]) span.dataset.endline = m[3];
-      span.title = "打开 " + decoded + (m[2] ? `:${m[2]}` : "");
+      if (ref.line) span.dataset.line = String(ref.line);
+      if (ref.endLine) span.dataset.endline = String(ref.endLine);
+      span.title = "打开 " + decoded + (ref.line ? `:${ref.line}` : "");
     }
     a.replaceWith(span);
   });

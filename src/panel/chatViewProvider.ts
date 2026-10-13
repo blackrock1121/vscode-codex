@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
+import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { formatLocalNotification, localNotificationsSupported, sendLocalNotification } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
@@ -3060,7 +3061,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return syms.filter(({ name }) => results.get(name) === false).map(({ id }) => id);
     }
     private async fileRefResolves(ref: string): Promise<boolean> {
-        const p = ref.replace(/:\d+(?:-\d+)?$/, "").trim();
+        const p = parseFileRef(ref).path;
         if (!p)
             return false;
         return !!(await this.resolveWorkspaceFile(p, false));
@@ -3086,6 +3087,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async openFile(ctx: SessionCtx, p: string, line?: number, endLine?: number): Promise<void> {
         const t0 = Date.now();
         try {
+            const ref = parseFileRef(p);
+            p = ref.path;
+            line ??= ref.line;
+            endLine ??= ref.endLine;
             const abs = await this.resolveWorkspaceFile(p, true);
             if (!abs) {
                 this.output.appendLine(`[openFile] ${p} 未找到 (${Date.now() - t0}ms)`);

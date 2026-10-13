@@ -12,7 +12,7 @@ const vscode={
   workspace:{findFiles:async()=>{calls.push('findFiles');return found.map(fsPath=>({fsPath}));},asRelativePath:p=>p,openTextDocument:async p=>{calls.push(['openTextDocument',p]);return {lineCount:2,lineAt:n=>({text:n?'末行':'首行'})};}},
   commands:{executeCommand:async(...args)=>{calls.push(['command',...args]);}},
   env:{openExternal:async uri=>{calls.push(['external',uri.fsPath]);return true;}},
-  window:{showTextDocument:async()=>({selection:null,revealRange:()=>{}}),showErrorMessage:m=>calls.push(['error',m]),showWarningMessage:m=>calls.push(['warning',m])},
+  window:{showTextDocument:async()=>({selection:null,revealRange:range=>calls.push(['revealRange',range])}),showErrorMessage:m=>calls.push(['error',m]),showWarningMessage:m=>calls.push(['warning',m])},
   Position:class{constructor(line,character){this.line=line;this.character=character;}},
   Selection:class{constructor(start,end){this.start=start;this.end=end;}},
   Range:class{constructor(start,end){this.start=start;this.end=end;}},
@@ -69,4 +69,36 @@ test('本地图片读取为 data URI，只接受图片且限制体积',async t=>
   assert.equal(await proto.loadLocalImage.call(ctx,jpg),'data:image/jpeg;base64,/9j/');
   assert.equal(await proto.loadLocalImage.call(ctx,txt),undefined);
   assert.equal(await proto.loadLocalImage.call(ctx,large),undefined);
+});
+
+test('带行号的调用代码链接校验与打开一致，且定位到指定行',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-code-link-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const file=path.join(root,'Plug ServiceImpl.java');
+  await fs.writeFile(file,Array.from({length:200},(_,i)=>`line ${i+1}`).join('\n'));
+  const originalOpen=vscode.workspace.openTextDocument;
+  t.after(()=>{vscode.workspace.openTextDocument=originalOpen;});
+  vscode.workspace.openTextDocument=async p=>{
+    calls.push(['openTextDocument',p]);
+    const lines=(await fs.readFile(p,'utf8')).split('\n');
+    return {lineCount:lines.length,lineAt:n=>({text:lines[n]})};
+  };
+  const ctx={cwd:()=>root,workspaceDirs:()=>[root],resolveWorkspaceFile:proto.resolveWorkspaceFile,codeColumn:()=>2,output:{appendLine:()=>{}}};
+  for(const [ref,line,end] of [
+    [file+':149',149,149],
+    [file+':149-153',149,153],
+    [file+'#L149-L153',149,153],
+    [file+':149:7',149,149],
+    ['file://'+file.replace(/ /g,'%20')+':149',149,149],
+  ]){
+    calls.length=0;
+    assert.equal(await proto.fileRefResolves.call(ctx,ref),true,ref);
+    await proto.openFile.call(ctx,{},ref);
+    assert.ok(calls.some(c=>c[0]==='openTextDocument'&&c[1]===file),ref);
+    const range=calls.find(c=>c[0]==='revealRange')?.[1];
+    assert.ok(range,ref);
+    assert.equal(range.start.line,line-1);
+    assert.equal(range.end.line,end-1);
+    assert.equal(calls.some(c=>c[0]==='error'||c[0]==='warning'),false);
+  }
 });
