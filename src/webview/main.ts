@@ -677,8 +677,8 @@ function startTick() {
 const composerEl = $("composer");
 const jumpLatestBtn = el("button", "jump-latest hidden") as HTMLButtonElement;
 jumpLatestBtn.type = "button";
-jumpLatestBtn.title = "跳转到底部并跟随最新回复";
-jumpLatestBtn.innerHTML = `${ICON.chevron}<span>回到最新回复</span>`;
+jumpLatestBtn.title = "跳到最新已输出的末尾，并跟随后续输出";
+jumpLatestBtn.innerHTML = `${ICON.chevron}<span>跳到底部</span>`;
 messagesEl.parentElement!.appendChild(jumpLatestBtn);
 jumpLatestBtn.addEventListener("click", () => {
   closeMsgNav();
