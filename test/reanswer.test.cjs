@@ -222,6 +222,15 @@ test('工具返回相对路径时使用工作目录匹配快照，不误判缺�
  await f.provider.restoreCheckpoint(f.ctx,f.id,true);
  assert.equal(await fs.readFile(f.file,'utf8'),'提问前已完成的修改');
 });
+test('只读取的文件不登记为待回滚改动，不覆盖用户随后自行修改的内容',async t=>{
+ const f=await fixture(t);f.checkpoints.clear();const id=f.checkpoints.beginTurn(reply('A'),1,true);
+ f.ctx.snapshot=new WorkspaceSnapshot([f.workspace]);await f.ctx.snapshot.capture();
+ f.provider.handleEmitInner(f.ctx,{kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'source.txt'}});
+ await fs.writeFile(f.file,'用户自行修改');await f.provider.captureFinalSnapshot(f.ctx);
+ assert.deepEqual(f.checkpoints.changedPaths(),[]);
+ assert.equal(f.checkpoints.restore(id).restoredFiles,0);
+ assert.equal(await fs.readFile(f.file,'utf8'),'用户自行修改');
+});
 test('问题卡落盘失败时不回滚文件、不切换会话，并清理未完成的新分支',async t=>{
  const f=await fixture(t);const syncFs=require('node:fs');const rename=syncFs.renameSync;
  t.mock.method(syncFs,'renameSync',function(from,to){

@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
 export type SnapshotSkipReason = 'large' | 'binary' | 'limit' | 'symlink' | 'unreadable';
+const SYSTEM_METADATA_FILES = new Set(['.DS_Store', 'Thumbs.db', 'desktop.ini']);
 
 /** 匹配工作区相对路径：* 仅匹配一段，** 可跨目录。 */
 function globRegex(pattern: string): RegExp | undefined {
@@ -62,12 +63,14 @@ export class WorkspaceSnapshot {
           const dir = batch[j], entries = listed[j];
           if (!entries) { this.skip(dir, 'unreadable'); this.completeScan = false; continue; }
           for (const e of entries) {
-            if (out.length >= this.maxFiles) { this.skip(dir, 'limit'); this.completeScan = false; return out; }
             const full = path.join(dir, e.name);
             if (this.isExcluded(root, full)) continue;
             if (e.isSymbolicLink()) { this.skip(full, 'symlink'); continue; }
             if (e.isDirectory()) { if (!excluded.has(e.name)) next.push(full); }
-            else if (e.isFile()) out.push(full);
+            else if (e.isFile() && !SYSTEM_METADATA_FILES.has(e.name)) {
+              if (out.length >= this.maxFiles) { this.skip(full, 'limit'); this.completeScan = false; return out; }
+              out.push(full);
+            }
           }
         }
       }
@@ -91,6 +94,15 @@ export class WorkspaceSnapshot {
       return [s.ino, s.size, s.mtimeNs, s.ctimeNs, s.mode].join(":");
     } catch { return undefined; }
   }
+  private async fingerprints(files: string[]): Promise<Map<string, string | undefined>> {
+    const result = new Map<string, string | undefined>();
+    for (let i = 0; i < files.length; i += this.readConcurrency) {
+      const batch = files.slice(i, i + this.readConcurrency);
+      const values = await Promise.all(batch.map(file => this.fingerprint(file)));
+      batch.forEach((file, index) => result.set(file, values[index]));
+    }
+    return result;
+  }
   /** Overlap disk reads while bounding transient buffers and preserving file order. */
   private async readBatch(files: string[], visit: (file: string, result: { text?: string; reason?: SnapshotSkipReason }) => void): Promise<void> {
     for (let i = 0; i < files.length; i += this.readConcurrency) {
@@ -106,7 +118,7 @@ export class WorkspaceSnapshot {
       if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); return; }
       this.files.set(file, text); this.bytes += size;
     });
-    for (const file of this.skipped) this.skippedBaseline.set(file, await this.fingerprint(file));
+    this.skippedBaseline = await this.fingerprints([...this.skipped]);
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();
@@ -116,9 +128,9 @@ export class WorkspaceSnapshot {
     });
     const scansReady = Promise.all(this.roots.map(root => this.walk(root)));
     const [, scans] = await Promise.all([existingReady, scansReady]);
-    for (const file of this.skipped) {
+    for (const [file, current] of await this.fingerprints([...this.skipped])) {
       const before = this.skippedBaseline.get(file);
-      if (!before || before !== await this.fingerprint(file)) this.unrestorableChanges.add(file);
+      if (!before || before !== current) this.unrestorableChanges.add(file);
     }
     // An incomplete scan cannot distinguish a newly created file from an
     // original file that the baseline missed because of the file cap.

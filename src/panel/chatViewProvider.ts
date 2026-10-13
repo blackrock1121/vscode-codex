@@ -1215,16 +1215,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private reportSnapshotSkips(ctx: SessionCtx, snapshot: WorkspaceSnapshot): void {
         const key = this.workspaceDirs().join("\0");
+        const problemKey = key + "\0problems";
         const entries = [...snapshot.skipReasons.entries()].sort(([a], [b]) => a.localeCompare(b));
         this.snapshotWarningPaths.set(key, new Set(entries.map(([file]) => file)));
-        if (!entries.length) { this.snapshotWarningSignatures.delete(key); return; }
+        if (!entries.length) {
+            this.snapshotWarningSignatures.delete(key);
+            this.snapshotWarningSignatures.delete(problemKey);
+            return;
+        }
         const signature = JSON.stringify(entries);
         if (this.snapshotWarningSignatures.get(key) === signature) return;
         this.snapshotWarningSignatures.set(key, signature);
         const names: Record<string, string> = { large: "超过 2 MB", binary: "二进制", limit: "扫描或容量上限", symlink: "符号链接", unreadable: "无法读取" };
         const details = entries.map(([file, reason]) => `${vscode.workspace.asRelativePath(file)}（${names[reason]}）`);
         this.output.appendLine(`[snapshot] 未纳入自动回滚快照 ${entries.length} 项：\n${details.join("\n")}`);
-        this.post(ctx, { kind: "snapshot_skips", files: entries.slice(0, 20).map(([file, reason]) => ({ path: file, rel: vscode.workspace.asRelativePath(file), reason: names[reason] })), total: entries.length });
+        // 格式/体积/链接限制是正常跳过，无需用户逐项目点击“排除”。
+        // 保留变更检测：被跳过的资源若真被修改，还原时仍应阻止不完整回滚。
+        const problems = entries.filter(([, reason]) => reason === "limit" || reason === "unreadable");
+        if (!problems.length) { this.snapshotWarningSignatures.delete(problemKey); return; }
+        const problemSignature = JSON.stringify(problems);
+        if (this.snapshotWarningSignatures.get(problemKey) === problemSignature) return;
+        this.snapshotWarningSignatures.set(problemKey, problemSignature);
+        this.post(ctx, { kind: "notice", message: `工作区快照有 ${problems.length} 项读取失败或达到扫描/容量上限，部分文件可能无法完整回滚。无需逐项点击排除；原因见“输出 → Codex Chat”。` });
     }
     private async excludeSnapshotPaths(ctx: SessionCtx, paths?: string[], all?: boolean): Promise<void> {
         const key = this.workspaceDirs().join("\0");
@@ -1267,7 +1279,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     async resetLocalSnapshotExcludes(): Promise<void> {
         await this.queueSnapshotExclusionUpdate(async () => { await this.context.workspaceState.update(LOCAL_SNAPSHOT_EXCLUDES_KEY, undefined); });
         this.snapshotWarningSignatures.clear();
-        vscode.window.showInformationMessage("已清除当前工作区的本机快照排除记录，下一轮生效。settings.json 中已有的手动规则保持不变。");
+        vscode.window.showInformationMessage("已清除当前工作区的本机快照排除记录，下一轮恢复扫描。settings.json 中已有的手动规则保持不变。");
     }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
@@ -2635,14 +2647,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         }
         ctx.lastEmitAt = Date.now();
-        if (e.kind === "tool_input" && ctx.snapshot) {
+        if (e.kind === "tool_input" && ctx.snapshot && !["Read", "WebSearch", "TodoWrite", "Skill"].includes(e.name)) {
             const paths = Array.isArray(e.input.changes) ? e.input.changes.map((c: any) => c.path) : [e.input.file_path];
             for (const raw of paths) {
                 if (typeof raw !== "string" || !raw) continue;
                 const file = path.isAbsolute(raw) ? path.normalize(raw) : path.resolve(this.cwd(), raw);
                 if (ctx.snapshot.files.has(file))
                     ctx.checkpoints.recordSnapshot(file, ctx.snapshot.files.get(file)!);
-                else if (!["Read", "WebSearch", "TodoWrite", "Skill"].includes(e.name))
+                else
                     ctx.checkpoints.recordUnrestorable([file]);
             }
         }

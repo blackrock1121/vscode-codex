@@ -4,7 +4,7 @@ const fs=require('node:fs/promises');
 const os=require('node:os');
 const path=require('node:path');
 const Module=require('node:module');
-const vscode={workspace:{textDocuments:[]},Uri:{from:x=>x},window:{showInformationMessage:()=>{}}};
+const vscode={workspace:{textDocuments:[],asRelativePath:p=>p},Uri:{from:x=>x},window:{showInformationMessage:()=>{}}};
 const originalLoad=Module._load;
 Module._load=function(id,...args){if(id==='vscode')return vscode;return originalLoad.call(this,id,...args);};
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
@@ -42,6 +42,42 @@ function exclusionFixture(roots){
  provider.workspaceDirs=()=>roots;
  return {provider,messages,state,warned:provider.snapshotWarningPaths.get(roots.join('\0'))};
 }
+test('常规快照跳过只记录原因，换项目不再要求点击排除，也不自动保存排除规则',()=>{
+ for(const root of ['/project-a','/project-b']){
+  const {provider,messages,state}=exclusionFixture([root]),logs=[];
+  provider.output.appendLine=line=>logs.push(line);
+  const snapshot={skipReasons:new Map([[root+'/icon.png','binary'],[root+'/big.json','large'],[root+'/linked','symlink']])};
+  provider.reportSnapshotSkips({},snapshot);provider.reportSnapshotSkips({},snapshot);
+  assert.deepEqual(messages,[]);assert.equal(state.size,0);assert.equal(logs.length,1);
+  assert.match(logs[0],/二进制/);assert.match(logs[0],/超过 2 MB/);assert.match(logs[0],/符号链接/);
+ }
+});
+test('读取失败或扫描上限简短提醒，常规跳过清单变化不重复提醒同一个问题',()=>{
+ const {provider,messages}=exclusionFixture(['/project']);
+ const snapshot={skipReasons:new Map([['/project/unreadable','unreadable'],['/project/capped','limit']])};
+ provider.reportSnapshotSkips({},snapshot);
+ snapshot.skipReasons.set('/project/image.png','binary');provider.reportSnapshotSkips({},snapshot);
+ assert.equal(messages.length,1);assert.equal(messages[0].kind,'notice');
+ assert.match(messages[0].message,/2 项读取失败或达到扫描\/容量上限/);
+ assert.equal(messages.some(m=>m.kind==='snapshot_skips'),false);
+ snapshot.skipReasons.clear();provider.reportSnapshotSkips({},snapshot);
+ snapshot.skipReasons.set('/project/unreadable','unreadable');provider.reportSnapshotSkips({},snapshot);
+ assert.equal(messages.length,2,'问题消失后再次出现仍需提醒');
+});
+test('系统元数据及已排除路径不占文件名额，不把恰好达到上限误报成扫描不完整',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-snapshot-cap-'));
+ t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ await fs.writeFile(path.join(root,'a.txt'),'源码');await fs.writeFile(path.join(root,'z.log'),'排除');
+ await fs.mkdir(path.join(root,'node_modules'));
+ for(const file of ['.DS_Store','Thumbs.db','desktop.ini'])await fs.writeFile(path.join(root,file),Buffer.from([0,1,2]));
+ const snapshot=new WorkspaceSnapshot([root],1,['*.log']);await snapshot.capture();
+ assert.deepEqual([...snapshot.files.keys()],[path.join(root,'a.txt')]);assert.equal(snapshot.skipped.size,0);
+ await fs.writeFile(path.join(root,'a.txt'),'修改');const changes=await snapshot.changed();
+ assert.equal(changes.get(path.join(root,'a.txt')),'源码');assert.equal(snapshot.unrestorableChanges.size,0);
+ await fs.writeFile(path.join(root,'b.txt'),'第二个文件');
+ const overflow=new WorkspaceSnapshot([root],1,['*.log']);await overflow.capture();
+ assert.ok([...overflow.skipReasons.values()].includes('limit'));
+});
 
 test('排除按钮只保存本机记录，并发选择不会覆盖，重载后按工作区根目录隔离',async()=>{
  const {provider,messages,state,warned}=exclusionFixture(['/project','/project/nested']);
