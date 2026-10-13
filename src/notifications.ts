@@ -9,20 +9,39 @@ import { randomUUID } from "node:crypto";
 const exec = promisify(execFile);
 export const NOTIFIER_APP = "Codex Copilot Notifications.app";
 
+const PROJECT_TITLE_WIDTH = 26;
+const graphemeWidth = (value: string): number => /[^\x00-\xff]/.test(value) ? 2 : value.length;
+const displayWidth = (value: string): number => [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)]
+    .reduce((total, { segment }) => total + graphemeWidth(segment), 0);
+
+function compact(value: string, limit: number): string {
+    const segments = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value.replace(/\s+/g, " ").trim())];
+    if (segments.reduce((total, item) => total + graphemeWidth(item.segment), 0) <= limit) return segments.map(item => item.segment).join("");
+    let text = "", used = 0;
+    for (const { segment } of segments) {
+        if (used + graphemeWidth(segment) > limit - 2) break;
+        text += segment;
+        used += graphemeWidth(segment);
+    }
+    return text + "…";
+}
+
+/** 未保存工作区用目录组合识别，不依赖“无标题”的界面语言。 */
+export function localNotificationProject(fallback = ""): string {
+    const { name, workspaceFile, workspaceFolders } = vscode.workspace;
+    if (workspaceFile?.scheme !== "untitled" && name?.trim()) return name;
+    const folders = (workspaceFolders ?? []).map(folder => folder.name.replace(/\s+/g, " ").trim()).filter(Boolean);
+    if (folders.length < 2) return folders[0] || fallback;
+    const suffix = folders.length > 2 ? ` +${folders.length - 2}` : "";
+    const available = PROJECT_TITLE_WIDTH - displayWidth(suffix) - 3; // “ / ”分隔符
+    // 分别截短两个目录，避免首个长名称挤掉第二个目录和剩余数量。
+    const firstLimit = Math.max(Math.ceil(available / 2), available - displayWidth(folders[1]));
+    const secondLimit = available - Math.min(displayWidth(folders[0]), firstLimit);
+    return `${compact(folders[0], firstLimit)} / ${compact(folders[1], secondLimit)}${suffix}`;
+}
+
 /** 标题突出来源工作区，正文只放耗时和一行摘要，完整内容在会话里查看。 */
 export function formatLocalNotification(message: string, extra: Record<string, unknown>): { title: string; body: string } {
-    const compact = (value: string, limit: number): string => {
-        const segments = [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value.replace(/\s+/g, " ").trim())];
-        const width = (value: string) => /[^\x00-\xff]/.test(value) ? 2 : value.length;
-        if (segments.reduce((total, item) => total + width(item.segment), 0) <= limit) return segments.map(item => item.segment).join("");
-        let text = "", used = 0;
-        for (const { segment } of segments) {
-            if (used + width(segment) > limit - 2) break;
-            text += segment;
-            used += width(segment);
-        }
-        return text + "…";
-    };
     const [originalTitle, ...lines] = message.split("\n");
     const duration = originalTitle.match(/（(?:耗时|距上次操作)\s*(.*?)）/)?.[1]
         .replace(/\s+/g, "").replace(/分0秒$/, "分");
@@ -35,7 +54,7 @@ export function formatLocalNotification(message: string, extra: Record<string, u
     else if (originalTitle.startsWith("⚠️ Codex 任务出错")) { icon = "⚠️"; status = "出错"; }
     else if (originalTitle === "🔔 Codex Copilot 本机通知测试") { icon = "🔔"; status = "通知测试"; }
     // 给状态留出空间，长工作区名只截断名称，避免标题换行或丢失状态。
-    const title = status ? `${icon} ${compact(project || "未命名工作区", 24)} · ${status}` : originalTitle;
+    const title = status ? `${icon} ${compact(project || "未命名工作区", PROJECT_TITLE_WIDTH)} · ${status}` : originalTitle;
     const detail = extra.waiting && typeof extra.ask === "string" ? extra.ask.replace(/^待(?:回答|授权)：/, "")
         : typeof extra.question === "string" ? extra.question : "";
     const timing = duration ? `${extra.waiting ? "等待" : "耗时"} ${duration}` : "";

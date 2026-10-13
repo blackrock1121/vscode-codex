@@ -114,6 +114,53 @@ test('本机通知用自定义工作区名称区分窗口，保留会话路由�
   assert.deepEqual(local.at(-1), ['✅ 公司项目 · 已完成', '耗时 1分5秒\n修复通知', 'session-A']);
 });
 
+test('未保存的多目录工作区按目录组合显示，完成和等待通知都保留状态及路由', async t => {
+  config = { notifyLocal: true };
+  const before = { ...vscode.workspace };
+  t.after(() => { Object.assign(vscode.workspace, { name: undefined, workspaceFile: undefined }, before); });
+  vscode.workspace.workspaceFile = { scheme: 'untitled' };
+  vscode.workspace.workspaceFolders = [{ name: 'game-server' }, { name: 'funny-games' }];
+  const p = provider(), local = [];
+  p.sendLocalNotice = async (...args) => local.push(args);
+  for (const name of ['无标题 (工作区)', 'Untitled (Workspace)', 'Sans titre (Espace de travail)']) {
+    vscode.workspace.name = name;
+    p.dispatchNotification({ sessionId: 'session-A' }, '✅ Codex 任务完成（耗时 3 分 29 秒）', { project: 'game-server', question: '优化通知' });
+    p.dispatchNotification({ sessionId: 'session-B' }, '⏳ Codex 正在等你输入（距上次操作 2 分 0 秒）', { project: 'game-server', waiting: true, ask: '待授权：运行命令' });
+    await flush();
+    assert.deepEqual(local.slice(-2), [
+      ['✅ game-server / funny-games · 已完成', '耗时 3分29秒\n优化通知', 'session-A'],
+      ['⏳ game-server / funny-games · 待授权', '等待 2分\n运行命令', 'session-B'],
+    ]);
+  }
+  vscode.workspace.workspaceFolders = [{ name: 'game-server' }];
+  p.dispatchNotification({}, '✅ Codex 任务完成', { project: 'game-server' });
+  assert.equal(local.at(-1)[0], '✅ game-server · 已完成');
+  vscode.workspace.workspaceFolders = [];
+  p.dispatchNotification({}, '✅ Codex 任务完成', { project: '' });
+  assert.equal(local.at(-1)[0], '✅ 未命名工作区 · 已完成');
+  vscode.workspace.workspaceFile = { scheme: 'file' };
+  vscode.workspace.name = 'Untitled';
+  p.dispatchNotification({}, '✅ Codex 任务完成', { project: '' });
+  assert.equal(local.at(-1)[0], '✅ Untitled · 已完成', '显式保存的工作区名称不按文字猜测');
+});
+
+test('多目录长名称分别截短，中文和 emoji 完整且保留剩余目录数', async t => {
+  config = { notifyLocal: true };
+  const before = { ...vscode.workspace };
+  t.after(() => { Object.assign(vscode.workspace, { name: undefined, workspaceFile: undefined }, before); });
+  vscode.workspace.name = '无标题 (工作区)';
+  vscode.workspace.workspaceFile = { scheme: 'untitled' };
+  vscode.workspace.workspaceFolders = [
+    { name: '前端👩‍💻项目非常非常长的名称' }, { name: '后端👨‍💻项目非常非常长的名称' },
+    { name: 'shared' }, { name: 'tools' },
+  ];
+  const p = provider(), local = [];
+  p.sendLocalNotice = async (...args) => local.push(args);
+  p.dispatchNotification({}, '✅ Codex 任务完成', { project: '前端项目' });
+  await flush();
+  assert.equal(local[0][0], '✅ 前端👩‍💻项… / 后端👨‍💻项… +2 · 已完成');
+});
+
 test('完成通知仍遵守阈值，无 webhook 时也能单独选择本机通知', () => {
   config = { notifyLocal: true, notifyMinDurationSec: 60 };
   const p = provider(), calls = [];

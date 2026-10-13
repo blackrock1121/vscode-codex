@@ -5,7 +5,7 @@ import * as fs from "node:fs";
 import * as https from "node:https";
 import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
-import { formatLocalNotification, localNotificationsSupported, sendLocalNotification } from "../notifications";
+import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
@@ -2248,7 +2248,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     case "notifyLocalTest": {
                         try {
                             const notice = formatLocalNotification("🔔 Codex Copilot 本机通知测试", {
-                                project: vscode.workspace.name || vscode.workspace.workspaceFolders?.[0]?.name || "",
+                                project: localNotificationProject(),
                                 question: "点击返回当前窗口的任务推送设置。",
                             });
                             await this.sendLocalNotice(notice.title, notice.body);
@@ -2679,7 +2679,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (cfg.get<boolean>("notifyLocal")) {
             const { title, body } = formatLocalNotification(msg, {
                 ...extra,
-                project: typeof extra.project === "string" ? vscode.workspace.name || extra.project : extra.project,
+                project: typeof extra.project === "string" ? localNotificationProject(extra.project) : extra.project,
             });
             void this.sendLocalNotice(title, body, ctx.sessionId).then(() => {
                 this.output.appendLine("[notify] 系统已接受本机通知");
