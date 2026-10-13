@@ -22,6 +22,44 @@ function setup(t){
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
  return {w,sent,errors,emit,states};
 }
+test('打开的选择菜单随窗口缩窄重新定位，矮窗口限制在按钮上方',t=>{
+ const {w}=setup(t);
+ let width=1280,height=800;
+ const composer=w.document.getElementById('composer');
+ composer.getBoundingClientRect=()=>({left:0,right:width,width,bottom:height});
+ for(const name of ['model','mode','speed']){
+  const menu=w.document.getElementById(name+'-menu');
+  const trigger=w.document.getElementById(name+'-trigger');
+  Object.defineProperty(menu,'offsetParent',{get:()=>composer});
+  Object.defineProperty(menu,'offsetWidth',{get:()=>Math.min(320,width-16)});
+  trigger.getBoundingClientRect=()=>({left:Math.max(16,(width-660)/2+90),top:height-80});
+  width=1280;height=800;trigger.click();
+  width=320;height=280;w.dispatchEvent(new w.Event('resize'));
+  const left=parseFloat(menu.style.left);
+  const bottom=height-parseFloat(menu.style.bottom);
+  const maxHeight=parseFloat(menu.style.getPropertyValue('--picker-available-height'));
+  assert.ok(left>=8&&left+menu.offsetWidth<=width-8,name+' 菜单应保持在横向边界内');
+  assert.ok(maxHeight>0&&bottom-maxHeight>=8,name+' 菜单顶部应留在窗口内');
+  assert.ok(bottom<trigger.getBoundingClientRect().top,name+' 菜单不能遮挡触发按钮');
+  w.document.getElementById('pick-backdrop').click();
+ }
+});
+test('已打开的额度菜单随窗口缩窄保持在可见范围内',t=>{
+ const {w,emit}=setup(t);
+ let width=1280,height=800;
+ const composer=w.document.getElementById('composer'),menu=w.document.getElementById('usage-menu');
+ const trigger=w.document.getElementById('usage-pill');
+ composer.getBoundingClientRect=()=>({left:0,right:width,width,bottom:height});
+ Object.defineProperty(menu,'offsetParent',{get:()=>composer});
+ Object.defineProperty(menu,'offsetWidth',{get:()=>Math.min(280,width-16)});
+ trigger.getBoundingClientRect=()=>({right:width-70,top:height-80});
+ emit({kind:'usage',weekPct:30});trigger.click();
+ width=300;height=280;w.dispatchEvent(new w.Event('resize'));
+ const right=width-parseFloat(menu.style.right);
+ const bottom=height-parseFloat(menu.style.bottom);
+ assert.ok(right<=width-8&&right-menu.offsetWidth>=8);
+ assert.ok(bottom-parseFloat(menu.style.getPropertyValue('--picker-available-height'))>=8);
+});
 test('自动压缩和静默等待均有可见提示，压缩完成后保持忙碌且不提前发送队列',async t=>{
  const {w,sent,emit}=setup(t);
  emit({kind:'busy',busy:true});

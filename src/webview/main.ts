@@ -633,8 +633,9 @@ function positionUsageMenu() {
   const pill = usagePill.getBoundingClientRect();
   const pr = parent.getBoundingClientRect();
   usageMenu.style.left = "auto";
-  usageMenu.style.right = `${Math.max(8, pr.right - pill.right)}px`;
+  usageMenu.style.right = `${Math.max(8, Math.min(pr.right - pill.right, pr.width - usageMenu.offsetWidth - 8))}px`;
   usageMenu.style.bottom = `${pr.bottom - pill.top + 6}px`;
+  usageMenu.style.setProperty("--picker-available-height", `${Math.max(0, pill.top - 14)}px`);
 }
 usagePill.addEventListener("click", (e) => {
   e.stopPropagation();
@@ -3551,10 +3552,18 @@ function positionPickMenu(menu: HTMLElement, trigger: HTMLElement) {
   const t = trigger.getBoundingClientRect();
   const pr = parent.getBoundingClientRect();
   menu.style.bottom = `${pr.bottom - t.top + 6}px`;
+  // 矮窗口里按按钮上方的实际空间限制高度，避免速度菜单顶部被裁掉。
+  menu.style.setProperty("--picker-available-height", `${Math.max(0, t.top - 14)}px`);
   // measure AFTER unhide, then keep the right edge inside the panel
   const w = menu.offsetWidth;
   menu.style.left = `${Math.max(8, Math.min(t.left - pr.left, pr.width - w - 8))}px`;
 }
+window.addEventListener("resize", () => {
+  for (const [menu, trigger] of [[modelMenu, modelTrigger], [modeMenu, modeTrigger], [speedMenu, speedTrigger]]) {
+    if (!menu.classList.contains("hidden")) positionPickMenu(menu, trigger);
+  }
+  if (!usageMenu.classList.contains("hidden")) positionUsageMenu();
+});
 modeTrigger.onclick = (e) => {
   e.stopPropagation();
   const open = !modeMenu.classList.contains("hidden");

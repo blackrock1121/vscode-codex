@@ -613,18 +613,20 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
 /* "Thinking · Ns" pill — shown while the model works between visible output */
 .working-pill {
   display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  max-width: 100%; overflow-wrap: anywhere;
   padding: 5px 2px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
-.working-pill .wk-label { font-weight: 500; }
+.working-pill .wk-label { min-width: 0; max-width: 100%; font-weight: 500; }
 .working-pill .wk-wait { flex-basis: 100%; line-height: 1.6; color: var(--vscode-editorWarning-foreground); }
 .working-pill .wk-time {
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
   opacity: .7;
 }
 .working-pill .wk-time::before { content: "· "; }
-.working-pill .wk-tokens { font-variant-numeric: tabular-nums; opacity: .7; }
+.working-pill .wk-tokens { white-space: nowrap; font-variant-numeric: tabular-nums; opacity: .7; }
 .working-pill .wk-tokens:not(:empty)::before { content: "· "; }
 
 /* Gentle entrance for messages & tool cards */
@@ -1143,7 +1145,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   font-family: var(--code-font); font-size: 10px;
   color: var(--vscode-descriptionForeground);
 }
-.askp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.askp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow-wrap: anywhere; }
 .askp-lbl { font-size: 12.5px; font-weight: 600; }
 .askp-desc { font-size: 11px; color: var(--vscode-descriptionForeground); line-height: 1.5; }
 .askp-check {
@@ -1223,7 +1225,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 }
 .perm-label b { font-weight: 400; }
 .perm-label.deny { color: var(--vscode-errorForeground, #f14c4c); }
-.perm-actions { display: flex; align-items: center; flex: 0 0 auto; gap: 6px; }
+.perm-actions { display: flex; flex-wrap: wrap; align-items: center; min-width: 0; max-width: 100%; gap: 6px; }
 .perm-bar button {
   border: 1px solid transparent; border-radius: 6px; cursor: pointer;
   padding: 5px 15px; font: inherit; font-size: 12px; line-height: 16px;
@@ -1451,7 +1453,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,.45);
   padding: 5px;
-  max-height: calc(100vh - 105px);
+  max-height: min(calc(100vh - 105px), var(--picker-available-height, 100vh));
   overflow-y: auto;
 }
 /* section label — quieter and tighter than a row, so it reads as a caption */
@@ -1959,7 +1961,7 @@ mark.find-hit.current {
   border-color: var(--vscode-focusBorder);
 }
 
-#speed-menu { max-height: min(560px, 75vh); overflow-y: auto; }
+#speed-menu { max-height: min(560px, 75vh, var(--picker-available-height, 100vh)); overflow-y: auto; }
 #speed-menu .pick-row:disabled { opacity: .65; cursor: not-allowed; }
 #speed-menu .pick-desc { white-space: normal; line-height: 1.5; }
 .speed-note { padding: 8px 12px; font-size: 11px; line-height: 1.6; color: var(--vscode-descriptionForeground); }
