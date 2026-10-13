@@ -106,6 +106,7 @@ export type ToWebview =
    *  等待随后的 busy:false + load_history 收尾（进程真实退出最长要等 5s）。 */
   | { kind: "restoring" }
   | { kind: "status"; label: string }
+  | { kind: "response_wait"; idleMs: number }
   | { kind: "block_start"; blockType: "text" | "thinking" | "tool_use"; toolId?: string; toolName?: string }
   | { kind: "block_end" }
   | { kind: "text_delta"; text: string }

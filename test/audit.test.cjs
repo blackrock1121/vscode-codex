@@ -53,6 +53,26 @@ test('真实输出延长超时，等待用户审批不触发超时',()=>{
  provider.checkTurnStall(ctx);
 });
 
+test('静默三十秒后提示等待，诊断和重试不刷新超时，真实进展清除提示',()=>{
+ const {provider,messages}=providerFixture();
+ const last=Date.now()-75000;
+ const ctx={lastEventAt:last,proc:{dispose:()=>assert.fail('短暂等待不能中断请求')}};
+ provider.sessions.add(ctx);
+ provider.checkTurnStall(ctx);
+ assert.ok(messages.some(e=>e.kind==='response_wait'&&e.idleMs>=75000));
+ for(const event of [{kind:'diag',message:'[rpc] account/read 2ms'},
+  {kind:'status',label:'Codex 正在重试请求…'},
+  {kind:'usage',weekPct:20}]) provider.handleEmitInner(ctx,event);
+ assert.equal(ctx.lastEventAt,last);
+ provider.handleEmitInner(ctx,{kind:'compacting'});
+ assert.ok(Date.now()-ctx.lastEventAt<1000);
+ assert.ok(messages.some(e=>e.kind==='response_wait'&&e.idleMs===0));
+ messages.length=0;
+ ctx.lastEventAt=Date.now()-20000;provider.checkTurnStall(ctx);
+ ctx.lastEventAt=last;ctx.pendingPerm={kind:'permission_request'};provider.checkTurnStall(ctx);
+ assert.equal(messages.length,0);
+});
+
 test('权限配置保存失败时不改变现有进程的权限',async()=>{
  const {provider,messages}=providerFixture();
  const ctx={};provider.sessions.add(ctx);

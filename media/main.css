@@ -612,12 +612,13 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
 
 /* "Thinking · Ns" pill — shown while the model works between visible output */
 .working-pill {
-  display: inline-flex; align-items: center; gap: 8px;
+  display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px;
   padding: 5px 2px;
   font-size: 12px;
   color: var(--vscode-descriptionForeground);
 }
 .working-pill .wk-label { font-weight: 500; }
+.working-pill .wk-wait { flex-basis: 100%; line-height: 1.6; color: var(--vscode-editorWarning-foreground); }
 .working-pill .wk-time {
   font-variant-numeric: tabular-nums;
   opacity: .7;

@@ -887,6 +887,16 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       // Host-driven transient hint (e.g. cold-start context loading). Cleared
       // as soon as the stream produces anything, or when the turn ends.
       statusLine.textContent = m.label;
+      if (isBusy && m.label) showWorking(m.label);
+      break;
+    case "response_wait":
+      assistantEl?.querySelector(".wk-wait")?.remove();
+      if (m.idleMs >= 30000 && isBusy && !stoppingView && !waitingQuestionId && glowState !== "waiting") {
+        const hint = el("span", "wk-wait", `已 ${Math.floor(m.idleMs / 1000)} 秒没有新的进展回传；可以继续等待，或点击停止后重试。`);
+        hint.setAttribute("role", "status");
+        assistantEl?.querySelector(".working-pill")?.appendChild(hint);
+        maybeScroll();
+      }
       break;
     case "block_start":
       statusLine.textContent = "";
@@ -952,6 +962,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       setToolResult(m.toolUseId, m.content, m.isError);
       break;
     case "permission_request":
+      assistantEl?.querySelector(".wk-wait")?.remove();
       setGlow("waiting"); // parked on the user — the rim pulses faster
       if (m.toolName === "AskUserQuestion") {
         waitingQuestionId = m.requestId;
@@ -1004,6 +1015,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       messagesEl.appendChild(renderCompactionDivider(m.preTokens, m.postTokens));
       scrollToBottom();
       updateContextGauge(m.postTokens, lastCtxTotal);
+      if (m.trigger === "auto" && isBusy) showWorking("上下文已压缩，等待继续回复…");
       break;
     case "rate_limit":
       renderRateLimit(m);
@@ -4093,7 +4105,7 @@ function setBusy(busy: boolean) {
   if (busy) {
     if (waitingQuestionId) removeWorking();
     else {
-      showWorking();
+      showWorking("等待 Codex 响应…");
       if (assistantEl) assistantEl.classList.add("streaming-turn");
     }
   } else {

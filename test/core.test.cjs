@@ -11,6 +11,21 @@ const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 const {diffCounts}=require('../dist/test/diff.js');
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const executable=path.resolve('test/fake-codex.cjs');
+test('自动压缩开始立即提示，完成后仍等待本轮回复，不能提前结束任务',()=>{
+ const events=[];
+ const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},
+  {emit:e=>events.push(e),onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});
+ p.busy=true;
+ const item={id:'auto-compact',type:'contextCompaction'};
+ p.notification({method:'item/started',params:{item}});
+ assert.deepEqual(events,[{kind:'compacting'}]);
+ p.notification({method:'item/completed',params:{item}});
+ assert.equal(events.at(-1).trigger,'auto');
+ assert.equal(p.isBusy,true);
+ assert.equal(events.some(e=>e.kind==='result'),false);
+ p.notification({method:'item/agentMessage/delta',params:{itemId:'reply',delta:'继续回复'}});
+ assert.equal(events.at(-1).text,'继续回复');
+});
 function waitUntil(predicate){return new Promise((resolve,reject)=>{const end=Date.now()+5000;const tick=()=>{if(predicate())resolve();else if(Date.now()>end)reject(Error('等待超时'));else setTimeout(tick,10);};tick();});}
 async function client(t,extra={}){const events=[],requests=[];const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',...extra},{emit:e=>events.push(e),onPermission:r=>requests.push(r),onSessionId:()=>{},onClose:()=>{}});t.after(()=>p.disposeAndWait());await p.start();return {p,events,requests};}
 test('初始化不发送预热；流式消息不重复且报告上下文',async t=>{const {p,events}=await client(t);assert.equal(events.some(e=>e.kind==='result'),false);assert.equal(p.sendUserMessage('你好'),true);await waitUntil(()=>events.some(e=>e.kind==='result'));assert.equal(events.filter(e=>e.kind==='text_delta').map(e=>e.text).join(''),'你好');assert.deepEqual(events.find(e=>e.kind==='context'),{kind:'context',used:123,total:1000});});

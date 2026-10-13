@@ -288,7 +288,15 @@ export class CodexProcess {
       }
       return;
     }
-    if (item.type === 'contextCompaction') { if (done) { this.emit({ kind: 'compacted', trigger: 'manual', preTokens: 0, postTokens: 0 }); if (this.compacting) this.finish(false); } return; }
+    if (item.type === 'contextCompaction') {
+      if (!done) this.emit({ kind: 'compacting' });
+      else {
+        this.emit({ kind: 'compacted', trigger: this.compacting ? 'manual' : 'auto', preTokens: 0, postTokens: 0 });
+        // 自动压缩只是轮次中的一个阶段，后面还要继续回复。
+        if (this.compacting) this.finish(false);
+      }
+      return;
+    }
     if (item.type === 'userMessage' || item.type === 'hookPrompt') return;
     this.tools.set(item.id, item);
     if (item.type === 'dynamicToolCall' && item.tool === 'AskUserQuestion') return;

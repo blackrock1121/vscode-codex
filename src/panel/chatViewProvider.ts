@@ -182,6 +182,7 @@ interface SessionCtx {
     lastUserText?: string;
     lastUserActionAt?: number;
     lastEventAt?: number;
+    responseWaitShown?: boolean;
     missedPings?: number;
     rebuildAt?: number;
     lastEmitAt?: number;
@@ -2428,8 +2429,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (ctx.pendingPerm)
             return;
         const idle = Date.now() - last;
-        if (idle < this.turnStallMs())
+        if (idle < this.turnStallMs()) {
+            if (idle >= 30000) {
+                ctx.responseWaitShown = true;
+                this.post(ctx, { kind: "response_wait", idleMs: idle });
+            }
             return;
+        }
         ctx.lastEventAt = undefined;
         ctx.sendAt = undefined;
         this.output.appendLine(`[${new Date().toISOString()}] [stall] session=${ctx.sessionId?.slice(0, 8)} CLI 静默 ${Math.round(idle / 1000)}s，判定卡死，丢弃进程`);
@@ -2491,9 +2497,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview): void {
         if (e.kind === "models") this.modelCatalog = e.models;
-        // 定时额度查询与账号通知不是任务进展，否则每三分钟刷新一次就永不超时。
-        if (ctx.lastEventAt !== undefined && !["usage", "rate_limit", "rate_limit_cleared", "models", "speed_context"].includes(e.kind))
+        // 额度查询、诊断及重试提示不是任务进展，不能掩盖长期静默。
+        if (ctx.lastEventAt !== undefined && !["usage", "rate_limit", "rate_limit_cleared", "models", "speed_context", "diag", "status", "notice", "response_wait"].includes(e.kind)) {
             ctx.lastEventAt = Date.now();
+            if (ctx.responseWaitShown) {
+                ctx.responseWaitShown = false;
+                this.post(ctx, { kind: "response_wait", idleMs: 0 });
+            }
+        }
         ctx.lastEmitAt = Date.now();
         if (e.kind === "tool_input" && ctx.snapshot) {
             const paths = Array.isArray(e.input.changes) ? e.input.changes.map((c: any) => c.path) : [e.input.file_path];

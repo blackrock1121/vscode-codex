@@ -22,6 +22,44 @@ function setup(t){
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
  return {w,sent,errors,emit,states};
 }
+test('自动压缩和静默等待均有可见提示，压缩完成后保持忙碌且不提前发送队列',async t=>{
+ const {w,sent,emit}=setup(t);
+ emit({kind:'busy',busy:true});
+ assert.match(w.document.querySelector('.wk-label').textContent,/等待 Codex 响应/);
+ emit({kind:'compacting'});
+ assert.match(w.document.querySelector('.wk-label').textContent,/正在压缩上下文/);
+ emit({kind:'response_wait',idleMs:75000});
+ assert.match(w.document.querySelector('.wk-wait').textContent,/75 秒.*停止后重试/);
+ emit({kind:'response_wait',idleMs:85000});
+ assert.equal(w.document.querySelectorAll('.wk-wait').length,1);
+ const input=w.document.getElementById('input');input.value='下一项';
+ w.document.getElementById('btn-send').click();
+ emit({kind:'response_wait',idleMs:0});
+ assert.equal(w.document.querySelector('.wk-wait'),null);
+ emit({kind:'compacted',trigger:'auto',preTokens:0,postTokens:0});
+ assert.match(w.document.querySelector('.wk-label').textContent,/上下文已压缩，等待继续回复/);
+ await new Promise(r=>setTimeout(r,180));
+ assert.equal(sent.some(e=>e.type==='send'),false);
+ emit({kind:'block_start',blockType:'text'});
+ emit({kind:'text_delta',text:'压缩后继续回复'});
+ assert.match(w.document.querySelector('.wk-label').textContent,/正在回复/);
+ emit({kind:'response_wait',idleMs:35000});
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ assert.equal(w.document.querySelector('.wk-wait'),null);
+ await new Promise(r=>setTimeout(r,180));
+ assert.deepEqual(sent.filter(e=>e.type==='send').map(e=>e.text),['下一项']);
+});
+test('重试状态直接显示在回复处，等待用户时移除静默提示',t=>{
+ const {w,emit}=setup(t);
+ emit({kind:'busy',busy:true});
+ emit({kind:'status',label:'Codex 正在重试请求…'});
+ assert.match(w.document.querySelector('.wk-label').textContent,/正在重试/);
+ emit({kind:'response_wait',idleMs:45000});
+ emit({kind:'permission_request',requestId:'q',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'请选择',options:[{label:'A'}]}]},suggestions:[]});
+ emit({kind:'response_wait',idleMs:75000});
+ assert.equal(w.document.querySelector('.wk-wait'),null);
+ assert.equal(w.document.querySelector('.working-pill'),null);
+});
 test('清空上下文或还原到开头后，持久化状态不再指向旧会话',t=>{
  const {emit,states}=setup(t);
  emit({kind:'session',sessionId:'old',model:'test',cwd:'/tmp'});
