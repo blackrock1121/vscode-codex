@@ -1,4 +1,5 @@
 import type { QuietHours } from "./workdayCalendar";
+import type { QuestionImages } from './questionImages';
 /**
  * Message contract between the extension host and the webview.
  * Imported by both `src/panel/*` (Node) and `src/webview/*` (browser),
@@ -125,6 +126,7 @@ export type ToWebview =
       displayName?: string;
       input: Record<string, unknown>;
       initialAnswers?: Record<string, string | string[]>;
+      initialImages?: QuestionImages;
       description?: string;
       suggestions: PermissionSuggestionView[];
     }
@@ -259,7 +261,7 @@ export type FromWebview =
    *  带 text 时清空后立刻把这条消息发进新上下文。 */
   | { type: "newContext"; text?: string; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "permission"; requestId: string; behavior: "allow" | "deny"; suggestionId?: string }
-  | { type: "answerQuestion"; requestId: string; answers: Record<string, string | string[]> }
+  | { type: "answerQuestion"; requestId: string; answers: Record<string, string | string[]>; images?: QuestionImages }
   | { type: "reanswerQuestion"; checkpointId: string }
   | { type: "listSessions" }
   | { type: "openSession"; sessionId: string }

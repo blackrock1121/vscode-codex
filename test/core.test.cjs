@@ -11,6 +11,26 @@ const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 const {diffCounts}=require('../dist/test/diff.js');
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const executable=path.resolve('test/fake-codex.cjs');
+test('问题答案以真实图片输入续轮，纯图片回答也可提交，空答案仍不能放行',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId,answers={choice:[]},picture={mediaType:'image/png',data:'aGVsbG8='};
+ assert.equal(p.prepareQuestionAnswer(key,answers),undefined);
+ const prepared=p.prepareQuestionAnswer(key,answers,{choice:[picture]});
+ assert.deepEqual(answers,{choice:[]},'预检不能修改调用方答案');assert.equal(prepared.images.length,1);
+ assert.equal(p.answerQuestion(key,answers,{choice:[picture]}),true);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const response=JSON.parse(events.find(e=>e.kind==='tool_result').content);
+ assert.deepEqual(response.input.filter(i=>i.type==='image'),[{type:'image',url:'data:image/png;base64,aGVsbG8='}]);
+ const reply=JSON.parse(response.text.split('\n')[1]);assert.equal(reply[0].imageCount,1);assert.deepEqual(reply[0].imageNumbers,[1]);
+ assert.deepEqual(reply[0].answers,['（见附图）']);assert.equal(response.answerCount,0);
+});
+test('问题图片验证失败不解除等待，修正附件后仍可提交',async t=>{
+ const {p,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId,image={mediaType:'image/png',data:'aGVsbG8='};
+ for(const images of [{missing:[image]},{choice:[{...image,mediaType:'image/svg+xml'}]},{choice:Array(11).fill(image)},{choice:[{...image,data:'invalid*'}]}])
+  assert.throws(()=>p.answerQuestion(key,{choice:'描述'},images));
+ assert.equal(p.isBusy,true);assert.ok(p.prepareQuestionAnswer(key,{choice:'描述'},{choice:[image]}));
+});
 test('自动压缩开始立即提示，完成后仍等待本轮回复，不能提前结束任务',()=>{
  const events=[];
  const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},

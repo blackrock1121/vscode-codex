@@ -7,6 +7,7 @@ import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
+import { QuestionImages } from "../questionImages";
 import { diffCounts } from "../diff";
 import { randomUUID } from "node:crypto";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
@@ -984,7 +985,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (ctx.answeringQuestion) break;
                     ctx.answeringQuestion = true;
                     try {
-                        await this.submitQuestionAnswer(ctx, m.requestId, m.answers);
+                        await this.submitQuestionAnswer(ctx, m.requestId, m.answers, m.images);
                     } catch (err) {
                         this.post(ctx, { kind: "question_answer_rejected", requestId: m.requestId, message: String((err as Error)?.message ?? err) });
                         break;
@@ -2010,7 +2011,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[restore] ${oldId.slice(0, 8)} → 派生 ${newId.slice(0, 8)}（原会话保留，回退点 ${leaf.slice(0, 8)}，还原点 ${ctx.checkpoints.list().length} 个）`);
         return { result, rewoundToStart: false };
     }
-    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>): Promise<void> {
+    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages): Promise<void> {
         const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
         const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
         if (ctx.questionAnswerSeq !== seq) {
@@ -2018,7 +2019,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             throw new Error("答案提交已取消。");
         }
         const sourceId = ctx.sessionId;
-        const answer = proc?.prepareQuestionAnswer(requestId, answers);
+        const answer = proc?.prepareQuestionAnswer(requestId, answers, images);
         if (!sourceId || !proc || !answer) throw new Error("答案未提交，问题可能已失效，请重新打开会话后重试。");
         await this.store.hydrate(sourceId);
         const cut = this.store.countLines(sourceId);
@@ -2033,12 +2034,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             snapshot = new WorkspaceSnapshot(roots, 20000, excludes, this.localSnapshotExcludedPaths(roots));
             await snapshot.capture();
         }
-        if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers)) throw new Error("提交已取消，原问题或会话状态已变化。");
+        if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images)) throw new Error("提交已取消，原问题或会话状态已变化。");
         const displayText = userView([{ type: "text", text: answer.text }]).text;
         const checkpointId = ctx.checkpoints.beginTurn(displayText, cut, !!snapshot);
         ctx.snapshot = snapshot;
         try {
-            if (!proc.answerQuestion(requestId, answers)) throw new Error("问题已失效，答案未提交。");
+            if (!proc.answerQuestion(requestId, answers, images)) throw new Error("问题已失效，答案未提交。");
         } catch (err) {
             ctx.checkpoints.discardEmpty(checkpointId);
             throw err;
@@ -2917,6 +2918,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             displayName: req.displayName,
             input: req.input,
             initialAnswers: req.initialAnswers,
+            initialImages: req.initialImages,
             description: req.description,
             suggestions: req.suggestions,
         };

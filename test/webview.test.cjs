@@ -32,6 +32,52 @@ function scrollFixture(w){
  return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
+async function imageReady(predicate){
+ for(let n=0;n<100;n++){if(predicate())return;await new Promise(r=>setTimeout(r,10));}
+ assert.fail('图片读取未完成');
+}
+test('问题卡粘贴图片可单独回答，提交失败保留图片，成功后显示可查看附件',async t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'permission_request',requestId:'image-q',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'请发截图',options:[]}]},suggestions:[]});
+ const input=w.document.querySelector('.askp-input');input.focus();
+ const paste=new w.Event('paste',{bubbles:true,cancelable:true});
+ Object.defineProperty(paste,'clipboardData',{value:{items:[{type:'image/png',getAsFile:()=>new w.File(['test'],'screen.png',{type:'image/png'})}]}});
+ input.dispatchEvent(paste);assert.equal(paste.defaultPrevented,true);assert.equal(w.document.querySelector('.askp-submit').disabled,true);
+ await imageReady(()=>w.document.querySelector('.askp-images img'));
+ assert.equal(w.document.querySelectorAll('#image-previews img').length,0,'问题图片不能串到聊天输入框');
+ assert.equal(w.document.activeElement,w.document.querySelector('.askp-input'));
+ w.document.querySelector('.askp-submit').click();const answer=sent.find(m=>m.type==='answerQuestion');
+ assert.equal(answer.answers.q,'（见附图）');assert.equal(answer.images.q[0].data,'dGVzdA==');
+ emit({kind:'question_answer_rejected',requestId:'image-q',message:'临时错误'});
+ assert.equal(w.document.querySelectorAll('.askp-images img').length,1);assert.equal(w.document.querySelector('.askp-submit').disabled,false);
+ w.document.querySelector('.askp-submit').click();emit({kind:'permission_resolved',requestId:'image-q',behavior:'allow'});
+ assert.equal(w.document.querySelectorAll('.askq-card .msg-images img').length,1);assert.deepEqual(errors,[]);
+});
+test('选图读取期间翻题不会串题，拖入附件可删除，回填图片可替换',async t=>{
+ const {w,sent,emit}=setup(t);
+ emit({kind:'permission_request',requestId:'multi-image',toolName:'AskUserQuestion',input:{questions:[{id:'one',question:'图一',options:[]},{id:'two',question:'图二',options:[]}]},
+ initialImages:{two:[{mediaType:'image/png',data:'b2xk'}]},suggestions:[]});
+ const picker=w.document.querySelector('.askp input[type=file]');
+ Object.defineProperty(picker,'files',{value:[new w.File(['first'],'one.png',{type:'image/png'})]});picker.dispatchEvent(new w.Event('change'));
+ w.document.querySelectorAll('.askp-nav')[1].click();
+ await imageReady(()=>w.document.querySelector('.askp-submit').textContent==='提交');
+ assert.equal(w.document.querySelector('.askp-images img').src,'data:image/png;base64,b2xk');
+ w.document.querySelector('.askp-images button').click();assert.equal(w.document.querySelector('.askp-submit').disabled,true);
+ const drop=new w.Event('drop',{bubbles:true,cancelable:true});Object.defineProperty(drop,'dataTransfer',{value:{files:[new w.File(['second'],'two.png',{type:'image/png'})]}});
+ w.document.querySelector('.askp').dispatchEvent(drop);await imageReady(()=>w.document.querySelector('.askp-images img'));
+ w.document.querySelector('.askp-submit').click();const answer=sent.find(m=>m.type==='answerQuestion');
+ assert.equal(answer.images.one[0].data,'Zmlyc3Q=');assert.equal(answer.images.two[0].data,'c2Vjb25k');
+});
+test('不支持的图片格式提示原因且不提交，私密问题不展示图片入口',async t=>{
+ const {w,sent,emit}=setup(t);
+ emit({kind:'permission_request',requestId:'bad-image',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'截图',options:[]}]},suggestions:[]});
+ const picker=w.document.querySelector('.askp input[type=file]');Object.defineProperty(picker,'files',{value:[new w.File(['svg'],'file.svg',{type:'image/svg+xml'})]});
+ picker.dispatchEvent(new w.Event('change'));await imageReady(()=>!w.document.querySelector('.askp-error').classList.contains('hidden'));
+ assert.match(w.document.querySelector('.askp-error').textContent,/仅支持/);assert.equal(sent.some(m=>m.type==='answerQuestion'),false);
+ emit({kind:'load_history',items:[],checkpoints:[]});
+ emit({kind:'permission_request',requestId:'secret-image',toolName:'AskUserQuestion',input:{questions:[{id:'s',question:'密码',isSecret:true,options:[]}]},initialImages:{s:[{mediaType:'image/png',data:'aGVsbG8='}]},suggestions:[]});
+ assert.equal(w.document.querySelector('.askp-add-image'),null);assert.equal(w.document.querySelector('.askp-images img'),null);
+});
 test('历史长回复按标题层级生成独立目录，忽略用户消息和代码中的伪标题',t=>{
  const {w,emit,errors}=setup(t);
  emit({kind:'load_history',sessionId:'outline',items:[

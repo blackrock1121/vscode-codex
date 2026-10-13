@@ -8,7 +8,7 @@ export function checkpointTextKey(text: string): string {
   return text.startsWith(QUESTION_REPLY_PREFIX) ? normalized : normalized.slice(0, 80);
 }
 
-export interface QuestionReply { question: string; isSecret?: boolean; answers: string[] }
+export interface QuestionReply { question: string; isSecret?: boolean; answers: string[]; imageCount?: number }
 /** 只接受插件实际提交的结构化回答，不把普通消息当作可还原的问题。 */
 export function parseQuestionReply(text: string): QuestionReply[] | undefined {
   if (!text.startsWith(QUESTION_REPLY_PREFIX)) return;
@@ -16,7 +16,8 @@ export function parseQuestionReply(text: string): QuestionReply[] | undefined {
     const value = JSON.parse(text.slice(QUESTION_REPLY_PREFIX.length));
     if (!Array.isArray(value) || !value.length || value.some(r => !r || typeof r.question !== 'string' || !r.question.trim() ||
         !Array.isArray(r.answers) || !r.answers.length || r.answers.some((a: unknown) => typeof a !== 'string' || !a.trim()))) return;
-    return value.map(r => ({ question: r.question, isSecret: r.isSecret === true, answers: r.isSecret ? ['（已填写）'] : r.answers }));
+    return value.map(r => ({ question: r.question, isSecret: r.isSecret === true, answers: r.isSecret ? ['（已填写）'] : r.answers,
+      ...(Number.isInteger(r.imageCount) && r.imageCount > 0 && r.imageCount <= 10 ? { imageCount: r.imageCount } : {}) }));
   } catch { return; }
 }
 

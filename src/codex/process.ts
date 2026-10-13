@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
+import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, validateQuestionImages } from '../questionImages';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
@@ -28,6 +29,7 @@ export interface PermissionRequest {
   requestId: string; toolUseId?: string; toolName: string; displayName?: string;
   input: Record<string, unknown>; description?: string; suggestions: PermissionSuggestionView[];
   initialAnswers?: Record<string, string | string[]>;
+  initialImages?: QuestionImages;
 }
 export interface CodexProcessHooks {
   emit: (event: ToWebview) => void; onPermission: (request: PermissionRequest) => void;
@@ -360,16 +362,22 @@ export class CodexProcess {
       : { decision: allow ? (decision.suggestionId === 'session' ? 'acceptForSession' : 'accept') : 'decline' };
     this.rpc.respond(p.id, result); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: decision.behavior });
   }
-  prepareQuestionAnswer(key: string, answers: Record<string, string | string[]>): { text: string; turnId: string } | undefined {
+  prepareQuestionAnswer(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}): { text: string; turnId: string; images: AnswerImage[] } | undefined {
     if (this.exited || this.disposed || !this.busy) return;
     const p = this.pending.get(key);
     if (!p || !['item/tool/call', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(p.method)) return;
     const mapped: Record<string, { answers: string[] }> = {};
     const questions = this.pausedQuestion?.request.input.questions as any[] | undefined;
     if (!Array.isArray(questions) || !questions.length) return;
+    validateQuestionImages(images);
+    const keys = new Set(questions.map((q, index) => q.id || q.question || String(index)));
+    if (Object.keys(images).some(id => !keys.has(id))) throw new Error('图片所属的问题已失效，请重新添加');
     for (const [index, q] of questions.entries()) {
+      const pictures = images[q.id || q.question || String(index)] ?? [];
+      if (q.isSecret && pictures.length) throw new Error('私密问题请使用文字回答，不支持图片附件');
       const a = answers[q.id] ?? answers[q.question] ?? answers[String(index)] ?? [];
-      const values = Array.isArray(a) ? a : [a];
+      const values = Array.isArray(a) ? [...a] : [a];
+      if (pictures.length && (!values.length || values.every(value => typeof value === 'string' && !value.trim()))) values.splice(0, values.length, QUESTION_IMAGE_ANSWER);
       if (!values.length || values.some(value => typeof value !== 'string' || !value.trim())) return;
       mapped[q.id || q.question || String(index)] = { answers: values };
     }
@@ -379,11 +387,18 @@ export class CodexProcess {
     if (speed !== 'default' && !this.modelsLoaded) throw new Error('模型列表仍在加载，请稍后重新提交答案。');
     if (!supportsSpeed(this.models.find(m => m.id === this.modelForNextTurn), speed))
       throw new Error(`当前模型无法使用${speedLabel(speed)}模式，请切换速度或模型后重新提交答案。`);
-    const reply = questions.map((q, index) => ({ question: q.question, ...(q.isSecret ? { isSecret: true } : {}), answers: mapped[q.id || q.question || String(index)].answers }));
-    return { text: `${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`, turnId: paused.turnId };
+    const attached: AnswerImage[] = [];
+    const reply = questions.map((q, index) => {
+      const id = q.id || q.question || String(index), pictures = images[id] ?? [];
+      const imageNumbers = pictures.map((_, i) => attached.length + i + 1);
+      attached.push(...pictures);
+      return { question: q.question, ...(q.isSecret ? { isSecret: true } : {}), answers: mapped[id].answers,
+        ...(pictures.length ? { imageCount: pictures.length, imageNumbers } : {}) };
+    });
+    return { text: `${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`, turnId: paused.turnId, images: attached };
   }
-  answerQuestion(key: string, answers: Record<string, string | string[]>): boolean {
-    const answer = this.prepareQuestionAnswer(key, answers);
+  answerQuestion(key: string, answers: Record<string, string | string[]>, images?: QuestionImages): boolean {
+    const answer = this.prepareQuestionAnswer(key, answers, images);
     if (!answer) return false;
     // 原工具请求随中断失效。用真实用户消息恢复同一会话，绝不向旧 RPC 伪造成功。
     this.clearSavedQuestion();
@@ -391,7 +406,7 @@ export class CodexProcess {
     this.pending.clear();
     this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
     this.busy = false;
-    return this.sendUserMessage(answer.text);
+    return this.sendUserMessage(answer.text, undefined, answer.images);
   }
   async interrupt(): Promise<void> {
     if (this.stopTimer || !this.busy) return;

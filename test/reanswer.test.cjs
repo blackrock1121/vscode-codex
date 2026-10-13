@@ -46,6 +46,25 @@ async function fixture(t){
  t.after(async()=>{ctx.checkpoints.flush();checkpoints.flush();await fs.rm(dir,{recursive:true,force:true});});
  return {dir,workspace,file,first,turns,store,checkpoints,ctx,provider,messages,forks,id};
 }
+test('带图回答还原后按问题回填图片，落盘和宿主消息都保留附件',async t=>{
+ const f=await fixture(t);const picture={mediaType:'image/png',data:'aGVsbG8='};
+ const text=QUESTION_REPLY_PREFIX+JSON.stringify([{question:'安装来源',answers:['（见附图）'],imageCount:1,imageNumbers:[1]}]);
+ f.turns[1].items=[{type:'userMessage',content:[{type:'text',text},{type:'image',url:'data:image/png;base64,aGVsbG8='}]}];
+ f.checkpoints.clear();const id=f.checkpoints.beginTurn(text,1,true);f.checkpoints.completeSnapshot();
+ await f.provider.restoreCheckpoint(f.ctx,id,true);
+ const request=f.messages.find(m=>m.kind==='permission_request');
+ assert.deepEqual(request.initialImages,{source:[picture]});assert.deepEqual(request.initialAnswers,{source:''});
+ const saved=JSON.parse(await fs.readFile(questionStateFile(f.dir,'branch'),'utf8'));
+ assert.deepEqual(saved.request.initialImages,{source:[picture]});
+});
+test('提交问题答案时，宿主在预检和实际发送中都转交图片',async t=>{
+ const f=await fixture(t);f.store.threads.set('source',{id:'source',turns:[f.first]});const calls=[];
+ const images={source:[{mediaType:'image/png',data:'aGVsbG8='}]};
+ f.ctx.proc={isExited:false,prepareQuestionAnswer:(key,answers,pictures)=>{calls.push(pictures);return {text:reply('A'),turnId:'ask-turn'};},
+ answerQuestion:(key,answers,pictures)=>{calls.push(pictures);return true;}};
+ await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'},images);
+ assert.equal(calls.length,3);assert.ok(calls.every(value=>value===images));
+});
 test('重新回答准确回到答案之前，只撤销答案后的文件，保留原会话并恢复可编辑的问题',async t=>{
  const f=await fixture(t);let stopped=false;
  f.ctx.proc={isBusy:true,disposeAndWait:async()=>{stopped=true;}};

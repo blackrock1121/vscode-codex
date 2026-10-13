@@ -2,6 +2,7 @@ import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
 import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
+import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind } from "../shared";
 import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, supportsSpeed } from "../shared";
 
@@ -1833,6 +1834,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 
   const sel = questions.map(() => new Set<string>()); // chosen built-in labels per question
   const custom = questions.map(() => ""); // custom answer text per question
+  const pictures: AnswerImage[][] = questions.map(q => q.isSecret ? [] : [...(m.initialImages?.[q.id || q.question] ?? [])]);
   questions.forEach((q, i) => {
     if (q.isSecret) return; // 秘密答案必须重新填写，不回填遮蔽占位文字。
     const value = m.initialAnswers?.[q.id || q.question];
@@ -1846,6 +1848,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   let cur = 0;
   let done = false;
   let submitting = false;
+  let readingImages = 0;
   let submittedAnswers: Record<string, string | string[]> | undefined;
 
   const wrap = el("div", "askp");
@@ -1872,7 +1875,60 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   card.append(submitError);
   wrap.append(card);
 
-  const answered = (qi: number) => sel[qi].size > 0 || custom[qi].trim().length > 0;
+  const answered = (qi: number) => sel[qi].size > 0 || custom[qi].trim().length > 0 || pictures[qi].length > 0;
+  const imagePayload = (): QuestionImages => Object.fromEntries(questions.flatMap((q, qi) => pictures[qi].length ? [[q.id || q.question, pictures[qi]]] : []));
+  async function addPictures(files: File[], qi: number) {
+    if (done || submitting || questions[qi].isSecret || !files.length) return;
+    readingImages++;
+    updateFoot();
+    submitError.classList.add("hidden");
+    try {
+      for (const file of files) {
+        if (!QUESTION_IMAGE_TYPES.includes(file.type)) throw new Error("图片仅支持 PNG、JPEG、WebP 和 GIF");
+        if (file.size > QUESTION_IMAGE_MAX_BYTES) throw new Error("单张图片不能超过 10 MB");
+        if (pictures.reduce((n, items) => n + items.length, 0) >= 10) throw new Error("一次回答最多添加 10 张图片");
+        const uri = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result));
+          reader.onerror = reader.onabort = () => reject(new Error("图片读取失败，请重新添加"));
+          reader.readAsDataURL(file);
+        });
+        if (done || !wrap.isConnected) return;
+        const match = /^data:([^;]+);base64,(.+)$/.exec(uri);
+        if (!match) throw new Error("图片数据无效，请重新添加");
+        const added = { mediaType: match[1], data: match[2] };
+        validateQuestionImages({ ...imagePayload(), [questions[qi].id || questions[qi].question]: [...pictures[qi], added] });
+        pictures[qi].push(added);
+      }
+    } catch (err) {
+      if (!done) { submitError.textContent = String((err as Error).message); submitError.classList.remove("hidden"); }
+    } finally {
+      readingImages--;
+      if (!done && wrap.isConnected) {
+        const refocus = qi === cur && document.activeElement?.classList.contains("askp-input");
+        paint();
+        if (refocus) optsBox.querySelector<HTMLElement>(".askp-input")?.focus();
+      }
+    }
+  }
+  wrap.addEventListener("paste", e => {
+    const files = Array.from(e.clipboardData?.items ?? []).filter(item => item.type.startsWith("image/")).flatMap(item => {
+      const file = item.getAsFile(); return file ? [file] : [];
+    });
+    if (!files.length || questions[cur].isSecret) return;
+    e.preventDefault(); e.stopPropagation();
+    void addPictures(files, cur);
+  });
+  wrap.addEventListener("dragover", e => { e.preventDefault(); e.stopPropagation(); });
+  wrap.addEventListener("drop", e => {
+    e.preventDefault(); e.stopPropagation();
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (!files.length && !done && !submitting) {
+      submitError.textContent = "此拖放未提供图片内容，请使用“添加图片”或粘贴截图。";
+      submitError.classList.remove("hidden");
+    }
+    void addPictures(files, cur);
+  });
 
   /** Move to the next question. `delay` lets the ✓ feedback land before the flip.
    *  `submitOnLast` — only Enter does this; clicking an option on the last page
@@ -1880,14 +1936,14 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const advance = (from: number, delay: number, submitOnLast = false) => {
     if (from < questions.length - 1) {
       setTimeout(() => {
-        if (!done && cur === from) {
+        if (!done && !submitting && cur === from) {
           cur = from + 1;
           paint();
         }
       }, delay);
     } else if (submitOnLast) {
       setTimeout(() => {
-        if (done || cur !== from) return;
+        if (done || submitting || cur !== from) return;
         if (!submit.disabled) {
           submit.click();
           return;
@@ -1909,7 +1965,8 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     idx.textContent = `${cur + 1}/${questions.length}`;
     prev.disabled = cur === 0;
     next.disabled = cur === questions.length - 1;
-    submit.disabled = !questions.every((_, qi) => answered(qi));
+    submit.disabled = submitting || readingImages > 0 || !questions.every((_, qi) => answered(qi));
+    submit.textContent = submitting ? "提交中…" : readingImages ? "读取图片中…" : "提交";
   };
 
   function paint() {
@@ -1967,7 +2024,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     const customInput = el(q.isSecret ? "input" : "textarea", "askp-input") as HTMLInputElement | HTMLTextAreaElement;
     if (customInput instanceof HTMLTextAreaElement) customInput.rows = 1;
     else customInput.type = "password";
-    customInput.placeholder = "输入自定义答案（⇧↵ 换行）";
+    customInput.placeholder = q.isSecret ? "输入私密答案" : "自定义回答，也可粘贴图片（⇧↵ 换行）";
     customInput.value = custom[cur];
     const growCustom = () => {
       // 没进文档时 scrollHeight 恒为 0，量出来会把输入框压成 0 高——首次 paint()
@@ -1994,12 +2051,35 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
       if (e.key === "Enter" || e.key === "Escape") e.stopPropagation();
       if (e.key !== "Enter" || e.shiftKey || e.isComposing || (e as KeyboardEvent).keyCode === 229) return;
       e.preventDefault();
-      if (!customInput.value.trim()) return; // empty answer: nothing to confirm
+      if (!answered(cur)) return;
       // Enter = "I'm done with this question" → next page, or submit on the last.
       advance(cur, 120, true);
     };
     customRow.append(customInput);
     if (q.isOther !== false || !opts.length) optsBox.append(customRow);
+    if (!q.isSecret) {
+      const tools = el("div", "askp-image-tools");
+      const add = el("button", "askp-add-image", "添加图片") as HTMLButtonElement;
+      add.title = "为这道题添加图片，也可粘贴或拖入；最多 10 张，单张 10 MB，总量 20 MB";
+      const picker = el("input", "hidden") as HTMLInputElement;
+      picker.type = "file"; picker.accept = QUESTION_IMAGE_TYPES.join(","); picker.multiple = true;
+      const qi = cur;
+      add.onclick = () => picker.click();
+      picker.onchange = () => { void addPictures(Array.from(picker.files ?? []), qi); picker.value = ""; };
+      tools.append(add, el("span", "askp-image-hint", "可粘贴或拖入图片"), picker);
+      optsBox.append(tools);
+      const previews = el("div", "askp-images");
+      pictures[cur].forEach((picture, index) => {
+        const uri = `data:${picture.mediaType};base64,${picture.data}`;
+        const preview = el("div", "img-preview"), img = el("img") as HTMLImageElement;
+        img.src = uri; img.alt = `问题 ${qi + 1} 的图片 ${index + 1}`; img.onclick = () => openLightbox(uri);
+        const remove = el("button", "img-preview-x", "×") as HTMLButtonElement;
+        remove.setAttribute("aria-label", `移除图片 ${index + 1}`);
+        remove.onclick = () => { pictures[qi].splice(index, 1); paint(); };
+        preview.append(img, remove); previews.append(preview);
+      });
+      optsBox.append(previews);
+    }
     requestAnimationFrame(growCustom); // 首次 paint 时节点还没入文档，量高要等挂载
     updateFoot();
   }
@@ -2016,6 +2096,12 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
         })
         .filter(([, a]) => a);
       const answered = askQuestionNode(pairs);
+      const attachments = pictures.flat();
+      if (attachments.length) {
+        const grid = el("div", "msg-images");
+        attachments.forEach(image => grid.append(makeImageChip(`data:${image.mediaType};base64,${image.data}`)));
+        answered.querySelector(".askq-card")!.append(grid);
+      }
       answered.querySelector<HTMLElement>(".askq-card")!.dataset.requestId = m.requestId;
       wrap.replaceWith(answered);
     } else {
@@ -2036,11 +2122,12 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     }
   };
   submit.onclick = () => {
-    if (done || submitting || !questions.every((_, qi) => answered(qi))) return;
+    if (done || submitting || readingImages || !questions.every((_, qi) => answered(qi))) return;
     const answers: Record<string, string | string[]> = {};
     questions.forEach((q, qi) => {
       const picks = [...sel[qi]];
       if (custom[qi].trim()) picks.push(custom[qi].trim());
+      if (!picks.length && pictures[qi].length) picks.push(QUESTION_IMAGE_ANSWER);
       answers[q.id || q.question] = q.multiSelect ? picks : picks[0] || "";
     });
     submitting = true;
@@ -2048,7 +2135,8 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     submitError.classList.add("hidden");
     wrap.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>("button, input, textarea").forEach(control => control.disabled = true);
     submit.textContent = "提交中…";
-    send({ type: "answerQuestion", requestId: m.requestId, answers });
+    const images = imagePayload();
+    send({ type: "answerQuestion", requestId: m.requestId, answers, ...(Object.keys(images).length ? { images } : {}) });
   };
   xBtn.onclick = () => {
     stopPending = true;
@@ -3342,6 +3430,7 @@ const dropZone = $("composer");
 const allowDrop = (e: DragEvent) => {
   e.preventDefault();
   if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+  if ((e.target as Element | null)?.closest?.(".askp")) return;
   dropZone.classList.add("drag-over");
 };
 window.addEventListener("dragenter", allowDrop, true);
@@ -3353,8 +3442,10 @@ window.addEventListener(
   "drop",
   (e: DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
     dropZone.classList.remove("drag-over");
+    // 问题卡自己接收图片；不能在捕获阶段把附件截走发到聊天输入框。
+    if ((e.target as Element | null)?.closest?.(".askp")) return;
+    e.stopPropagation();
     const dt = e.dataTransfer;
     if (!dt) return;
     // ① VS Code 资源管理器（含其他窗口）拖入：uri-list 里直接有 file:// 路径。

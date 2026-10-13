@@ -1,6 +1,7 @@
 import { CodexRpc } from './rpc';
 import { timeline, userView, parseQuestionReply, normalizeQuestions } from './events';
 import { SessionSummary, TimelineItem } from '../shared';
+import { QuestionImages, QUESTION_IMAGE_ANSWER } from '../questionImages';
 
 /** 仅缩短编辑器标签，不改会话名称；为原生关闭按钮留出空间。 */
 export function sessionTabTitle(title?: string): string {
@@ -119,10 +120,11 @@ export class SessionStore {
     });
   }
   rewindLeafFor(id: string, count: number): string | undefined { return this.threads.get(id)?.turns?.[count - 1]?.id; }
-  questionBeforeAnswer(id: string, count: number): { input: Record<string, unknown>; initialAnswers: Record<string, string | string[]> } | undefined {
+  questionBeforeAnswer(id: string, count: number): { input: Record<string, unknown>; initialAnswers: Record<string, string | string[]>; initialImages?: QuestionImages } | undefined {
     const turns = this.threads.get(id)?.turns;
     if (!Number.isInteger(count) || count < 1 || !turns?.[count] || !['completed', 'interrupted'].includes(turns[count - 1]?.status)) return;
-    const reply = parseQuestionReply(this.firstUserTurnAfter(id, count)?.text ?? '');
+    const answer = this.firstUserTurnAfter(id, count);
+    const reply = parseQuestionReply(answer?.text ?? '');
     if (!reply) return;
     const source = timeline([turns[count - 1]]).reverse().find(item => {
       if (item.type !== 'tool' || item.name !== 'AskUserQuestion') return false;
@@ -132,11 +134,19 @@ export class SessionStore {
     const original = source?.type === 'tool' ? normalizeQuestions(source.input?.questions) : undefined;
     const questions = original ?? reply.map((r, i) => ({ id: String(i), question: r.question, isSecret: r.isSecret, options: [] }));
     const initialAnswers: Record<string, string | string[]> = {};
+    const initialImages: QuestionImages = {};
+    let offset = 0;
     questions.forEach((q, i) => {
+      const imageCount = reply[i].imageCount ?? 0;
+      const pictures = answer?.images.slice(offset, offset + imageCount) ?? [];
+      offset += imageCount;
       if (q.isSecret || reply[i].isSecret) q.isSecret = true;
-      else initialAnswers[q.id] = reply[i].answers.join('、');
+      else {
+        initialAnswers[q.id] = imageCount && reply[i].answers.length === 1 && reply[i].answers[0] === QUESTION_IMAGE_ANSWER ? '' : reply[i].answers.join('、');
+        if (pictures.length) initialImages[q.id] = pictures;
+      }
     });
-    return { input: { questions }, initialAnswers };
+    return { input: { questions }, initialAnswers, ...(Object.keys(initialImages).length ? { initialImages } : {}) };
   }
   /** 仅识别末尾确实已中断、且连用户消息都未落盘的空轮次。 */
   isEmptyInterruptedTail(id: string, count: number): boolean {

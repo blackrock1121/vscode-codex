@@ -70,7 +70,7 @@ readJsonl(process.stdin,m=>{
   else if(text==='dynamic-question'||text==='secret-question'||text==='background-question'||text==='failed-pause')send({id:18,method:'item/tool/call',params:{threadId:'thread-1',turnId,callId:'call-1',namespace:null,tool:'AskUserQuestion',arguments:{questions:[{id:'choice',question:'选择什么？',header:'选择',...(text==='secret-question'?{isSecret:true}:{}),options:[{label:'A',description:'选项'}]}]}}});
   else if(text.startsWith('用户已回答')){
    if(process.env.TEST_HOLD_REPLY)return;
-   note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'resume',command:'test-resume',aggregatedOutput:JSON.stringify({text,interruptCount,answerCount}),exitCode:0,status:'completed'}});
+   note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'resume',command:'test-resume',aggregatedOutput:JSON.stringify({text,interruptCount,answerCount,input:m.params.input}),exitCode:0,status:'completed'}});
    note('turn/completed',{threadId:'thread-1',turn:{id:turnId,status:'completed'}});
   }
   else if(text!=='wait'){
