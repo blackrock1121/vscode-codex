@@ -145,6 +145,48 @@ test('静默三十秒后提示等待，诊断和重试不刷新超时，真实�
  assert.equal(messages.length,0);
 });
 
+test('压缩静默不警告或断开，完成后从新时间点恢复检测',()=>{
+ for(const trigger of ['manual','auto']){
+  const {provider,messages}=providerFixture();
+  let disposed=false;
+  const ctx={lastEventAt:Date.now()-75000,proc:{dispose:()=>{disposed=true;}}};
+  provider.sessions.add(ctx);
+  provider.checkTurnStall(ctx);
+  provider.handleEmitInner(ctx,{kind:'compacting'});
+  assert.ok(messages.some(e=>e.kind==='response_wait'&&e.idleMs===0));
+  messages.length=0;
+  for(const idle of [45000,13*60000]){
+   ctx.lastEventAt=Date.now()-idle;
+   provider.checkTurnStall(ctx);
+  }
+  assert.equal(disposed,false);
+  assert.deepEqual(messages,[]);
+  provider.handleEmitInner(ctx,{kind:'compacted',trigger,preTokens:0,postTokens:0});
+  assert.ok(Date.now()-ctx.lastEventAt<1000,'不能把压缩用时计入普通静默超时');
+  messages.length=0;provider.checkTurnStall(ctx);
+  assert.deepEqual(messages,[]);
+  ctx.lastEventAt=Date.now()-45000;provider.checkTurnStall(ctx);
+  assert.ok(messages.some(e=>e.kind==='response_wait'&&e.idleMs>=45000));
+  ctx.lastEventAt=Date.now()-13*60000;provider.checkTurnStall(ctx);
+  assert.equal(disposed,true,'自动压缩结束后仍能检测后续响应超时');
+ }
+});
+
+test('压缩失败、停止或重连后不残留免超时状态，非致命错误保持压缩状态',()=>{
+ for(const event of [{kind:'error',message:'压缩失败'},{kind:'busy',busy:false},{kind:'busy',busy:true}]){
+  const {provider,messages}=providerFixture();
+  const ctx={lastEventAt:Date.now(),proc:{dispose:()=>assert.fail('短暂静默不能断开')}};
+  provider.sessions.add(ctx);
+  provider.handleEmitInner(ctx,{kind:'compacting'});
+  provider.handleEmitInner(ctx,{kind:'error',message:'设置失败',keepBusy:true});
+  ctx.lastEventAt=Date.now()-13*60000;provider.checkTurnStall(ctx);
+  provider.handleEmitInner(ctx,event);
+  messages.length=0;
+  ctx.lastEventAt=Date.now()-45000;provider.checkTurnStall(ctx);
+  assert.ok(messages.some(e=>e.kind==='response_wait'));
+ }
+});
+
 test('权限配置保存失败时不改变现有进程的权限',async()=>{
  const {provider,messages}=providerFixture();
  const ctx={};provider.sessions.add(ctx);

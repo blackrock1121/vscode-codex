@@ -184,6 +184,7 @@ interface SessionCtx {
     lastUserActionAt?: number;
     lastEventAt?: number;
     responseWaitShown?: boolean;
+    compacting?: boolean;
     missedPings?: number;
     rebuildAt?: number;
     lastEmitAt?: number;
@@ -2441,7 +2442,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const last = ctx.lastEventAt;
         if (last === undefined)
             return;
-        if (ctx.pendingPerm)
+        // 压缩没有增量进度；静默不能说明卡死，也不能据此中断压缩。
+        if (ctx.pendingPerm || ctx.compacting)
             return;
         const idle = Date.now() - last;
         if (idle < this.turnStallMs()) {
@@ -2512,6 +2514,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview): void {
         if (e.kind === "models") this.modelCatalog = e.models;
+        if (e.kind === "compacting") ctx.compacting = true;
+        else if (e.kind === "compacted" || e.kind === "busy" || e.kind === "result" ||
+            (e.kind === "error" && !e.keepBusy)) ctx.compacting = false;
         // 额度查询、诊断及重试提示不是任务进展，不能掩盖长期静默。
         if (ctx.lastEventAt !== undefined && !["usage", "rate_limit", "rate_limit_cleared", "models", "speed_context", "diag", "status", "notice", "response_wait"].includes(e.kind)) {
             ctx.lastEventAt = Date.now();

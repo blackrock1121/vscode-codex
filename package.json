@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.50",
+  "version": "0.1.51",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -257,7 +257,7 @@
           "type": "number",
           "default": 720,
           "minimum": 60,
-          "description": "持续没有事件的超时时间（秒），达到后重置连接；等待用户审批时不计时。"
+          "description": "持续没有事件的超时时间（秒），达到后重置连接；等待用户审批或压缩上下文期间不计时。"
         },
         "codexChat.appendSystemPrompt": {
           "type": "string",

@@ -989,7 +989,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "response_wait":
       assistantEl?.querySelector(".wk-wait")?.remove();
-      if (m.idleMs >= 30000 && isBusy && !stoppingView && !waitingQuestionId && glowState !== "waiting") {
+      if (m.idleMs >= 30000 && isBusy && !compacting && !stoppingView && !waitingQuestionId && glowState !== "waiting") {
         const hint = el("span", "wk-wait", `已 ${Math.floor(m.idleMs / 1000)} 秒没有新的进展回传；可以继续等待，或点击停止后重试。`);
         hint.setAttribute("role", "status");
         assistantEl?.querySelector(".working-pill")?.appendChild(hint);
@@ -1102,6 +1102,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "compacting":
       compacting = true;
+      assistantEl?.querySelector(".wk-wait")?.remove();
       setGlow("running");
       ctxGauge.classList.add("compacting");
       showWorking("正在压缩上下文…");

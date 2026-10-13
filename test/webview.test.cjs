@@ -184,16 +184,19 @@ test('已打开的额度菜单随窗口缩窄保持在可见范围内',t=>{
  assert.ok(right<=width-8&&right-menu.offsetWidth>=8);
  assert.ok(bottom-parseFloat(menu.style.getPropertyValue('--picker-available-height'))>=8);
 });
-test('自动压缩和静默等待均有可见提示，压缩完成后保持忙碌且不提前发送队列',async t=>{
+test('压缩清除并屏蔽静默警告，完成后保持忙碌且不提前发送队列',async t=>{
  const {w,sent,emit}=setup(t);
  emit({kind:'busy',busy:true});
  assert.match(w.document.querySelector('.wk-label').textContent,/等待 Codex 响应/);
+ emit({kind:'response_wait',idleMs:35000});
+ assert.ok(w.document.querySelector('.wk-wait'));
  emit({kind:'compacting'});
  assert.match(w.document.querySelector('.wk-label').textContent,/正在压缩上下文/);
+ assert.equal(w.document.querySelector('.wk-wait'),null);
  emit({kind:'response_wait',idleMs:75000});
- assert.match(w.document.querySelector('.wk-wait').textContent,/75 秒.*停止后重试/);
+ assert.equal(w.document.querySelector('.wk-wait'),null);
  emit({kind:'response_wait',idleMs:85000});
- assert.equal(w.document.querySelectorAll('.wk-wait').length,1);
+ assert.equal(w.document.querySelectorAll('.wk-wait').length,0);
  const input=w.document.getElementById('input');input.value='下一项';
  w.document.getElementById('btn-send').click();
  emit({kind:'response_wait',idleMs:0});
@@ -206,6 +209,7 @@ test('自动压缩和静默等待均有可见提示，压缩完成后保持忙�
  emit({kind:'text_delta',text:'压缩后继续回复'});
  assert.match(w.document.querySelector('.wk-label').textContent,/正在回复/);
  emit({kind:'response_wait',idleMs:35000});
+ assert.ok(w.document.querySelector('.wk-wait'),'压缩结束后恢复普通等待提示');
  emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
  assert.equal(w.document.querySelector('.wk-wait'),null);
  await new Promise(r=>setTimeout(r,180));
