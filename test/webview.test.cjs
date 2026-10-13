@@ -7,11 +7,11 @@ function setup(t){
  const section=source.slice(source.indexOf('  private html('));
  const raw=section.match(/return (?:\/\* html \*\/ )?`([\s\S]*?)`;\s*\n\s+}/)[1];
  const html=raw.replace(/\$\{[^}]+\}/g,'').replace(/<script[^>]*><\/script>/g,'');
- const sent=[],errors=[],states=[];
+ const sent=[],errors=[],states=[],resizeObservers=[];
  const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true,url:'https://webview.test/'});
  t.after(()=>dom.window.close());
  const w=dom.window; w.acquireVsCodeApi=()=>({postMessage:m=>sent.push(m),getState:()=>states.at(-1)??{},setState:s=>states.push(JSON.parse(JSON.stringify(s)))});
- w.ResizeObserver=class{observe(){}disconnect(){}};
+ w.ResizeObserver=class{constructor(callback){this.callback=callback;this.targets=[];resizeObservers.push(this);}observe(target){this.targets.push(target);}disconnect(){this.targets=[];}};
  w.IntersectionObserver=class{observe(){}disconnect(){}};
  w.HTMLElement.prototype.scrollIntoView=function(){};
  w.HTMLElement.prototype.scrollTo=function(){};
@@ -20,8 +20,64 @@ function setup(t){
  w.addEventListener('error',e=>errors.push(e.message));
  w.eval(fs.readFileSync('media/webview.js','utf8'));
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
- return {w,sent,errors,emit,states};
+ return {w,sent,errors,emit,states,resize:target=>resizeObservers.filter(o=>o.targets.includes(target)).forEach(o=>o.callback())};
 }
+function scrollFixture(w){
+ const messages=w.document.getElementById('messages');
+ let height=2000,viewport=600,top=1400;
+ Object.defineProperties(messages,{
+  scrollHeight:{get:()=>height},clientHeight:{get:()=>viewport},
+  scrollTop:{get:()=>top,set:value=>{top=Math.max(0,Math.min(value,height-viewport));}},
+ });
+ return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
+  scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
+}
+test('从我的消息查看历史后，一键回到最新回复并恢复流式跟随',async t=>{
+ const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
+ const button=w.document.querySelector('.jump-latest');
+ assert.equal(button.classList.contains('hidden'),true);
+ emit({kind:'load_history',sessionId:'history',items:[
+  {type:'user',text:'早先的问题'},{type:'assistant_text',text:'早先的回复'},
+  {type:'user',text:'最近的问题'},{type:'assistant_text',text:'最近的回复'},
+ ],checkpoints:[]});
+ const users=[...messages.querySelectorAll('.msg.user')];
+ users.forEach(u=>{Object.defineProperty(u,'offsetParent',{get:()=>messages});u.getBoundingClientRect=()=>({bottom:-10});});
+ users[0].scrollIntoView=()=>scroll(100);
+ scroll(1400);
+ w.document.querySelector('.qb-navbtn').click();
+ w.document.querySelector('.msgnav-item').click();
+ assert.equal(button.classList.contains('hidden'),false);
+ emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});
+ setHeight(2300);emit({kind:'text_delta',text:'新的回复'});
+ await new Promise(r=>setTimeout(r,40));
+ assert.equal(messages.scrollTop,100,'阅读历史时新输出不能把视口拉走');
+ w.document.querySelector('.qb-navbtn').click();
+ button.click();
+ assert.equal(messages.scrollTop,1700);
+ assert.equal(button.classList.contains('hidden'),true);
+ assert.equal(w.document.querySelector('.msgnav').classList.contains('hidden'),true);
+ // 不派发 scroll，验证点击当下已恢复跟随，避免下一批输出抢在滚动事件之前。
+ setHeight(2500);emit({kind:'text_delta',text:'，继续输出'});
+ await new Promise(r=>setTimeout(r,40));
+ assert.equal(messages.scrollTop,1900);
+ assert.equal(button.classList.contains('hidden'),true);
+ assert.deepEqual(errors,[]);
+});
+test('回到底部按钮适配输入区高度、手动滚到底部和切换空会话',t=>{
+ const {w,emit,resize}=setup(t),{messages,scroll,setHeight,setViewport}=scrollFixture(w);
+ const button=w.document.querySelector('.jump-latest'),composer=w.document.getElementById('composer');
+ scroll(100);assert.equal(button.classList.contains('hidden'),false);
+ Object.defineProperty(composer,'offsetHeight',{get:()=>350});resize(composer);
+ assert.equal(button.style.bottom,'362px');
+ assert.equal(messages.scrollTop,100);
+ scroll(1400);assert.equal(button.classList.contains('hidden'),true);
+ scroll(100);setHeight(400);setViewport(600);resize(messages);
+ assert.equal(button.classList.contains('hidden'),true,'内容不足一屏时不显示');
+ setHeight(2000);scroll(100);assert.equal(button.classList.contains('hidden'),false);
+ setHeight(400);emit({kind:'load_history',items:[],checkpoints:[]});
+ assert.equal(button.classList.contains('hidden'),true);
+ assert.equal(w.document.querySelectorAll('.jump-latest').length,1);
+});
 test('打开的选择菜单随窗口缩窄重新定位，矮窗口限制在按钮上方',t=>{
  const {w}=setup(t);
  let width=1280,height=800;

@@ -147,6 +147,20 @@ body ::-webkit-scrollbar-thumb { border-radius: 0; }
 .messages > .history-expand { width: auto; }
 .msg { display: flex; gap: 8px; }
 
+/* 阅读历史时浮在输入区上方，不占聊天布局；位置随输入区高度更新。 */
+.jump-latest {
+  position: absolute; left: 50%; bottom: 160px; transform: translateX(-50%); z-index: 5;
+  display: inline-flex; align-items: center; gap: 5px; max-width: calc(100% - 24px);
+  padding: 6px 12px; border-radius: 18px;
+  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  background: var(--raised-bg); color: var(--vscode-foreground);
+  box-shadow: 0 3px 12px rgba(0,0,0,.2);
+  font: inherit; font-size: 12px; line-height: 1.5; white-space: nowrap; cursor: pointer;
+}
+.jump-latest svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.jump-latest:hover { border-color: var(--vscode-focusBorder); color: var(--vscode-textLink-foreground); }
+.jump-latest:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
 /* ---- 顶部问题栏：滚动时悬浮显示当前提问；右侧「我的消息」按钮开消息列表 ---- */
 /* Floating pill on the composer's column — deliberately NOT edge-to-edge, so
    the host's (VS Code Modern UI) rounded webview corners never clip it. */

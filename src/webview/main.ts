@@ -675,22 +675,42 @@ function startTick() {
 // must clear the composer's REAL height (changed-files panel, queue, chips all
 // change it) — otherwise the last messages hide behind the input.
 const composerEl = $("composer");
+const jumpLatestBtn = el("button", "jump-latest hidden") as HTMLButtonElement;
+jumpLatestBtn.type = "button";
+jumpLatestBtn.title = "跳转到底部并跟随最新回复";
+jumpLatestBtn.innerHTML = `${ICON.chevron}<span>回到最新回复</span>`;
+messagesEl.parentElement!.appendChild(jumpLatestBtn);
+jumpLatestBtn.addEventListener("click", () => {
+  closeMsgNav();
+  scrollToBottom();
+});
+
+function updateJumpLatest() {
+  const away = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight >= 80;
+  jumpLatestBtn.classList.toggle("hidden", !away);
+}
+
 if (composerEl && "ResizeObserver" in window) {
   new ResizeObserver(() => {
     const wasPinned = pinnedToBottom;
     // +114：正文最后一条要完全越过渐隐幕布（其上探 34px）再留出约两行的
     // 呼吸空间——直播时状态药丸是最后一行，贴着输入框会显得压迫。
     messagesEl.style.paddingBottom = `${composerEl.offsetHeight + 150}px`;
+    jumpLatestBtn.style.bottom = `${composerEl.offsetHeight + 12}px`;
     if (wasPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
+    updateJumpLatest();
   }).observe(composerEl);
 }
+if ("ResizeObserver" in window) new ResizeObserver(() => maybeScroll()).observe(messagesEl);
 
 /** Auto-scroll only when the user is already near the bottom. */
 function maybeScroll() {
   if (pinnedToBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  updateJumpLatest();
 }
 messagesEl.addEventListener("scroll", () => {
   pinnedToBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+  updateJumpLatest();
   updateQuestionBar();
 });
 
@@ -2135,6 +2155,7 @@ function expandHistory(banner: HTMLElement, cutoff: number, cpByOrdinal: Map<num
     const fix = () => {
       const d = anchorEl.getBoundingClientRect().top - keepY;
       if (d !== 0) messagesEl.scrollTop += d;
+      updateJumpLatest();
     };
     fix();
     requestAnimationFrame(() => {
@@ -4171,7 +4192,11 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
   return e;
 }
 function scrollToBottom() {
+  // 立即恢复跟随，下一批流式文字无需等待浏览器 scroll 事件就能继续滚动。
+  pinnedToBottom = true;
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  updateJumpLatest();
+  updateQuestionBar();
 }
 function truncateText(s: string, n: number): string {
   return s.length > n ? s.slice(0, n) + `\n… (已截断 ${s.length - n} 字符)` : s;
