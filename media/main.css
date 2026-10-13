@@ -677,7 +677,7 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
   color: var(--vscode-descriptionForeground);
 }
 .working-pill .wk-label { min-width: 0; max-width: 100%; font-weight: 500; }
-.working-pill .wk-wait { flex-basis: 100%; line-height: 1.6; color: var(--vscode-editorWarning-foreground); }
+.working-pill .wk-wait { flex-basis: 100%; line-height: 1.6; color: var(--vscode-descriptionForeground); }
 .working-pill .wk-time {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;

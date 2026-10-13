@@ -168,6 +168,7 @@ let assistantEl: HTMLElement | null = null;
 let liveBlock: LiveBlock | null = null;
 let pinnedToBottom = true;
 let isBusy = false;
+let turnStartedAt: number | null = null;
 /** Subscription quota spent: sending is blocked until the window resets.
  *  Declared up here (not next to its handlers) because `refreshComposerHint()`
  *  reads it and runs during module init — a later `let` would be a TDZ crash. */
@@ -727,6 +728,15 @@ usagePill.addEventListener("click", (e) => {
     send({ type: "refreshUsage" }); // pull fresh numbers; renderUsage rebuilds the open panel
   }
 });
+function formatElapsed(seconds: number): string {
+  return seconds < 60 ? `${seconds}秒` : `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
+}
+function paintWorkingTime(wk: HTMLElement): number {
+  const elapsed = Math.max(0, Math.floor((performance.now() - Number(wk.dataset.start ?? performance.now())) / 1000));
+  const time = wk.querySelector(".wk-time");
+  if (time) time.textContent = `累计 ${formatElapsed(elapsed)}`;
+  return elapsed;
+}
 function startTick() {
   if (tickTimer) return;
   tickTimer = window.setInterval(() => {
@@ -736,9 +746,7 @@ function startTick() {
       tickTimer = 0;
       return;
     }
-    const elapsed = Math.round((performance.now() - Number(wk.dataset.start || performance.now())) / 1000);
-    const t = wk.querySelector(".wk-time") as HTMLElement | null;
-    if (t) t.textContent = `${elapsed}s`;
+    const elapsed = paintWorkingTime(wk);
     // Cycle the label so the wait feels alive (Codex shows more than one state).
     if (workingRotate && !workingFixed) {
       const lbl = wk.querySelector(".wk-label") as HTMLElement | null;
@@ -991,7 +999,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "response_wait":
       assistantEl?.querySelector(".wk-wait")?.remove();
       if (m.idleMs >= 30000 && isBusy && !compacting && !stoppingView && !waitingQuestionId && glowState !== "waiting") {
-        const hint = el("span", "wk-wait", `已 ${Math.floor(m.idleMs / 1000)} 秒没有新的进展回传；可以继续等待，或点击停止后重试。`);
+        const hint = el("span", "wk-wait", `最近 ${formatElapsed(Math.floor(m.idleMs / 1000))}未收到新进展，仍在等待响应。`);
         hint.setAttribute("role", "status");
         assistantEl?.querySelector(".working-pill")?.appendChild(hint);
         maybeScroll();
@@ -1223,7 +1231,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
 
 /** 直播中的思考块（进行中）。结束时落成与历史回放完全一致的时间线节点——
  *  此前直播只给转圈药丸、不落节点，同一会话"直播看没有 思考中、回放看有"。 */
-let liveThink: { startAt: number; text: string } | null = null;
+let liveThink: { text: string } | null = null;
 
 /** The avatar is the reply's first node — the FIRST content step must not draw
  *  its own dot. Marked in JS because during a live turn the body also holds
@@ -1236,13 +1244,12 @@ function markIfFirstNode(body: HTMLElement, step: HTMLElement) {
   if (first === step) step.classList.add("first-node");
 }
 
-/** 思考块结束（下一个块开始/轮次收尾）时，落一个 "思考中 · Ns" 节点。 */
+/** 已收到的思考片段。传输用时不代表模型思考用时，不显示推算秒数。 */
 function flushThinkNode() {
   if (!liveThink) return;
-  const secs = Math.round((performance.now() - liveThink.startAt) / 1000);
   const body = ensureAssistant();
   const step = el("div", "step think");
-  const node = el("div", "think-node", secs > 0 ? `思考中 · ${secs}s` : "思考中");
+  const node = el("div", "think-node", "思考片段");
   if (liveThink.text) node.title = truncateText(liveThink.text, 800);
   step.append(el("div", "step-dot"), node);
   body.appendChild(step);
@@ -1276,7 +1283,7 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
     // 思考中显示转圈药丸；块结束时由 flushThinkNode 落下与回放一致的节点。
     finalizeLive();
     liveBlock = null;
-    liveThink = { startAt: performance.now(), text: "" };
+    liveThink = { text: "" };
     showWorking();
     return;
   }
@@ -2272,12 +2279,10 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       hydrateLocalImages(seg);
       body.appendChild(seg);
     } else if (it.type === "thinking") {
-      // A quiet timeline node, like the official panel — the reply's first
-      // step is visibly "it thought for Ns", not a silent gap.
+      // 历史和直播都用过去的片段标签，不冒充当前仍在思考。
       const body = ensureAssistant();
       const step = el("div", "step think");
-      const label = it.secs ? `思考中 · ${it.secs}s` : "思考中";
-      const node = el("div", "think-node", label);
+      const node = el("div", "think-node", "思考片段");
       if (it.text) node.title = truncateText(it.text, 800);
       step.append(el("div", "step-dot"), node);
       body.appendChild(step);
@@ -2855,6 +2860,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
         turnTokens = 0; turnEst = 0; turnThinkTokens = 0; msgTokenBase = 0; lastMsgTokens = 0;
         resetTokenTween();
         isBusy = true;
+        turnStartedAt = performance.now();
         setGlow("running");
         refreshComposerHint();
         showWorking();
@@ -2903,6 +2909,7 @@ function performSend(p: QueueItem) {
   lastMsgTokens = 0;
   resetTokenTween();
   isBusy = true;
+  turnStartedAt = performance.now();
   refreshComposerHint(); // show the Stop button immediately (don't wait for the busy event)
   showWorking(); // instant feedback (the busy event confirms it a moment later)
   if (assistantEl) assistantEl.classList.add("streaming-turn");
@@ -3970,6 +3977,7 @@ function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, reg
   lastMsgTokens = 0;
   resetTokenTween();
   isBusy = true;
+  turnStartedAt = performance.now();
   // stoppingView stays as-is — see performSend; `setBusy(true)` reopens the gate.
   refreshComposerHint();
   showWorking();
@@ -4195,6 +4203,8 @@ inputEl.addEventListener("input", ackGlow); // typing counts as acknowledgement
 inputEl.addEventListener("mousedown", ackGlow);
 
 function setBusy(busy: boolean) {
+  if (busy && !isBusy) turnStartedAt = performance.now();
+  if (!busy) turnStartedAt = null;
   isBusy = busy;
   stopPending = false;
   if (!busy) waitingQuestionId = undefined;
@@ -4231,14 +4241,15 @@ function showWorking(label?: string) {
   let w = body.querySelector(".working-pill") as HTMLElement | null;
   if (!w) {
     w = el("div", "working-pill");
-    w.dataset.start = String(performance.now());
+    w.dataset.start = String(turnStartedAt ?? performance.now());
     w.dataset.wseed = String(Math.floor(Math.random() * THINKING_WORDS.length)); // varies the starting verb
     w.innerHTML =
       `<span class="typing"><span></span><span></span><span></span></span>` +
-      `<span class="wk-label"></span><span class="wk-time">0s</span><span class="wk-tokens"></span>`;
+      `<span class="wk-label"></span><span class="wk-time" title="本轮在当前窗口的累计用时，包含工具执行和等待时间"></span><span class="wk-tokens"></span>`;
     body.appendChild(w);
   }
   workingFixed = label ?? "";
+  paintWorkingTime(w);
   workingRotate = !label;
   const lbl = w.querySelector(".wk-label") as HTMLElement;
   const seed = Number(w.dataset.wseed || 0);

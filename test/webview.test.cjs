@@ -395,20 +395,54 @@ function manualSeconds(w){
  w.setInterval=f=>{intervals.set(++next,f);return next;};w.clearInterval=id=>intervals.delete(id);
  return seconds=>{now+=seconds*1000;[...intervals.values()].forEach(f=>f());};
 }
+test('思考片段、累计用时和最近静默分开呈现，短暂静默不提示失败重试',t=>{
+ const {w,emit}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});advance(230);
+ emit({kind:'block_start',blockType:'thinking'});
+ emit({kind:'thinking_delta',text:'已收到的一段思考'});advance(1);
+ emit({kind:'block_end'});advance(57);
+ emit({kind:'response_wait',idleMs:57000});
+ assert.equal(w.document.querySelector('.think-node').textContent,'思考片段');
+ assert.equal(w.document.querySelector('.think-node').title,'已收到的一段思考');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 4分48秒');
+ assert.equal(w.document.querySelector('.wk-wait').textContent,'最近 57秒未收到新进展，仍在等待响应。');
+ assert.doesNotMatch(w.document.querySelector('.wk-wait').textContent,/停止|重试|卡死/);
+ emit({kind:'response_wait',idleMs:0});
+ emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'回复继续'});
+ assert.equal(w.document.querySelector('.wk-wait'),null);
+ assert.match(w.document.querySelector('.wk-label').textContent,/正在回复/);
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ emit({kind:'load_history',items:[{type:'thinking',text:'历史思考',secs:1}],checkpoints:[]});
+ assert.equal(w.document.querySelector('.think-node').textContent,'思考片段');
+});
+test('回答问题后重建状态保留本轮累计用时，新一轮重新计时',t=>{
+ const {w,emit}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});advance(65);
+ emit({kind:'permission_request',requestId:'q-time',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'继续？',options:[]}]},suggestions:[]});
+ assert.equal(w.document.querySelector('.working-pill'),null);
+ advance(30);
+ emit({kind:'permission_resolved',requestId:'q-time',behavior:'allow'});
+ emit({kind:'busy',busy:true});
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分35秒');
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分40秒');
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ advance(10);emit({kind:'busy',busy:true});
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
+});
 test('中途说明后长时间无新事件，状态与秒数持续显示，下一次思考及时接续',t=>{
  const {w,emit,errors}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
  emit({kind:'busy',busy:true});
  assert.match(w.document.querySelector('.wk-tokens').textContent,/待回传/);
  emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'首轮回归已通过，继续检查。'});flush();
  assert.match(w.document.querySelector('.wk-label').textContent,/正在回复/);
- advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'5s');
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 5秒');
  emit({kind:'block_end'});
  assert.match(w.document.querySelector('.wk-label').textContent,/等待后续响应/);
- advance(60);assert.equal(w.document.querySelector('.wk-time').textContent,'65s');
+ advance(60);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分5秒');
  assert.match(w.document.querySelector('.wk-tokens').textContent,/≈.*tokens/);
  emit({kind:'block_start',blockType:'thinking'});advance(20);
- assert.equal(w.document.querySelector('.wk-time').textContent,'85s');
- emit({kind:'block_end'});assert.match(w.document.querySelector('.think-node').textContent,/20s/);
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分25秒');
+ emit({kind:'block_end'});assert.equal(w.document.querySelector('.think-node').textContent,'思考片段');
  assert.equal(w.document.querySelector('.msg-body').lastElementChild.className,'working-pill');
  emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});advance(10);
  assert.equal(w.document.querySelector('.working-pill'),null);assert.deepEqual(errors,[]);
@@ -417,7 +451,7 @@ test('文件工具等待期间也显示计时，重建状态保留已收到的�
  const {w,emit}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
  emit({kind:'busy',busy:true});emit({kind:'thinking_tokens',tokens:123});
  emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/tmp/a.txt'}});
- advance(12);assert.equal(w.document.querySelector('.wk-time').textContent,'12s');
+ advance(12);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 12秒');
  assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
  flush();assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
  emit({kind:'tool_result',toolUseId:'read',content:'ok',isError:false});
