@@ -1142,7 +1142,8 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
         appendNotice(m.message, "error");
         break;
       }
-      hideRestoring(); // 还原失败也要撤掉遮罩
+      if (restoreInProgress) queuePausedAfterRestore = true;
+      hideRestoring(); // 还原失败也要撤掉遮罩，队列仍等待用户主动继续
       setGlow("error");
       finalizeTurn();
       // A fatal error may arrive with no busy:false (spawn failures kill the
@@ -1150,7 +1151,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       setBusy(false);
       compacting = false;
       ctxGauge.classList.remove("compacting");
-      appendNotice(m.message, "error");
+      appendNotice(m.message + (queuePausedAfterRestore ? "\n排队消息已暂停，可从队列撤回后重新发送。" : ""), "error");
       break;
     case "notice":
       if (m.message) appendNotice(m.message, "info");
@@ -2920,7 +2921,7 @@ function doSend() {
     return;
   }
   clearComposer();
-  if (isBusy) {
+  if (isBusy || restoreInProgress) {
     // A turn is running — queue this one to auto-run after the current finishes.
     taskQueue.push(payload);
     renderQueue();
@@ -2931,6 +2932,7 @@ function doSend() {
 
 /** Actually start a turn from a payload (used for live sends and queued ones). */
 function performSend(p: QueueItem) {
+  queuePausedAfterRestore = false;
   setGlow("running"); // immediate — don't wait for the host's busy event
   // NOTE: stoppingView is NOT cleared here. The stopped turn's deltas may still
   // be in flight; clearing the gate now would append them to this new bubble.
@@ -2966,7 +2968,7 @@ function flushQueue() {
   // a plain "I want it to stop" Stop looks like.)
   // 用量耗尽时按兵不动：不拦的话队列会绕过 doSend 的锁逐条穿墙，每条都变成
   // 失败轮次白白丢掉。额度恢复（clearRateLimit）后会重新放行。
-  if (rateLimited) return;
+  if (rateLimited || restoreInProgress || queuePausedAfterRestore) return;
   if (isBusy || !taskQueue.length) return;
   const next = taskQueue.shift()!;
   renderQueue();
@@ -3038,7 +3040,11 @@ let userStopped = false; // user hit Stop — append an interrupted marker on fi
  *  它已经把重发的用户气泡和 Brewing 转圈显示出来了，遮罩纯属打扰。submitEdit 按
  *  动作设置，hideRestoring 复位。 */
 let restoringRegen = false;
+let restoreInProgress = false;
+let queuePausedAfterRestore = false;
 function showRestoring() {
+  restoreInProgress = true;
+  queuePausedAfterRestore = false;
   if (restoringRegen) return; // 重新生成：无遮罩、不压暗
   messagesEl.classList.add("restoring");
   if (document.querySelector(".restore-overlay")) return;
@@ -3047,6 +3053,7 @@ function showRestoring() {
   document.body.appendChild(o);
 }
 function hideRestoring() {
+  restoreInProgress = false;
   messagesEl.classList.remove("restoring");
   document.querySelector(".restore-overlay")?.remove();
   restoringRegen = false;

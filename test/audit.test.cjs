@@ -229,6 +229,27 @@ test('还原写盘失败必须报告失败，并保留还原点供重试',async 
  assert.equal(checkpoints.restore(id).restoredFiles,1);
  assert.equal(await fs.readFile(blocked,'utf8'),'原始内容');
 });
+test('还原预检发现目录或链接冲突时，不先覆盖其他文件',async t=>{
+ const {dir,checkpoints}=await checkpointFixture(t);
+ const good=path.join(dir,'good.txt'),link=path.join(dir,'link.txt'),outside=path.join(dir,'outside.txt');
+ await fs.writeFile(good,'当前内容');await fs.writeFile(outside,'链接目标不能被改');await fs.symlink(outside,link);
+ const id=checkpoints.beginTurn('还原',0);checkpoints.recordSnapshot(good,'旧内容');checkpoints.recordSnapshot(link,'旧文件');
+ assert.throws(()=>checkpoints.restore(id),/尚未修改文件/);
+ assert.equal(await fs.readFile(good,'utf8'),'当前内容');assert.equal(await fs.readFile(outside,'utf8'),'链接目标不能被改');
+});
+test('中途写盘失败会恢复已修改和已删除文件，并保留还原点',async t=>{
+ const {dir,checkpoints}=await checkpointFixture(t);const syncFs=require('node:fs');const write=syncFs.writeFileSync;
+ const good=path.join(dir,'good.txt'),added=path.join(dir,'added.bin'),bad=path.join(dir,'bad.txt');
+ await fs.writeFile(good,'当前内容');await fs.writeFile(added,Buffer.from([0,1,2]));await fs.writeFile(bad,'当前末尾');
+ const id=checkpoints.beginTurn('还原',0);checkpoints.recordSnapshot(good,'旧内容');checkpoints.recordSnapshot(added,null);checkpoints.recordSnapshot(bad,'旧末尾');
+ let failed=false;t.mock.method(syncFs,'writeFileSync',function(file,data,...args){
+  if(file===bad&&!failed){failed=true;throw Error('模拟写盘失败');}return write.call(this,file,data,...args);
+ });
+ assert.throws(()=>checkpoints.restore(id),/已恢复到本次操作前的文件内容/);
+ assert.equal(await fs.readFile(good,'utf8'),'当前内容');assert.equal(await fs.readFile(bad,'utf8'),'当前末尾');
+ assert.deepEqual(await fs.readFile(added),Buffer.from([0,1,2]));assert.equal(checkpoints.list()[0].id,id);
+ assert.equal(checkpoints.restore(id).restoredFiles,3);
+});
 
 test('单文件回滚失败不会把备份当作已接受而删除',async t=>{
  const {provider,messages}=providerFixture();

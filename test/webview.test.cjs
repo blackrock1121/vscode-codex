@@ -360,6 +360,19 @@ test('重新回答回填原选择和自由文本，必须主动提交，秘密�
  await new Promise(r=>setTimeout(r,180));
  assert.equal(sent.some(m=>m.type==='answerQuestion'||m.type==='send'),false);
 });
+test('还原期间和还原失败后队列不自动发送，用户可撤回并主动续聊',async t=>{
+ const {w,sent,emit,errors}=setup(t);const composer=w.document.getElementById('input');
+ emit({kind:'busy',busy:true});composer.value='排队任务';w.document.getElementById('btn-send').click();
+ emit({kind:'restoring'});emit({kind:'busy',busy:false});
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ emit({kind:'error',message:'还原失败'});emit({kind:'busy',busy:false});
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ assert.equal(w.document.querySelector('.restore-overlay'),null);
+ assert.match(w.document.getElementById('messages').textContent,/排队消息已暂停/);
+ w.document.querySelector('.tq-recall').click();w.document.getElementById('btn-send').click();
+ assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['排队任务']);
+ assert.deepEqual(errors,[]);
+});
 
 test('待回答明确显示暂停，不显示推理动画，也不自动发送队列',async t=>{
  const {w,sent,emit}=setup(t);emit({kind:'busy',busy:true});

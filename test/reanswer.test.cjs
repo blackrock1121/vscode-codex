@@ -32,7 +32,7 @@ async function fixture(t){
  const ctx={sessionId:'source',checkpoints};const messages=[],forks=[];
  const provider=Object.create(ChatViewProvider.prototype);
  Object.assign(provider,{store,sessions:new Set([ctx]),detached:new Map(),restoring:new Set(),
-  context:{workspaceState:{get:()=>undefined,update:async()=>{}}},storageDir:()=>dir,workspaceDirs:()=>[workspace],
+  context:{workspaceState:{get:()=>undefined,update:async()=>{}}},storageDir:()=>dir,workspaceDirs:()=>[workspace],cwd:()=>workspace,
   localSnapshotExcludedPaths:()=>new Set(),reportSnapshotSkips:()=>{},config:()=>({get:(_key,fallback)=>fallback}),
   output:{appendLine:()=>{}},post:(_ctx,m)=>messages.push(m),speedMode:()=> 'default',rememberSessionSpeed:()=>{},
   refreshSessions:()=>{},renderSessions:()=>{},refreshChangedFiles:()=>{},maybeNotifyWaiting:()=>{},
@@ -42,6 +42,7 @@ async function fixture(t){
   const kept=original.slice(0,original.findIndex(turn=>turn.id===leaf)+1);
   store.threads.set('branch',{id:'branch',turns:structuredClone(kept)});return 'branch';
  };
+ store.delete=async id=>{store.threads.delete(id);};
  t.after(async()=>{ctx.checkpoints.flush();checkpoints.flush();await fs.rm(dir,{recursive:true,force:true});});
  return {dir,workspace,file,first,turns,store,checkpoints,ctx,provider,messages,forks,id};
 }
@@ -211,4 +212,35 @@ test('答案准备期间停止会取消提交，连续点击不会重复续轮',
  await f.provider.stopContext(f.ctx);finishRead();await pending;
  assert.equal(submitted,0);assert.equal(f.messages.some(m=>m.kind==='question_checkpoint'),false);
  assert.match(f.messages.find(m=>m.kind==='question_answer_rejected').message,/取消/);
+});
+test('工具返回相对路径时使用工作目录匹配快照，不误判缺少原文',async t=>{
+ const f=await fixture(t);
+ f.ctx.snapshot=new WorkspaceSnapshot([f.workspace]);await f.ctx.snapshot.capture();
+ f.provider.handleEmitInner(f.ctx,{kind:'tool_input',toolId:'edit',name:'Edit',input:{file_path:'./source.txt'}});
+ await fs.writeFile(f.file,'又一次修改');await f.provider.captureFinalSnapshot(f.ctx);
+ assert.equal(f.checkpoints.restoreBlockReason(f.id),undefined);
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(await fs.readFile(f.file,'utf8'),'提问前已完成的修改');
+});
+test('问题卡落盘失败时不回滚文件、不切换会话，并清理未完成的新分支',async t=>{
+ const f=await fixture(t);const syncFs=require('node:fs');const rename=syncFs.renameSync;
+ t.mock.method(syncFs,'renameSync',function(from,to){
+  if(to===questionStateFile(f.dir,'branch'))throw Error('模拟问题卡落盘失败');
+  return rename.apply(this,arguments);
+ });
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(f.ctx.sessionId,'source');assert.equal(f.store.threads.has('branch'),false);
+ assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
+ assert.equal(f.checkpoints.list().some(cp=>cp.id===f.id),true);
+ assert.equal(f.messages.some(m=>m.kind==='permission_request'),false);
+ assert.match(f.messages.at(-1).message,/模拟问题卡落盘失败/);
+ await assert.rejects(fs.access(questionStateFile(f.dir,'branch')+'.tmp'));
+});
+test('文件回滚失败时清理已保存的问题卡，保留原会话可重试',async t=>{
+ const f=await fixture(t);const blocked=path.join(f.workspace,'blocked.txt');await fs.mkdir(blocked);
+ f.checkpoints.recordSnapshot(blocked,'原文');
+ await f.provider.restoreCheckpoint(f.ctx,f.id,true);
+ assert.equal(f.ctx.sessionId,'source');assert.equal(f.store.threads.has('branch'),false);
+ assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
+ await assert.rejects(fs.access(questionStateFile(f.dir,'branch')));
 });

@@ -267,12 +267,42 @@ export class CheckpointManager {
       }
     }
     for (const file of target.keys()) skippedSet.delete(file);
+    // 先检查全部目标，避免直到第二个文件才发现目录/链接冲突，留下半还原状态。
+    const before = new Map<string, { backup: string; mode: number } | null>();
+    let backupDir: string | undefined;
+    const clearBackups = () => {
+      if (backupDir) try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch { /* 后续可清理的临时备份 */ }
+    };
+    try {
+      for (const file of target.keys()) {
+        let stat: fs.Stats | undefined;
+        try { stat = fs.lstatSync(file); }
+        catch (err) { if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err; }
+        if (stat && !stat.isFile()) throw new Error(`${file} 已变为目录或符号链接`);
+        if (stat) {
+          if (!backupDir) {
+            fs.mkdirSync(this.storageDir, { recursive: true });
+            backupDir = fs.mkdtempSync(path.join(this.storageDir, "restore-"));
+          }
+          // 备份当前内容到磁盘，避免后续生成的大文件占满扩展宿主内存。
+          const backup = path.join(backupDir, String(before.size));
+          fs.copyFileSync(file, backup);
+          before.set(file, { backup, mode: stat.mode });
+        } else before.set(file, null);
+      }
+    } catch (err) {
+      clearBackups();
+      this.flush();
+      throw new Error(`文件还原检查失败，尚未修改文件：${String(err)}`);
+    }
     // 最早保留点未必是会话开头：被裁剪轮次的改动在该点之前，不能回滚。
     // baseline 只供“已更改文件”的会话级回滚使用，仍需保留。
     let restored = 0;
-    const failed: string[] = [];
+    const touched: string[] = [];
+    let failure: unknown;
     for (const [p, content] of target) {
       try {
+        touched.push(p);
         if (content === null) {
           if (fs.existsSync(p)) {
             fs.unlinkSync(p);
@@ -284,13 +314,29 @@ export class CheckpointManager {
           restored++;
         }
       } catch (err) {
-        failed.push(`${p}（${String(err)}）`);
+        failure = `${p}（${String(err)}）`;
+        break;
       }
     }
-    if (failed.length) {
+    if (failure) {
+      const recoveryFailed: string[] = [];
+      for (const file of touched.reverse()) {
+        try {
+          const previous = before.get(file)!;
+          if (previous === null) fs.rmSync(file, { force: true });
+          else {
+            fs.copyFileSync(previous.backup, file);
+            fs.chmodSync(file, previous.mode);
+          }
+        } catch { recoveryFailed.push(file); }
+      }
+      if (!recoveryFailed.length) clearBackups();
       this.flush();
-      throw new Error(`文件还原未完成：已还原 ${restored} 个，失败 ${failed.length} 个。还原点已保留，可重试：${failed.join("、")}`);
+      throw new Error(`文件还原失败：${failure}。${recoveryFailed.length
+        ? `以下文件未能恢复到操作前状态，请检查：${recoveryFailed.join("、")}。操作前备份保留在 ${backupDir ?? "无备份（原文件不存在）"}`
+        : "已恢复到本次操作前的文件内容"}。还原点已保留，可重试。`);
     }
+    clearBackups();
 
     const userText = this.checkpoints[idx].userText;
     this.checkpoints = this.checkpoints.slice(0, idx);

@@ -1917,7 +1917,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.checkpoints.pruneFrom(cutLine);
         return { restoredFiles: 0, skipped: [] as string[], userText: t.userText, truncateLine: cutLine };
     }
-    private async forkRewind(ctx: SessionCtx, checkpointId: string, cutLine: number): Promise<{
+    private async forkRewind(ctx: SessionCtx, checkpointId: string, cutLine: number, prepareBranch?: (id: string) => void): Promise<{
         result: NonNullable<ReturnType<CheckpointManager["restore"]>>;
         rewoundToStart: boolean;
     }> {
@@ -1936,6 +1936,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const hasEarlierTurn = !!oldId && cutLine > 0 && this.store.userTurnLines(oldId).some((t) => t.line <= cutLine);
         const leaf = hasEarlierTurn ? this.store.rewindLeafFor(oldId!, cutLine) : undefined;
         if (!oldId || !leaf) {
+            if (prepareBranch) throw new Error("缺少提问轮次，未回滚文件或对话");
             let result: ReturnType<CheckpointManager["restore"]>;
             try { result = this.cpRestore(ctx, checkpointId, cutLine); }
             finally { preserveOldCheckpoints(); }
@@ -1955,11 +1956,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             throw new Error("复制文件还原点失败，原会话未受影响");
         }
         let result: ReturnType<CheckpointManager["restore"]>;
-        try { result = this.cpRestore(ctx, checkpointId, cutLine); }
+        try {
+            // 必须先保存待回答状态，落盘失败时不能已经回滚工作区。
+            prepareBranch?.(newId);
+            result = this.cpRestore(ctx, checkpointId, cutLine);
+        }
         catch (err) {
             try {
                 await this.store.delete(newId);
                 CheckpointManager.deleteFor(this.storageDir(), newId);
+                if (prepareBranch) {
+                    deleteQuestionState(this.storageDir(), newId);
+                    fs.rmSync(questionStateFile(this.storageDir(), newId) + ".tmp", { force: true });
+                }
             } catch (cleanupError) {
                 this.output.appendLine(`[restore] 清理未完成分支 ${newId} 失败：${String(cleanupError)}`);
             }
@@ -1969,6 +1978,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (!result) {
             await this.store.delete(newId);
             CheckpointManager.deleteFor(this.storageDir(), newId);
+            if (prepareBranch) deleteQuestionState(this.storageDir(), newId);
             throw new Error("找不到该还原点");
         }
         ctx.checkpoints = new CheckpointManager(this.storageDir());
@@ -2098,6 +2108,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             result: NonNullable<ReturnType<CheckpointManager["restore"]>>;
             rewoundToStart: boolean;
         };
+        let restoredQuestion: PermissionRequest | undefined;
         try {
             await this.captureFinalSnapshot(ctx);
             if (reanswer) {
@@ -2108,7 +2119,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 if (this.store.userTurnLines(sourceId).some(turn => turn.line - 1 >= meta.truncateLine && !cuts.has(turn.line - 1)))
                     throw new Error("后续轮次缺少文件还原点，未回退对话");
             }
-            rewind = await this.forkRewind(ctx, checkpointId, meta.truncateLine);
+            rewind = await this.forkRewind(ctx, checkpointId, meta.truncateLine, question ? newId => {
+                const turnId = this.store.rewindLeafFor(newId, this.store.countLines(newId));
+                if (!turnId) throw new Error("新分支缺少提问轮次，无法重新回答");
+                restoredQuestion = { requestId: randomUUID(), toolName: "AskUserQuestion", ...question, suggestions: [] };
+                saveQuestionState(this.storageDir(), newId, turnId, restoredQuestion);
+            } : undefined);
         }
         catch (err) {
             this.output.appendLine(`[restore] 派生失败: ${String(err)}`);
@@ -2116,14 +2132,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         const { result, rewoundToStart } = rewind;
-        let restoredQuestion: PermissionRequest | undefined;
-        if (question && ctx.sessionId && !rewoundToStart) {
-            const turnId = this.store.rewindLeafFor(ctx.sessionId, this.store.countLines(ctx.sessionId));
-            if (!turnId) throw new Error("新分支缺少提问轮次，无法重新回答。");
-            restoredQuestion = { requestId: randomUUID(), toolName: "AskUserQuestion", ...question, suggestions: [] };
-            // 先落盘；关闭窗口或重载后仍停在问题卡，不会自动沿旧答案续聊。
-            saveQuestionState(this.storageDir(), ctx.sessionId, turnId, restoredQuestion);
-        }
         this.output.appendLine(`[restore] truncateLine=${result.truncateLine} 还原文件=${result.restoredFiles} 自动停止=${wasLive ? "是" : "否"} ` +
             `${rewoundToStart ? "→ 回到开头，转为新对话（原会话保留）" : `→ 已派生 ${ctx.sessionId?.slice(0, 8)}（原会话保留）`}`);
         if (rewoundToStart) {
@@ -2629,8 +2637,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastEmitAt = Date.now();
         if (e.kind === "tool_input" && ctx.snapshot) {
             const paths = Array.isArray(e.input.changes) ? e.input.changes.map((c: any) => c.path) : [e.input.file_path];
-            for (const file of paths) {
-                if (typeof file !== "string") continue;
+            for (const raw of paths) {
+                if (typeof raw !== "string" || !raw) continue;
+                const file = path.isAbsolute(raw) ? path.normalize(raw) : path.resolve(this.cwd(), raw);
                 if (ctx.snapshot.files.has(file))
                     ctx.checkpoints.recordSnapshot(file, ctx.snapshot.files.get(file)!);
                 else if (!["Read", "WebSearch", "TodoWrite", "Skill"].includes(e.name))
