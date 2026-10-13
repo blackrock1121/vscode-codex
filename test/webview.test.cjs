@@ -32,6 +32,70 @@ function scrollFixture(w){
  return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
+test('历史长回复按标题层级生成独立目录，忽略用户消息和代码中的伪标题',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',sessionId:'outline',items:[
+  {type:'user',text:'# 用户标题'},
+  {type:'assistant_text',text:'## 原因\n内容\n### 细节\n内容\n```md\n# 代码里的标题\n```\n## 结论\n完成'},
+  {type:'user',text:'第二问'},
+  {type:'assistant_text',text:'## 原因\n第二条\n## 结论\n第二条结论'},
+  {type:'user',text:'短回复'},
+  {type:'assistant_text',text:'## 只有一个标题\n简短内容'},
+ ],checkpoints:[]});
+ const replies=w.document.querySelectorAll('.msg.assistant');
+ assert.deepEqual([...replies[0].querySelectorAll('.reply-toc-item')].map(b=>b.textContent),['原因','细节','结论']);
+ assert.equal(replies[0].querySelectorAll('.reply-toc-item')[1].style.getPropertyValue('--toc-depth'),'1');
+ assert.deepEqual([...replies[1].querySelectorAll('.reply-toc-item')].map(b=>b.textContent),['原因','结论']);
+ assert.equal(replies[2].querySelector('.reply-toc'),null);
+ assert.equal(replies[0].querySelector('.reply-toc').open,false);
+ assert.equal(replies[0].querySelector('.text-seg').classList.contains('summary-node'),false,'目录不能改变正文的时间线判定');
+ w.dispatchEvent(new w.KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true}));
+ const find=w.document.querySelector('.find-input');find.value='细节';find.dispatchEvent(new w.Event('input'));
+ assert.equal(w.document.querySelector('.find-count').textContent,'1 / 1','查找不应把目录标题重复计为正文命中');
+ assert.equal(w.document.querySelector('.reply-toc mark'),null);
+ assert.deepEqual(errors,[]);
+});
+test('流式目录保持展开、更新新增标题，正文重绘后仍跳到正确的同名标题且不自动拉回底部',async t=>{
+ const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
+ emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});
+ emit({kind:'text_delta',text:'## 同名标题\n第一段\n## 同名标题\n第二段\n'});
+ const toc=w.document.querySelector('.reply-toc');
+ toc.querySelector('summary').click();assert.equal(toc.open,true);
+ const oldHeading=w.document.querySelectorAll('.text-seg h2')[1];
+ emit({kind:'text_delta',text:'## 测试结果\n通过\n'});
+ await new Promise(r=>setTimeout(r,40));
+ assert.equal(toc.open,true);assert.equal(toc.querySelectorAll('button').length,3);
+ assert.equal(oldHeading.isConnected,false);
+ const headings=w.document.querySelectorAll('.text-seg h2');
+ scroll(100);
+ Object.defineProperty(toc,'offsetHeight',{get:()=>30});
+ headings[1].getBoundingClientRect=()=>({top:600});
+ toc.querySelectorAll('button')[1].click();
+ assert.equal(toc.open,false);
+ assert.equal(w.document.activeElement,headings[1]);
+ assert.equal(messages.scrollTop,618);
+ setHeight(2300);emit({kind:'text_delta',text:'后续仍在输出\n'});
+ await new Promise(r=>setTimeout(r,40));
+ assert.equal(messages.scrollTop,618);
+ emit({kind:'result',isError:false,numTurns:1});
+ assert.equal(w.document.querySelectorAll('.reply-toc').length,1);
+ assert.equal(toc.querySelectorAll('button').length,3);
+ assert.deepEqual(errors,[]);
+});
+test('目录可用 Escape 收起，回复快照删掉标题或切换会话时清理旧目录',t=>{
+ const {w,emit}=setup(t);
+ emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});
+ emit({kind:'text_delta',text:'## 一\n段落\n## 二\n段落\n'});
+ const toc=w.document.querySelector('.reply-toc');toc.querySelector('summary').click();
+ toc.querySelector('button').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
+ assert.equal(toc.open,false);assert.equal(w.document.activeElement,toc.querySelector('summary'));
+ emit({kind:'text_snap',text:'无标题的更正回复'});
+ assert.equal(w.document.querySelector('.reply-toc'),null);
+ emit({kind:'text_snap',text:'## 新标题一\n正文\n## 新标题二\n正文\n'});
+ assert.equal(w.document.querySelectorAll('.reply-toc').length,1);
+ emit({kind:'load_history',items:[],checkpoints:[]});
+ assert.equal(w.document.querySelector('.reply-toc'),null);
+});
 test('从我的消息查看历史后，一键回到最新回复并恢复流式跟随',async t=>{
  const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
  const button=w.document.querySelector('.jump-latest');

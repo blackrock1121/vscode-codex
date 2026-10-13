@@ -199,12 +199,73 @@ function ensureAssistant(): HTMLElement {
   return assistantEl.querySelector(".msg-body") as HTMLElement;
 }
 
+/** 只收录本条回复正文的标题，工具输出、代码和其他回复不进入目录。 */
+function replyHeadings(msg: HTMLElement): HTMLElement[] {
+  return Array.from(msg.querySelectorAll<HTMLElement>(".msg-body > .text-seg :is(h1,h2,h3,h4,h5,h6)"))
+    .filter(h => h.textContent?.trim());
+}
+const replyOutlineSignatures = new WeakMap<HTMLElement, string>();
+function updateReplyOutline(msg: HTMLElement | null) {
+  if (!msg) return;
+  const headings = replyHeadings(msg);
+  let toc = msg.querySelector<HTMLDetailsElement>(".reply-toc");
+  if (headings.length < 2) {
+    toc?.remove();
+    replyOutlineSignatures.delete(msg);
+    return;
+  }
+  const signature = JSON.stringify(headings.map(h => [h.tagName, h.textContent]));
+  if (toc && replyOutlineSignatures.get(msg) === signature) return;
+  if (!toc) {
+    toc = el("details", "reply-toc");
+    const summary = el("summary", "reply-toc-summary");
+    summary.title = "展开本条回复的标题目录";
+    toc.append(summary, el("nav", "reply-toc-list"));
+    toc.querySelector("nav")!.setAttribute("aria-label", "本条回复目录");
+    // 在自动跟随中展开目录也是阅读操作，后续输出不能改变视口。
+    summary.addEventListener("click", () => { pinnedToBottom = false; });
+    toc.addEventListener("keydown", event => {
+      if (event.key === "Escape") {
+        toc!.open = false;
+        summary.focus({ preventScroll: true });
+        event.stopPropagation();
+      }
+    });
+    msg.querySelector(".msg-body")!.prepend(toc);
+  }
+  toc.querySelector("summary")!.textContent = `回复目录 · ${headings.length} 节`;
+  const list = toc.querySelector("nav")!;
+  const baseLevel = Math.min(...headings.map(h => Number(h.tagName.slice(1))));
+  const buttons = headings.map((heading, index) => {
+    const button = el("button", "reply-toc-item", heading.textContent!.trim());
+    button.type = "button";
+    button.style.setProperty("--toc-depth", String(Number(heading.tagName.slice(1)) - baseLevel));
+    button.addEventListener("click", () => {
+      // 流式渲染会替换正文节点，点击时重新查找，避免跳到已脱离文档的旧标题。
+      const target = replyHeadings(msg)[index];
+      if (!target) return;
+      toc!.open = false;
+      pinnedToBottom = false;
+      const top = messagesEl.getBoundingClientRect().top + 44 + toc!.offsetHeight + 8;
+      messagesEl.scrollTop += target.getBoundingClientRect().top - top;
+      target.setAttribute("tabindex", "-1");
+      target.focus({ preventScroll: true });
+      updateJumpLatest();
+      updateQuestionBar();
+    });
+    return button;
+  });
+  list.replaceChildren(...buttons);
+  replyOutlineSignatures.set(msg, signature);
+}
+
 function finalizeTurn() {
   flushThinkNode(); // 以思考收尾的轮次（如中断）也要把节点落下
   finalizeLive();
   removeWorking();
   cancelPendingInteractions();
   if (assistantEl) {
+    updateReplyOutline(assistantEl);
     assistantEl.classList.remove("streaming-turn");
     assistantEl.querySelector(".thread-active")?.remove(); // stop the progress pulse
     const body = assistantEl.querySelector(".msg-body");
@@ -223,7 +284,7 @@ function finalizeTurn() {
       // "first content" skips the thread-line/active divs that now live in the
       // body — a lone text reply must NOT get a closing node.
       const firstContent = Array.from(body.children).find(
-        (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active"),
+        (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active") && !c.classList.contains("reply-toc"),
       );
       if (last && firstContent !== last) last.classList.add("summary-node");
       endTimelineAtLastNode(assistantEl); // stop the line at the last node
@@ -246,7 +307,7 @@ function assistantHasContent(msg: HTMLElement): boolean {
   return (
     !!body &&
     Array.from(body.children).some(
-      (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active") && !c.classList.contains("working-pill"),
+      (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active") && !c.classList.contains("working-pill") && !c.classList.contains("reply-toc"),
     )
   );
 }
@@ -341,6 +402,7 @@ function renderLive() {
   } else {
     liveBlock.lineEl.textContent = tail;
   }
+  updateReplyOutline(assistantEl);
   scheduleLiveLayout();
 }
 
@@ -363,6 +425,7 @@ function finalizeLive() {
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
   hydrateLocalImages(liveBlock.el);
+  updateReplyOutline(assistantEl);
   updateActiveLine();
   maybeScroll();
 }
@@ -4261,6 +4324,7 @@ function findCollect(q: string): HTMLElement[] {
       if (!v || !v.toLowerCase().includes(lc)) return NodeFilter.FILTER_REJECT;
       const p = node.parentElement;
       if (!p) return NodeFilter.FILTER_REJECT;
+      if (p.closest(".reply-toc")) return NodeFilter.FILTER_REJECT;
       const tag = p.tagName;
       if (tag === "SCRIPT" || tag === "STYLE" || tag === "MARK") return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
