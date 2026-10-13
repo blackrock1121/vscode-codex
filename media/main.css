@@ -163,19 +163,36 @@ body ::-webkit-scrollbar-thumb { border-radius: 0; }
 
 /* 每条长回复自带折叠目录；随正文吸顶，展开列表覆盖布局而不挤动阅读位置。 */
 .reply-toc {
+  --toc-accent: var(--vscode-textLink-foreground, #3794ff);
   position: sticky; top: 42px; z-index: 3; width: min(320px, 100%); margin-bottom: 10px;
-  font-size: 12px; line-height: 1.5; color: var(--vscode-descriptionForeground);
+  font-size: 12px; line-height: 1.5; color: var(--vscode-foreground);
 }
 .reply-toc-summary {
-  padding: 5px 9px; border-radius: 6px; cursor: pointer;
-  background: var(--raised-bg); border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
+  display: flex; align-items: center; gap: 8px; min-height: 34px;
+  padding: 6px 9px; border-radius: 6px; cursor: pointer; list-style: none;
+  background: color-mix(in srgb, var(--toc-accent) 22%, var(--raised-bg));
+  border: 1px solid color-mix(in srgb, var(--toc-accent) 60%, var(--raised-bg));
+  border-left: 3px solid var(--toc-accent);
 }
-.reply-toc-summary:hover { color: var(--vscode-foreground); }
+.reply-toc-summary::-webkit-details-marker { display: none; }
+.reply-toc-summary:hover, .reply-toc[open] > .reply-toc-summary {
+  background: color-mix(in srgb, var(--toc-accent) 30%, var(--raised-bg));
+  border-color: var(--toc-accent);
+}
+.reply-toc-label { font-weight: 600; }
+.reply-toc-icon, .reply-toc-chevron { display: flex; flex: 0 0 auto; color: var(--toc-accent); }
+.reply-toc-icon svg, .reply-toc-chevron svg { width: 16px; height: 16px; }
+.reply-toc-chevron { margin-left: auto; }
+.reply-toc[open] > .reply-toc-summary .reply-toc-chevron { transform: rotate(180deg); }
+.reply-toc-count {
+  padding: 0 6px; border-radius: 8px; white-space: nowrap;
+  background: var(--raised-bg); color: var(--toc-accent); font-size: 11px;
+}
 .reply-toc-list {
   position: absolute; top: calc(100% + 4px); left: 0; width: 100%;
   max-height: min(40vh, 280px); overflow-y: auto; overscroll-behavior: contain;
   padding: 4px; border-radius: 6px; background: var(--vscode-menu-background, var(--raised-bg));
-  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
+  border: 1px solid color-mix(in srgb, var(--toc-accent) 60%, var(--raised-bg));
   box-shadow: 0 6px 18px rgba(0,0,0,.25);
 }
 .reply-toc-item {
@@ -183,7 +200,7 @@ body ::-webkit-scrollbar-thumb { border-radius: 0; }
   border: none; border-radius: 4px; background: transparent; color: var(--vscode-foreground);
   font: inherit; text-align: left; overflow-wrap: anywhere; cursor: pointer;
 }
-.reply-toc-item:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.14)); }
+.reply-toc-item:hover { background: color-mix(in srgb, var(--toc-accent) 18%, transparent); }
 .reply-toc-summary:focus-visible, .reply-toc-item:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
 
 /* ---- 顶部问题栏：滚动时悬浮显示当前提问；右侧「我的消息」按钮开消息列表 ---- */

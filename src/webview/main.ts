@@ -220,6 +220,13 @@ function updateReplyOutline(msg: HTMLElement | null) {
     toc = el("details", "reply-toc");
     const summary = el("summary", "reply-toc-summary");
     summary.title = "展开本条回复的标题目录";
+    const icon = el("span", "reply-toc-icon");
+    icon.innerHTML = ICON.outline;
+    icon.setAttribute("aria-hidden", "true");
+    const chevron = el("span", "reply-toc-chevron");
+    chevron.innerHTML = ICON.chevron;
+    chevron.setAttribute("aria-hidden", "true");
+    summary.append(icon, el("span", "reply-toc-label", "回复目录"), el("span", "reply-toc-count"), chevron);
     toc.append(summary, el("nav", "reply-toc-list"));
     toc.querySelector("nav")!.setAttribute("aria-label", "本条回复目录");
     // 在自动跟随中展开目录也是阅读操作，后续输出不能改变视口。
@@ -233,7 +240,8 @@ function updateReplyOutline(msg: HTMLElement | null) {
     });
     msg.querySelector(".msg-body")!.prepend(toc);
   }
-  toc.querySelector("summary")!.textContent = `回复目录 · ${headings.length} 节`;
+  toc.querySelector(".reply-toc-count")!.textContent = `${headings.length} 节`;
+  toc.querySelector("summary")!.setAttribute("aria-label", `回复目录，共 ${headings.length} 节`);
   const list = toc.querySelector("nav")!;
   const focusedIndex = Array.from(list.children).indexOf(document.activeElement as Element);
   const scrollTop = list.scrollTop;
