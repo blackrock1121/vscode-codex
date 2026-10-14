@@ -46,6 +46,71 @@ function provider() {
   return p;
 }
 
+test('同一会话通知复用编号，重载窗口不变，派生和其他会话有独立编号', async () => {
+  nativeCalls = []; resultError = undefined;
+  const p = provider();
+  await p.sendLocalNotice('等待', '旧', 'source');
+  await p.sendLocalNotice('完成', '新', 'source');
+  p.notificationWindowKey = 'reloaded-window';
+  await p.sendLocalNotice('下一轮', '最新', 'source');
+  await p.sendLocalNotice('派生完成', '独立', 'branch');
+  assert.deepEqual(nativeCalls.map(x=>x.data.id), ['codex-session:source','codex-session:source','codex-session:source','codex-session:branch']);
+  assert.equal(nativeCalls[3].data.sessionId, 'branch');
+  assert.match(nativeCalls[3].data.url, /session=branch/);
+  assert.ok(nativeCalls.every((x,i)=>i===0||x.data.createdAt>nativeCalls[i-1].data.createdAt));
+});
+
+test('较早通知的慢跳转解析不能越过回复清理和最新通知，派生通知不被阻塞', async t => {
+  config = { notifyLocal:true }; nativeCalls=[];
+  const p=provider(),original=vscode.env.asExternalUri;
+  let release;
+  vscode.env.asExternalUri=async uri=>{
+    if(uri.query.includes('session=source')) {
+      vscode.env.asExternalUri=original;
+      await new Promise(resolve=>{release=resolve;});
+    }
+    return original(uri);
+  };
+  t.after(()=>{vscode.env.asExternalUri=original;release?.();});
+  const old=p.sendLocalNotice('旧通知','', 'source');
+  await flush();
+  p.clearSessionNotification('source');
+  const latest=p.sendLocalNotice('最新通知','', 'source');
+  await p.sendLocalNotice('派生通知','', 'branch');
+  assert.equal(nativeCalls.length,1);assert.equal(nativeCalls[0].data.sessionId,'branch');
+  release();await Promise.all([old,latest]);
+  assert.deepEqual(nativeCalls.filter(x=>x.data.sessionId==='source').map(x=>x.data.operation),['show','clear','show']);
+  assert.equal(nativeCalls.at(-1).data.title,'最新通知');
+  const clear=nativeCalls.find(x=>x.data.operation==='clear').data;
+  assert.equal(clear.id,'codex-session:source');assert.equal(clear.url,undefined);
+});
+
+test('本机通道失败不阻塞同会话后续清理和通知，未开启时不启动清理程序', async () => {
+  nativeCalls=[];config={notifyLocal:true};const p=provider();
+  resultError='权限拒绝';
+  await assert.rejects(p.sendLocalNotice('旧','', 'recover'),/权限拒绝/);
+  resultError=undefined;
+  p.clearSessionNotification('recover');
+  await p.sendLocalNotice('新','', 'recover');
+  assert.deepEqual(nativeCalls.map(x=>x.data.operation),['show','clear','show']);
+  const count=nativeCalls.length;config={notifyLocal:false};
+  p.clearSessionNotification('recover');await flush();assert.equal(nativeCalls.length,count);
+});
+
+test('直接发送消息成功后清理该会话，发送失败保留旧通知',async()=>{
+  for(const accepted of [true,false]){
+    const p=provider(),cleared=[];
+    p.config=()=>({get:(key,fallback)=>['autosave','snapshotFilesForRestore'].includes(key)?false:fallback});
+    const proc={isBusy:false,setSpeedMode:async()=>{},sendUserMessage:()=>accepted};
+    p.ensureProcess=async()=>proc;p.speedMode=()=> 'default';p.post=()=>{};
+    p.store.hydrate=async()=>{};p.store.countLines=()=>0;
+    p.clearSessionNotification=id=>cleared.push(id);
+    const ctx={sessionId:'branch',proc,checkpoints:{beginTurn:()=> 'checkpoint'}};
+    await p.handleSend(ctx,'直接在派生会话回复');
+    assert.deepEqual(cleared,accepted?['branch']:[]);
+  }
+});
+
 test('默认不启用本机通知，飞书原文本格式保持不变', async t => {
   config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test' };
   const p = provider(), bodies = [];

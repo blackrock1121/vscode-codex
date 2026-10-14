@@ -992,6 +992,10 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       statusLine.textContent = restoringRegen ? "正在重新生成…" : isBusy ? "正在停止回复并还原…" : "正在还原…";
       showRestoring();
       break;
+    case "forking":
+      if (m.busy) showForking(m.checkpointId, m.label);
+      else if (forkingCheckpoint === m.checkpointId) hideForking();
+      break;
     case "status":
       // Host-driven transient hint (e.g. cold-start context loading). Cleared
       // as soon as the stream produces anything, or when the turn ends.
@@ -1183,6 +1187,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       inputEl.dispatchEvent(new Event("input"));
       break;
     case "load_history":
+      hideForking();
       loadHistory(m.items, m.checkpoints, m.sessionId);
       updateQuestionBar(); // 短历史不触发滚动事件，主动对一次
 
@@ -2731,13 +2736,37 @@ function renderCheckpointDivider(checkpointId: string, synthetic?: boolean, canF
   const fork = el("button", "cp-fork") as HTMLButtonElement;
   fork.innerHTML = ICON.fork;
   fork.title = "从此处派生新会话（新标签页打开，当前会话不受影响）";
+  fork.disabled = !!forkingCheckpoint;
   fork.onclick = (e) => {
     e.stopPropagation();
+    if (forkingCheckpoint) return;
+    showForking(checkpointId, "等待确认派生…");
     send({ type: "forkCheckpoint", checkpointId });
   };
   d.append(btn);
   if (canFork) d.append(fork);
   return d;
+}
+
+// 派生有独立进度，不改变原会话的运行、等待问题或消息排队状态。
+let forkingCheckpoint: string | undefined;
+function showForking(checkpointId: string, label = "正在派生新会话…") {
+  forkingCheckpoint = checkpointId;
+  messagesEl.querySelectorAll<HTMLButtonElement>(".cp-fork").forEach(button => { button.disabled = true; });
+  let progress = document.querySelector<HTMLElement>(".fork-progress");
+  if (!progress) {
+    progress = el("div", "fork-progress");
+    progress.setAttribute("role", "status");
+    progress.setAttribute("aria-live", "polite");
+    progress.append(el("span", "hx-spin"), el("span", "fork-progress-label"));
+    document.body.appendChild(progress);
+  }
+  progress.querySelector(".fork-progress-label")!.textContent = label;
+}
+function hideForking() {
+  forkingCheckpoint = undefined;
+  document.querySelector(".fork-progress")?.remove();
+  messagesEl.querySelectorAll<HTMLButtonElement>(".cp-fork").forEach(button => { button.disabled = false; });
 }
 
 /** A divider marking where the conversation was compacted (/compact). */

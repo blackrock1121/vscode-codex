@@ -9,6 +9,23 @@ import { randomUUID } from "node:crypto";
 const exec = promisify(execFile);
 export const NOTIFIER_APP = "Codex Copilot Notifications.app";
 
+// 在生成跳转 URI 之前排队，避免较早通知的慢回调盖过新通知或回复后的清理。
+const sessionOperations = new Map<string, Promise<void>>();
+export async function queueSessionNotification(sessionId: string | undefined, action: () => Promise<void>): Promise<void> {
+    if (!sessionId) return action(); // 无会话的测试通知独立处理
+    const previous = sessionOperations.get(sessionId) ?? Promise.resolve();
+    const next = previous.catch(() => {}).then(action);
+    sessionOperations.set(sessionId, next);
+    try { await next; }
+    finally { if (sessionOperations.get(sessionId) === next) sessionOperations.delete(sessionId); }
+}
+
+export function localNotificationId(sessionId: string): string { return `codex-session:${sessionId}`; }
+let lastNoticeTime = 0;
+export function notificationTime(): number {
+    return lastNoticeTime = Math.max(Date.now(), lastNoticeTime + 1);
+}
+
 const PROJECT_TITLE_WIDTH = 26;
 const graphemeWidth = (value: string): number => /[^\x00-\xff]/.test(value) ? 2 : value.length;
 const displayWidth = (value: string): number => [...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(value)]
@@ -69,13 +86,22 @@ export function localNotificationsSupported(): boolean {
 }
 
 /** 通过独立 macOS 应用发送系统通知；与 webhook 完全独立，不使用 shell 拼接内容。 */
-export async function sendLocalNotification(extensionPath: string, title: string, body: string, url: string): Promise<void> {
+export async function sendLocalNotification(extensionPath: string, title: string, body: string, url: string,
+    sessionId?: string, createdAt = notificationTime()): Promise<void> {
+    await requestLocalNotification(extensionPath, { operation: "show", id: sessionId ? localNotificationId(sessionId) : randomUUID(), title, body, url, sessionId, createdAt });
+}
+
+export async function clearLocalNotification(extensionPath: string, sessionId: string, createdAt = notificationTime()): Promise<void> {
+    await requestLocalNotification(extensionPath, { operation: "clear", id: localNotificationId(sessionId), sessionId, createdAt });
+}
+
+async function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
     if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-chat-notify-"));
     await fs.chmod(dir, 0o700);
     try {
         const request = path.join(dir, "request.codex-notification");
-        await fs.writeFile(request, JSON.stringify({ id: randomUUID(), title, body, url }), { mode: 0o600 });
+        await fs.writeFile(request, JSON.stringify(payload), { mode: 0o600 });
         await exec("/usr/bin/open", ["-g", "-a", path.join(extensionPath, "dist", NOTIFIER_APP), request], { timeout: 10000 });
         // 原生程序只在系统接受通知后写回结果，权限拒绝不能显示“发送成功”。
         const deadline = Date.now() + 30000;

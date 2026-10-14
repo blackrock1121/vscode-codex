@@ -1450,6 +1450,16 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   cursor: pointer; opacity: 0.75;
 }
 .cp-fork svg { width: 13px; height: 13px; display: block; }
+.cp-fork:disabled { opacity: .4; cursor: wait; }
+.fork-progress {
+  position: fixed; top: 42px; left: 50%; transform: translateX(-50%);
+  z-index: 100; display: flex; align-items: center; gap: 8px;
+  max-width: calc(100vw - 32px); padding: 10px 16px; border-radius: 8px;
+  color: var(--vscode-foreground); background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  border: 1px solid var(--vscode-widget-border, rgba(128,128,128,.3));
+  box-shadow: 0 4px 16px rgba(0,0,0,.2); font-size: 12px; pointer-events: none;
+}
+.fork-progress .hx-spin { flex-shrink: 0; }
 .cp-fork:hover {
   opacity: 1;
   color: var(--vscode-textLink-foreground);

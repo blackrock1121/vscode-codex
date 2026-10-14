@@ -5,7 +5,8 @@ const os=require('node:os');
 const path=require('node:path');
 const Module=require('node:module');
 const originalLoad=Module._load;
-Module._load=function(id,...args){if(id==='vscode')return {window:{showWarningMessage:async()=> '派生',showInformationMessage:()=>{}}};return originalLoad.call(this,id,...args);};
+let confirmation='派生';
+Module._load=function(id,...args){if(id==='vscode')return {window:{showWarningMessage:async()=> confirmation,showInformationMessage:()=>{}}};return originalLoad.call(this,id,...args);};
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
 const {SessionStore}=require('../dist/test/codex/session.js');
@@ -23,11 +24,36 @@ async function fixture(t,cut=1){
  const ctx={sessionId:'source',checkpoints,proc:{isBusy:true}};
  const provider=Object.create(ChatViewProvider.prototype);
  const messages=[],forks=[],opened=[];let reads=0;
- Object.assign(provider,{store,storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},openSession:async id=>opened.push(id)});
+ Object.assign(provider,{store,forking:new Set(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},openSession:async id=>opened.push(id)});
  store.hydrate=async id=>{assert.equal(id,'source');reads++;store.threads.set(id,{id,turns:[first,current]});};
  store.fork=async(source,leaf)=>{forks.push({source,leaf});store.threads.set('branch',{id:'branch',turns:[first]});return 'branch';};
  return {provider,store,ctx,checkpoints,id,first,current,messages,forks,opened,dir,reads:()=>reads};
 }
+test('派生即时反馈、分阶段更新、重复点击不重复创建，收尾恢复界面',async t=>{
+ const f=await fixture(t);let release;
+ f.ctx.finalizing=new Promise(resolve=>{release=resolve;});
+ const task=f.provider.forkCheckpoint(f.ctx,f.id);
+ assert.equal(f.messages[0].kind,'forking');assert.equal(f.messages[0].busy,true);
+ await f.provider.forkCheckpoint(f.ctx,f.id);
+ release();await task;
+ assert.equal(f.forks.length,1);
+ assert.equal(f.ctx.sessionId,'source');assert.equal(f.ctx.proc.isBusy,true);
+ const progress=f.messages.filter(m=>m.kind==='forking');
+ assert.ok(progress.some(m=>m.label==='正在创建独立会话…'));
+ assert.ok(progress.some(m=>m.label==='正在打开新会话…'));
+ assert.equal(progress.at(-1).busy,false);assert.equal(f.provider.forking.size,0);
+});
+test('取消确认和派生异常均结束加载，异常不终止原会话',async t=>{
+ for(const scenario of ['cancel','error']){
+  const f=await fixture(t);
+  if(scenario==='cancel')confirmation=undefined;
+  else f.store.hydrate=async()=>{throw Error('读取失败');};
+  try{await f.provider.forkCheckpoint(f.ctx,f.id);}finally{confirmation='派生';}
+  assert.equal(f.messages.at(-1).kind,'forking');assert.equal(f.messages.at(-1).busy,false);
+  assert.equal(f.provider.forking.size,0);assert.equal(f.forks.length,0);
+  if(scenario==='error')assert.equal(f.messages.find(m=>m.kind==='error').keepBusy,true);
+ }
+});
 test('回复中派生刷新缺失当前轮次的缓存，并保留原会话及还原点',async t=>{
  const f=await fixture(t);
  const before=await fs.readFile(path.join(f.dir,'checkpoints-source.json'),'utf8');

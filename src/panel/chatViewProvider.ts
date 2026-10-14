@@ -6,7 +6,7 @@ import * as https from "node:https";
 import { performance } from "node:perf_hooks";
 import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
-import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification } from "../notifications";
+import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, queueSessionNotification, notificationTime } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { QuestionImages } from "../questionImages";
 import { diffCounts } from "../diff";
@@ -975,6 +975,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (ctx.lastEventAt !== undefined)
                         ctx.lastEventAt = Date.now();
                     this.handlePermission(ctx, m.requestId, m.behavior, m.suggestionId);
+                    this.clearSessionNotification(ctx.sessionId);
                     break;
                 case "answerQuestion": {
                     if (ctx.answeringQuestion) break;
@@ -1374,6 +1375,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.draft = undefined;
         ctx.draftImages = undefined;
         ctx.sendAt = Date.now();
+        this.clearSessionNotification(ctx.sessionId);
         ctx.lastEventAt = ctx.sendAt;
         ctx.lastUserText = (text || "(图片)").slice(0, 200);
         ctx.lastUserActionAt = ctx.sendAt;
@@ -1758,10 +1760,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async forkCheckpoint(ctx: SessionCtx, checkpointId: string): Promise<void> {
         if (this.forking.has(ctx)) return;
         this.forking.add(ctx);
+        const startedAt = performance.now();
+        this.post(ctx, { kind: "forking", checkpointId, busy: true, label: "等待确认派生…" });
         try {
             await this.forkCheckpointInner(ctx, checkpointId);
+        } catch (error) {
+            this.output.appendLine(`[fork] ${String(error)}`);
+            this.post(ctx, { kind: "error", message: `派生失败：${String(error)}`, keepBusy: true });
         } finally {
             this.forking.delete(ctx);
+            this.post(ctx, { kind: "forking", checkpointId, busy: false });
+            this.output.appendLine(`[fork] session=${ctx.sessionId?.slice(0, 8)} 总耗时 ${Math.round(performance.now() - startedAt)}ms（含用户确认）`);
         }
     }
     private async forkCheckpointInner(ctx: SessionCtx, checkpointId: string): Promise<void> {
@@ -1778,6 +1787,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }, "派生");
         if (confirm !== "派生")
             return;
+        const startedAt = performance.now();
+        const progress = (label: string) => {
+            this.post(ctx, { kind: "forking", checkpointId, busy: true, label });
+            this.output.appendLine(`[fork] session=${sourceId.slice(0, 8)} ${label} +${Math.round(performance.now() - startedAt)}ms`);
+        };
+        progress("正在读取派生位置的对话…");
         await ctx.finalizing;
         if (ctx.sessionId !== sourceId) {
             this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择派生位置。" });
@@ -1813,6 +1828,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.checkpoints.flush();
         let newId: string;
         try {
+            progress("正在创建独立会话…");
             newId = await this.store.fork(sourceId, leaf);
         }
         catch (err) {
@@ -1820,6 +1836,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: `派生失败：${String(err)}` });
             return;
         }
+        progress("正在复制文件还原点…");
         const copied = CheckpointManager.forkFor(this.storageDir(), sourceId, newId, cut, this.store.userTurnLines(newId));
         if (ctx.checkpoints.hasAny() && !copied) {
             try { await this.store.delete(newId); }
@@ -1834,6 +1851,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "派生会话已创建，但速度模式未能保存，请在新会话中重新选择。" });
         }
         try {
+            progress("正在打开新会话…");
             await this.openSession(newId);
         } catch (err) {
             this.output.appendLine(String(err));
@@ -2039,6 +2057,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.checkpoints.discardEmpty(checkpointId);
             throw err;
         }
+        this.clearSessionNotification(sourceId);
         this.post(ctx, { kind: "question_checkpoint", requestId, checkpointId });
         if (snapshot) this.reportSnapshotSkips(ctx, snapshot);
     }
@@ -2821,16 +2840,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
     private async sendLocalNotice(title: string, body: string, sessionId?: string): Promise<void> {
-        const query = new URLSearchParams({ window: this.notificationWindowKey });
-        if (sessionId) query.set("session", sessionId);
-        // asExternalUri 让 VS Code 加入来源窗口路由信息，不能自行拼接或修改返回值。
-        const uri = await vscode.env.asExternalUri(vscode.Uri.from({
-            scheme: vscode.env.uriScheme,
-            authority: this.context.extension.id,
-            path: "/notification",
-            query: query.toString(),
-        }));
-        await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString());
+        const createdAt = notificationTime();
+        return queueSessionNotification(sessionId, async () => {
+            const query = new URLSearchParams({ window: this.notificationWindowKey });
+            if (sessionId) query.set("session", sessionId);
+            // asExternalUri 让 VS Code 加入来源窗口路由信息，不能自行拼接或修改返回值。
+            const uri = await vscode.env.asExternalUri(vscode.Uri.from({
+                scheme: vscode.env.uriScheme,
+                authority: this.context.extension.id,
+                path: "/notification",
+                query: query.toString(),
+            }));
+            await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt);
+        });
+    }
+    private clearSessionNotification(sessionId?: string): void {
+        if (!sessionId || !this.config().get<boolean>("notifyLocal") || !localNotificationsSupported()) return;
+        const createdAt = notificationTime();
+        void queueSessionNotification(sessionId, () => clearLocalNotification(this.context.extensionUri.fsPath, sessionId, createdAt))
+            .catch(error => this.output.appendLine(`[notify] 清理会话通知失败: ${String(error)}`));
     }
     async handleNotificationUri(uri: vscode.Uri): Promise<void> {
         if (uri.path !== "/notification") return;

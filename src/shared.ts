@@ -107,6 +107,7 @@ export type ToWebview =
   /** 还原点回退正在自动停止进行中的回复：界面立刻冻结直播观感并给出过渡提示，
    *  等待随后的 busy:false + load_history 收尾（进程真实退出最长要等 5s）。 */
   | { kind: "restoring" }
+  | { kind: "forking"; checkpointId: string; busy: boolean; label?: string }
   | { kind: "status"; label: string }
   | { kind: "response_wait"; idleMs: number }
   | { kind: "block_start"; blockType: "text" | "thinking" | "tool_use"; toolId?: string; toolName?: string }

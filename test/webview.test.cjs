@@ -336,7 +336,25 @@ test('新推理档位可随模型列表显示并发送',t=>{const {w,sent,emit}=
 test('推理强度按模型列出，支持 max/ultra 并可恢复默认',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'models',models:[{id:'gpt-6-sol',name:'GPT-6-Sol',description:'',efforts:['low','medium','high','xhigh','max','ultra'],defaultEffort:'medium',isDefault:true},{id:'gpt-5.5',name:'GPT-5.5',description:'',efforts:['low','medium','high','xhigh'],defaultEffort:'medium'}]});emit({kind:'config',model:'gpt-6-sol',effort:'high',permissionMode:'default'});w.document.getElementById('model-trigger').click();let menu=w.document.getElementById('model-menu');assert.equal(menu.querySelectorAll('[data-effort]').length,7);assert.equal(menu.querySelector('[data-effort="high"]').getAttribute('aria-pressed'),'true');menu.querySelector('[data-effort="ultra"]').click();assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='ultra'));assert.equal(menu.querySelector('[data-effort="ultra"]').getAttribute('aria-pressed'),'true');emit({kind:'config',model:'gpt-5.5',effort:'',permissionMode:'default'});menu=w.document.getElementById('model-menu');assert.equal(menu.querySelectorAll('[data-effort]').length,5);assert.equal(menu.querySelector('[data-effort="ultra"]'),null);assert.match(menu.querySelector('[data-effort=""]').textContent,/默认.*中/);assert.deepEqual(errors,[]);});
 test('提问卡片等待点击提交，按 ID 返回答案且遵守 isOther',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'17',toolName:'AskUserQuestion',input:{questions:[{id:'confirm',question:'是否继续？',header:'确认',isOther:false,options:[{label:'继续',description:'确认执行'},{label:'取消',description:'停止'}]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker);assert.equal(picker.querySelector('.askp-custom'),null);assert.equal(sent.some(m=>m.type==='answerQuestion'),false);picker.querySelector('.askp-opt').click();assert.equal(sent.some(m=>m.type==='answerQuestion'),false);picker.querySelector('.askp-submit').click();assert.ok(sent.some(m=>m.type==='answerQuestion'&&m.requestId==='17'&&m.answers.confirm==='继续'));assert.deepEqual(errors,[]);});
 test('服务端取消提问时选项不可再提交',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'18',toolName:'AskUserQuestion',input:{questions:[{id:'choice',question:'选择？',options:[{label:'A'}]}]},suggestions:[]});emit({kind:'permission_resolved',requestId:'18',behavior:'deny',auto:true});const picker=w.document.querySelector('.askp');assert.ok(picker.classList.contains('interaction-cancelled'));assert.ok([...picker.querySelectorAll('button, textarea')].every(x=>x.disabled));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
-test('派生仅出现在有前序对话的还原点并传递正确 ID',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'load_history',sessionId:'source',items:[{type:'user',text:'第一轮',images:[]},{type:'assistant_text',text:'答一'},{type:'user',text:'第二轮',images:[]},{type:'assistant_text',text:'答二'}],checkpoints:[{id:'cp1',userText:'第一轮',label:'第一轮'},{id:'cp2',userText:'第二轮',label:'第二轮'}]});const forks=w.document.querySelectorAll('.cp-fork');assert.equal(forks.length,1);forks[0].click();assert.ok(sent.some(m=>m.type==='forkCheckpoint'&&m.checkpointId==='cp2'));assert.deepEqual(errors,[]);});
+test('派生点击立即加载、防重复、阶段更新和收尾均不干扰原会话',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'load_history',sessionId:'source',items:[{type:'user',text:'第一轮',images:[]},{type:'assistant_text',text:'答一'},{type:'user',text:'第二轮',images:[]},{type:'assistant_text',text:'答二'}],checkpoints:[{id:'cp1',userText:'第一轮',label:'第一轮'},{id:'cp2',userText:'第二轮',label:'第二轮'}]});
+ const forks=w.document.querySelectorAll('.cp-fork');assert.equal(forks.length,1);
+ emit({kind:'busy',busy:true});forks[0].click();forks[0].click();
+ assert.equal(sent.filter(m=>m.type==='forkCheckpoint'&&m.checkpointId==='cp2').length,1);
+ assert.equal(forks[0].disabled,true);
+ assert.match(w.document.querySelector('.fork-progress').textContent,/等待确认/);
+ assert.ok(w.document.querySelector('.fork-progress .hx-spin'));
+ emit({kind:'forking',checkpointId:'cp2',busy:true,label:'正在创建独立会话…'});
+ assert.match(w.document.querySelector('.fork-progress').textContent,/创建独立会话/);
+ emit({kind:'text_delta',text:'原会话仍在继续'});
+ assert.match(w.document.getElementById('messages').textContent,/原会话仍在继续/);
+ emit({kind:'forking',checkpointId:'other',busy:false});
+ assert.ok(w.document.querySelector('.fork-progress'));
+ emit({kind:'forking',checkpointId:'cp2',busy:false});
+ assert.equal(w.document.querySelector('.fork-progress'),null);assert.equal(forks[0].disabled,false);
+ assert.deepEqual(errors,[]);
+});
 
 test('关闭问题只停止本轮，不提交空答案',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'19',toolName:'AskUserQuestion',input:{questions:[{id:'detail',question:'提供详情',options:[]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker.querySelector('.askp-submit').disabled);picker.querySelector('.askp-x').click();assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
 test('无效提问停止本轮，不自动空答放行',t=>{const {sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'20',toolName:'AskUserQuestion',input:{questions:[]},suggestions:[]});assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);assert.deepEqual(errors,[]);});

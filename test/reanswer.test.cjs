@@ -65,6 +65,17 @@ test('提交问题答案时，宿主在预检和实际发送中都转交图片',
  await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'},images);
  assert.equal(calls.length,3);assert.ok(calls.every(value=>value===images));
 });
+test('成功回复只清理当前真实会话的通知，提交失败不能清理',async t=>{
+ for(const accepted of [true,false]){
+  const f=await fixture(t),cleared=[];
+  f.store.threads.set('source',{id:'source',turns:[f.first]});
+  f.provider.clearSessionNotification=id=>cleared.push(id);
+  f.ctx.proc={isExited:false,prepareQuestionAnswer:()=>({text:reply('A'),turnId:'ask-turn'}),answerQuestion:()=>accepted};
+  if(accepted)await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'});
+  else await assert.rejects(f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'}),/未提交/);
+  assert.deepEqual(cleared,accepted?['source']:[]);
+ }
+});
 test('重新回答准确回到答案之前，只撤销答案后的文件，保留原会话并恢复可编辑的问题',async t=>{
  const f=await fixture(t);let stopped=false;
  f.ctx.proc={isBusy:true,disposeAndWait:async()=>{stopped=true;}};
