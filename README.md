@@ -63,6 +63,7 @@ code --install-extension release/vscode-codex.vsix --force
 - `/help`、`/clear`、`/compact`、`/model`、`/effort`、`/usage`。
 - 订阅用量、服务端报告的上下文占用；没有报告时不猜模型容量。用量弹层列出 Codex 返回的可用重置卡和逐张有效期，临近到期的卡会高亮；后端只返回张数时明确标注有效期未返回。
 - 连接预启动、后台连接保留、轮次超时检测、界面心跳恢复、本地日志。
+- 首次发送优化：打开空白聊天时提前建立 Codex 连接、读取模型目录；真正发送且回滚快照完成后才创建会话。账号信息在后台读取，仅用于套餐与计费类型显示，不再阻塞会话创建或发送；实际鉴权仍由 Codex 执行。`codexChat.prespawnOnOpen` 可关闭打开时的提前连接。
 - 可选 webhook 完成／等待输入通知，以及从本项目仓库检查更新。
 
 配置项在设置中搜索 `codexChat`。快捷键：`Cmd/Ctrl+Shift+I` 聚焦输入；`Cmd/Ctrl+Shift+L` 添加选区；聊天内 `Cmd/Ctrl+F` 搜索。

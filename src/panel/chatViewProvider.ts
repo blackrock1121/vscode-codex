@@ -936,7 +936,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "ready":
                     ctx.ready = true;
-                    void this.store.read("account/read").then(r => {
+                    void this.store.read("account/read", { refreshToken: false }).then(r => {
                         this.post(ctx, { kind: "speed_context", billing: billingKind(r.account?.type),
                             planType: r.account?.type === "chatgpt" ? r.account.planType : undefined });
                     }).catch(() => this.post(ctx, { kind: "speed_context", billing: "unknown" }));
@@ -946,6 +946,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         this.post(ctx, { kind: "models", models });
                     }).catch(e => this.post(ctx, { kind: "notice", message: `模型列表读取失败：${String(e)}` }));
                     this.loadCtxSession(ctx);
+                    if (!ctx.sessionId) this.maybePrespawn(ctx);
                     this.post(ctx, {
                         kind: "config",
                         permissionMode: this.config().get<string>("permissionMode", "default"),
@@ -1318,6 +1319,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             attached = attached ? `${fileCtx}\n\n${attached}` : fileCtx;
         }
         const hadSession = !!ctx.sessionId;
+        this.post(ctx, { kind: "status", label: "正在准备文件与 Codex 连接…" });
+        if (!hadSession) this.prepareProcess(ctx);
         ctx.mayHaveModifiedWorkspace = false;
         if (this.config().get<boolean>("autosave", true)) {
             const saved = await Promise.all(vscode.workspace.textDocuments.filter(d => d.isDirty && !d.isUntitled && vscode.workspace.getWorkspaceFolder(d.uri)).map(d => d.save()));
@@ -1349,6 +1352,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         // A new thread is only durable after its first turn starts. Do not create
         // it during the (potentially slow) snapshot: Stop may cancel the send.
+        this.post(ctx, { kind: "status", label: hadSession ? "正在连接 Codex 会话…" : "正在创建 Codex 会话…" });
         const proc = processReady ? await processReady : await this.ensureProcess(ctx);
         if (!proc) {
             ctx.draft = text;
@@ -2277,21 +2281,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.output.appendLine("[codex] discarding exited process, respawning");
             ctx.proc = undefined;
         }
-        if (ctx.proc)
+        if (ctx.proc?.currentSessionId)
             return Promise.resolve(ctx.proc);
         ctx.starting = this.spawnProcess(ctx).finally(() => {
             ctx.starting = undefined;
         });
         return ctx.starting;
     }
-    private async spawnProcess(ctx: SessionCtx): Promise<CodexProcess | undefined> {
-        this.speedMode(ctx);
-        const isResume = !!ctx.sessionId;
-        const sessionId = ctx.sessionId ?? randomUUID();
-        if (!isResume) {
-            ctx.sessionId = sessionId;
-            ctx.checkpoints.setSession(sessionId);
-        }
+    private createProcess(ctx: SessionCtx): CodexProcess {
         const proc = new CodexProcess({
             questionStateDir: this.storageDir(),
             codexPath: this.config().get<string>("codexPath", "codex"),
@@ -2301,7 +2298,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             effort: this.config().get<string>("effort", "") || undefined,
             speedMode: this.speedMode(ctx),
             permissionMode: this.config().get<string>("permissionMode", "default"),
-            resumeSessionId: isResume ? sessionId : undefined,
+            resumeSessionId: ctx.sessionId,
             addDirs: this.workspaceDirs(),
             appendSystemPrompt: this.config().get<string>("appendSystemPrompt", "") || undefined,
         }, {
@@ -2311,6 +2308,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             onSessionId: (id, resumed) => this.onSessionId(ctx, id, resumed),
             onClose: (code) => this.onProcessClose(ctx, code, proc),
         });
+        return proc;
+    }
+    private prepareProcess(ctx: SessionCtx): CodexProcess {
+        if (ctx.proc && !ctx.proc.isExited) return ctx.proc;
+        const proc = this.createProcess(ctx);
+        ctx.proc = proc;
+        const t0 = Date.now();
+        void proc.prepare().then(() => {
+            this.output.appendLine(`[codex] connection prepared in ${Date.now() - t0}ms (threadCreated=false)`);
+        }).catch(() => {
+            proc.dispose();
+            if (ctx.proc === proc) ctx.proc = undefined;
+            this.output.appendLine("[codex] connection preparation failed; retry on send");
+        });
+        return proc;
+    }
+    private async spawnProcess(ctx: SessionCtx): Promise<CodexProcess | undefined> {
+        this.speedMode(ctx);
+        const isResume = !!ctx.sessionId;
+        const sessionId = ctx.sessionId;
+        const proc = ctx.proc ?? this.createProcess(ctx);
         ctx.proc = proc;
         const t0 = Date.now();
         try {
@@ -2323,7 +2341,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return undefined;
             const raw = String(err);
             if (isResume && /session\s+\S+\s+is archived/i.test(raw)) {
-                this.output.appendLine(`[codex] 归档会话 ${sessionId.slice(0, 8)} 无法恢复，切换到新会话`);
+                this.output.appendLine(`[codex] 归档会话 ${sessionId!.slice(0, 8)} 无法恢复，切换到新会话`);
                 ctx.proc = undefined;
                 ctx.sessionId = undefined;
                 ctx.blank = true;
@@ -2350,8 +2368,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private maybePrespawn(ctx: SessionCtx): void {
         if (!this.config().get<boolean>("prespawnOnOpen", true) && !(ctx.sessionId && fs.existsSync(questionStateFile(this.storageDir(), ctx.sessionId))))
             return;
-        if (!ctx.sessionId)
+        if (!ctx.sessionId) {
+            this.prepareProcess(ctx);
             return;
+        }
         if (ctx.proc || ctx.starting)
             return;
         void this.ensureProcess(ctx);

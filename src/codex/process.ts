@@ -76,6 +76,8 @@ export class CodexProcess {
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
   private modelsLoaded = false;
+  private preparing?: Promise<void>;
+  private starting?: Promise<void>;
   private dispatchSequence = 0;
   private waitingForCatalog = false;
   private turnId?: string;
@@ -150,15 +152,29 @@ export class CodexProcess {
       if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，普通模式仍可使用：${String(e)}` });
     } finally { this.modelsLoaded = true; }
   }
-  async start(): Promise<void> {
-    try {
+  /** 仅准备连接与模型目录；不创建会话、不发起模型生成。 */
+  prepare(): Promise<void> {
+    return this.preparing ??= (async () => {
       await this.rpc.start();
-      // 模型目录与账号读取并行；普通模式不需要等待目录，加速模式发送前再核对。
       this.modelsReady = this.loadModels();
-      const account = await this.timedRequest('account/read', {});
-      if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
+    })();
+  }
+  start(): Promise<void> {
+    return this.starting ??= this.startSession();
+  }
+  private async readAccount(): Promise<void> {
+    try {
+      const account = await this.timedRequest('account/read', { refreshToken: false });
       this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type),
         planType: account.account?.type === 'chatgpt' ? account.account.planType : undefined });
+    } catch {
+      // 账号读取只补充套餐显示；实际请求的鉴权交由 Codex，不能阻塞发送。
+      if (!this.exited) this.emit({ kind: 'diag', message: '[account] 后台账号信息读取失败，不阻塞会话' });
+    }
+  }
+  private async startSession(): Promise<void> {
+    try {
+      await this.prepare();
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
       const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
       // resume 不支持 dynamicTools；旧会话沿用持久化工具，原生异步提问另行接入同一暂停流程。
@@ -170,6 +186,7 @@ export class CodexProcess {
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
       await this.restoreQuestion(result.thread);
+      void this.readAccount();
     } catch (e) { this.exited = true; this.rpc.dispose(); throw e; }
   }
   private saveQuestion(): void {

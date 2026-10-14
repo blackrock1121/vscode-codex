@@ -5,12 +5,17 @@ const path = require('node:path');
 const send = m => process.stdout.write(JSON.stringify(m)+'\n');
 const note = (method,params) => send({method,params});
 let heldCatalog;
+let heldAccount, heldThread;
 let text=''; let background; let interruptCount=0; let answerCount=0;
 let turnNumber=0, turnId='turn-1';
 readJsonl(process.stdin,m=>{
  if(process.env.TEST_RPC_LOG)fs.appendFileSync(process.env.TEST_RPC_LOG,JSON.stringify(m)+'\n');
  if(!m.method) {answerCount++;note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:turnId,status:'completed'}});return;}
  if(m.method==='initialized')return;
+ if(m.method==='initialize'&&process.env.TEST_BAD_INITIALIZE_ONCE){
+  const marker=process.env.TEST_BAD_INITIALIZE_ONCE;
+  if(!fs.existsSync(marker)){fs.writeFileSync(marker,'1');process.stdout.write('not-json\n');return;}
+ }
  let result={};
  if(m.method==='initialize'&&process.env.TEST_UNICODE_INITIALIZE)result={text:'初始化\u2028行分隔符\u2029段分隔符'};
  if(m.method==='unicode-output'){
@@ -26,18 +31,28 @@ readJsonl(process.stdin,m=>{
   },10);
   return;
  }
- if(m.method==='account/read')result={account:{type:process.env.TEST_API_KEY?'apiKey':'chatgpt'},requiresOpenaiAuth:true};
+ if(m.method==='account/read'){
+  result={account:process.env.TEST_UNAUTH?null:{type:process.env.TEST_API_KEY?'apiKey':'chatgpt'},requiresOpenaiAuth:true};
+  if(process.env.TEST_FAIL_ACCOUNT){send({id:m.id,error:{code:-32000,message:'账号读取失败'}});return;}
+  if(process.env.TEST_DEFER_ACCOUNT){heldAccount={id:m.id,result};return;}
+ }
+ if(m.method==='release-account'&&heldAccount){send(heldAccount);heldAccount=undefined;}
  if(m.method==='thread/start'||m.method==='thread/resume'){
   if(m.method==='thread/start'&&!m.params.dynamicTools?.some(t=>t.name==='AskUserQuestion')){send({id:m.id,error:{code:-32602,message:'缺少 AskUserQuestion 工具'}});return;}
   if(m.method==='thread/resume'&&m.params.dynamicTools){send({id:m.id,error:{code:-32602,message:'thread/resume 不支持 dynamicTools'}});return;}
   result={thread:{id:'thread-1'},model:'test-model'};
+  if(process.env.TEST_DEFER_THREAD){heldThread={id:m.id,result};return;}
  }
+ if(m.method==='release-thread'&&heldThread){send(heldThread);heldThread=undefined;}
  if(m.method==='model/list')result={data:[{model:'test-model',displayName:'测试模型',description:'',serviceTiers:process.env.TEST_NO_FAST?[]:[{id:'priority',name:'Fast',description:''},...(process.env.TEST_ULTRA?[{id:'ultrafast',name:'Ultrafast',description:''}]:[])],supportedReasoningEfforts:[{reasoningEffort:'low'}]}]};
  if(m.method==='model/list'&&process.env.TEST_DEFER_MODELS){heldCatalog={id:m.id,result};return;}
  if(m.method==='release-models'&&heldCatalog){send(heldCatalog);heldCatalog=undefined;}
  if(m.method==='thread/read')result={thread:{id:'thread-1',turns:[{id:process.env.TEST_LAST_TURN_ID||'turn-1',status:'interrupted',items:[]}]}};
  if(m.method==='thread/list')result={data:[],nextCursor:null};
- if(m.method==='turn/start'){turnId=`turn-${++turnNumber}`;result={turn:{id:turnId}};}
+ if(m.method==='turn/start'){
+  if(process.env.TEST_UNAUTH){send({id:m.id,error:{code:-32000,message:'Unauthorized: 请先登录 Codex'}});return;}
+  turnId=`turn-${++turnNumber}`;result={turn:{id:turnId}};
+ }
  if(m.method==='hang')return;
  if(m.method==='echo'){send({id:m.id,result:m.params});return;}
  if(m.method==='invalid-envelope'){send(m.params.value);send({id:m.id,result:{unexpected:true}});return;}

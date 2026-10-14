@@ -394,6 +394,7 @@ test('仅支持快速的模型不能请求超高速，普通模式始终可恢�
 });
 test('API 登录只发送计费类型，未知速度不能应用到进程',async t=>{
  const {p,events}=await client(t,{env:{TEST_API_KEY:'1'}});
+ await waitUntil(()=>events.some(e=>e.kind==='speed_context'&&e.billing==='api'));
  assert.ok(events.some(e=>e.kind==='speed_context'&&e.billing==='api'));
  await assert.rejects(()=>p.setSpeedMode('invalid'),/无效的速度模式/);
 });

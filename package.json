@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.95",
+  "version": "0.1.96",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -261,7 +261,7 @@
         "codexChat.prespawnOnOpen": {
           "type": "boolean",
           "default": true,
-          "description": "打开已有会话时提前连接 Codex 并恢复会话，不主动发送模型预热请求。"
+          "description": "打开聊天时提前连接 Codex、读取模型列表；已有会话同时恢复，空白聊天在发送时才创建会话，不主动发送模型预热请求。"
         },
         "codexChat.turnStallTimeoutSec": {
           "type": "number",
