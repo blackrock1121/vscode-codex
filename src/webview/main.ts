@@ -1316,8 +1316,8 @@ function onTextDelta(text: string) {
 const FILE_VIEW_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Skill"]);
 const DIFF_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FOLDABLE_TOOLS = new Set(["Bash", "WebSearch", "WebFetch"]);
-const TOOL_GROUP_MIN = 3;
-type ToolGroupKind = "bash" | "edit";
+const TOOL_GROUP_MIN = 2;
+type ToolGroupKind = "bash" | "edit" | "mixed";
 let toolBodySeq = 0;
 let toolGroupSeq = 0;
 
@@ -1339,12 +1339,12 @@ function timelineNodes(body: HTMLElement): HTMLElement[] {
   );
 }
 
-function isGroupableStep(node: HTMLElement, kind: ToolGroupKind): boolean {
+function isGroupableStep(node: HTMLElement): boolean {
   if (!node.classList.contains("step")) return false;
   const card = node.querySelector<HTMLElement>(":scope > .tool-card");
   if (!card || card.classList.contains("needs-approval")) return false;
   const name = card.getAttribute("data-tool-name") || "";
-  return toolGroupKind(name) === kind;
+  return toolGroupKind(name) !== null;
 }
 
 function setToolGroupFolded(group: HTMLElement, folded: boolean) {
@@ -1354,14 +1354,21 @@ function setToolGroupFolded(group: HTMLElement, folded: boolean) {
 
 function updateToolGroup(group: HTMLElement) {
   const cards = Array.from(group.querySelectorAll<HTMLElement>(".tool-group-items > .step > .tool-card"));
+  const bashCount = cards.filter((card) => toolGroupKind(card.dataset.toolName || "") === "bash").length;
+  const editCount = cards.length - bashCount;
+  const kind: ToolGroupKind = bashCount && editCount ? "mixed" : bashCount ? "bash" : "edit";
+  group.dataset.groupKind = kind;
+  group.classList.toggle("edit", kind === "edit");
+  group.querySelector(".tool-group > .tool-group-toggle > .tool-name")!.textContent =
+    kind === "bash" ? "Bash 调用" : kind === "edit" ? "文件修改" : "工具调用";
   const failed = cards.filter((card) => card.classList.contains("error")).length;
   const waiting = cards.filter((card) => !card.classList.contains("error") && card.classList.contains("needs-approval")).length;
   const running = cards.filter((card) => !card.classList.contains("error") && !card.classList.contains("needs-approval") && card.classList.contains("running")).length;
   const done = cards.length - failed - waiting - running;
   const files = new Set(cards.map((card) => card.querySelector(".file-chip[data-path]")?.getAttribute("data-path")).filter(Boolean));
   group.querySelector(".tool-group-count")!.textContent = `${cards.length} 次` +
-    (group.dataset.groupKind === "edit" && files.size
-      ? ` · ${files.size === 1 ? shortPath([...files][0]!) : `${files.size} 文件`}` : "");
+    (kind === "mixed" ? ` · ${bashCount} Bash · ${editCount} 文件修改` :
+      kind === "edit" && files.size ? ` · ${files.size === 1 ? shortPath([...files][0]!) : `${files.size} 文件`}` : "");
   group.querySelector(".tool-group-status")!.textContent = [
     done ? `${done} 完成` : "", failed ? `${failed} 失败` : "",
     waiting ? `${waiting} 待确认` : "", running ? `${running} 执行中` : "",
@@ -1375,18 +1382,16 @@ function updateToolGroup(group: HTMLElement) {
   group.dataset.waitingCount = String(waiting);
 }
 
-/** Three or more consecutive calls become one timeline node. Bash calls form
- *  one kind of group; file modifications (Edit/Write/MultiEdit/NotebookEdit)
- *  form another. Text, other tools and approvals end a run. */
-function createToolGroup(body: HTMLElement, run: HTMLElement[], kind: ToolGroupKind, keepOpen = false) {
-  const group = el("div", "step tool-group-step collapsed" + (kind === "edit" ? " edit" : ""));
-  group.dataset.groupKind = kind;
+/** Consecutive Bash and file modifications share one timeline node. Text,
+ *  other tools and approvals end a run; child cards retain their order. */
+function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false) {
+  const group = el("div", "step tool-group-step collapsed");
   const id = `tool-group-${++toolGroupSeq}`;
   const title = el("div", "tool-group");
   title.innerHTML =
     `<button type="button" class="tool-group-toggle" aria-expanded="false" aria-controls="${id}">` +
     `<span class="tool-fold-caret" aria-hidden="true">${ICON.chevron}</span>` +
-    `<span class="tool-name">${kind === "bash" ? "Bash 调用" : "文件修改"}</span><span class="tool-group-count"></span>` +
+    `<span class="tool-name"></span><span class="tool-group-count"></span>` +
     `<span class="tool-group-status"></span></button><div id="${id}" class="tool-group-items"></div>`;
   group.append(el("div", "step-dot"), title);
   const opened = run.some((node) => node.querySelector(".tool-card.foldable:not(.collapsed)"));
@@ -1405,18 +1410,18 @@ function createToolGroup(body: HTMLElement, run: HTMLElement[], kind: ToolGroupK
   if (opened || keepOpen) setToolGroupFolded(group, false);
 }
 
-function groupAdjacentTools(body: HTMLElement, step: HTMLElement, kind: ToolGroupKind) {
+function groupAdjacentTools(body: HTMLElement, step: HTMLElement) {
   const nodes = timelineNodes(body);
   const previous = nodes[nodes.length - 2];
-  if (previous?.classList.contains("tool-group-step") && previous.dataset.groupKind === kind) {
+  if (previous?.classList.contains("tool-group-step")) {
     previous.querySelector(".tool-group-items")!.appendChild(step);
     step.classList.remove("first-node");
     updateToolGroup(previous);
     return;
   }
   const run: HTMLElement[] = [step];
-  for (let i = nodes.length - 2; i >= 0 && isGroupableStep(nodes[i], kind); i--) run.unshift(nodes[i]);
-  if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run, kind);
+  for (let i = nodes.length - 2; i >= 0 && isGroupableStep(nodes[i]); i--) run.unshift(nodes[i]);
+  if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run);
 }
 
 /** Approval can arrive after its tool has joined a group. Keep the actionable
@@ -1425,7 +1430,6 @@ function separateExceptionalTool(card: HTMLElement) {
   const group = card.closest<HTMLElement>(".tool-group-step");
   if (!group) return;
   const body = group.parentElement;
-  const kind = group.dataset.groupKind as ToolGroupKind;
   if (!body) return;
   const steps = Array.from(group.querySelectorAll<HTMLElement>(":scope > .tool-group > .tool-group-items > .step"));
   const keepOpen = !group.classList.contains("collapsed");
@@ -1434,11 +1438,11 @@ function separateExceptionalTool(card: HTMLElement) {
   if (wasFirst) steps[0]?.classList.add("first-node");
   let run: HTMLElement[] = [];
   const flush = () => {
-    if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run, kind, keepOpen);
+    if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run, keepOpen);
     run = [];
   };
   for (const step of steps) {
-    if (isGroupableStep(step, kind)) run.push(step);
+    if (isGroupableStep(step)) run.push(step);
     else flush();
   }
   flush();
@@ -1482,7 +1486,7 @@ function createToolCard(parent: HTMLElement, toolId: string, name: string): HTML
   markIfFirstNode(parent, step);
   toolCards.set(toolId, card);
   const kind = toolGroupKind(name);
-  if (kind) groupAdjacentTools(parent, step, kind);
+  if (kind) groupAdjacentTools(parent, step);
   updateActiveLine(); // the new dot becomes the active progress start
   maybeScroll();
   return card;

@@ -131,7 +131,7 @@ test('历史工具和报错默认折叠，待确认工具仍展开',t=>{
  assert.ok(approval.querySelector('.perm-bar'));
  assert.deepEqual(errors,[]);
 });
-test('三次 Bash 才成组，思考事件不占行且每条命令可继续展开',t=>{
+test('两次 Bash 就成组，思考事件不占行且每条命令可继续展开',t=>{
  const {w,emit,errors}=setup(t);
  emit({kind:'tool_input',toolId:'b1',name:'Bash',input:{command:'echo 1'}});
  emit({kind:'tool_result',toolUseId:'b1',content:'1',isError:false});
@@ -140,10 +140,10 @@ test('三次 Bash 才成组，思考事件不占行且每条命令可继续展�
  emit({kind:'block_end'});
  emit({kind:'tool_input',toolId:'b2',name:'Bash',input:{command:'echo 2'}});
  emit({kind:'tool_result',toolUseId:'b2',content:'2',isError:false});
- assert.equal(w.document.querySelector('.tool-group-step'),null,'只有两次时保持单行');
- emit({kind:'tool_input',toolId:'b3',name:'Bash',input:{command:'echo 3'}});
  const group=w.document.querySelector('.tool-group-step');
- assert.ok(group);
+ assert.ok(group,'两次调用就合并');
+ assert.equal(group.querySelector('.tool-group-count').textContent,'2 次');
+ emit({kind:'tool_input',toolId:'b3',name:'Bash',input:{command:'echo 3'}});
  assert.equal(group.classList.contains('collapsed'),true);
  assert.equal(group.querySelector('.tool-group-count').textContent,'3 次');
  const items=[...group.querySelector('.tool-group-items').children];
@@ -165,6 +165,40 @@ test('三次 Bash 才成组，思考事件不占行且每条命令可继续展�
  assert.equal(w.document.querySelector('.think-node'),null);
  emit({kind:'tool_input',toolId:'b5',name:'Bash',input:{command:'echo 5'}});
  assert.equal(group.querySelectorAll('.tool-group-items > .foldable-step').length,5);
+ assert.deepEqual(errors,[]);
+});
+test('交错的 Bash 和文件修改合成一组，正文断开，末尾两次 Bash 也合并',t=>{
+ const {w,emit,errors}=setup(t);
+ const names=['Bash','Bash','Edit','Bash','Bash','Edit','Write'];
+ names.forEach((name,index)=>emit({kind:'tool_input',toolId:'mix'+index,name,
+  input:name==='Bash'?{command:'echo '+index}:{file_path:'/project/a.ts',old_string:'a',new_string:'b',content:'b'}}));
+ const first=w.document.querySelector('.tool-group-step');
+ assert.ok(first);
+ assert.equal(first.dataset.groupKind,'mixed');
+ assert.equal(first.classList.contains('collapsed'),true);
+ assert.equal(first.querySelector('.tool-name').textContent,'工具调用');
+ assert.equal(first.querySelector('.tool-group-count').textContent,'7 次 · 4 Bash · 3 文件修改');
+ first.querySelector('.tool-group-toggle').click();
+ assert.deepEqual([...first.querySelectorAll('.tool-group-items > .step .tool-name')].map(el=>el.textContent),names);
+ first.querySelector('.tool-group-toggle').click();
+ emit({kind:'tool_result',toolUseId:'mix3',content:'未找到匹配',isError:true});
+ assert.equal(first.classList.contains('collapsed'),true);
+ assert.match(first.querySelector('.tool-group-status').textContent,/1 失败/);
+ emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'下一步'});
+ emit({kind:'tool_input',toolId:'tail1',name:'Bash',input:{command:'echo tail1'}});
+ emit({kind:'tool_input',toolId:'tail2',name:'Bash',input:{command:'echo tail2'}});
+ const groups=w.document.querySelectorAll('.tool-group-step');
+ assert.equal(groups.length,2);
+ assert.equal(groups[1].dataset.groupKind,'bash');
+ assert.equal(groups[1].querySelector('.tool-group-count').textContent,'2 次');
+ emit({kind:'load_history',items:[
+  {type:'user',text:'历史操作'},
+  {type:'tool',toolId:'past-bash',name:'Bash',input:{command:'echo old'},result:'old',isError:false},
+  {type:'tool',toolId:'past-edit',name:'Edit',input:{file_path:'/project/a.ts',old_string:'a',new_string:'b'},result:'ok',isError:false},
+ ],checkpoints:[]});
+ const historical=w.document.querySelector('.tool-group-step');
+ assert.equal(historical.dataset.groupKind,'mixed');
+ assert.equal(historical.querySelector('.tool-group-count').textContent,'2 次 · 1 Bash · 1 文件修改');
  assert.deepEqual(errors,[]);
 });
 test('正文与其他工具会断开 Bash 组，失败保留在组内而待确认独立显示',t=>{
@@ -198,7 +232,7 @@ test('正文与其他工具会断开 Bash 组，失败保留在组内而待确�
  const approval=w.document.querySelector('.tool-card[data-tool-id="next3"]');
  assert.equal(approval.closest('.tool-group-step'),null);
  assert.equal(approval.classList.contains('collapsed'),false);
- assert.equal(w.document.querySelectorAll('.tool-group-step').length,1);
+ assert.equal(w.document.querySelectorAll('.tool-group-step').length,2);
  assert.ok(approval.querySelector('.perm-bar'));
  assert.deepEqual(errors,[]);
 });
@@ -247,17 +281,17 @@ test('历史回放按原顺序分组，最后一个折叠组仍是时间线终�
  assert.equal(body.querySelector('.think-node'),null);
  assert.deepEqual(errors,[]);
 });
-test('连续文件修改折成一组，保留每个文件的差异入口',t=>{
+test('两次文件修改就成组，保留每个文件的差异入口',t=>{
  const {w,emit,sent,errors}=setup(t);
  emit({kind:'tool_input',toolId:'e1',name:'Edit',input:{file_path:'/project/src/a.ts',old_string:'a',new_string:'b'}});
  emit({kind:'tool_result',toolUseId:'e1',content:'ok',isError:false});
  emit({kind:'tool_input',toolId:'e2',name:'Edit',input:{file_path:'/project/src/a.ts',old_string:'b',new_string:'c'}});
  emit({kind:'tool_result',toolUseId:'e2',content:'ok',isError:false});
- assert.equal(w.document.querySelector('.tool-group-step'),null,'两次修改仍保持单行');
+ const group=w.document.querySelector('.tool-group-step[data-group-kind="edit"]');
+ assert.ok(group,'两次修改就合并');
+ assert.match(group.querySelector('.tool-group-count').textContent,/2 次/);
  emit({kind:'tool_input',toolId:'e3',name:'Write',input:{file_path:'/project/src/b.ts',content:'new'}});
  emit({kind:'tool_result',toolUseId:'e3',content:'ok',isError:false});
- const group=w.document.querySelector('.tool-group-step[data-group-kind="edit"]');
- assert.ok(group);
  assert.equal(group.classList.contains('collapsed'),true);
  assert.match(group.querySelector('.tool-group-count').textContent,/3 次 · 2 文件/);
  assert.match(group.querySelector('.tool-group-status').textContent,/3 完成/);
