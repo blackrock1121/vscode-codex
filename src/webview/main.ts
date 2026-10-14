@@ -5,7 +5,7 @@ import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits } from "../shared";
-import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, supportsSpeed } from "../shared";
+import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, speedGain, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
 // VS Code bridge
@@ -3863,25 +3863,32 @@ function speedAvailability(mode: SpeedMode): string {
 }
 function buildSpeedMenu() {
   const model = speedModelId();
-  let html = `<div class="pick-head">速度模式 · 下轮生效</div><div class="speed-note">当前模型：${escapeHtml(model || "默认（尚未确认）")}<br>以下可选状态以本机 Codex 返回的账号模型能力为准。</div>`;
+  const costLabel = speedBilling === "api" ? "API 费用" : "订阅额度";
+  let html = `<div class="pick-head speed-head"><span>速度模式</span><span>下轮生效</span></div>`;
+  html += `<div class="speed-columns" aria-hidden="true"><span>模式</span><span title="相对同模型普通模式的生成速度，不代表整个任务耗时">生成速度</span><span>${costLabel}</span><span></span></div>`;
   for (const mode of SPEED_MODES) {
     const enabled = supportsSpeed(speedModel(), mode.id);
     const cost = speedCost(mode.id, model, speedBilling);
+    const gain = speedGain(mode.id, model, speedBilling);
     const on = currentSpeedMode === mode.id;
-    html += `<button type="button" class="pick-row${on ? " on" : ""}" data-speed="${mode.id}" aria-pressed="${on}" ${enabled ? "" : "disabled"} title="${escapeHtml(speedAvailability(mode.id))}"><span class="pick-text"><span class="pick-title">${mode.label} · ${escapeHtml(cost.badge)}</span><span class="pick-desc">${escapeHtml(cost.text)}</span><span class="pick-desc speed-availability">${escapeHtml(speedAvailability(mode.id))}${on && !enabled ? "；当前设置无法使用，请另选" : ""}</span></span><span class="pick-check">${on ? ICON.check : ""}</span></button>`;
+    const costBadge = cost.badge === "倍率待确认" ? "待确认" : cost.badge;
+    const availability = enabled ? "" : speedAvailability(mode.id);
+    const title = `${mode.label}；生成速度：${gain.badge}。${gain.text} ${costLabel}：${cost.badge}。${cost.text}${availability ? ` ${availability}${on ? "；当前设置无法使用，请另选" : ""}` : ""}`;
+    html += `<button type="button" class="pick-row speed-row${on ? " on" : ""}" data-speed="${mode.id}" aria-pressed="${on}" aria-label="${escapeHtml(title)}" ${enabled ? "" : "disabled"} title="${escapeHtml(title)}"><span class="speed-name">${mode.label}${enabled ? "" : `<span class="speed-unavailable">${on ? "请另选" : "暂不可用"}</span>`}</span><span class="speed-gain" title="${escapeHtml(gain.text)}">${escapeHtml(gain.badge)}</span><span class="speed-cost" title="${escapeHtml(cost.text)}">${escapeHtml(costBadge)}</span><span class="pick-check">${on ? ICON.check : ""}</span></button>`;
   }
-  html += `<div class="pick-sep"></div><div class="speed-note">ChatGPT 订阅内额度：<br>普通 1×；快速 2.5×（官方已列支持模型）；超高速 8×（GPT-6 Astra）。<br><br>超高速需 Pro $500 或符合条件的 Enterprise／Edu，并满足工作区权限及地区条件。模型支持不等于账号已开放。<br>API 按模型及服务档位单独定价，不适用以上订阅倍率。额度倍率不代表提速倍率，工具耗时不保证缩短。<br><a href="${SPEED_DOCS_URL}">官方速度与额度说明</a> · 核对于 2026-10-08</div>`;
+  html += `<div class="speed-footer"><span title="${speedBilling === "api" ? "API 按模型与服务档位单独定价，不适用订阅额度倍率。" : "额度列仅表示订阅内额度消耗；购买额度和企业按量计费不同，详见官方说明。"}">${speedBilling === "api" ? "API 按档位计费" : speedBilling === "unknown" ? "额度按订阅内计算" : "额度为订阅内消耗"}</span><a href="${SPEED_DOCS_URL}">官方说明 ↗</a></div>`;
   speedMenu.innerHTML = html;
 }
 
 
 function syncPickers() {
   const cost = speedCost(currentSpeedMode, speedModelId(), speedBilling);
+  const gain = speedGain(currentSpeedMode, speedModelId(), speedBilling);
   const available = supportsSpeed(speedModel(), currentSpeedMode);
-  $("speed-label").textContent = `${speedLabel(currentSpeedMode)} · ${cost.badge}${available ? "" : " · 待确认"}`;
+  $("speed-label").textContent = `${speedLabel(currentSpeedMode)}${available ? "" : " · 待确认"}`;
   speedTrigger.dataset.accelerated = String(currentSpeedMode !== "default");
   speedTrigger.setAttribute("aria-label", `速度：${speedLabel(currentSpeedMode)}；点击选择普通、快速或超高速`);
-  speedTrigger.title = `${speedLabel(currentSpeedMode)}：${cost.text} ${speedAvailability(currentSpeedMode)}。仅当前会话下轮生效，不改变模型与推理强度。`;
+  speedTrigger.title = `${speedLabel(currentSpeedMode)}；生成速度：${gain.badge}。${gain.text} ${cost.text} ${speedAvailability(currentSpeedMode)}。仅当前会话下轮生效。`;
   if (!speedMenu.classList.contains("hidden")) buildSpeedMenu();
 
   // An unknown mode must show ITSELF, never silently degrade to MODES[0] —

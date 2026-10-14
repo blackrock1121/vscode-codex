@@ -791,7 +791,7 @@ test('点击停止后保持队列，收到后台停止确认才按顺序发送',
  assert.match(w.document.getElementById('task-queue').textContent,/停止期间补充/);
 });
 
-test('速度菜单完整展示三档倍率并根据模型能力置灰，保存成功才更新当前状态',t=>{
+test('速度菜单分列展示生成速度与订阅消耗，精简说明并保留权限和保存回执',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'models',models:[{id:'gpt-6-astra',name:'GPT-6 Astra',description:'',efforts:['high'],speedModes:['default','fast']}]});
  emit({kind:'config',model:'gpt-6-astra',effort:'high',permissionMode:'default',speedMode:'default'});
@@ -803,6 +803,12 @@ test('速度菜单完整展示三档倍率并根据模型能力置灰，保存�
  assert.match(menu.querySelector('[data-speed="default"]').textContent,/1×/);
  assert.match(menu.querySelector('[data-speed="fast"]').textContent,/2.5×/);
  assert.match(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×/);
+ assert.equal(menu.querySelector('[data-speed="ultrafast"] .speed-gain').textContent,'最高 8×');
+ assert.equal(menu.querySelector('[data-speed="ultrafast"] .speed-cost').textContent,'8×');
+ assert.equal(menu.querySelector('[data-speed="fast"] .speed-gain').textContent,'未公布');
+ assert.equal(menu.querySelectorAll('.speed-note,.speed-availability').length,0);
+ assert.doesNotMatch(menu.textContent,/当前模型|当前账号可选|Pro|Enterprise|核对于/);
+ assert.equal(w.document.getElementById('speed-label').textContent,'普通');
  assert.equal(menu.querySelector('[data-speed="ultrafast"]').disabled,true);
  menu.querySelector('a').click();assert.equal(sent.at(-1).type,'openExternalLink');assert.match(sent.at(-1).url,/agent-configuration\/speed$/);
  const count=sent.length;menu.querySelector('[data-speed="ultrafast"]').click();assert.equal(sent.length,count);
@@ -841,7 +847,26 @@ test('默认模型未确认时不能用目录默认值冒充实际模型，API �
  emit({kind:'speed_context',billing:'api'});
  assert.match(menu.querySelector('[data-speed="ultrafast"]').textContent,/API 定价/);
  assert.doesNotMatch(menu.querySelector('[data-speed="ultrafast"]').textContent,/8×/);
- assert.match(menu.textContent,/API.*不适用/);
+ assert.match(menu.querySelector('.speed-columns').textContent,/API 费用/);
+ assert.match(menu.querySelector('.speed-footer span').title,/API.*不适用/);
+});
+test('Sol 超高速额度已知但提速未公布，切换账户计费后不会残留订阅倍率',t=>{
+ const {w,emit}=setup(t);
+ emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'GPT-6.1-Sol',description:'',efforts:[],speedModes:['default','fast','ultrafast']}]});
+ emit({kind:'config',model:'gpt-6.1-sol',effort:'',permissionMode:'default',speedMode:'ultrafast'});
+ emit({kind:'speed_context',billing:'chatgpt'});
+ w.document.getElementById('speed-trigger').click();
+ const menu=w.document.getElementById('speed-menu');
+ let row=menu.querySelector('[data-speed="ultrafast"]');
+ assert.equal(row.disabled,false);
+ assert.equal(row.querySelector('.speed-gain').textContent,'未公布');
+ assert.equal(row.querySelector('.speed-cost').textContent,'8×');
+ assert.match(row.querySelector('.speed-gain').title,/未公布/);
+ assert.equal(w.document.getElementById('speed-label').textContent,'超高速');
+ emit({kind:'speed_context',billing:'api'});
+ row=menu.querySelector('[data-speed="ultrafast"]');
+ assert.equal(row.querySelector('.speed-cost').textContent,'API 定价');
+ assert.doesNotMatch(menu.textContent,/8×|2\.5×|订阅额度/);
 });
 
 function manualFrames(w){let next=0;const frames=new Map();w.requestAnimationFrame=f=>{frames.set(++next,f);return next;};w.cancelAnimationFrame=id=>frames.delete(id);return ()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(f=>f(w.performance.now()));};}

@@ -5,7 +5,7 @@ const originalLoad=Module._load;
 Module._load=function(id,...args){if(id==='vscode')return {};return originalLoad.call(this,id,...args);};
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
-const {modelChoices,speedCost,configuredSpeedMode,supportsSpeed}=require('../dist/test/shared.js');
+const {modelChoices,speedCost,speedGain,configuredSpeedMode,supportsSpeed}=require('../dist/test/shared.js');
 function fixture(save=true, state=new Map()){
  const provider=Object.create(ChatViewProvider.prototype),messages=[],applied=[];
  const settings={model:'test-model',effort:'high',speedMode:'default',fastMode:false};
@@ -112,9 +112,23 @@ test('额度倍率按档位和计费方式说明，未知模型不得捏造倍�
  assert.equal(speedCost('default','gpt-6-astra','chatgpt').badge,'1×');
  assert.equal(speedCost('fast','gpt-6.1-sol','chatgpt').badge,'2.5×');
  assert.equal(speedCost('ultrafast','gpt-6-astra','chatgpt').badge,'8×');
+ assert.equal(speedCost('ultrafast','gpt-6.1-sol','chatgpt').badge,'8×');
+ assert.equal(speedCost('ultrafast','gpt-6.1-sol-2026-09-28','chatgpt').badge,'8×');
  assert.equal(speedCost('ultrafast','new-model','chatgpt').badge,'倍率待确认');
  assert.equal(speedCost('fast','new-model','chatgpt').badge,'倍率待确认');
  assert.equal(speedCost('fast','gpt-6.1-luna','chatgpt').badge,'倍率待确认');
  assert.equal(speedCost('ultrafast','gpt-6-astra','api').badge,'API 定价');
  assert.match(speedCost('fast','gpt-6-sol','unknown').text,/若使用 ChatGPT/);
+});
+test('生成速度按模型和计费方式区分，保留最高限定且不把额度当提速',()=>{
+ assert.equal(speedGain('default','new-model','unknown').badge,'1×');
+ assert.equal(speedGain('fast','gpt-5.6','chatgpt').badge,'1.5×');
+ assert.equal(speedGain('ultrafast','gpt-6-astra','chatgpt').badge,'最高 8×');
+ assert.equal(speedGain('fast','gpt-5.6-sol','api').badge,'最高 2.5×');
+ assert.equal(speedGain('ultrafast','gpt-6-astra-2026-09-28','chatgpt').badge,'最高 8×');
+ for(const [mode,model,billing] of [
+  ['fast','gpt-6.1-sol','chatgpt'],['ultrafast','gpt-6.1-sol','chatgpt'],
+  ['fast','gpt-5.6-sol','chatgpt'],['ultrafast','gpt-6-astra','api'],
+  ['ultrafast','gpt-6-astra','unknown'],['fast','new-model','api'],
+ ]) assert.equal(speedGain(mode,model,billing).badge,'未公布');
 });

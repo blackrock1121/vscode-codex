@@ -63,19 +63,36 @@ export function speedLabel(mode: SpeedMode): string { return SPEED_MODES.find(m 
 export function billingKind(accountType: unknown): BillingKind {
   return accountType === "apiKey" ? "api" : accountType === "chatgpt" || accountType === "chatgptAuthTokens" ? "chatgpt" : "unknown";
 }
-/** 倍率来自官方 Speed 文档（2026-10-08）；未知模型不套用已知模型价格。 */
+/** 倍率来自官方 Speed / Pricing 文档（2026-10-14）；未知模型不套用已知模型价格。 */
 export function speedCost(mode: SpeedMode, model: string, billing: BillingKind): { badge: string; text: string } {
   if (billing === "api") return { badge: "API 定价", text: "按 API 的模型与服务档位单独计价，不适用 ChatGPT 订阅额度倍率。" };
   const prefix = billing === "unknown" ? "若使用 ChatGPT：" : "";
   if (mode === "default") return { badge: "1×", text: `${prefix}订阅内额度 1×。` };
   const baseModel = model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
   const fastKnown = ["gpt-6-astra", "gpt-6-sol", "gpt-6-luna", "gpt-6.1-sol", "gpt-5.5", "gpt-5.6", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"].includes(baseModel);
-  const ultraKnown = baseModel === "gpt-6-astra";
+  const ultraKnown = ["gpt-6-astra", "gpt-6.1-sol"].includes(baseModel);
   if ((mode === "fast" && fastKnown) || (mode === "ultrafast" && ultraKnown)) {
     const included = mode === "fast" ? "2.5" : "8";
     return { badge: `${included}×`, text: `${prefix}订阅内额度 ${included}×。` };
   }
   return { badge: "倍率待确认", text: `${prefix}当前模型的额度倍率尚未确认，请查看官方说明；不能套用其他模型的倍率。` };
+}
+/** 生成速度相对同模型普通模式；不把额度倍率或 API 指标套用到订阅。 */
+export function speedGain(mode: SpeedMode, model: string, billing: BillingKind): { badge: string; text: string } {
+  if (mode === "default") return { badge: "1×", text: "同模型普通模式为基准。" };
+  const baseModel = model.replace(/-\d{4}-\d{2}-\d{2}$/, "");
+  if (billing === "chatgpt") {
+    if (mode === "fast" && ["gpt-5.5", "gpt-5.6"].includes(baseModel)) {
+      return { badge: "1.5×", text: "官方公布的生成速度约为普通模式的 1.5 倍。" };
+    }
+    if (mode === "ultrafast" && baseModel === "gpt-6-astra") {
+      return { badge: "最高 8×", text: "官方公布的生成速度最高为普通模式的 8 倍，不代表整个任务耗时缩短 8 倍。" };
+    }
+  }
+  if (billing === "api" && mode === "fast" && baseModel === "gpt-5.6-sol") {
+    return { badge: "最高 2.5×", text: "官方公布的 API 生成速度最高为普通模式的 2.5 倍。" };
+  }
+  return { badge: "未公布", text: "官方未公布当前模型在此计费方式和档位下的固定提速倍率，实际速度随任务变化。" };
 }
 export interface ModelChoice {
   id: string; name: string; description: string; efforts: string[];
