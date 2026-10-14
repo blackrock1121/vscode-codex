@@ -303,3 +303,15 @@ test('文件回滚失败时清理已保存的问题卡，保留原会话可重�
  assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
  await assert.rejects(fs.access(questionStateFile(f.dir,'branch')));
 });
+
+test('AskUserQuestion 提交成功立即定向清理待回答通知，提交失败保留',async t=>{
+ for(const accepted of [true,false]){
+  const f=await fixture(t);const steps=[];
+  f.store.threads.set('source',{id:'source',turns:[f.first]});
+  f.ctx.proc={isExited:false,prepareQuestionAnswer:()=>({text:reply('A'),turnId:'ask-turn'}),answerQuestion:()=>{steps.push('answer');return accepted;}};
+  f.provider.clearSessionNotification=(id,reason)=>{steps.push({id,reason});return Promise.resolve();};
+  if(accepted)await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'});
+  else await assert.rejects(f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'}),/答案未提交/);
+  assert.deepEqual(steps,accepted?['answer',{id:'source',reason:'question_answer'}]:['answer']);
+ }
+});

@@ -660,3 +660,23 @@ test('同会话复用系统解析的通知 URI，其他会话独立且解析失�
   fail=false;await p.sendLocalNotice('重试','','retry');assert.equal(calls,4);
   assert.equal(nativeCalls.filter(x=>x.data.sessionId==='retry').length,1);
 });
+
+test('提交后的清理覆盖兼容历史安装路径，仅携带同一个完整会话 ID', { timeout: 5000 }, async t => {
+  const os=require('node:os');const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-notification-upgrade-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  for(const version of ['0.1.67','0.1.68','0.1.69','0.1.70','0.1.71'])
+    await fs.mkdir(path.join(root,'blackrock1121.vscode-codex-'+version,'dist','Codex Copilot Notifications.app'),{recursive:true});
+  config={notifyLocal:true};nativeCalls=[];const p=provider();
+  p.context.extensionUri.fsPath=path.join(root,'blackrock1121.vscode-codex-0.1.70');
+  let finished;const migrated=new Promise(resolve=>finished=resolve);
+  p.output.appendLine=line=>{if(line.includes('clear_previous'))finished(line);};
+  const id='01999999-aaaa-7000-8000-000000000001';
+  await p.clearSessionNotification(id,'question_answer');
+  assert.match(await migrated,/completed=2 failed=0/);
+  assert.equal(nativeCalls.length,3);
+  assert.ok(nativeCalls.every(x=>x.data.operation==='clear'&&x.data.sessionId===id&&x.data.id==='codex-session:'+id));
+  const paths=nativeCalls.map(x=>x.args[2]);
+  for(const version of ['0.1.68','0.1.69','0.1.70'])assert.ok(paths.some(p=>p.includes(version)));
+  assert.ok(paths.every(p=>!p.includes('0.1.67')&&!p.includes('0.1.71')));
+  assert.equal(new Set(nativeCalls.map(x=>x.data.createdAt)).size,1);
+});

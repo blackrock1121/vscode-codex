@@ -95,6 +95,42 @@ export async function clearLocalNotification(extensionPath: string, sessionId: s
     await requestLocalNotification(extensionPath, { operation: "clear", id: localNotificationId(sessionId), sessionId, createdAt });
 }
 
+/** 升级会改变辅助应用路径；macOS 将各路径的已展示通知分别管理。
+ * 仅向兼容清理协议的历史安装发送同一个完整会话 ID，不扫描或删除其他会话。
+ */
+export async function clearPreviousLocalNotifications(extensionPath: string, sessionId: string, createdAt: number): Promise<{ completed: number; failed: number }> {
+    const match = /^blackrock1121\.vscode-codex-(\d+)\.(\d+)\.(\d+)$/.exec(path.basename(extensionPath));
+    if (!match || !sessionId) return { completed: 0, failed: 0 };
+    const current = match.slice(1).map(Number);
+    const older = (version: number[]) => {
+        for (let i = 0; i < 3; i++) if (version[i] !== current[i]) return version[i] < current[i];
+        return false;
+    };
+    const parent = path.dirname(extensionPath);
+    const entries = await fs.readdir(parent, { withFileTypes: true });
+    const candidates = entries.filter(entry => {
+        const found = /^blackrock1121\.vscode-codex-(\d+)\.(\d+)\.(\d+)$/.exec(entry.name);
+        if (!entry.isDirectory() || !found) return false;
+        const version = found.slice(1).map(Number);
+        // 0.1.68 起才可靠识别编码后的通知会话，不启动不支持此协议的旧程序。
+        return older(version) && (version[0] > 0 || version[1] > 1 || version[1] === 1 && version[2] >= 68);
+    });
+    let completed = 0, failed = 0;
+    // 历史路径独立于当前路径，不占用当前会话的发送队列；限制并发启动数。
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(3, candidates.length) }, async () => {
+        while (next < candidates.length) {
+            const folder = path.join(parent, candidates[next++].name);
+            try {
+                await fs.access(path.join(folder, 'dist', NOTIFIER_APP));
+                await clearLocalNotification(folder, sessionId, createdAt);
+                completed++;
+            } catch { failed++; }
+        }
+    }));
+    return { completed, failed };
+}
+
 async function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
     if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-chat-notify-"));

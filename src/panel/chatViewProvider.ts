@@ -6,7 +6,7 @@ import * as https from "node:https";
 import { performance } from "node:perf_hooks";
 import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
-import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, queueSessionNotification, notificationTime } from "../notifications";
+import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { QuestionImages } from "../questionImages";
 import { diffCounts } from "../diff";
@@ -987,8 +987,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     } finally {
                         ctx.answeringQuestion = false;
                     }
-                    if (ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === m.requestId && ctx.pendingQuestionAt !== undefined)
-                        this.output.appendLine(`[${new Date().toISOString()}] [question] 用户等待 ${Date.now() - ctx.pendingQuestionAt}ms，答案已转交 Codex`);
                     ctx.pendingQuestionAt = undefined;
                     ctx.pendingPerm = undefined;
                     ctx.lastUserActionAt = Date.now();
@@ -2107,7 +2105,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.checkpoints.discardEmpty(checkpointId);
             throw err;
         }
-        this.clearSessionNotification(sourceId);
+        this.output.appendLine(`[question] session=${sourceId} 答案已转交 Codex，开始清理待回答通知`);
+        void this.clearSessionNotification(sourceId, "question_answer");
         this.post(ctx, { kind: "question_checkpoint", requestId, checkpointId });
         if (snapshot) this.reportSnapshotSkips(ctx, snapshot);
     }
@@ -2938,13 +2937,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.sendAt = undefined;
         ctx.lastEventAt = undefined;
     }
-    private async clearSessionNotification(sessionId?: string): Promise<void> {
+    private async clearSessionNotification(sessionId?: string, reason = "user_action"): Promise<void> {
         if (!sessionId) return;
         (this.notificationEpochs ??= new Map()).set(sessionId, this.notificationVersion(sessionId) + 1);
         if (!this.config().get<boolean>("notifyLocal") || !localNotificationsSupported()) return;
         const createdAt = notificationTime();
-        return queueSessionNotification(sessionId, () => clearLocalNotification(this.context.extensionUri.fsPath, sessionId, createdAt))
-            .catch(error => this.output.appendLine(`[notify] 清理会话通知失败: ${String(error)}`));
+        const extensionPath = this.context.extensionUri.fsPath;
+        this.output.appendLine(`[notify] clear_requested session=${sessionId} reason=${reason}`);
+        // 各安装路径对应不同的系统通知归属，旧路径清理不能阻塞当前路径的新通知。
+        void clearPreviousLocalNotifications(extensionPath, sessionId, createdAt).then(result => {
+            if (result.completed || result.failed)
+                this.output.appendLine(`[notify] clear_previous session=${sessionId} completed=${result.completed} failed=${result.failed}`);
+        }).catch(error => this.output.appendLine(`[notify] 历史版本通知清理失败 session=${sessionId}: ${String(error)}`));
+        return queueSessionNotification(sessionId, () => clearLocalNotification(extensionPath, sessionId, createdAt))
+            .then(() => this.output.appendLine(`[notify] clear_completed session=${sessionId} reason=${reason}`))
+            .catch(error => this.output.appendLine(`[notify] 清理会话通知失败 session=${sessionId}: ${String(error)}`));
     }
     async handleNotificationUri(uri: vscode.Uri): Promise<void> {
         if (uri.path !== "/notification") return;
