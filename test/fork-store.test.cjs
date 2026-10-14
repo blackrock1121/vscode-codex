@@ -47,3 +47,25 @@ test('派生后读取返回其他会话 ID 时拒绝覆盖，且释放连接',as
  assert.equal(store.findFile('branch'),undefined);
  assert.equal(p.disposed(),1);
 });
+
+test('会话列表跨页读取不能覆盖期间更新的完整历史',async()=>{
+ const store=new SessionStore('/tmp',()=>'/unused');
+ store.threads.set('source',{id:'source',turns:[turn('old')]});let calls=0;
+ store.read=async()=>{
+  if(++calls===1)return {data:[{id:'source',preview:'标题',turns:[]}],nextCursor:'page2'};
+  store.threads.set('source',{id:'source',turns:[turn('old'),turn('new')]});
+  return {data:[],nextCursor:null};
+ };
+ await store.refresh();assert.equal(store.countLines('source'),2);
+ assert.equal(store.threads.get('source').preview,'标题');
+});
+
+test('列表与历史重复分页游标快速失败，保留已有缓存而不是无限读取',async()=>{
+ const store=new SessionStore('/tmp',()=>'/unused');
+ store.threads.set('source',{id:'source',turns:[turn('old')]});let reads=0;
+ store.read=async()=>{assert.ok(++reads<=2);return {data:[],nextCursor:'repeat'};};
+ await assert.rejects(store.refresh(),/分页游标重复/);assert.equal(store.countLines('source'),1);
+ const p=preparation({id:'branch',historyMode:'paginated'},undefined,[{data:[turn('one')],nextCursor:'repeat'},{data:[turn('two')],nextCursor:'repeat'}]);
+ await assert.rejects(store.fork('source','leaf',p),/分页游标重复/);
+ assert.equal(p.disposed(),1);assert.equal(store.findFile('branch'),undefined);
+});

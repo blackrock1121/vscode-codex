@@ -74,10 +74,12 @@ test('较早通知的慢跳转解析不能越过回复清理和最新通知，�
   t.after(()=>{vscode.env.asExternalUri=original;release?.();});
   const old=p.sendLocalNotice('旧通知','', 'source');
   await flush();
-  p.clearSessionNotification('source');
+  const clearing=p.clearSessionNotification('source');
   const latest=p.sendLocalNotice('最新通知','', 'source');
   await p.sendLocalNotice('派生通知','', 'branch');
-  assert.equal(nativeCalls.length,1);assert.equal(nativeCalls[0].data.sessionId,'branch');
+  await clearing;
+  assert.equal(nativeCalls.filter(x=>x.data.sessionId==='branch').length,1);
+  assert.deepEqual(nativeCalls.filter(x=>x.data.sessionId==='source').map(x=>x.data.operation),['clear'],'旧地址解析未完成，清理也先执行');
   release();await Promise.all([old,latest]);
   assert.deepEqual(nativeCalls.filter(x=>x.data.sessionId==='source').map(x=>x.data.operation),['clear','show']);
   assert.equal(nativeCalls.at(-1).data.title,'最新通知');
@@ -629,4 +631,32 @@ test('点击打开失败只提示一次，不自动重试；用户再次点击�
   assert.equal(attempts,1);assert.equal(warnings.length,1);
   p.openSession=async()=>{attempts++;};await p.handleNotificationUri(uri);
   assert.equal(attempts,2);assert.equal(warnings.length,1);
+});
+
+test('回复或还原后才返回的本机通知错误不再补发过时飞书提醒', async () => {
+  config={notifyLocal:true,notifyWebhook:'https://open.feishu.cn/open-apis/bot/v2/hook/test',notifyFeishuQuietHours:{enabled:true,start:'08:30',end:'18:00'}};
+  for(const action of ['reply','restore','unchanged']) {
+    const p=provider(),ctx={sessionId:'source'};let reject,remote=0;
+    p.workdayCalendar={refresh:async()=>{},shouldMute:()=>true};
+    p.sendLocalNotice=()=>new Promise((_,r)=>reject=r);
+    p.sendWebhook=async()=>{remote++;return {ok:true,status:200};};
+    p.dispatchNotification(ctx,'旧提醒',{});
+    if(action==='reply')p.notificationEpochs=new Map([['source',1]]);
+    if(action==='restore')ctx.sessionId='branch';
+    reject(new Error('迟到的系统错误'));await flush();
+    assert.equal(remote,action==='unchanged'?1:0);
+  }
+});
+
+test('同会话复用系统解析的通知 URI，其他会话独立且解析失败可重试', async t => {
+  const original=vscode.env.asExternalUri;let calls=0,fail=false;
+  vscode.env.asExternalUri=async uri=>{calls++;if(fail)throw new Error('临时解析失败');return original(uri);};
+  t.after(()=>{vscode.env.asExternalUri=original;});
+  const p=provider();nativeCalls=[];
+  await p.sendLocalNotice('一','','session-A');await p.sendLocalNotice('二','','session-A');
+  assert.equal(calls,1);
+  await p.sendLocalNotice('分支','','branch');assert.equal(calls,2);
+  fail=true;await assert.rejects(p.sendLocalNotice('失败','','retry'),/临时解析失败/);
+  fail=false;await p.sendLocalNotice('重试','','retry');assert.equal(calls,4);
+  assert.equal(nativeCalls.filter(x=>x.data.sessionId==='retry').length,1);
 });

@@ -73,14 +73,19 @@ export class SessionStore {
   private async refreshInner(): Promise<void> {
     let cursor: string | null = null;
     const found = new Map<string, any>();
+    const seen = new Set<string>();
     do {
       const r: any = await this.read('thread/list', { cwd: this.cwd, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
       for (const t of r.data) {
-        found.set(t.id, { ...t, turns: this.threads.get(t.id)?.turns ?? t.turns });
+        found.set(t.id, t);
         if (t.preview?.trim() || t.name?.trim()) this.pending.delete(t.id);
       }
       cursor = r.nextCursor;
+      if (cursor && seen.has(cursor)) throw new Error('会话列表分页游标重复，已停止读取，请重试。');
+      if (cursor) seen.add(cursor);
     } while (cursor);
+    // 所有分页完成后再合并缓存，避免覆盖分页期间刚读取的完整历史。
+    for (const [id, thread] of found) found.set(id, { ...thread, turns: this.threads.get(id)?.turns ?? thread.turns });
     // Forked threads can be absent from thread/list briefly after creation.
     for (const [id, thread] of this.threads) if (this.pending.has(id) && !found.has(id)) found.set(id, thread);
     this.threads = found;
@@ -102,9 +107,12 @@ export class SessionStore {
     const id = thread.id;
     if (thread.historyMode === 'paginated' || !Array.isArray(thread.turns)) {
       let cursor: string | null = null; const turns: any[] = [];
+      const seen = new Set<string>();
       do {
         const page: any = await rpc.request('thread/turns/list', { threadId: id, cursor, limit: 100, sortDirection: 'asc', itemsView: 'full' });
         turns.push(...page.data); cursor = page.nextCursor;
+        if (cursor && seen.has(cursor)) throw new Error('会话历史分页游标重复，已停止读取，请重试。');
+        if (cursor) seen.add(cursor);
       } while (cursor);
       thread.turns = turns;
     }

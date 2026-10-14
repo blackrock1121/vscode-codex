@@ -46,6 +46,13 @@ func notificationBelongsToSession(identifier: String, url: String, sessionId: St
     return !identifier.hasPrefix("codex-session:") || identifier == "codex-session:\(sessionId)"
 }
 
+// 辅助程序重启后内存中的 latest 为空，用系统已展示通知的时间继续保护新提醒。
+func notificationIsNewer(identifier: String, url: String, sessionId: String?,
+                         createdAt: Double?, deliveredAt: Double, than requestedAt: Double) -> Bool {
+    return notificationBelongsToSession(identifier: identifier, url: url, sessionId: sessionId)
+        && (createdAt ?? deliveredAt) > requestedAt
+}
+
 final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let center = UNUserNotificationCenter.current()
     // 所有队列状态只在主线程访问；同一会话串行，不同会话互不阻塞。
@@ -95,6 +102,13 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
             DispatchQueue.main.async {
                 guard current() else { finish(nil); return }
                 let clearing = notice.operation == "clear"
+                let requestedAt = notice.createdAt ?? Date().timeIntervalSince1970 * 1000
+                if delivered.contains(where: { item in
+                    notificationIsNewer(identifier: item.request.identifier,
+                        url: item.request.content.userInfo["url"] as? String ?? "", sessionId: notice.sessionId,
+                        createdAt: item.request.content.userInfo["createdAt"] as? Double,
+                        deliveredAt: item.date.timeIntervalSince1970 * 1000, than: requestedAt)
+                }) { finish(nil); return }
                 // 同时识别旧版随机 ID 通知；只清理该会话，派生后的不同 ID 不受影响。
                 let old = delivered.filter { notification in
                     let request = notification.request
@@ -112,7 +126,7 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                 content.title = notice.title ?? ""
                 content.body = notice.body ?? ""
                 content.sound = .default
-                content.userInfo = ["url": notice.url ?? ""]
+                content.userInfo = ["url": notice.url ?? "", "createdAt": requestedAt]
                 content.threadIdentifier = key
                 // 相同 request identifier 会替换通知中心里已展示的旧通知并再次提醒。
                 self.center.add(UNNotificationRequest(identifier: key, content: content, trigger: nil)) { error in

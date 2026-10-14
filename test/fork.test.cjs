@@ -139,3 +139,30 @@ test('最新历史中的首条消息仍不能派生，合成还原点可以派�
  await f.provider.forkCheckpointInner(f.ctx,'turn:2');
  assert.deepEqual(f.forks,[{source:'source',leaf:'first'}]);
 });
+
+test('编辑后重新生成与派生、还原、答案提交互斥，失败也释放锁',async t=>{
+ const f=await fixture(t);let rewinds=0,sends=0;
+ f.provider.editMessageRewind=async()=>{rewinds++;return true;};
+ f.provider.handleSend=async()=>{assert.equal(f.provider.restoring.has(f.ctx),false);sends++;};
+ f.provider.forking.add(f.ctx);await f.provider.editMessage(f.ctx,f.id,'新内容');f.provider.forking.clear();
+ f.provider.restoring.add(f.ctx);await f.provider.editMessage(f.ctx,f.id,'新内容');f.provider.restoring.clear();
+ f.ctx.answeringQuestion=true;await f.provider.editMessage(f.ctx,f.id,'新内容');f.ctx.answeringQuestion=false;
+ assert.equal(rewinds,0);assert.equal(sends,0);
+ let release;f.provider.editMessageRewind=async()=>{rewinds++;await new Promise(r=>release=r);return true;};
+ const pending=f.provider.editMessage(f.ctx,f.id,'新内容');
+ await f.provider.editMessage(f.ctx,f.id,'重复');await f.provider.forkCheckpoint(f.ctx,f.id);
+ assert.equal(rewinds,1);assert.equal(f.forks.length,0);
+ release();await pending;assert.equal(sends,1);
+ f.provider.editMessageRewind=async()=>{throw new Error('读取失败');};
+ await assert.rejects(f.provider.editMessage(f.ctx,f.id,'新内容'),/读取失败/);
+ assert.equal(f.provider.restoring.has(f.ctx),false);assert.equal(sends,1);
+});
+
+test('编辑重新生成先刷新历史和还原点位置，避免用直播中的旧缓存截断',async t=>{
+ const f=await fixture(t,0);const steps=[];
+ f.ctx.proc=undefined;
+ f.provider.forkRewind=async(_ctx,_id,cut)=>{steps.push(cut);};
+ f.provider.refreshChangedFiles=()=>{};
+ assert.equal(await f.provider.editMessageRewind(f.ctx,f.id),true);
+ assert.equal(f.reads(),1);assert.deepEqual(steps,[1]);
+});

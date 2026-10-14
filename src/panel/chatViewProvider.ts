@@ -229,6 +229,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly notificationWindowKey = randomUUID();
     private readonly notifyTimers = new Set<ReturnType<typeof setTimeout>>();
     private notificationEpochs = new Map<string, number>();
+    private notificationUris = new Map<string, Promise<vscode.Uri>>();
     constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
         this.workdayCalendar = new WorkdayCalendar(path.join(context.globalStorageUri.fsPath, "holiday-cn"),
             message => this.output.appendLine(message), () => this.postNotifyCalendar());
@@ -1391,6 +1392,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         mediaType: string;
         data: string;
     }[]): Promise<void> {
+        if (this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion) {
+            this.post(ctx, { kind: "notice", message: "派生、还原或答案提交尚未完成，请稍后重新生成。" });
+            return;
+        }
+        this.restoring.add(ctx);
+        let restored = false;
+        try { restored = await this.editMessageRewind(ctx, checkpointId); }
+        finally { this.restoring.delete(ctx); }
+        if (restored) await this.handleSend(ctx, text, undefined, images);
+    }
+    private async editMessageRewind(ctx: SessionCtx, checkpointId: string): Promise<boolean> {
+        const sourceId = ctx.sessionId;
+        await ctx.finalizing;
+        if (sourceId) await this.store.hydrate(sourceId);
+        if (ctx.sessionId !== sourceId) return false;
+        if (sourceId) this.checkpointsForView(ctx, sourceId);
         const rewindAt = Date.now();
         const meta = checkpointId ? this.cpMeta(ctx, checkpointId) : undefined;
         if (!meta) {
@@ -1400,13 +1417,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             });
             this.post(ctx, { kind: "busy", busy: false });
             this.loadCtxSession(ctx);
-            return;
+            return false;
         }
         if (ctx.sessionId && !this.checkpointAligned(ctx.sessionId, meta)) {
             this.post(ctx, { kind: "error", message: "还原点与当前对话不匹配，无法重新生成。" });
             this.post(ctx, { kind: "busy", busy: false });
             this.loadCtxSession(ctx);
-            return;
+            return false;
         }
         this.post(ctx, { kind: "restoring" });
         while (ctx.proc) {
@@ -1424,11 +1441,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: `回退对话失败：${String(err)}` });
             this.post(ctx, { kind: "busy", busy: false });
             this.loadCtxSession(ctx);
-            return;
+            return false;
         }
         this.refreshChangedFiles(ctx);
         this.output.appendLine(`[${new Date().toISOString()}] [rewind] 回退准备 ${Date.now() - rewindAt}ms`);
-        await this.handleSend(ctx, text, undefined, images);
+        return true;
     }
     private async saveImage(dataUri: string): Promise<void> {
         const m = /^data:image\/([a-z0-9.+-]+);base64,(.+)$/i.exec(dataUri);
@@ -2843,6 +2860,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     /** 两个通道分别执行：本机通知权限/跳转异常不能阻断飞书提醒。 */
     private dispatchNotification(ctx: SessionCtx, msg: string, extra: Record<string, unknown>): void {
+        const sessionId = ctx.sessionId;
+        const epoch = this.notificationVersion(sessionId);
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
@@ -2867,11 +2886,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 ...extra,
                 project: typeof extra.project === "string" ? localNotificationProject(extra.project) : extra.project,
             });
-            void this.sendLocalNotice(title, body, ctx.sessionId).then(sent => {
+            void this.sendLocalNotice(title, body, sessionId).then(sent => {
                 this.output.appendLine(sent === false ? "[notify] 已跳过失效的旧通知" : "[notify] 系统已接受本机通知");
             }).catch(error => {
                 this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`);
-                if (muted) {
+                if (muted && ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch) {
                     this.output.appendLine("[notify] 本机通知未成功，取消本条消息的飞书静默并补发");
                     sendRemote();
                 }
@@ -2881,21 +2900,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async sendLocalNotice(title: string, body: string, sessionId?: string): Promise<boolean> {
         const createdAt = notificationTime();
         const epoch = this.notificationVersion(sessionId);
+        // 地址解析不占据原生操作队列，用户回复后的清理无需等旧解析完成。
+        const uri = await this.notificationUri(sessionId);
         return queueSessionNotification(sessionId, async () => {
-            if (this.notificationVersion(sessionId) !== epoch) return false;
-            const query = new URLSearchParams({ window: this.notificationWindowKey });
-            if (sessionId) query.set("session", sessionId);
-            // asExternalUri 让 VS Code 加入来源窗口路由信息，不能自行拼接或修改返回值。
-            const uri = await vscode.env.asExternalUri(vscode.Uri.from({
-                scheme: vscode.env.uriScheme,
-                authority: this.context.extension.id,
-                path: "/notification",
-                query: query.toString(),
-            }));
             if (this.notificationVersion(sessionId) !== epoch) return false;
             await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt);
             return true;
         });
+    }
+    private notificationUri(sessionId?: string): Promise<vscode.Uri> {
+        const key = sessionId ?? "";
+        this.notificationUris ??= new Map();
+        const cached = this.notificationUris.get(key);
+        if (cached) return cached;
+        const query = new URLSearchParams({ window: this.notificationWindowKey });
+        if (sessionId) query.set("session", sessionId);
+        // 保留 VS Code 返回的完整 URI；只在本窗口生命周期内复用，失败允许重试。
+        const pending = Promise.resolve().then(() => vscode.env.asExternalUri(vscode.Uri.from({
+            scheme: vscode.env.uriScheme, authority: this.context.extension.id,
+            path: "/notification", query: query.toString(),
+        }))).catch(error => {
+            if (this.notificationUris.get(key) === pending) this.notificationUris.delete(key);
+            throw error;
+        });
+        this.notificationUris.set(key, pending);
+        return pending;
     }
     private notificationVersion(sessionId?: string): number {
         return sessionId ? this.notificationEpochs?.get(sessionId) ?? 0 : 0;
@@ -2909,12 +2938,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.sendAt = undefined;
         ctx.lastEventAt = undefined;
     }
-    private clearSessionNotification(sessionId?: string): void {
+    private async clearSessionNotification(sessionId?: string): Promise<void> {
         if (!sessionId) return;
         (this.notificationEpochs ??= new Map()).set(sessionId, this.notificationVersion(sessionId) + 1);
         if (!this.config().get<boolean>("notifyLocal") || !localNotificationsSupported()) return;
         const createdAt = notificationTime();
-        void queueSessionNotification(sessionId, () => clearLocalNotification(this.context.extensionUri.fsPath, sessionId, createdAt))
+        return queueSessionNotification(sessionId, () => clearLocalNotification(this.context.extensionUri.fsPath, sessionId, createdAt))
             .catch(error => this.output.appendLine(`[notify] 清理会话通知失败: ${String(error)}`));
     }
     async handleNotificationUri(uri: vscode.Uri): Promise<void> {

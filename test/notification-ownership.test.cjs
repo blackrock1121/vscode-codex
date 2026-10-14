@@ -43,6 +43,14 @@ precondition(notificationBelongsToSession(identifier: "codex-session:\\(a)", url
 precondition(!notificationBelongsToSession(identifier: "codex-session:\\(branch)", url: encoded, sessionId: a))
 precondition(notificationSession(encoded + "%26session%3D\\(branch)") == nil)
 precondition(notificationSession("vscode://blackrock1121.vscode-codex/notification?window%3Dtest%26session%3D") == nil)
+// 程序已重启（无内存队列）时，旧 clear/show 不能覆盖更新的同会话提醒。
+precondition(notificationIsNewer(identifier: "codex-session:\\(a)", url: encoded, sessionId: a, createdAt: 200, deliveredAt: 300, than: 100))
+precondition(!notificationIsNewer(identifier: "codex-session:\\(a)", url: encoded, sessionId: a, createdAt: 100, deliveredAt: 300, than: 200))
+precondition(!notificationIsNewer(identifier: "codex-session:\\(branch)", url: url(branch), sessionId: a, createdAt: 300, deliveredAt: 300, than: 100))
+precondition(notificationIsNewer(identifier: "legacy", url: url(a), sessionId: a, createdAt: nil, deliveredAt: 200, than: 100))
+for query in ["", "&", "&&", "session", "session=", "window=hello%26session%3Dfake"] {
+    precondition(notificationSession("vscode://blackrock1121.vscode-codex/notification?" + query) == nil)
+}
 print("ownership verified")
 `;
   const file = path.join(dir, 'main.swift'), binary = path.join(dir, 'ownership');
