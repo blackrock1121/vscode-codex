@@ -165,18 +165,18 @@ test('三次 Bash 才成组，思考事件不占行且每条命令可继续展�
  assert.equal(group.querySelectorAll('.tool-group-items > .foldable-step').length,5);
  assert.deepEqual(errors,[]);
 });
-test('正文与其他工具会断开 Bash 组，失败和待确认自动打开对应层级',t=>{
+test('正文与其他工具会断开 Bash 组，失败和待确认独立显示',t=>{
  const {w,emit,errors}=setup(t);
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'first'+i,name:'Bash',input:{command:'echo '+i}});
  const first=w.document.querySelector('.tool-group-step');
  assert.ok(first);
  emit({kind:'tool_result',toolUseId:'first2',content:'命令失败',isError:true});
- assert.equal(first.classList.contains('collapsed'),false);
- assert.equal(first.querySelector('.tool-card[data-tool-id="first2"]').classList.contains('collapsed'),false);
- assert.match(first.querySelector('.tool-group-status').textContent,/1 失败/);
- first.querySelector('.tool-group-toggle').click();
+ const failed=w.document.querySelector('.tool-card[data-tool-id="first2"]');
+ assert.equal(failed.closest('.tool-group-step'),null);
+ assert.equal(failed.classList.contains('collapsed'),false);
+ assert.match(failed.querySelector('.tool-result-body').textContent,/命令失败/);
+ assert.equal(w.document.querySelector('.tool-group-step'),null);
  emit({kind:'tool_result',toolUseId:'first1',content:'1',isError:false});
- assert.equal(first.classList.contains('collapsed'),true,'其他调用完成后不覆盖手动收起');
  emit({kind:'tool_input',toolId:'search',name:'WebSearch',input:{query:'验证'}});
  emit({kind:'tool_input',toolId:'lone',name:'Bash',input:{command:'echo alone'}});
  assert.equal(w.document.querySelector('.tool-card[data-tool-id="lone"]').closest('.tool-group-step'),null);
@@ -184,13 +184,38 @@ test('正文与其他工具会断开 Bash 组，失败和待确认自动打开�
  emit({kind:'text_delta',text:'这是正文'});
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'next'+i,name:'Bash',input:{command:'echo next'+i}});
  const groups=w.document.querySelectorAll('.tool-group-step');
- assert.equal(groups.length,2);
- const second=groups[1];
+ assert.equal(groups.length,1);
+ const second=groups[0];
  assert.equal(second.querySelectorAll('.tool-group-items > .foldable-step').length,3);
  emit({kind:'permission_request',requestId:'approval-in-group',toolUseId:'next3',toolName:'Bash',input:{command:'echo next3'},suggestions:[]});
- assert.equal(second.classList.contains('collapsed'),false);
- assert.equal(second.querySelector('.tool-card[data-tool-id="next3"]').classList.contains('collapsed'),false);
- assert.match(second.querySelector('.tool-group-status').textContent,/待确认/);
+ const approval=w.document.querySelector('.tool-card[data-tool-id="next3"]');
+ assert.equal(approval.closest('.tool-group-step'),null);
+ assert.equal(approval.classList.contains('collapsed'),false);
+ assert.equal(w.document.querySelectorAll('.tool-group-step').length,0);
+ assert.ok(approval.querySelector('.perm-bar'));
+ assert.deepEqual(errors,[]);
+});
+test('组中途失败会拆出错误，前后成功调用各自保持分组，历史也不吞错误',t=>{
+ const {w,emit,errors}=setup(t);
+ for(let i=1;i<=7;i++)emit({kind:'tool_input',toolId:'b'+i,name:'Bash',input:{command:'echo '+i}});
+ emit({kind:'tool_result',toolUseId:'b4',content:'sed: file not found',isError:true});
+ const groups=w.document.querySelectorAll('.tool-group-step');
+ assert.equal(groups.length,2);
+ assert.deepEqual([...groups].map(group=>group.querySelectorAll('.tool-group-items > .step').length),[3,3]);
+ const failed=w.document.querySelector('.tool-card[data-tool-id="b4"]');
+ assert.equal(failed.closest('.tool-group-step'),null);
+ assert.equal(failed.classList.contains('collapsed'),false);
+ assert.match(failed.querySelector('.tool-result-body').textContent,/sed: file not found/);
+ assert.equal(failed.closest('.step').previousElementSibling,groups[0]);
+ assert.equal(failed.closest('.step').nextElementSibling,groups[1]);
+ emit({kind:'load_history',items:[
+  {type:'user',text:'检查错误'},
+  ...Array.from({length:7},(_,index)=>({type:'tool',toolId:'h'+index,name:'Bash',input:{command:'echo '+index},result:index===3?'历史失败':'ok',isError:index===3})),
+ ],checkpoints:[]});
+ const historical=w.document.querySelector('.tool-card[data-tool-id="h3"]');
+ assert.equal(historical.closest('.tool-group-step'),null);
+ assert.match(historical.querySelector('.tool-result-body').textContent,/历史失败/);
+ assert.equal(w.document.querySelectorAll('.tool-group-step').length,2);
  assert.deepEqual(errors,[]);
 });
 test('历史回放按原顺序分组，最后一个折叠组仍是时间线终点',t=>{
@@ -232,27 +257,27 @@ test('连续文件修改折成一组，保留每个文件的差异入口',t=>{
  assert.ok(sent.some(m=>m.type==='openDiff' && m.path==='/project/src/b.ts'));
  assert.deepEqual(errors,[]);
 });
-test('编辑组遇到读取或正文会断开，失败与待确认自动展开',t=>{
+test('编辑组遇到读取或正文会断开，失败与待确认独立显示',t=>{
  const {w,emit,errors}=setup(t);
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'edit'+i,name:'Edit',input:{file_path:'/project/a.ts',old_string:'a',new_string:String(i)}});
  const first=w.document.querySelector('.tool-group-step[data-group-kind="edit"]');
  assert.ok(first);
  assert.match(first.querySelector('.tool-group-count').textContent,/3 次 · .*a\.ts/);
  emit({kind:'tool_result',toolUseId:'edit2',content:'修改失败',isError:true});
- assert.equal(first.classList.contains('collapsed'),false);
- assert.match(first.querySelector('.tool-group-status').textContent,/1 失败/);
+ const failed=w.document.querySelector('.tool-card[data-tool-id="edit2"]');
+ assert.equal(failed.closest('.tool-group-step'),null);
+ assert.match(failed.querySelector('.tool-result-body').textContent,/修改失败/);
  emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/project/a.ts'}});
  emit({kind:'tool_input',toolId:'single',name:'Edit',input:{file_path:'/project/b.ts',old_string:'a',new_string:'b'}});
  assert.equal(w.document.querySelector('.tool-card[data-tool-id="single"]').closest('.tool-group-step'),null);
  emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'继续修改'});
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'later'+i,name:'MultiEdit',input:{file_path:'/project/c.ts',edits:[{old_string:'a',new_string:'b'}]}});
  const groups=w.document.querySelectorAll('.tool-group-step[data-group-kind="edit"]');
- assert.equal(groups.length,2);
- const second=groups[1];
+ assert.equal(groups.length,1);
  emit({kind:'permission_request',requestId:'edit-approval',toolUseId:'later3',toolName:'MultiEdit',input:{file_path:'/project/c.ts'},suggestions:[]});
- assert.equal(second.classList.contains('collapsed'),false);
- assert.match(second.querySelector('.tool-group-status').textContent,/待确认/);
- assert.ok(second.querySelector('.tool-card[data-tool-id="later3"] .perm-bar'));
+ const approval=w.document.querySelector('.tool-card[data-tool-id="later3"]');
+ assert.equal(approval.closest('.tool-group-step'),null);
+ assert.ok(approval.querySelector('.perm-bar'));
  assert.deepEqual(errors,[]);
 });
 test('历史文件修改回放会分组，思考记录不再生成空白节点',t=>{
