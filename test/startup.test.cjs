@@ -21,7 +21,7 @@ async function until(check) {
 async function fixture(t, env = {}, options = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-startup-'));
   const log = path.join(dir, 'rpc.jsonl'), events = [], procs = [];
-  const ctx = { blank: true, ready: true, checkpoints: { beginTurn: () => 'checkpoint', clear: () => {} } };
+  const ctx = { blank: true, ready: true, checkpoints: { beginTurn: () => 'checkpoint', clear: () => {}, flush: () => {} } };
   const provider = Object.create(ChatViewProvider.prototype);
   const create = (extra, extraEnv = {}) => {
     const proc = new CodexProcess({ codexPath: path.resolve('test/fake-codex.cjs'), cwd: dir,
@@ -39,6 +39,8 @@ async function fixture(t, env = {}, options = {}) {
     store: { countLines: () => 0, notePending: () => {} }, renderSessions: () => {},
     clearSessionNotification: () => {}, activeCtx: ctx,
     context: { workspaceState: { update: async () => {} } },
+    resetRestoredNotifications: () => {}, postModelConfig: () => {},
+    storageDir: () => dir, refreshChangedFiles: () => {}, refreshSessions: () => {},
   });
   t.after(async () => {
     vscode.workspace.textDocuments = [];
@@ -168,4 +170,22 @@ test('关闭空白聊天释放提前连接，不进入后台会话列表', async
   assert.equal(p.isExited, true); assert.equal(f.ctx.proc, undefined);
   assert.equal(f.provider.detached.size, 0);
   assert.equal((await f.read()).some(m => m.method === 'thread/start'), false);
+});
+
+test('清空聊天立即重新准备连接，发送前不建会话并继续遵守提前连接开关', async t => {
+  for (const enabled of [true, false]) {
+    const f = await fixture(t, {}, { prespawnOnOpen: enabled });
+    const old = f.create(); f.ctx.proc = old; await old.start();
+    await f.provider.newContext(f.ctx, {});
+    assert.equal(old.isExited, true); assert.equal(f.ctx.sessionId, undefined);
+    assert.equal(f.ctx.blank, true);
+    if (enabled) {
+      assert.ok(f.ctx.proc); assert.notEqual(f.ctx.proc, old); await f.ctx.proc.prepare();
+      assert.equal((await f.read()).filter(m => m.method === 'thread/start').length, 1);
+    } else assert.equal(f.ctx.proc, undefined);
+    await f.provider.handleSend(f.ctx, '清空后发送');
+    await until(() => f.events.some(e => e.kind === 'result'));
+    assert.equal((await f.read()).filter(m => m.method === 'thread/start').length, 2);
+    assert.equal(f.ctx.sessionId, 'thread-1');
+  }
 });

@@ -936,11 +936,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "ready":
                     ctx.ready = true;
-                    void this.store.read("account/read", { refreshToken: false }).then(r => {
+                    void this.store.readAccountInfo().then(r => {
                         this.post(ctx, { kind: "speed_context", billing: billingKind(r.account?.type),
                             planType: r.account?.type === "chatgpt" ? r.account.planType : undefined });
                     }).catch(() => this.post(ctx, { kind: "speed_context", billing: "unknown" }));
-                    void this.store.read("model/list").then(r => {
+                    void this.store.readModelCatalog().then(r => {
                         const models = modelChoices(r.data);
                         this.modelCatalog = models;
                         this.post(ctx, { kind: "models", models });
@@ -1233,6 +1233,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (m.text || m.images?.length) {
             await this.handleSend(ctx, m.text ?? "", m.context, m.images, m.files);
         }
+        else this.maybePrespawn(ctx);
     }
     private reportSnapshotSkips(ctx: SessionCtx, snapshot: WorkspaceSnapshot): void {
         const key = this.workspaceDirs().join("\0");

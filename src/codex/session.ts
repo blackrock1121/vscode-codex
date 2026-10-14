@@ -42,20 +42,75 @@ export class SessionStore {
   private listing?: Promise<void>;
   private forkIds = new Set<string>();
   private preparations = new Set<ForkPreparation>();
+  private metadata = new Map<string, { expiresAt: number; result: Promise<any> }>();
+  private metadataRevision = 0;
+  private disposed = false;
   constructor(private readonly cwd: string, private readonly executable: () => string) {}
+  private resetClosedConnection(): void {
+    if (!this.rpc?.isClosed) return;
+    this.invalidateMetadata(); this.rpc = undefined; this.connecting = undefined;
+  }
   async connection(): Promise<CodexRpc> {
-    if (this.rpc?.isClosed) { this.rpc = undefined; this.connecting = undefined; }
+    if (this.disposed) throw new Error('Codex 管理连接已关闭');
+    this.resetClosedConnection();
     if (this.connecting) return this.connecting;
     const rpc = new CodexRpc(this.executable(), this.cwd);
     this.rpc = rpc;
     rpc.on('request', m => { try { rpc.reject(m.id, '管理连接不执行工具'); } catch {} });
-    rpc.on('close', () => { if (this.rpc === rpc) { this.rpc = undefined; this.connecting = undefined; } });
+    rpc.on('notification', m => {
+      if (this.rpc === rpc && m.method === 'account/updated') this.invalidateMetadata();
+    });
+    rpc.on('close', () => { if (this.rpc === rpc) { this.invalidateMetadata(); this.rpc = undefined; this.connecting = undefined; } });
     this.connecting = rpc.start().then(() => rpc).catch(e => {
       rpc.dispose();
       if (this.rpc === rpc) { this.rpc = undefined; this.connecting = undefined; }
       throw e;
     });
     return this.connecting;
+  }
+  private invalidateMetadata(): void {
+    this.metadataRevision++;
+    this.metadata.clear();
+  }
+  /** 仅缓存界面元数据；鉴权、快速档位校验及用量读取仍使用各自的实时请求。 */
+  private readMetadata<T>(key: string, read: () => Promise<T>): Promise<T> {
+    if (this.disposed) return Promise.reject(new Error('Codex 管理连接已关闭'));
+    this.resetClosedConnection();
+    const cached = this.metadata.get(key);
+    if (cached && cached.expiresAt > Date.now()) return cached.result;
+    const revision = this.metadataRevision;
+    const entry = { expiresAt: Infinity, result: Promise.resolve(undefined) as Promise<any> };
+    entry.result = read().then(result => {
+      // 登录切换或断线时，旧连接迟到的结果不能进入新账号的界面缓存。
+      if (revision !== this.metadataRevision) {
+        if (this.metadata.get(key) === entry) this.metadata.delete(key);
+        return this.readMetadata(key, read);
+      }
+      entry.expiresAt = Date.now() + 30_000;
+      return result;
+    }).catch(error => {
+      if (this.metadata.get(key) === entry) this.metadata.delete(key);
+      throw error;
+    });
+    this.metadata.set(key, entry);
+    return entry.result;
+  }
+  readAccountInfo(): Promise<any> {
+    return this.readMetadata('account', () => this.read('account/read', { refreshToken: false }));
+  }
+  readModelCatalog(): Promise<{ data: any[] }> {
+    return this.readMetadata('models', async () => {
+      const data: any[] = [], seen = new Set<string>();
+      let cursor: string | null = null;
+      do {
+        const page: { data: any[]; nextCursor?: string | null } = await this.read('model/list', { cursor });
+        data.push(...page.data);
+        cursor = page.nextCursor ?? null;
+        if (cursor && seen.has(cursor)) throw new Error('模型列表分页游标重复，已停止读取，请重试。');
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+      return { data };
+    });
   }
   /** 只用于无副作用的读取；连接在请求期间断开时重建并重试一次。 */
   async read<T = any>(method: string, params: unknown = {}): Promise<T> {
@@ -228,5 +283,5 @@ export class SessionStore {
       await preparation.dispose();
     }
   }
-  dispose() { this.rpc?.dispose(); for (const preparation of this.preparations) void preparation.dispose(); }
+  dispose() { this.disposed = true; this.invalidateMetadata(); this.rpc?.dispose(); for (const preparation of this.preparations) void preparation.dispose(); }
 }
