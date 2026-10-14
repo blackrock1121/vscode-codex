@@ -10,7 +10,7 @@ let createPanel;
 const vscode={
  Uri:{joinPath:(base,...parts)=>path.join(base,...parts)},
  ViewColumn:{One:1,Two:2,Beside:-2},
- window:{createWebviewPanel:(...args)=>createPanel(...args)},
+ window:{tabGroups:{all:[]},createWebviewPanel:(...args)=>createPanel(...args)},
  commands:{executeCommand:async command=>commands.push(command)},
 };
 const originalLoad=Module._load;
@@ -49,6 +49,7 @@ test('固定关闭入口只关闭当前聚焦会话，不误关后台会话或�
 
 async function fixture(t){
  commands.length=0;
+ vscode.window.tabGroups.all=[{viewColumn:1,tabs:['文件']}];
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-layout-'));
  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const provider=Object.create(ChatViewProvider.prototype);
@@ -105,16 +106,105 @@ test('隐藏标签和未确定列号的空白会话恢复时保持原有布局�
  assert.equal(hidden.webview.html,'<html>会话</html>');
 });
 
-test('新建会话仍在旁边打开并锁定分组',async t=>{
- const provider=await fixture(t);
- const fresh=panel(3,true);
+// 模拟 VS Code：Beside 在活动组后插入；数值列已存在则复用，不存在则在末尾建组。
+function editorGroups(names,activeColumn,{sync=true}={}){
+ const groups=names.map((name,index)=>({viewColumn:index+1,tabs:name===null?[]:[name]}));
  const opened=[];
- createPanel=(...args)=>{opened.push(args);return fresh;};
+ const publish=()=>{vscode.window.tabGroups.all=groups.map(group=>({...group}));};
+ publish();
+ createPanel=(_type,_title,options)=>{
+  let group;
+  if(groups.length===1&&!groups[0].tabs.length){
+   group=groups[0];
+  }else if(options.viewColumn===vscode.ViewColumn.Beside){
+   group={tabs:[]};
+   groups.splice(activeColumn,0,group);
+  }else{
+   group=groups[options.viewColumn-1];
+   if(!group){group={tabs:[]};groups.push(group);}
+  }
+  groups.forEach((entry,index)=>{entry.viewColumn=index+1;});
+  opened.forEach(entry=>{entry.panel.active=false;entry.panel.viewColumn=entry.group.viewColumn;});
+  const fresh=panel(options.viewColumn===vscode.ViewColumn.Beside?undefined:options.viewColumn,!options.preserveFocus);
+  group.tabs.push(`新会话${opened.length+1}`);
+  opened.push({panel:fresh,group});
+  activeColumn=group.viewColumn;
+  if(sync)publish();
+  return fresh;
+ };
+ return {opened,contents:()=>groups.map(group=>group.tabs)};
+}
+
+test('从左右任一会话新建都追加到最右侧并锁定新组',async t=>{
+ for(const activeColumn of [1,2]){
+  const provider=await fixture(t);
+  const layout=editorGroups(['会话A','会话B'],activeColumn);
+  await provider.newSession();
+  assert.deepEqual(layout.contents(),[['会话A'],['会话B'],['新会话1']]);
+  assert.deepEqual(commands,['workbench.action.lockEditorGroup']);
+  assert.equal(provider.activeCtx.panel,layout.opened[0].panel);
+  assert.equal(provider.activeCtx.panel.active,true);
+  assert.equal(provider.sessions.size,1);
+ }
+});
+
+test('空窗口首个会话复用空组，连续新建时再追加右侧独立分组',async t=>{
+ const provider=await fixture(t);
+ const layout=editorGroups([null],1,{sync:false});
+ await Promise.all([provider.newSession(),provider.newSession()]);
+ assert.deepEqual(layout.contents(),[['新会话1'],['新会话2']]);
+ assert.deepEqual(layout.opened.map(entry=>entry.panel.viewColumn),[1,2]);
+ assert.deepEqual(layout.opened[0].panel.reveals,[{column:1,preserveFocus:false}]);
+ assert.equal(provider.sessions.size,2);
+});
+
+test('右侧有文件组和空组时，新会话追加在所有组之后',async t=>{
+ const provider=await fixture(t);
+ const layout=editorGroups(['文件A','会话A','文件B',null],2);
  await provider.newSession();
- assert.deepEqual(opened[0][2],{viewColumn:vscode.ViewColumn.Beside,preserveFocus:false});
+ assert.deepEqual(layout.contents(),[['文件A'],['会话A'],['文件B'],[],['新会话1']]);
+ assert.equal(layout.opened[0].panel.viewColumn,5);
+});
+
+test('分组信息尚未同步时连续新建，仍各自追加独立分组',async t=>{
+ const provider=await fixture(t);
+ const layout=editorGroups(['会话A','会话B'],1,{sync:false});
+ await Promise.all([provider.newSession(),provider.newSession()]);
+ assert.deepEqual(layout.contents(),[['会话A'],['会话B'],['新会话1'],['新会话2']]);
+ assert.equal(provider.sessions.size,2);
+ assert.equal(provider.activeCtx.panel,layout.opened[1].panel);
+});
+
+test('重开后台会话也追加在最右侧并沿用原进程',async t=>{
+ const provider=await fixture(t);
+ const proc={isExited:false};
+ const detached={sessionId:'background',panel:panel(undefined,false,false),proc,ready:true};
+ provider.detached.set('background',detached);
+ const layout=editorGroups(['会话A','会话B'],1);
+ await provider.openSession('background');
+ assert.deepEqual(layout.contents(),[['会话A'],['会话B'],['新会话1']]);
+ assert.equal(provider.activeCtx,detached);
+ assert.equal(detached.proc,proc);
+ assert.equal(provider.detached.size,0);
  assert.deepEqual(commands,['workbench.action.lockEditorGroup']);
- assert.equal(provider.activeCtx.panel,fresh);
- assert.equal(provider.sessions.size,1);
+});
+
+test('再次打开已存在会话只聚焦原位置，不在最右侧重复新建',async t=>{
+ const provider=await fixture(t);
+ const existing={sessionId:'existing',panel:panel(1,false)};
+ provider.sessions.add(existing);
+ createPanel=()=>assert.fail('已打开的会话不能重复创建面板');
+ await provider.openSession('existing');
+ assert.deepEqual(existing.panel.reveals,[{column:1,preserveFocus:false},{column:1,preserveFocus:false}]);
+ assert.equal(provider.activeCtx,existing);
+});
+
+test('已有九个分组时，新会话仍在末尾创建独立分组',async t=>{
+ const provider=await fixture(t);
+ const names=Array.from({length:9},(_,index)=>`会话${index+1}`);
+ const layout=editorGroups(names,1);
+ await provider.newSession();
+ assert.deepEqual(layout.contents(),[...names.map(name=>[name]),['新会话1']]);
 });
 
 test('后台心跳不改变停止命令的目标，点击会话标签即可切换目标',async t=>{

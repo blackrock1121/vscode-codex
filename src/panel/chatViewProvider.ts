@@ -545,6 +545,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const ctx = [...this.sessions].find(session => session.panel.active);
         ctx?.panel.dispose();
     }
+    private createSessionPanel(): vscode.WebviewPanel {
+        // Beside 相对当前活动组，会把新会话插到中间；指定末列之后的新组。
+        // 快速连建时 tabGroups 可能尚未同步，已创建面板的列号也要计入。
+        const groups = vscode.window.tabGroups.all;
+        const lastColumn = Math.max(
+            vscode.ViewColumn.One,
+            ...groups.map(group => group.viewColumn),
+            ...[...this.sessions].map(ctx => ctx.panel.viewColumn ?? 0),
+        );
+        // VS Code 会在唯一空组内打开首个面板，使用同一列号避免随后的 reveal 再建组。
+        const viewColumn = !this.sessions.size && groups.length === 1 && !groups[0].tabs.length
+            ? groups[0].viewColumn
+            : lastColumn + 1;
+        return vscode.window.createWebviewPanel("codex-chat.editor", "Codex Copilot", { viewColumn, preserveFocus: false }, {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
+        });
+    }
     async openSession(sessionId?: string, initialHistoryCached = false): Promise<void> {
         this.output.appendLine(`[${new Date().toISOString()}] [open] ${sessionId ? sessionId.slice(0, 8) : "新会话"}`);
         if (sessionId) {
@@ -563,11 +582,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
         }
-        const panel = vscode.window.createWebviewPanel("codex-chat.editor", "Codex Copilot", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }, {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
-        });
+        const panel = this.createSessionPanel();
         const ctx: SessionCtx = {
             panel,
             webview: panel.webview,
@@ -586,11 +601,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.lockChatGroup(panel);
     }
     private async reopenDetached(det: SessionCtx): Promise<void> {
-        const panel = vscode.window.createWebviewPanel("codex-chat.editor", "Codex Copilot", { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false }, {
-            enableScripts: true,
-            retainContextWhenHidden: true,
-            localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
-        });
+        const panel = this.createSessionPanel();
         det.panel = panel;
         det.webview = panel.webview;
         det.ready = false;
