@@ -558,3 +558,32 @@ test('工作时段本机通知失败时补发飞书，成功时保持静默，�
   p.dispatchNotification({}, '非静默完成', {}); await flush();
   assert.equal(sent.length, 2, '已发送的远程提醒不能因本机失败再次发送');
 });
+
+test('主动回复只清理来源会话，多标签与派生通知继续独立发送', async () => {
+  nativeCalls=[]; config={notifyLocal:true}; const p=provider();
+  const a='01999999-aaaa-7000-8000-000000000001', branch='01999999-aaaa-7000-8000-000000000002';
+  await Promise.all([p.sendLocalNotice('同项目同标题','',a),p.sendLocalNotice('同项目同标题','',branch),p.sendLocalNotice('同项目同标题','','other')]);
+  p.config=()=>({get:(key,fallback)=>key==='notifyLocal'?true:['autosave','snapshotFilesForRestore'].includes(key)?false:fallback});
+  const proc={isBusy:false,setSpeedMode:async()=>{},sendUserMessage:()=>true};
+  p.ensureProcess=async()=>proc; p.speedMode=()=> 'default';p.post=()=>{};
+  p.store.hydrate=async()=>{};p.store.countLines=()=>0;
+  const ctx={sessionId:a,proc,checkpoints:{beginTurn:()=> 'checkpoint'}};
+  await p.handleSend(ctx,'我没点通知，直接回复');
+  await Promise.all([p.sendLocalNotice('新一轮完成','',a),p.sendLocalNotice('分支仍待回答','',branch)]);
+  assert.deepEqual(nativeCalls.filter(x=>x.data.operation==='clear').map(x=>x.data.sessionId),[a]);
+  assert.equal(p.notificationVersion(branch),0);assert.equal(p.notificationVersion('other'),0);
+  assert.equal(nativeCalls.filter(x=>x.data.sessionId===a).at(-1).data.operation,'show');
+});
+
+test('旧审批卡片及未成功提交的审批不能清除当前会话通知', () => {
+  for (const mode of ['stale','rejected','accepted']) {
+    const p=provider(),cleared=[];p.clearSessionNotification=id=>cleared.push(id);
+    const pending={kind:'permission_request',requestId:'current'};
+    const ctx={sessionId:'branch',pendingPerm:pending,proc:{respondPermission:()=>{
+      assert.notEqual(mode,'stale');return mode==='accepted';
+    }}};
+    p.handlePermission(ctx,mode==='stale'?'old-source-request':'current','allow');
+    assert.deepEqual(cleared,mode==='accepted'?['branch']:[]);
+    assert.equal(ctx.pendingPerm,mode==='accepted'?undefined:pending);
+  }
+});

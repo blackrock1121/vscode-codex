@@ -973,12 +973,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case "permission":
-                    ctx.pendingPerm = undefined;
-                    ctx.lastUserActionAt = Date.now();
-                    if (ctx.lastEventAt !== undefined)
-                        ctx.lastEventAt = Date.now();
                     this.handlePermission(ctx, m.requestId, m.behavior, m.suggestionId);
-                    this.clearSessionNotification(ctx.sessionId);
                     break;
                 case "answerQuestion": {
                     if (ctx.answeringQuestion) break;
@@ -1450,9 +1445,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         vscode.window.showInformationMessage(`图片已保存到 ${uri.fsPath}`);
     }
     private handlePermission(ctx: SessionCtx, requestId: string, behavior: "allow" | "deny", suggestionId?: string): void {
-        if (!ctx.proc)
-            return;
-        ctx.proc.respondPermission(requestId, { behavior, suggestionId });
+        const sourceId = ctx.sessionId;
+        if (ctx.pendingPerm?.kind !== "permission_request" || ctx.pendingPerm.requestId !== requestId ||
+            !ctx.proc?.respondPermission(requestId, { behavior, suggestionId })) return;
+        ctx.pendingPerm = undefined;
+        ctx.lastUserActionAt = Date.now();
+        if (ctx.lastEventAt !== undefined) ctx.lastEventAt = Date.now();
+        this.clearSessionNotification(sourceId);
     }
     private async updateConfig(key: string, value: unknown): Promise<boolean> {
         const insp = this.config().inspect(key);

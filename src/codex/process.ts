@@ -429,14 +429,15 @@ export class CodexProcess {
       }
     }
   }
-  respondPermission(key: string, decision: { behavior: 'allow' | 'deny'; suggestionId?: string; message?: string }): void {
-    const p = this.pending.get(key); if (!p) return;
+  respondPermission(key: string, decision: { behavior: 'allow' | 'deny'; suggestionId?: string; message?: string }): boolean {
+    const p = this.pending.get(key); if (!p || this.exited || this.disposed) return false;
     const allow = decision.behavior === 'allow';
-    if (p.method === 'item/tool/requestUserInput' || p.method === 'tool/requestUserInput' || p.method === 'item/tool/call') { if (!allow) void this.interrupt().catch(e => this.error(e)); return; }
+    if (p.method === 'item/tool/requestUserInput' || p.method === 'tool/requestUserInput' || p.method === 'item/tool/call') { if (!allow) void this.interrupt().catch(e => this.error(e)); return false; }
     const result = p.method === 'item/permissions/requestApproval' ? { permissions: allow ? p.params.permissions : {}, scope: 'turn' }
       : p.method === 'mcpServer/elicitation/request' ? { action: allow ? 'accept' : 'decline', content: null }
       : { decision: allow ? (decision.suggestionId === 'session' ? 'acceptForSession' : 'accept') : 'decline' };
     this.rpc.respond(p.id, result); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: decision.behavior });
+    return true;
   }
   prepareQuestionAnswer(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}): { text: string; turnId: string; images: AnswerImage[] } | undefined {
     if (this.exited || this.disposed || !this.busy) return;

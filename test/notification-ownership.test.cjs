@@ -1,0 +1,47 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs/promises');
+const os = require('node:os');
+const path = require('node:path');
+const { execFileSync } = require('node:child_process');
+
+test('原生清理只匹配完整会话，保留其他会话、派生分支、测试通知和身份冲突通知', { skip: process.platform !== 'darwin' }, async t => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-notification-ownership-'));
+  t.after(() => fs.rm(dir, { recursive: true, force: true }));
+  const source = await fs.readFile(path.join(__dirname, '../native/Notifications.swift'), 'utf8');
+  // 编译生产代码中的纯归属判断，不启动通知程序、不接触用户的通知中心。
+  const policy = source.slice(0, source.indexOf('final class NotificationApp:'))
+    .replace(/^import (AppKit|CoreServices|UserNotifications)$/gm, '');
+  const fixture = `
+let a = "01999999-aaaa-7000-8000-000000000001"
+let branch = "01999999-aaaa-7000-8000-000000000002"
+func url(_ id: String) -> String { "vscode://blackrock1121.vscode-codex/notification?window=old-window&session=\\(id)" }
+let notices: [(String, String)] = [
+    ("codex-session:\\(a)", url(a)),
+    ("legacy-a-1", url(a)), ("legacy-a-2", url(a)),
+    ("codex-session:\\(branch)", url(branch)),
+    ("legacy-branch", url(branch)),
+    ("codex-session:other", url("other")),
+    ("test", "vscode://blackrock1121.vscode-codex/notification?window=current"),
+    ("codex-session:\\(a)", url(branch)),
+    ("codex-session:\\(branch)", url(a)),
+    ("unknown", ""),
+    ("ambiguous", url(a) + "&session=\\(branch)"),
+    ("wrong-app", "vscode://other.app/notification?session=\\(a)")
+]
+let removed = notices.enumerated().filter {
+    notificationBelongsToSession(identifier: $0.element.0, url: $0.element.1, sessionId: a)
+}.map { $0.offset }
+precondition(removed == [0, 1, 2], "不允许误清其他会话")
+for notice in notices {
+    precondition(!notificationBelongsToSession(identifier: notice.0, url: notice.1, sessionId: nil))
+    precondition(!notificationBelongsToSession(identifier: notice.0, url: notice.1, sessionId: ""))
+}
+print("ownership verified")
+`;
+  const file = path.join(dir, 'main.swift'), binary = path.join(dir, 'ownership');
+  await fs.writeFile(file, 'import Foundation\n' + policy + fixture);
+  execFileSync('/usr/bin/swiftc', [file, '-o', binary], { timeout: 60000 });
+  assert.match(execFileSync(binary, { encoding: 'utf8', timeout: 10000 }), /ownership verified/);
+  assert.doesNotMatch(source, /removeAllDeliveredNotifications|removeAllPendingNotificationRequests|func applicationDidFinishLaunching/);
+});

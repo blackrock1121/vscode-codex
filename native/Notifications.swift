@@ -23,7 +23,17 @@ func callbackURL(_ value: String) -> URL? {
 
 func notificationSession(_ value: String) -> String? {
     guard let url = callbackURL(value) else { return nil }
-    return URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "session" }?.value
+    let values = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.filter { $0.name == "session" } ?? []
+    guard values.count == 1, let value = values[0].value, !value.isEmpty else { return nil }
+    return value
+}
+
+// 清理只接受完整会话 ID；编号与回调互相矛盾、缺失或重复参数时宁可保留。
+// 旧版随机编号仅通过有效的回调会话识别，不按标题、项目或 ID 前缀猜测。
+func notificationBelongsToSession(identifier: String, url: String, sessionId: String?) -> Bool {
+    guard let sessionId = sessionId, !sessionId.isEmpty,
+          notificationSession(url) == sessionId else { return false }
+    return !identifier.hasPrefix("codex-session:") || identifier == "codex-session:\(sessionId)"
 }
 
 final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
@@ -34,21 +44,6 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         center.delegate = self
-    }
-
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        // 升级时收拢旧版积累的通知；仅按真实会话 ID 分组，保留时间最新的一条。
-        center.getDeliveredNotifications { delivered in
-            DispatchQueue.main.async {
-                let grouped = Dictionary(grouping: delivered.filter {
-                    notificationSession($0.request.content.userInfo["url"] as? String ?? "") != nil
-                }) { notificationSession($0.request.content.userInfo["url"] as? String ?? "")! }
-                for (session, notices) in grouped where self.latest["codex-session:\(session)"] == nil {
-                    let old = notices.sorted { $0.date > $1.date }.dropFirst().map { $0.request.identifier }
-                    self.center.removeDeliveredNotifications(withIdentifiers: old)
-                }
-            }
-        }
     }
 
     func enqueue(_ notice: Notice, finish: @escaping (String?) -> Void) {
@@ -93,9 +88,9 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                 // 同时识别旧版随机 ID 通知；只清理该会话，派生后的不同 ID 不受影响。
                 let old = delivered.filter { notification in
                     let request = notification.request
-                    let sameSession = notice.sessionId != nil &&
-                        notificationSession(request.content.userInfo["url"] as? String ?? "") == notice.sessionId
-                    return (request.identifier == key || sameSession) && (clearing || request.identifier != key)
+                    return notificationBelongsToSession(identifier: request.identifier,
+                        url: request.content.userInfo["url"] as? String ?? "", sessionId: notice.sessionId)
+                        && (clearing || request.identifier != key)
                 }.map { $0.request.identifier }
                 self.center.removeDeliveredNotifications(withIdentifiers: old)
                 if clearing {
