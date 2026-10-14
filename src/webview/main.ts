@@ -3267,6 +3267,29 @@ function renderQueue() {
   taskQueue.forEach((item, i) => {
     const row = el("div", "tq-row");
     row.append(el("span", "tq-idx", String(i + 1)));
+    if (item.images.length) {
+      const previews = el("span", "tq-images");
+      item.images.slice(0, 2).forEach((image, imageIndex) => {
+        const src = item.imageUris[imageIndex] || `data:${image.mediaType};base64,${image.data}`;
+        const button = el("button", "tq-image") as HTMLButtonElement;
+        button.type = "button";
+        button.title = `查看排队图片 ${imageIndex + 1} / ${item.images.length}`;
+        button.setAttribute("aria-label", button.title);
+        const thumbnail = el("img") as HTMLImageElement;
+        thumbnail.src = src;
+        thumbnail.alt = "";
+        thumbnail.loading = "lazy";
+        button.appendChild(thumbnail);
+        button.onclick = () => openLightbox(src);
+        previews.appendChild(button);
+      });
+      if (item.images.length > 2) {
+        const extra = el("span", "tq-image-extra", `+${item.images.length - 2}`);
+        extra.title = `另有 ${item.images.length - 2} 张图片，可撤回到输入框查看`;
+        previews.appendChild(extra);
+      }
+      row.appendChild(previews);
+    }
     const txt = el("span", "tq-text", item.text || "(图片)");
     txt.title = item.text;
     row.appendChild(txt);

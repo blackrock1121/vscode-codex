@@ -1157,6 +1157,16 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   display: inline-flex; align-items: center; justify-content: center;
   font-size: 10px; background: rgba(128,128,128,.25); color: var(--vscode-foreground);
 }
+.tq-images { display: inline-flex; align-items: center; gap: 3px; flex: 0 0 auto; }
+.tq-image {
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: 0 0 16px; width: 16px; height: 16px; padding: 0;
+  border: 0; border-radius: 3px; background: rgba(128,128,128,.15);
+  overflow: hidden; cursor: zoom-in;
+}
+.tq-image img { display: block; width: 16px; height: 16px; object-fit: cover; }
+.tq-image:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.tq-image-extra { font-size: 10px; line-height: 16px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .tq-text {
   flex: 1; min-width: 0; max-height: 4.2em; overflow: hidden;
   line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere;
