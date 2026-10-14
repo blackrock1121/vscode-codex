@@ -587,3 +587,46 @@ test('旧审批卡片及未成功提交的审批不能清除当前会话通知',
     assert.equal(ctx.pendingPerm,mode==='accepted'?undefined:pending);
   }
 });
+
+test('连续点击通知复用已有标签，不重发通知、不提交回答、不触发清理', async () => {
+  const p=provider();let reveals=0,locks=0;
+  const pending={kind:'permission_request',requestId:'still-waiting'};
+  const ctx={sessionId:'session-A',pendingPerm:pending,panel:{viewColumn:1,reveal:()=>reveals++}};
+  p.sessions=new Set([ctx]);p.lockChatGroup=async()=>{locks++;await flush();};
+  p.clearSessionNotification=()=>assert.fail('点击不是回复，不能清理新通知');
+  p.dispatchNotification=()=>assert.fail('点击不能重发通知');
+  p.ensureProcess=()=>assert.fail('已有标签无需重新连接');
+  p.submitQuestionAnswer=()=>assert.fail('点击不能自动答题');
+  const uri={path:'/notification',query:'window=window-A&session=session-A'};
+  await Promise.all(Array.from({length:8},()=>p.handleNotificationUri(uri)));
+  assert.equal(p.sessions.size,1);assert.equal(p.activeCtx,ctx);
+  assert.equal(ctx.pendingPerm,pending);assert.equal(reveals,8);assert.equal(locks,8);
+  await flush();assert.equal(reveals,8,'没有自动再次触发跳转');
+});
+
+test('回复与旧通知点击回调交错，迟到的点击不清除新一轮通知或派生通知', async () => {
+  config={notifyLocal:true};nativeCalls=[];const p=provider();let release;
+  p.openSession=async()=>{await new Promise(resolve=>release=resolve);};
+  await p.sendLocalNotice('旧通知','','session-A');
+  const click=p.handleNotificationUri({path:'/notification',query:'window=window-A&session=session-A'});
+  await flush();
+  p.clearSessionNotification('session-A');
+  await Promise.all([p.sendLocalNotice('新一轮提醒','','session-A'),p.sendLocalNotice('分支提醒','','branch')]);
+  const count=nativeCalls.length;
+  release();await click;await flush();
+  assert.equal(nativeCalls.length,count,'点击回调结束不产生通知或清理');
+  assert.deepEqual(nativeCalls.filter(x=>x.data.sessionId==='session-A').map(x=>x.data.operation),['show','clear','show']);
+  assert.equal(nativeCalls.filter(x=>x.data.sessionId==='branch').length,1);
+});
+
+test('点击打开失败只提示一次，不自动重试；用户再次点击可以正常重试', async () => {
+  warnings=[];const p=provider();let attempts=0;
+  p.openSession=async()=>{attempts++;throw new Error('模拟窗口打开失败');};
+  p.dispatchNotification=()=>assert.fail('失败不能触发新通知');
+  p.clearSessionNotification=()=>assert.fail('失败不能清理通知');
+  const uri={path:'/notification',query:'window=window-A&session=history'};
+  await p.handleNotificationUri(uri);await flush();
+  assert.equal(attempts,1);assert.equal(warnings.length,1);
+  p.openSession=async()=>{attempts++;};await p.handleNotificationUri(uri);
+  assert.equal(attempts,2);assert.equal(warnings.length,1);
+});
