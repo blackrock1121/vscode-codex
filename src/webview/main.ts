@@ -1318,13 +1318,14 @@ const FILE_VIEW_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "Notebook
 const DIFF_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FOLDABLE_TOOLS = new Set(["Bash", "WebSearch", "WebFetch"]);
 const TOOL_GROUP_MIN = 2;
-type ToolGroupKind = "bash" | "edit" | "mixed";
+type ToolGroupKind = "bash" | "edit" | "web" | "mixed";
 let toolBodySeq = 0;
 let toolGroupSeq = 0;
 
-function toolGroupKind(name: string): ToolGroupKind | null {
+function toolGroupKind(name: string): Exclude<ToolGroupKind, "mixed"> | null {
   if (name === "Bash") return "bash";
   if (DIFF_TOOLS.has(name)) return "edit";
+  if (name === "WebSearch" || name === "WebFetch") return "web";
   return null;
 }
 
@@ -1355,20 +1356,28 @@ function setToolGroupFolded(group: HTMLElement, folded: boolean) {
 
 function updateToolGroup(group: HTMLElement) {
   const cards = Array.from(group.querySelectorAll<HTMLElement>(".tool-group-items > .step > .tool-card"));
-  const bashCount = cards.filter((card) => toolGroupKind(card.dataset.toolName || "") === "bash").length;
-  const editCount = cards.length - bashCount;
-  const kind: ToolGroupKind = bashCount && editCount ? "mixed" : bashCount ? "bash" : "edit";
+  const counts = { bash: 0, edit: 0, web: 0 };
+  for (const card of cards) {
+    const kind = toolGroupKind(card.dataset.toolName || "");
+    if (kind) counts[kind]++;
+  }
+  const kinds = (Object.keys(counts) as (keyof typeof counts)[]).filter(kind => counts[kind] > 0);
+  const kind: ToolGroupKind = kinds.length === 1 ? kinds[0] : "mixed";
   group.dataset.groupKind = kind;
   group.classList.toggle("edit", kind === "edit");
   group.querySelector(".tool-group > .tool-group-toggle > .tool-name")!.textContent =
-    kind === "bash" ? "Bash 调用" : kind === "edit" ? "文件修改" : "工具调用";
+    kind === "bash" ? "Bash 调用" : kind === "edit" ? "文件修改" : kind === "web" ? "网页检索" : "工具调用";
   const failed = cards.filter((card) => card.classList.contains("error")).length;
   const waiting = cards.filter((card) => !card.classList.contains("error") && card.classList.contains("needs-approval")).length;
   const running = cards.filter((card) => !card.classList.contains("error") && !card.classList.contains("needs-approval") && card.classList.contains("running")).length;
   const done = cards.length - failed - waiting - running;
   const files = new Set(cards.map((card) => card.querySelector(".file-chip[data-path]")?.getAttribute("data-path")).filter(Boolean));
   group.querySelector(".tool-group-count")!.textContent = `${cards.length} 次` +
-    (kind === "mixed" ? ` · ${bashCount} Bash · ${editCount} 文件修改` :
+    (kind === "mixed" ? ` · ${[
+      counts.bash ? `${counts.bash} Bash` : "",
+      counts.edit ? `${counts.edit} 文件修改` : "",
+      counts.web ? `${counts.web} 网页检索` : "",
+    ].filter(Boolean).join(" · ")}` :
       kind === "edit" && files.size ? ` · ${files.size === 1 ? shortPath([...files][0]!) : `${files.size} 文件`}` : "");
   group.querySelector(".tool-group-status")!.textContent = [
     done ? `${done} 完成` : "", failed ? `${failed} 失败` : "",
@@ -1383,7 +1392,7 @@ function updateToolGroup(group: HTMLElement) {
   group.dataset.waitingCount = String(waiting);
 }
 
-/** Consecutive Bash and file modifications share one timeline node. Text,
+/** Consecutive Bash, web tools and file modifications share one timeline node. Text,
  *  other tools and approvals end a run; child cards retain their order. */
 function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false) {
   const group = el("div", "step tool-group-step collapsed");

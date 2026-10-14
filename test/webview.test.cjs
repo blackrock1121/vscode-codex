@@ -201,7 +201,79 @@ test('交错的 Bash 和文件修改合成一组，正文断开，末尾两次 B
  assert.equal(historical.querySelector('.tool-group-count').textContent,'2 次 · 1 Bash · 1 文件修改');
  assert.deepEqual(errors,[]);
 });
-test('正文与其他工具会断开 Bash 组，失败保留在组内而待确认独立显示',t=>{
+test('网页搜索与 Bash 交错调用合为一组，保留结果、错误和手动展开状态',t=>{
+ const {w,emit,errors}=setup(t);
+ const names=['WebSearch','WebSearch','Bash','WebSearch','WebSearch'];
+ names.forEach((name,index)=>{
+  emit({kind:'tool_input',toolId:'web-mix'+index,name,input:name==='Bash'?{command:'echo verify'}:{query:'官方说明 '+index}});
+  emit({kind:'tool_result',toolUseId:'web-mix'+index,content:index===3?'搜索失败':name==='Bash'?'verify':'Links: [{"title":"官方说明","url":"https://example.com/docs"}]',isError:index===3});
+ });
+ const group=w.document.querySelector('.tool-group-step');
+ assert.equal(w.document.querySelectorAll('.msg-body > .step').length,1);
+ assert.equal(group.querySelector('.tool-name').textContent,'工具调用');
+ assert.equal(group.querySelector('.tool-group-count').textContent,'5 次 · 1 Bash · 4 网页检索');
+ assert.equal(group.classList.contains('collapsed'),true);
+ assert.match(group.querySelector('.tool-group-status').textContent,/4 完成 · 1 失败/);
+ group.querySelector('.tool-group-toggle').click();
+ assert.deepEqual([...group.querySelectorAll('.tool-card')].map(card=>card.dataset.toolName),names);
+ const search=group.querySelector('[data-tool-id="web-mix0"]');
+ search.querySelector('.tool-toggle').click();
+ assert.equal(search.querySelector('.search-hit').href,'https://example.com/docs');
+ assert.equal(group.querySelector('[data-tool-id="web-mix2"] .tool-sub').textContent,'echo verify');
+ const failed=group.querySelector('[data-tool-id="web-mix3"]');
+ failed.querySelector('.tool-toggle').click();
+ assert.match(failed.querySelector('.tool-result-body').textContent,/搜索失败/);
+ emit({kind:'tool_input',toolId:'web-fetch',name:'WebFetch',input:{url:'https://example.com/docs'}});
+ assert.equal(group.classList.contains('collapsed'),false);
+ assert.equal(group.querySelector('.tool-group-count').textContent,'6 次 · 1 Bash · 5 网页检索');
+ emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'核对结果'});
+ for(let i=0;i<2;i++)emit({kind:'tool_input',toolId:'web-tail'+i,name:i?'WebFetch':'WebSearch',input:{query:'继续',url:'https://example.com'}});
+ const tail=w.document.querySelectorAll('.tool-group-step')[1];
+ assert.equal(tail.dataset.groupKind,'web');
+ assert.equal(tail.querySelector('.tool-name').textContent,'网页检索');
+ assert.equal(tail.querySelector('.tool-group-count').textContent,'2 次');
+ assert.equal(tail.classList.contains('edit'),false);
+ assert.deepEqual(errors,[]);
+});
+test('历史搜索、网页读取、Bash 与修改按原顺序合并，正文分隔分组',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'user',text:'核对资料并修改'},
+  {type:'tool',toolId:'history-search',name:'WebSearch',input:{query:'资料'},result:'Links: [{"title":"资料","url":"https://example.com"}]',isError:false},
+  {type:'thinking',text:'继续检查'},
+  {type:'tool',toolId:'history-fetch',name:'WebFetch',input:{url:'https://example.com'},result:'网页正文',isError:false},
+  {type:'tool',toolId:'history-bash',name:'Bash',input:{command:'echo checked'},result:'checked',isError:false},
+  {type:'tool',toolId:'history-edit',name:'Edit',input:{file_path:'/project/a.ts',old_string:'a',new_string:'b'},result:'ok',isError:false},
+  {type:'assistant_text',text:'修改完成，再次核对'},
+  {type:'tool',toolId:'history-tail1',name:'WebSearch',input:{query:'核对'},result:'结果',isError:false},
+  {type:'tool',toolId:'history-tail2',name:'WebFetch',input:{url:'https://example.com'},result:'网页结果',isError:false},
+ ],checkpoints:[]});
+ const groups=w.document.querySelectorAll('.tool-group-step');
+ assert.equal(groups.length,2);
+ assert.equal(groups[0].querySelector('.tool-group-count').textContent,'4 次 · 1 Bash · 1 文件修改 · 2 网页检索');
+ assert.deepEqual([...groups[0].querySelectorAll('.tool-card')].map(card=>card.dataset.toolId),['history-search','history-fetch','history-bash','history-edit']);
+ assert.equal(groups[0].classList.contains('collapsed'),true);
+ assert.equal(groups[1].dataset.groupKind,'web');
+ assert.match(groups[1].querySelector('.tool-group-status').textContent,/2 完成/);
+ assert.deepEqual(errors,[]);
+});
+test('搜索加入混合组后到达的审批仍独立显示，前后工具按顺序重新分组',t=>{
+ const {w,emit,errors}=setup(t);
+ for(const [index,name] of ['Bash','WebSearch','WebFetch','Bash'].entries()){
+  emit({kind:'tool_input',toolId:'web-approval'+index,name,input:{command:'echo ok',query:'资料',url:'https://example.com'}});
+ }
+ emit({kind:'permission_request',requestId:'approve-web',toolUseId:'web-approval1',toolName:'WebSearch',input:{query:'资料'},suggestions:[]});
+ const approval=w.document.querySelector('[data-tool-id="web-approval1"]');
+ assert.equal(approval.closest('.tool-group-step'),null);
+ assert.equal(approval.classList.contains('collapsed'),false);
+ assert.ok(approval.querySelector('.perm-bar'));
+ assert.equal(w.document.querySelector('[data-tool-id="web-approval0"]').closest('.tool-group-step'),null);
+ const group=w.document.querySelector('.tool-group-step');
+ assert.equal(group.querySelector('.tool-group-count').textContent,'2 次 · 1 Bash · 1 网页检索');
+ assert.deepEqual([...group.querySelectorAll('.tool-card')].map(card=>card.dataset.toolId),['web-approval2','web-approval3']);
+ assert.deepEqual(errors,[]);
+});
+test('正文与读取工具会断开 Bash 组，失败保留在组内而待确认独立显示',t=>{
  const {w,emit,errors}=setup(t);
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'first'+i,name:'Bash',input:{command:'echo '+i}});
  const first=w.document.querySelector('.tool-group-step');
@@ -218,7 +290,7 @@ test('正文与其他工具会断开 Bash 组，失败保留在组内而待确�
  first.querySelector('.tool-group-toggle').click();
  emit({kind:'tool_result',toolUseId:'first1',content:'1',isError:false});
  assert.equal(first.classList.contains('collapsed'),true);
- emit({kind:'tool_input',toolId:'search',name:'WebSearch',input:{query:'验证'}});
+ emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/project/a.ts'}});
  emit({kind:'tool_input',toolId:'lone',name:'Bash',input:{command:'echo alone'}});
  assert.equal(w.document.querySelector('.tool-card[data-tool-id="lone"]').closest('.tool-group-step'),null);
  emit({kind:'block_start',blockType:'text'});
