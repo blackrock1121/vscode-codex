@@ -211,6 +211,50 @@ test('历史中的读取、搜索、技能和自定义工具连续合并，交�
  assert.equal(w.document.querySelectorAll('.tool-group-step').length,2);
  assert.deepEqual(errors,[]);
 });
+test('历史已回答问题独立显示，前后的工具分别合组',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'user',text:'检查历史问答边界'},
+  {type:'tool',toolId:'before-q1',name:'Read',input:{file_path:'/project/a.ts'},result:'a',isError:false},
+  {type:'tool',toolId:'before-q2',name:'Bash',input:{command:'echo before'},result:'before',isError:false},
+  {type:'tool',toolId:'answered-q',name:'AskUserQuestion',input:{questions:[{question:'选择方案',options:[{label:'A'}]}]},result:'"选择方案" = "A"',isError:false},
+  {type:'tool',toolId:'after-q1',name:'Bash',input:{command:'echo after'},result:'after',isError:false},
+  {type:'tool',toolId:'after-q2',name:'Read',input:{file_path:'/project/b.ts'},result:'b',isError:false},
+ ],checkpoints:[]});
+ const question=w.document.querySelector('.askq-card');
+ assert.equal(question.closest('.tool-group-step'),null);
+ assert.equal(question.dataset.toolName,'AskUserQuestion');
+ assert.match(question.textContent,/选择方案.*A/);
+ const groups=[...w.document.querySelectorAll('.tool-group-step')];
+ assert.equal(groups.length,2);
+ assert.deepEqual(groups.map(group=>[...group.querySelectorAll('.tool-card')].map(card=>card.dataset.toolId)),[['before-q1','before-q2'],['after-q1','after-q2']]);
+ assert.ok(groups.every(group=>group.querySelector('.tool-group-count').textContent.startsWith('2 次')));
+ assert.deepEqual(errors,[]);
+});
+test('原生计划更新已完成调用，步骤进行中样式保留，轮次结束不残留执行中摘要',t=>{
+ const {w,emit,errors}=setup(t);
+ const {CodexProcess}=require('../dist/test/codex/process.js');
+ const p=new CodexProcess({codexPath:'/unused',cwd:process.cwd(),permissionMode:'default'},
+  {emit,onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});
+ t.after(()=>p.dispose());
+ p.busy=true;emit({kind:'busy',busy:true});
+ p.notification({method:'turn/plan/updated',params:{plan:[{step:'检查项目',status:'in_progress'}]}});
+ const plan=w.document.querySelector('[data-tool-id="plan"]');
+ assert.ok(plan.querySelector('.todo-item.doing'),'计划步骤继续显示进行中');
+ assert.equal(plan.classList.contains('running'),false,'更新计划操作本身已经完成');
+ const command={id:'plan-bash',type:'commandExecution',command:'echo ok',aggregatedOutput:'ok',exitCode:0};
+ p.notification({method:'item/started',params:{item:command}});
+ p.notification({method:'item/completed',params:{item:command}});
+ const group=plan.closest('.tool-group-step');
+ assert.equal(group.querySelector('.tool-group-status').textContent,'2 完成');
+ p.notification({method:'turn/plan/updated',params:{plan:[{step:'检查项目',status:'completed'}]}});
+ assert.equal(plan.querySelector('.todo-item.doing'),null);
+ assert.ok(plan.querySelector('.todo-item.done'));
+ p.notification({method:'turn/completed',params:{turn:{id:'plan-turn',status:'completed'}}});
+ assert.equal(group.querySelector('.tool-group-status').textContent,'2 完成');
+ assert.equal(group.querySelector('.running'),null);
+ assert.deepEqual(errors,[]);
+});
 test('交错的 Bash 和文件修改合成一组，正文断开，末尾两次 Bash 也合并',t=>{
  const {w,emit,errors}=setup(t);
  const names=['Bash','Bash','Edit','Bash','Bash','Edit','Write'];
@@ -757,6 +801,27 @@ test('模型选择器每个系列仅保留最新版本，中文介绍不挤占�
  assert.equal(sent.filter(m=>m.type==='setModel').length,0);
  menu.querySelector('[data-model="gpt-6.1-sol"]').click();
  assert.ok(sent.some(m=>m.type==='setModel'&&m.model==='gpt-6.1-sol'));
+ assert.deepEqual(errors,[]);
+});
+test('模型命令支持默认别名和完整目录中的旧模型，菜单保持精简',t=>{
+ const {w,emit,sent,errors}=setup(t);
+ const model=(id,name)=>({id,name,description:'',efforts:['low','medium','high'],defaultEffort:'medium'});
+ emit({kind:'models',models:[model('gpt-5.6-sol','GPT-5.6 Sol'),model('gpt-6.1-sol','GPT-6.1 Sol')]});
+ const command=text=>{
+  const input=w.document.getElementById('input');
+  input.value=text;input.dispatchEvent(new w.Event('input'));
+  w.document.getElementById('btn-send').click();
+ };
+ command('/model gpt-5.6-sol');
+ assert.equal(w.document.getElementById('model-label').textContent,'GPT-5.6 Sol');
+ command('/model gpt-5.6 sol');
+ assert.equal(w.document.getElementById('model-label').textContent,'GPT-5.6 Sol');
+ command('/model 默认');
+ assert.equal(w.document.getElementById('model-label').textContent,'默认模型');
+ assert.deepEqual(sent.filter(m=>m.type==='setModel').map(m=>m.model),['gpt-5.6-sol','gpt-5.6-sol','']);
+ assert.doesNotMatch(w.document.getElementById('messages').textContent,/未知模型/);
+ w.document.getElementById('model-trigger').click();
+ assert.deepEqual([...w.document.querySelectorAll('#model-menu [data-model]')].map(e=>e.dataset.model),['','gpt-6.1-sol']);
  assert.deepEqual(errors,[]);
 });
 test('推理程度单行短横条支持悬停说明，直接选中模型默认档位',t=>{

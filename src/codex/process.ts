@@ -370,7 +370,10 @@ export class CodexProcess {
       this.emit({ kind: 'tokens', output: u?.last?.outputTokens ?? 0 }); return;
     }
     if (m.method === 'turn/plan/updated') {
-      this.emit({ kind: 'tool_input', toolId: 'plan', name: 'TodoWrite', input: { todos: (p.plan ?? []).map((x: any) => ({ content: x.step, status: x.status, activeForm: x.step })) } }); return;
+      this.emit({ kind: 'tool_input', toolId: 'plan', name: 'TodoWrite', input: { todos: (p.plan ?? []).map((x: any) => ({ content: x.step, status: x.status, activeForm: x.step })) } });
+      // 计划已更新；步骤自身的 in_progress 继续表示任务进度。
+      this.emit({ kind: 'tool_result', toolUseId: 'plan', content: '', isError: false });
+      return;
     }
     if (m.method === 'error') {
       if (this.compactionTrace) {

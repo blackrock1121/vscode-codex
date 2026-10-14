@@ -1323,7 +1323,7 @@ let toolBodySeq = 0;
 let toolGroupSeq = 0;
 
 function toolGroupKind(name: string): Exclude<ToolGroupKind, "mixed"> | null {
-  if (name === "AskUserQuestion") return null;
+  if (!name || name === "AskUserQuestion") return null;
   if (name === "Bash") return "bash";
   if (DIFF_TOOLS.has(name)) return "edit";
   if (name === "WebSearch" || name === "WebFetch") return "web";
@@ -1956,6 +1956,7 @@ function attachPermission(m: Extract<ToWebview, { kind: "permission_request" }>)
  *  question→answer list (used both live after answering and in history). */
 function askQuestionNode(pairs: [string, string][], emptyText = ""): HTMLElement {
   const card = el("div", "tool-card askq-card");
+  card.dataset.toolName = "AskUserQuestion";
   const head = el("div", "tool-head");
   head.innerHTML = `<span class="tool-name">AskUserQuestion</span>`;
   const bodyWrap = el("div", "tool-body");
@@ -3135,7 +3136,8 @@ function handleSlashCommand(payload: QueueItem): boolean {
         return true;
       }
       const key = arg.toLowerCase();
-      const hit = MODELS.find((m) => m.id.toLowerCase() === key || m.label.toLowerCase() === key);
+      const choices = [MODELS[0], ...speedModels.map(m => ({ id: m.id, label: m.name }))];
+      const hit = choices.find((m) => m.id.toLowerCase() === key || m.label.toLowerCase() === key || (!m.id && key === "默认"));
       if (!hit) {
         appendNotice(`未知模型「${arg}」。可选：${MODELS.map((m) => m.id || "默认").join(" / ")}`, "error");
         return true;
