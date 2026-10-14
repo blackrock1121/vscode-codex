@@ -129,6 +129,90 @@ test('历史工具默认折叠，报错和待确认工具自动展开',t=>{
  assert.ok(approval.querySelector('.perm-bar'));
  assert.deepEqual(errors,[]);
 });
+test('三次 Bash 才成组，思考片段保留顺序且每条命令可继续展开',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'tool_input',toolId:'b1',name:'Bash',input:{command:'echo 1'}});
+ emit({kind:'tool_result',toolUseId:'b1',content:'1',isError:false});
+ emit({kind:'block_start',blockType:'thinking'});
+ emit({kind:'thinking_delta',text:'检查下一步'});
+ emit({kind:'block_end'});
+ emit({kind:'tool_input',toolId:'b2',name:'Bash',input:{command:'echo 2'}});
+ emit({kind:'tool_result',toolUseId:'b2',content:'2',isError:false});
+ assert.equal(w.document.querySelector('.bash-group-step'),null,'只有两次时保持单行');
+ emit({kind:'tool_input',toolId:'b3',name:'Bash',input:{command:'echo 3'}});
+ const group=w.document.querySelector('.bash-group-step');
+ assert.ok(group);
+ assert.equal(group.classList.contains('collapsed'),true);
+ assert.equal(group.querySelector('.bash-group-count').textContent,'3 次');
+ const items=[...group.querySelector('.bash-group-items').children];
+ assert.deepEqual(items.map(item=>item.classList.contains('think')?'思考':item.querySelector('.tool-sub').textContent),['echo 1','思考','echo 2','echo 3']);
+ group.querySelector('.bash-group-toggle').click();
+ assert.equal(group.classList.contains('collapsed'),false);
+ const child=group.querySelector('.tool-card[data-tool-id="b2"]');
+ assert.equal(child.classList.contains('collapsed'),true);
+ child.querySelector('.tool-toggle').click();
+ assert.equal(child.classList.contains('collapsed'),false);
+ emit({kind:'tool_result',toolUseId:'b3',content:'3',isError:false});
+ assert.match(group.querySelector('.bash-group-status').textContent,/3 完成/);
+ emit({kind:'tool_input',toolId:'b4',name:'Bash',input:{command:'echo 4'}});
+ assert.equal(group.querySelectorAll('.bash-group-items > .foldable-step').length,4);
+ assert.equal(group.classList.contains('collapsed'),false,'继续执行不覆盖手动展开');
+ emit({kind:'block_start',blockType:'thinking'});
+ emit({kind:'block_end'});
+ assert.equal(w.document.querySelectorAll('.msg-body > .step.think').length,1,'组尾思考暂时留在外面');
+ emit({kind:'tool_input',toolId:'b5',name:'Bash',input:{command:'echo 5'}});
+ assert.equal(group.querySelectorAll('.bash-group-items > .foldable-step').length,5);
+ assert.equal(w.document.querySelectorAll('.msg-body > .step.think').length,0,'下一次 Bash 到来才把中间思考收入组内');
+ assert.deepEqual(errors,[]);
+});
+test('正文与其他工具会断开 Bash 组，失败和待确认自动打开对应层级',t=>{
+ const {w,emit,errors}=setup(t);
+ for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'first'+i,name:'Bash',input:{command:'echo '+i}});
+ const first=w.document.querySelector('.bash-group-step');
+ assert.ok(first);
+ emit({kind:'tool_result',toolUseId:'first2',content:'命令失败',isError:true});
+ assert.equal(first.classList.contains('collapsed'),false);
+ assert.equal(first.querySelector('.tool-card[data-tool-id="first2"]').classList.contains('collapsed'),false);
+ assert.match(first.querySelector('.bash-group-status').textContent,/1 失败/);
+ first.querySelector('.bash-group-toggle').click();
+ emit({kind:'tool_result',toolUseId:'first1',content:'1',isError:false});
+ assert.equal(first.classList.contains('collapsed'),true,'其他调用完成后不覆盖手动收起');
+ emit({kind:'tool_input',toolId:'search',name:'WebSearch',input:{query:'验证'}});
+ emit({kind:'tool_input',toolId:'lone',name:'Bash',input:{command:'echo alone'}});
+ assert.equal(w.document.querySelector('.tool-card[data-tool-id="lone"]').closest('.bash-group-step'),null);
+ emit({kind:'block_start',blockType:'text'});
+ emit({kind:'text_delta',text:'这是正文'});
+ for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'next'+i,name:'Bash',input:{command:'echo next'+i}});
+ const groups=w.document.querySelectorAll('.bash-group-step');
+ assert.equal(groups.length,2);
+ const second=groups[1];
+ assert.equal(second.querySelectorAll('.bash-group-items > .foldable-step').length,3);
+ emit({kind:'permission_request',requestId:'approval-in-group',toolUseId:'next3',toolName:'Bash',input:{command:'echo next3'},suggestions:[]});
+ assert.equal(second.classList.contains('collapsed'),false);
+ assert.equal(second.querySelector('.tool-card[data-tool-id="next3"]').classList.contains('collapsed'),false);
+ assert.match(second.querySelector('.bash-group-status').textContent,/待确认/);
+ assert.deepEqual(errors,[]);
+});
+test('历史回放按原顺序分组，最后一个折叠组仍是时间线终点',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'user',text:'执行检查'},
+  {type:'thinking',text:'先看情况'},
+  {type:'tool',toolId:'h1',name:'Bash',input:{command:'echo one'},result:'one',isError:false},
+  {type:'thinking',text:'继续'},
+  {type:'tool',toolId:'h2',name:'Bash',input:{command:'echo two'},result:'two',isError:false},
+  {type:'tool',toolId:'h3',name:'Bash',input:{command:'echo three'},result:'three',isError:false},
+ ],checkpoints:[]});
+ const group=w.document.querySelector('.bash-group-step');
+ assert.ok(group);
+ assert.equal(group.classList.contains('collapsed'),true);
+ assert.equal(group.querySelectorAll('.bash-group-items > .foldable-step').length,3);
+ assert.equal(group.querySelectorAll('.bash-group-items > .think').length,1);
+ const body=w.document.querySelector('.msg.assistant .msg-body');
+ assert.equal([...body.children].filter(el=>el.classList.contains('step')).length,2);
+ assert.equal(body.querySelectorAll(':scope > .step.think').length,1,'首条 Bash 前的思考仍在组外');
+ assert.deepEqual(errors,[]);
+});
 test('从我的消息查看历史后，一键回到最新回复并恢复流式跟随',async t=>{
  const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
  const button=w.document.querySelector('.jump-latest');

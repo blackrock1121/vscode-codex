@@ -278,7 +278,9 @@ function endTimelineAtLastNode(msg: HTMLElement) {
   const line = msg.querySelector(".thread-line") as HTMLElement | null;
   if (!line) return;
   const compute = () => {
-    const nodes = msg.querySelectorAll(".step, .text-seg.summary-node");
+    // Grouped Bash calls contain nested steps, but the outer group owns the
+    // timeline dot. A collapsed inner step must never extend the rail.
+    const nodes = msg.querySelectorAll(".msg-body > .step, .msg-body > .text-seg.summary-node");
     const last = nodes[nodes.length - 1] as HTMLElement | undefined;
     if (!last) {
       line.style.display = "none";
@@ -1338,12 +1340,109 @@ function onTextDelta(text: string) {
 const FILE_VIEW_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Skill"]);
 const DIFF_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FOLDABLE_TOOLS = new Set(["Bash", "WebSearch", "WebFetch"]);
+const BASH_GROUP_MIN = 3;
 let toolBodySeq = 0;
+let bashGroupSeq = 0;
 
 function setToolFolded(card: HTMLElement, folded: boolean) {
   card.classList.toggle("collapsed", folded);
   const toggle = card.querySelector<HTMLButtonElement>(".tool-toggle");
   if (toggle) toggle.setAttribute("aria-expanded", String(!folded));
+}
+
+function timelineNodes(body: HTMLElement): HTMLElement[] {
+  return Array.from(body.children).filter((node): node is HTMLElement =>
+    node instanceof HTMLElement && (node.classList.contains("step") || node.classList.contains("text-seg") || node.classList.contains("msg-images")),
+  );
+}
+
+function isBashStep(node: HTMLElement): boolean {
+  return node.classList.contains("foldable-step") &&
+    node.querySelector(":scope > .tool-card")?.getAttribute("data-tool-name") === "Bash";
+}
+
+function setBashGroupFolded(group: HTMLElement, folded: boolean) {
+  group.classList.toggle("collapsed", folded);
+  group.querySelector<HTMLButtonElement>(".bash-group-toggle")?.setAttribute("aria-expanded", String(!folded));
+}
+
+function updateBashGroup(group: HTMLElement) {
+  const cards = Array.from(group.querySelectorAll<HTMLElement>(".bash-group-items > .foldable-step > .tool-card"));
+  const failed = cards.filter((card) => card.classList.contains("error")).length;
+  const waiting = cards.filter((card) => !card.classList.contains("error") && card.classList.contains("needs-approval")).length;
+  const running = cards.filter((card) => !card.classList.contains("error") && !card.classList.contains("needs-approval") && card.classList.contains("running")).length;
+  const done = cards.length - failed - waiting - running;
+  group.querySelector(".bash-group-count")!.textContent = `${cards.length} 次`;
+  group.querySelector(".bash-group-status")!.textContent = [
+    done ? `${done} 完成` : "", failed ? `${failed} 失败` : "",
+    waiting ? `${waiting} 待确认` : "", running ? `${running} 执行中` : "",
+  ].filter(Boolean).join(" · ");
+  group.classList.toggle("error", failed > 0);
+  group.classList.toggle("needs-approval", waiting > 0 && !failed);
+  group.classList.toggle("ok", done === cards.length);
+  // Open only when a new failure/approval appears; later successful results
+  // must not undo a user's manual decision to close the group.
+  if (failed > Number(group.dataset.failedCount || 0) || waiting > Number(group.dataset.waitingCount || 0)) {
+    setBashGroupFolded(group, false);
+  }
+  group.dataset.failedCount = String(failed);
+  group.dataset.waitingCount = String(waiting);
+}
+
+/** Keep short runs flat. On the third Bash call, fold the run as one timeline
+ *  node; later Bash calls and thinking snippets join it until another kind of
+ *  content appears. Both live streaming and history replay use this path. */
+function groupAdjacentBash(body: HTMLElement, step: HTMLElement) {
+  const nodes = timelineNodes(body);
+  const between: HTMLElement[] = [];
+  let previousIndex = nodes.length - 2;
+  while (previousIndex >= 0 && nodes[previousIndex].classList.contains("think")) {
+    between.unshift(nodes[previousIndex--]);
+  }
+  const previous = nodes[previousIndex];
+  if (previous?.classList.contains("bash-group-step")) {
+    const items = previous.querySelector(".bash-group-items")!;
+    for (const node of between) items.appendChild(node);
+    items.appendChild(step);
+    step.classList.remove("first-node");
+    updateBashGroup(previous);
+    return;
+  }
+  const run: HTMLElement[] = [step];
+  let count = 1;
+  for (let i = nodes.length - 2; i >= 0; i--) {
+    const node = nodes[i];
+    if (isBashStep(node)) { run.unshift(node); count++; }
+    else if (node.classList.contains("think")) run.unshift(node);
+    else break;
+  }
+  if (count < BASH_GROUP_MIN) return;
+  // A thought before the first Bash belongs to the preceding context. Only
+  // thought nodes actually between Bash calls move into the group.
+  while (run[0].classList.contains("think")) run.shift();
+  const group = el("div", "step bash-group-step collapsed");
+  const id = `bash-group-${++bashGroupSeq}`;
+  const title = el("div", "bash-group");
+  title.innerHTML =
+    `<button type="button" class="bash-group-toggle" aria-expanded="false" aria-controls="${id}">` +
+    `<span class="tool-fold-caret" aria-hidden="true">${ICON.chevron}</span>` +
+    `<span class="tool-name">Bash 调用</span><span class="bash-group-count"></span>` +
+    `<span class="bash-group-status"></span></button><div id="${id}" class="bash-group-items"></div>`;
+  group.append(el("div", "step-dot"), title);
+  const opened = run.some((node) => node.querySelector(".tool-card.foldable:not(.collapsed)"));
+  body.insertBefore(group, run[0]);
+  const items = group.querySelector(".bash-group-items")!;
+  for (const node of run) {
+    node.classList.remove("first-node");
+    items.appendChild(node);
+  }
+  markIfFirstNode(body, group);
+  title.querySelector<HTMLButtonElement>(".bash-group-toggle")!.addEventListener("click", () => {
+    setBashGroupFolded(group, !group.classList.contains("collapsed"));
+    pinnedToBottom = false;
+  });
+  updateBashGroup(group);
+  if (opened) setBashGroupFolded(group, false);
 }
 
 function createToolCard(parent: HTMLElement, toolId: string, name: string): HTMLElement {
@@ -1382,6 +1481,7 @@ function createToolCard(parent: HTMLElement, toolId: string, name: string): HTML
   parent.appendChild(step);
   markIfFirstNode(parent, step);
   toolCards.set(toolId, card);
+  if (name === "Bash") groupAdjacentBash(parent, step);
   updateActiveLine(); // the new dot becomes the active progress start
   maybeScroll();
   return card;
@@ -1553,6 +1653,8 @@ function setToolResult(toolUseId: string, content: string, isError: boolean) {
     const lines = content.replace(/\n+$/, "").split("\n").length;
     meta.textContent = bad ? "查看详情" : content.trim() ? `完成 · ${links.length ? `${links.length} 条` : `${lines} 行`}` : "完成 · 无输出";
   }
+  const bashGroup = card.closest<HTMLElement>(".bash-group-step");
+  if (bashGroup) updateBashGroup(bashGroup);
   // A failed tool drops its head icon too, so the title is just the name.
   if (bad) card.querySelector(".tool-head .tool-icon")?.remove();
   // Interrupted: the "[Request interrupted by user]" text is shown once at the
@@ -1779,6 +1881,8 @@ function attachPermission(m: Extract<ToWebview, { kind: "permission_request" }>)
   }
   host.classList.add("needs-approval");
   if (host.classList.contains("foldable")) setToolFolded(host, false);
+  const bashGroup = host.closest<HTMLElement>(".bash-group-step");
+  if (bashGroup) updateBashGroup(bashGroup);
   // The amber node on the timeline is the status marker for "waiting on you" —
   // the bar itself stays neutral instead of painting the whole card yellow.
   host.closest(".step")?.classList.add("needs-approval");
@@ -2218,6 +2322,7 @@ function resolvePermission(requestId: string, behavior: "allow" | "deny") {
   }
   const bar = messagesEl.querySelector(`.perm-bar[data-request-id="${requestId}"]`) as HTMLElement;
   if (!bar) return;
+  const bashGroup = bar.closest<HTMLElement>(".bash-group-step");
   bar.closest(".tool-card")?.classList.remove("needs-approval");
   bar.closest(".step")?.classList.remove("needs-approval");
   if (behavior === "allow") {
@@ -2226,6 +2331,7 @@ function resolvePermission(requestId: string, behavior: "allow" | "deny") {
     bar.classList.add("resolved");
     bar.innerHTML = `<span class="perm-label deny">已拒绝</span>`;
   }
+  if (bashGroup) updateBashGroup(bashGroup);
 }
 
 // ---------------------------------------------------------------------------
