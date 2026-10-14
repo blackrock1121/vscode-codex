@@ -914,6 +914,14 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 }
 .tool-actions:empty { display: none; }
 .tool-card:hover .tool-actions { opacity: 1; }
+.tool-card:has(.tool-error-toggle) .tool-actions { opacity: 1; }
+.tool-error-toggle {
+  border: 0; padding: 0 2px; background: transparent;
+  color: var(--vscode-descriptionForeground); font: inherit; font-size: 11px;
+  cursor: pointer; white-space: nowrap;
+}
+.tool-error-toggle:hover { color: var(--vscode-textLink-foreground); }
+.tool-error-toggle:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 .tool-actions .code-act {
   width: 20px; height: 20px; padding: 0; justify-content: center;
   background: rgba(128,128,128,.10);
@@ -1031,6 +1039,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 }
 .tool-card.compact .tool-body:empty,
 .tool-card.compact .tool-body:has(> .tool-actions:empty:only-child) { display: none; }
+.tool-card.error-details-collapsed .tool-body { display: none; }
 
 /* History "show earlier messages" banner */
 .history-expand {

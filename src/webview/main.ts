@@ -1342,7 +1342,7 @@ function timelineNodes(body: HTMLElement): HTMLElement[] {
 function isGroupableStep(node: HTMLElement, kind: ToolGroupKind): boolean {
   if (!node.classList.contains("step")) return false;
   const card = node.querySelector<HTMLElement>(":scope > .tool-card");
-  if (!card || card.classList.contains("error") || card.classList.contains("needs-approval")) return false;
+  if (!card || card.classList.contains("needs-approval")) return false;
   const name = card.getAttribute("data-tool-name") || "";
   return toolGroupKind(name) === kind;
 }
@@ -1369,16 +1369,15 @@ function updateToolGroup(group: HTMLElement) {
   group.classList.toggle("error", failed > 0);
   group.classList.toggle("needs-approval", waiting > 0 && !failed);
   group.classList.toggle("ok", done === cards.length);
-  if (failed > Number(group.dataset.failedCount || 0) || waiting > Number(group.dataset.waitingCount || 0)) {
+  if (waiting > Number(group.dataset.waitingCount || 0)) {
     setToolGroupFolded(group, false);
   }
-  group.dataset.failedCount = String(failed);
   group.dataset.waitingCount = String(waiting);
 }
 
 /** Three or more consecutive calls become one timeline node. Bash calls form
  *  one kind of group; file modifications (Edit/Write/MultiEdit/NotebookEdit)
- *  form another. Text, other tools, failures and approvals end a run. */
+ *  form another. Text, other tools and approvals end a run. */
 function createToolGroup(body: HTMLElement, run: HTMLElement[], kind: ToolGroupKind, keepOpen = false) {
   const group = el("div", "step tool-group-step collapsed" + (kind === "edit" ? " edit" : ""));
   group.dataset.groupKind = kind;
@@ -1420,8 +1419,8 @@ function groupAdjacentTools(body: HTMLElement, step: HTMLElement, kind: ToolGrou
   if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run, kind);
 }
 
-/** A failure or approval can arrive after its tool has joined a group. Put it
- *  back on the main timeline and rebuild only the valid runs around it. */
+/** Approval can arrive after its tool has joined a group. Keep the actionable
+ *  card on the main timeline and rebuild the runs around it. */
 function separateExceptionalTool(card: HTMLElement) {
   const group = card.closest<HTMLElement>(".tool-group-step");
   if (!group) return;
@@ -1642,9 +1641,29 @@ function setToolResult(toolUseId: string, content: string, isError: boolean) {
   const interrupted = isInterruptSentinel(content);
   const bad = isError || interrupted;
   card.classList.toggle("error", bad);
-  if (bad && card.classList.contains("foldable")) setToolFolded(card, false);
   card.closest(".step")?.classList.toggle("error", bad); // red timeline dot
-  if (bad) separateExceptionalTool(card);
+  // Compact tools have no folding header; give their errors an inline detail
+  // button so the diagnostic is available without taking up timeline space.
+  const actions = card.querySelector<HTMLElement>(".tool-actions");
+  let errorToggle = actions?.querySelector<HTMLButtonElement>(".tool-error-toggle");
+  if (isError && content.trim() && !card.classList.contains("foldable")) {
+    if (!errorToggle) {
+      card.classList.add("error-details-collapsed");
+      errorToggle = el("button", "tool-error-toggle", "查看详情") as HTMLButtonElement;
+      errorToggle.type = "button";
+      errorToggle.setAttribute("aria-expanded", "false");
+      errorToggle.addEventListener("click", () => {
+        const collapsed = card.classList.toggle("error-details-collapsed");
+        errorToggle!.textContent = collapsed ? "查看详情" : "收起详情";
+        errorToggle!.setAttribute("aria-expanded", String(!collapsed));
+        pinnedToBottom = false;
+      });
+      actions?.appendChild(errorToggle);
+    }
+  } else {
+    errorToggle?.remove();
+    card.classList.remove("error-details-collapsed");
+  }
   // A Bash step that ran clean turns its node green — executed, side effects in
   // place — matching the green Edit/Write dots. Read stays a neutral gray.
   if (!bad && (card.dataset.toolName || "") === "Bash") card.closest(".step")?.classList.add("ok");
