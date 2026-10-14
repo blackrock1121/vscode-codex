@@ -1,5 +1,6 @@
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
+import { latestModelChoices, modelDescription } from "./modelPicker";
 import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
@@ -1212,7 +1213,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
         modelEfforts[""] = defaultModel.efforts;
         modelDefaultEfforts[""] = defaultModel.defaultEffort || "";
       }
-      MODELS = [{ id: "", label: "默认模型", short: "默认", desc: "使用 Codex 默认模型" }, ...m.models.map(x => ({ id: x.id, label: x.name, short: x.name, desc: x.description }))];
+      MODELS = [{ id: "", label: "默认模型", desc: "使用 Codex 默认模型" }, ...latestModelChoices(m.models).map(x => ({ id: x.id, label: x.name, desc: modelDescription(x) }))];
       syncPickers();
       if (!modelMenu.classList.contains("hidden")) buildModelMenu();
       break;
@@ -3123,7 +3124,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
         return true;
       }
       const key = arg.toLowerCase();
-      const hit = MODELS.find((m) => m.id.toLowerCase() === key || m.short.toLowerCase() === key);
+      const hit = MODELS.find((m) => m.id.toLowerCase() === key || m.label.toLowerCase() === key);
       if (!hit) {
         appendNotice(`未知模型「${arg}」。可选：${MODELS.map((m) => m.id || "默认").join(" / ")}`, "error");
         return true;
@@ -3824,8 +3825,8 @@ const MODES = [
 ];
 let modelEfforts: Record<string, string[]> = {};
 let modelDefaultEfforts: Record<string, string> = {};
-let MODELS: { id: string; label: string; short: string; desc: string; versions?: { id: string; label: string; date: string }[] }[] = [
-  { id: "", label: "默认模型", short: "默认", desc: "使用 Codex 默认模型" },
+let MODELS: { id: string; label: string; desc: string }[] = [
+  { id: "", label: "默认模型", desc: "使用 Codex 默认模型" },
 ];
 // Reasoning-effort levels — labels + wording aligned with Codex's `/effort`.
 const EFFORTS = [
@@ -3859,10 +3860,6 @@ function speedAvailability(mode: SpeedMode): string {
   if (!speedModelId()) return "默认模型尚未确认，请先选择具体模型或连接会话";
   if (!speedModel()?.speedModes) return "尚未取得此模型的速度能力，请更新或重连 Codex 后确认";
   return "当前账号的此模型未提供该档位";
-}
-function speedSummary(model: ModelChoice | undefined): string {
-  if (!model?.speedModes) return "普通；加速档位待确认";
-  return SPEED_MODES.map(m => `${m.label}${supportsSpeed(model, m.id) ? "可选" : "未提供"}`).join(" · ");
 }
 function buildSpeedMenu() {
   const model = speedModelId();
@@ -3899,15 +3896,7 @@ function syncPickers() {
   modeIcon.innerHTML = mode.icon;
   modeLabel.textContent = mode.title;
   const model = MODELS.find((x) => x.id === currentModel);
-  let text = model?.label;
-  if (!text) {
-    // 选的是历史版本（完整模型 ID）：显示该版本，而不是回落成「默认模型」。
-    for (const f of MODELS) {
-      const v = f.versions?.find((x) => x.id === currentModel);
-      if (v) { text = `Codex ${v.label}`; break; }
-    }
-  }
-  modelLabel.textContent = text || currentModel || MODELS[0].label;
+  modelLabel.textContent = model?.label || speedModels.find(x => x.id === currentModel)?.name || currentModel || MODELS[0].label;
   refitComposer();
 }
 
@@ -3940,65 +3929,25 @@ function buildModeMenu() {
 function buildModelMenu() {
   let html = `<div class="pick-head">模型</div>`;
   for (const m of MODELS) {
-    const vs = m.versions || [];
-    const ver = vs.find((v) => v.id === currentModel);
-    const on = m.id === currentModel || !!ver;
-    // Short id on the right so the list scans without reading the full names;
-    // it yields to the ✓ on the selected row (both would crowd the edge).
-    // 有历史版本的家族行：chip 显示当前选中的版本，再加「›」打开版本列表。
-    const check = on ? `<span class="pick-check">${ICON.check}</span>` : "";
-    const tail = vs.length
-      ? `${check}<span class="pick-tag">${ver && ver.id !== m.id ? ver.label : m.short}</span><span class="pick-more" data-versions="${escapeHtml(m.id)}" title="历史版本">${ICON.chevronRight}</span>`
-      : on ? check : m.id ? `<span class="pick-tag">${escapeHtml(m.short)}</span>` : "";
-    html +=
-      `<button class="pick-row${on ? " on" : ""}" data-model="${escapeHtml(m.id)}">` +
-      `<span class="pick-text"><span class="pick-title">${escapeHtml(m.label)}</span>${m.desc ? `<span class="pick-desc">${escapeHtml(m.desc)}</span>` : ""}<span class="pick-desc">${escapeHtml(m.id ? speedSummary(speedModels.find(x => x.id === m.id)) : "速度能力以会话实际模型为准")}</span></span>` +
-      tail +
-      `</button>`;
+    const on = m.id === currentModel;
+    html += `<button type="button" class="pick-row${on ? " on" : ""}" data-model="${escapeHtml(m.id)}" title="${escapeHtml(m.desc)}">` +
+      `<span class="pick-text"><span class="pick-title">${escapeHtml(m.label)}</span><span class="pick-desc">${escapeHtml(m.desc)}</span></span>` +
+      `<span class="pick-check">${on ? ICON.check : ""}</span></button>`;
   }
   const available = availableEfforts();
   const selected = EFFORTS.find(e => e.id === currentEffort)?.label || currentEffort || "默认";
   const defaultEffort = modelDefaultEfforts[currentModel];
   const defaultLabel = defaultEffort ? EFFORTS.find(e => e.id === defaultEffort)?.label || defaultEffort : "";
-  html += `<div class="pick-sep"></div><div class="pick-effort"><span>推理强度 · ${escapeHtml(selected)}</span><span class="eff-cur">下轮生效</span></div><div class="effort-options">`;
-  html += `<button type="button" class="effort-option${!currentEffort ? " on" : ""}" data-effort="" aria-pressed="${!currentEffort}" title="使用模型默认推理强度">默认${defaultLabel ? ` (${escapeHtml(defaultLabel)})` : ""}</button>`;
-  for (const e of available) html += `<button type="button" class="effort-option${currentEffort === e.id ? " on" : ""}" data-effort="${escapeHtml(e.id)}" aria-pressed="${currentEffort === e.id}" title="${escapeHtml(e.label)}：${escapeHtml(e.desc)}">${escapeHtml(e.label)}</button>`;
-  html += `</div>`;
+  const activeIndex = available.findIndex(e => e.id === (currentEffort || defaultEffort));
+  const defaultTitle = `默认${defaultLabel ? ` (${defaultLabel})` : ""}：使用模型默认推理程度`;
+  html += `<div class="pick-sep"></div><div class="pick-effort" title="仅当前会话下轮生效"><span class="effort-current">推理程度 · ${escapeHtml(selected)}</span><div class="effort-options" role="group" aria-label="推理程度">`;
+  html += `<button type="button" class="effort-option effort-default${!currentEffort ? " on" : ""}" data-effort="" aria-pressed="${!currentEffort}" aria-label="${escapeHtml(defaultTitle)}" title="${escapeHtml(defaultTitle)}"><span class="effort-caption">默认${defaultLabel ? ` (${escapeHtml(defaultLabel)})` : ""}</span><span class="effort-bar" aria-hidden="true"></span></button>`;
+  for (const [index, e] of available.entries()) {
+    const title = `${e.label}：${e.desc}`;
+    html += `<button type="button" class="effort-option${index <= activeIndex ? " filled" : ""}${currentEffort === e.id ? " on" : ""}" data-effort="${escapeHtml(e.id)}" aria-pressed="${currentEffort === e.id}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"><span class="effort-caption">${escapeHtml(e.label)}</span><span class="effort-bar" aria-hidden="true"></span></button>`;
+  }
+  html += `</div></div>`;
   modelMenu.innerHTML = html;
-}
-
-/** 历史版本子菜单：贴在模型菜单右侧、与所点家族行对齐；再点一次「›」收起。
- *  侧栏太窄放不下时贴在菜单右缘内侧。 */
-function openVersionMenu(familyId: string) {
-  const fam = MODELS.find((m) => m.id === familyId);
-  if (!fam?.versions) return;
-  const prev = modelMenu.querySelector(".pick-sub") as HTMLElement | null;
-  if (prev) {
-    const same = prev.dataset.family === familyId;
-    prev.remove();
-    if (same) return;
-  }
-  const sub = el("div", "pick-sub");
-  sub.dataset.family = familyId;
-  let html = `<div class="pick-head pick-sub-head"><span>历史版本</span><span class="pick-sub-count">${fam.versions.length}</span></div>`;
-  for (const v of fam.versions) {
-    const cur = v.id === fam.id;
-    const on = currentModel === v.id;
-    html +=
-      `<button class="pick-row${on ? " on" : ""}" data-version="${v.id}">` +
-      `<span class="pick-text"><span class="pick-title">${v.label}</span>${cur ? `<span class="pick-desc">当前版本</span>` : ""}</span>` +
-      (on ? `<span class="pick-check">${ICON.check}</span>` : "") +
-      (cur ? "" : `<span class="pick-date">${v.date}</span>`) +
-      `</button>`;
-  }
-  sub.innerHTML = html;
-  modelMenu.appendChild(sub);
-  const row = modelMenu.querySelector(`[data-model="${familyId}"]`) as HTMLElement | null;
-  if (row) sub.style.top = `${Math.max(0, Math.min(row.offsetTop, modelMenu.clientHeight - sub.offsetHeight))}px`;
-  if (modelMenu.getBoundingClientRect().right + sub.offsetWidth + 8 > window.innerWidth) {
-    sub.style.left = "auto";
-    sub.style.right = "4px";
-  }
 }
 
 /** Anchor a picker directly above its trigger button (same scheme as the
@@ -4088,16 +4037,9 @@ modelMenu.addEventListener("click", (e) => {
     modelMenu.scrollTop = scrollTop;
     return;
   }
-  const more = t.closest("[data-versions]") as HTMLElement | null;
-  if (more) {
-    e.stopPropagation();
-    openVersionMenu(more.dataset.versions || "");
-    return;
-  }
-  const ver = t.closest("[data-version]") as HTMLElement | null;
-  const row = ver ?? (t.closest("[data-model]") as HTMLElement | null);
+  const row = t.closest("[data-model]") as HTMLElement | null;
   if (!row) return;
-  currentModel = (ver ? row.dataset.version : row.dataset.model) || "";
+  currentModel = row.dataset.model || "";
   if (currentEffort && modelEfforts[currentModel]?.length && !modelEfforts[currentModel].includes(currentEffort)) currentEffort = "";
   send({ type: "setModel", model: currentModel });
   syncPickers();

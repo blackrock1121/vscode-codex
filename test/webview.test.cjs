@@ -617,6 +617,51 @@ test('调用代码链接在历史和流式回复中分离路径与行号',t=>{
  assert.deepEqual(errors,[]);
 });
 test('行内代码与正文中的本地文档路径可点击',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'load_history',sessionId:'paths',items:[{type:'assistant_text',text:'查看 `/tmp/Quarterly Report.pdf` 和 /tmp/qr.jpg'}],checkpoints:[]});const refs=[...w.document.querySelectorAll('.code-ref[data-action="open"]')];assert.deepEqual(refs.map(e=>e.dataset.path),['/tmp/Quarterly Report.pdf','/tmp/qr.jpg']);refs.forEach(e=>e.click());assert.deepEqual(sent.filter(m=>m.type==='openFile').map(m=>m.path),['/tmp/Quarterly Report.pdf','/tmp/qr.jpg']);assert.deepEqual(errors,[]);});
+test('模型选择器每个系列仅保留最新版本，中文介绍不挤占空间',t=>{
+ const {w,emit,sent,errors}=setup(t);
+ const model=(id,description='English model description')=>({id,name:id.toUpperCase(),description,efforts:['low','medium','high'],defaultEffort:'medium',speedModes:['default','fast']});
+ emit({kind:'models',models:[
+  model('gpt-6-sol'),model('gpt-6.1-sol'),model('gpt-5.6-sol'),
+  model('gpt-6-astra'),model('gpt-6-luna'),model('gpt-5.6-luna'),model('gpt-5.6-terra'),
+  model('gpt-5.9-codex'),model('gpt-5.10-codex-2026-01-01'),model('gpt-5.10-codex'),
+  model('custom','自定义中文介绍'),model('another-custom'),
+ ]});
+ // 已选旧模型仍使用自身能力，不能悄悄切换到新版本。
+ emit({kind:'config',model:'gpt-6-sol',effort:'high',permissionMode:'default'});
+ w.document.getElementById('model-trigger').click();
+ const menu=w.document.getElementById('model-menu');
+ assert.deepEqual([...menu.querySelectorAll('[data-model]')].map(e=>e.dataset.model),['','gpt-6.1-sol','gpt-6-astra','gpt-6-luna','gpt-5.6-terra','gpt-5.10-codex','custom','another-custom']);
+ assert.doesNotMatch(menu.textContent,/English|普通可选|快速可选|未提供/);
+ assert.equal(menu.querySelector('.pick-tag'),null);
+ assert.match(menu.textContent,/自定义中文介绍/);
+ assert.equal(w.document.getElementById('model-label').textContent,'GPT-6-SOL');
+ assert.equal(menu.querySelector('[data-effort="high"]').getAttribute('aria-pressed'),'true');
+ assert.equal(sent.filter(m=>m.type==='setModel').length,0);
+ menu.querySelector('[data-model="gpt-6.1-sol"]').click();
+ assert.ok(sent.some(m=>m.type==='setModel'&&m.model==='gpt-6.1-sol'));
+ assert.deepEqual(errors,[]);
+});
+test('推理程度单行短横条支持悬停说明和恢复默认',t=>{
+ const {w,emit,sent}=setup(t);
+ emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'GPT-6.1-Sol',description:'',efforts:['low','medium','high','xhigh','max','ultra'],defaultEffort:'medium',isDefault:true}]});
+ emit({kind:'config',model:'gpt-6.1-sol',effort:'high',permissionMode:'default'});
+ w.document.getElementById('model-trigger').click();
+ const menu=w.document.getElementById('model-menu');
+ assert.equal(menu.querySelectorAll('.pick-effort .effort-options [data-effort]').length,7);
+ assert.equal(menu.querySelectorAll('.effort-option.filled').length,3);
+ for(const option of menu.querySelectorAll('[data-effort]')){
+  assert.match(option.title,/：/);
+  assert.equal(option.getAttribute('aria-label'),option.title);
+  assert.ok(option.querySelector('.effort-bar'));
+ }
+ menu.querySelector('[data-effort="ultra"]').click();
+ assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 超高');
+ assert.equal(menu.querySelectorAll('.effort-option.filled').length,6);
+ menu.querySelector('[data-effort=""]').click();
+ assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 默认');
+ assert.equal(menu.querySelectorAll('.effort-option.filled').length,2);
+ assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort===''));
+});
 test('新推理档位可随模型列表显示并发送',t=>{const {w,sent,emit}=setup(t);emit({kind:'models',models:[{id:'future',name:'未来模型',description:'',efforts:['medium','future_level'],defaultEffort:'medium',isDefault:true}]});emit({kind:'config',model:'future',effort:'',permissionMode:'default'});w.document.getElementById('model-trigger').click();const option=w.document.querySelector('[data-effort="future_level"]');assert.ok(option);option.click();assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='future_level'));});
 test('推理强度按模型列出，支持 max/ultra 并可恢复默认',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'models',models:[{id:'gpt-6-sol',name:'GPT-6-Sol',description:'',efforts:['low','medium','high','xhigh','max','ultra'],defaultEffort:'medium',isDefault:true},{id:'gpt-5.5',name:'GPT-5.5',description:'',efforts:['low','medium','high','xhigh'],defaultEffort:'medium'}]});emit({kind:'config',model:'gpt-6-sol',effort:'high',permissionMode:'default'});w.document.getElementById('model-trigger').click();let menu=w.document.getElementById('model-menu');assert.equal(menu.querySelectorAll('[data-effort]').length,7);assert.equal(menu.querySelector('[data-effort="high"]').getAttribute('aria-pressed'),'true');menu.querySelector('[data-effort="ultra"]').click();assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='ultra'));assert.equal(menu.querySelector('[data-effort="ultra"]').getAttribute('aria-pressed'),'true');emit({kind:'config',model:'gpt-5.5',effort:'',permissionMode:'default'});menu=w.document.getElementById('model-menu');assert.equal(menu.querySelectorAll('[data-effort]').length,5);assert.equal(menu.querySelector('[data-effort="ultra"]'),null);assert.match(menu.querySelector('[data-effort=""]').textContent,/默认.*中/);assert.deepEqual(errors,[]);});
 test('提问卡片等待点击提交，按 ID 返回答案且遵守 isOther',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'17',toolName:'AskUserQuestion',input:{questions:[{id:'confirm',question:'是否继续？',header:'确认',isOther:false,options:[{label:'继续',description:'确认执行'},{label:'取消',description:'停止'}]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker);assert.equal(picker.querySelector('.askp-custom'),null);assert.equal(sent.some(m=>m.type==='answerQuestion'),false);picker.querySelector('.askp-opt').click();assert.equal(sent.some(m=>m.type==='answerQuestion'),false);picker.querySelector('.askp-submit').click();assert.ok(sent.some(m=>m.type==='answerQuestion'&&m.requestId==='17'&&m.answers.confirm==='继续'));assert.deepEqual(errors,[]);});
@@ -769,7 +814,7 @@ test('速度菜单完整展示三档倍率并根据模型能力置灰，保存�
  w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
  assert.equal(trigger.getAttribute('aria-expanded'),'false');assert.deepEqual(errors,[]);
 });
-test('超高速能力动态更新，切换模型后不可用状态不伪造为普通；模型菜单显示支持情况',t=>{
+test('超高速能力动态更新，切换模型后不可用状态不伪造为普通；速度信息仅在速度菜单显示',t=>{
  const {w,sent,emit}=setup(t);
  emit({kind:'models',models:[{id:'gpt-6-astra',name:'Astra',description:'',efforts:[],speedModes:['default','fast','ultrafast']},{id:'gpt-6-sol',name:'Sol',description:'',efforts:[],speedModes:['default','fast']}]});
  emit({kind:'config',model:'gpt-6-astra',effort:'',permissionMode:'default',speedMode:'ultrafast'});
@@ -781,8 +826,9 @@ test('超高速能力动态更新，切换模型后不可用状态不伪造为�
  emit({kind:'busy',busy:true});menu.querySelector('[data-speed="default"]').click();assert.equal(sent.at(-1).mode,'default');
  assert.equal(sent.some(m=>['setModel','setEffort','stop'].includes(m.type)),false);
  w.document.getElementById('model-trigger').click();
- assert.match(w.document.querySelector('[data-model="gpt-6-astra"]').textContent,/超高速可选/);
- assert.match(w.document.querySelector('[data-model="gpt-6-sol"]').textContent,/超高速未提供/);
+ assert.doesNotMatch(w.document.getElementById('model-menu').textContent,/超高速可选|超高速未提供/);
+ w.document.getElementById('speed-trigger').click();
+ assert.equal(w.document.querySelector('[data-speed="ultrafast"]').disabled,true);
 });
 test('默认模型未确认时不能用目录默认值冒充实际模型，API 提示不套订阅倍率',t=>{
  const {w,emit}=setup(t);
