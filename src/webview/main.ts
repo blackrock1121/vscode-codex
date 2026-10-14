@@ -3953,16 +3953,13 @@ function buildModelMenu() {
       `<span class="pick-check">${on ? ICON.check : ""}</span></button>`;
   }
   const available = availableEfforts();
-  const selected = EFFORTS.find(e => e.id === currentEffort)?.label || currentEffort || "默认";
-  const defaultEffort = modelDefaultEfforts[currentModel];
-  const defaultLabel = defaultEffort ? EFFORTS.find(e => e.id === defaultEffort)?.label || defaultEffort : "";
-  const activeIndex = available.findIndex(e => e.id === (currentEffort || defaultEffort));
-  const defaultTitle = `默认${defaultLabel ? ` (${defaultLabel})` : ""}：使用模型默认推理程度`;
+  const selectedEffort = currentEffort || modelDefaultEfforts[currentModel];
+  const selected = EFFORTS.find(e => e.id === selectedEffort)?.label || selectedEffort || "默认";
+  const activeIndex = available.findIndex(e => e.id === selectedEffort);
   html += `<div class="pick-sep"></div><div class="pick-effort" title="仅当前会话下轮生效"><span class="effort-current">推理程度 · ${escapeHtml(selected)}</span><div class="effort-options" role="group" aria-label="推理程度">`;
-  html += `<button type="button" class="effort-option effort-default${!currentEffort ? " on" : ""}" data-effort="" aria-pressed="${!currentEffort}" aria-label="${escapeHtml(defaultTitle)}" title="${escapeHtml(defaultTitle)}"><span class="effort-caption">默认${defaultLabel ? ` (${escapeHtml(defaultLabel)})` : ""}</span><span class="effort-bar" aria-hidden="true"></span></button>`;
   for (const [index, e] of available.entries()) {
     const title = `${e.label}：${e.desc}`;
-    html += `<button type="button" class="effort-option${index <= activeIndex ? " filled" : ""}${currentEffort === e.id ? " on" : ""}" data-effort="${escapeHtml(e.id)}" aria-pressed="${currentEffort === e.id}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"><span class="effort-caption">${escapeHtml(e.label)}</span><span class="effort-bar" aria-hidden="true"></span></button>`;
+    html += `<button type="button" class="effort-option${index <= activeIndex ? " filled" : ""}${selectedEffort === e.id ? " on" : ""}" data-effort="${escapeHtml(e.id)}" aria-pressed="${selectedEffort === e.id}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"><span class="effort-caption">${escapeHtml(e.label)}</span><span class="effort-bar" aria-hidden="true"></span></button>`;
   }
   html += `</div></div>`;
   modelMenu.innerHTML = html;

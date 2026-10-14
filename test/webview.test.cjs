@@ -759,13 +759,14 @@ test('模型选择器每个系列仅保留最新版本，中文介绍不挤占�
  assert.ok(sent.some(m=>m.type==='setModel'&&m.model==='gpt-6.1-sol'));
  assert.deepEqual(errors,[]);
 });
-test('推理程度单行短横条支持悬停说明和恢复默认',t=>{
+test('推理程度单行短横条支持悬停说明，直接选中模型默认档位',t=>{
  const {w,emit,sent}=setup(t);
  emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'GPT-6.1-Sol',description:'',efforts:['low','medium','high','xhigh','max','ultra'],defaultEffort:'medium',isDefault:true}]});
  emit({kind:'config',model:'gpt-6.1-sol',effort:'high',permissionMode:'default'});
  w.document.getElementById('model-trigger').click();
  const menu=w.document.getElementById('model-menu');
- assert.equal(menu.querySelectorAll('.pick-effort .effort-options [data-effort]').length,7);
+ assert.equal(menu.querySelectorAll('.pick-effort .effort-options [data-effort]').length,6);
+ assert.equal(menu.querySelector('[data-effort=""]'),null);
  assert.equal(menu.querySelectorAll('.effort-option.filled').length,3);
  for(const option of menu.querySelectorAll('[data-effort]')){
   assert.match(option.title,/：/);
@@ -775,13 +776,40 @@ test('推理程度单行短横条支持悬停说明和恢复默认',t=>{
  menu.querySelector('[data-effort="ultra"]').click();
  assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 超高');
  assert.equal(menu.querySelectorAll('.effort-option.filled').length,6);
- menu.querySelector('[data-effort=""]').click();
- assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 默认');
+ menu.querySelector('[data-effort="medium"]').click();
+ assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 中');
  assert.equal(menu.querySelectorAll('.effort-option.filled').length,2);
- assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort===''));
+ assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='medium'));
+ emit({kind:'config',model:'gpt-6.1-sol',effort:'',permissionMode:'default'});
+ assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 中');
+ assert.equal(menu.querySelector('[data-effort="medium"]').getAttribute('aria-pressed'),'true');
+ assert.equal(menu.querySelectorAll('.effort-option.on').length,1);
+ assert.equal(menu.querySelectorAll('.effort-option.filled').length,2);
+ assert.equal(sent.some(m=>m.type==='setEffort'&&m.effort===''),false);
 });
 test('新推理档位可随模型列表显示并发送',t=>{const {w,sent,emit}=setup(t);emit({kind:'models',models:[{id:'future',name:'未来模型',description:'',efforts:['medium','future_level'],defaultEffort:'medium',isDefault:true}]});emit({kind:'config',model:'future',effort:'',permissionMode:'default'});w.document.getElementById('model-trigger').click();const option=w.document.querySelector('[data-effort="future_level"]');assert.ok(option);option.click();assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='future_level'));});
-test('推理强度按模型列出，支持 max/ultra 并可恢复默认',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'models',models:[{id:'gpt-6-sol',name:'GPT-6-Sol',description:'',efforts:['low','medium','high','xhigh','max','ultra'],defaultEffort:'medium',isDefault:true},{id:'gpt-5.5',name:'GPT-5.5',description:'',efforts:['low','medium','high','xhigh'],defaultEffort:'medium'}]});emit({kind:'config',model:'gpt-6-sol',effort:'high',permissionMode:'default'});w.document.getElementById('model-trigger').click();let menu=w.document.getElementById('model-menu');assert.equal(menu.querySelectorAll('[data-effort]').length,7);assert.equal(menu.querySelector('[data-effort="high"]').getAttribute('aria-pressed'),'true');menu.querySelector('[data-effort="ultra"]').click();assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='ultra'));assert.equal(menu.querySelector('[data-effort="ultra"]').getAttribute('aria-pressed'),'true');emit({kind:'config',model:'gpt-5.5',effort:'',permissionMode:'default'});menu=w.document.getElementById('model-menu');assert.equal(menu.querySelectorAll('[data-effort]').length,5);assert.equal(menu.querySelector('[data-effort="ultra"]'),null);assert.match(menu.querySelector('[data-effort=""]').textContent,/默认.*中/);assert.deepEqual(errors,[]);});
+test('推理强度按模型列出，支持 max/ultra 并随模型选中默认档位',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'models',models:[{id:'gpt-6-sol',name:'GPT-6-Sol',description:'',efforts:['low','medium','high','xhigh','max','ultra'],defaultEffort:'medium',isDefault:true},{id:'gpt-5.5',name:'GPT-5.5',description:'',efforts:['low','medium','high','xhigh'],defaultEffort:'high'}]});
+ emit({kind:'config',model:'gpt-6-sol',effort:'high',permissionMode:'default'});
+ w.document.getElementById('model-trigger').click();
+ const menu=w.document.getElementById('model-menu');
+ assert.equal(menu.querySelectorAll('[data-effort]').length,6);
+ assert.equal(menu.querySelector('[data-effort="high"]').getAttribute('aria-pressed'),'true');
+ menu.querySelector('[data-effort="ultra"]').click();
+ assert.ok(sent.some(m=>m.type==='setEffort'&&m.effort==='ultra'));
+ assert.equal(menu.querySelector('[data-effort="ultra"]').getAttribute('aria-pressed'),'true');
+ emit({kind:'config',model:'gpt-5.5',effort:'',permissionMode:'default'});
+ assert.equal(menu.querySelectorAll('[data-effort]').length,4);
+ assert.equal(menu.querySelector('[data-effort="ultra"]'),null);
+ assert.equal(menu.querySelector('[data-effort=""]'),null);
+ assert.equal(menu.querySelector('[data-effort="high"]').getAttribute('aria-pressed'),'true');
+ assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 高');
+ emit({kind:'config',model:'',effort:'',permissionMode:'default'});
+ assert.equal(menu.querySelector('[data-effort="medium"]').getAttribute('aria-pressed'),'true');
+ assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 中');
+ assert.deepEqual(errors,[]);
+});
 test('提问卡片等待点击提交，按 ID 返回答案且遵守 isOther',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'17',toolName:'AskUserQuestion',input:{questions:[{id:'confirm',question:'是否继续？',header:'确认',isOther:false,options:[{label:'继续',description:'确认执行'},{label:'取消',description:'停止'}]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker);assert.equal(picker.querySelector('.askp-custom'),null);assert.equal(sent.some(m=>m.type==='answerQuestion'),false);picker.querySelector('.askp-opt').click();assert.equal(sent.some(m=>m.type==='answerQuestion'),false);picker.querySelector('.askp-submit').click();assert.ok(sent.some(m=>m.type==='answerQuestion'&&m.requestId==='17'&&m.answers.confirm==='继续'));assert.deepEqual(errors,[]);});
 test('服务端取消提问时选项不可再提交',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'18',toolName:'AskUserQuestion',input:{questions:[{id:'choice',question:'选择？',options:[{label:'A'}]}]},suggestions:[]});emit({kind:'permission_resolved',requestId:'18',behavior:'deny',auto:true});const picker=w.document.querySelector('.askp');assert.ok(picker.classList.contains('interaction-cancelled'));assert.ok([...picker.querySelectorAll('button, textarea')].every(x=>x.disabled));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
 test('派生点击立即加载、防重复、阶段更新和收尾均不干扰原会话',t=>{
