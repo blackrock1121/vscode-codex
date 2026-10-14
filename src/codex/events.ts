@@ -132,7 +132,10 @@ export function quotaEvents(rate: any, resetSummary?: unknown): ToWebview[] {
     if (!window || typeof window.usedPercent !== 'number') continue;
     if (window.usedPercent >= 100) exhausted = true;
     const label = window.windowDurationMins === 300 ? '5 小时额度' : window.windowDurationMins === 10080 ? '每周额度' : '订阅额度';
-    if (window.usedPercent >= 80) events.push({ kind: 'rate_limit', level: window.usedPercent >= 100 ? 'exhausted' : 'warning', limitLabel: label, resetsAt: window.resetsAt ?? undefined });
+    // 周额度百分比已经在用量弹层可见；接近上限时不再重复弹横幅。
+    // 真正耗尽仍需提示和阻断，短周期额度的预警保持原行为。
+    if (window.usedPercent >= 100 || (window.usedPercent >= 80 && window.windowDurationMins !== 10080))
+      events.push({ kind: 'rate_limit', level: window.usedPercent >= 100 ? 'exhausted' : 'warning', limitLabel: label, resetsAt: window.resetsAt ?? undefined });
   }
   if (!exhausted && (rate?.primary || rate?.secondary)) events.unshift({ kind: 'rate_limit_cleared' });
   return events;
