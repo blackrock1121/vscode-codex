@@ -2271,6 +2271,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const proc = new CodexProcess({
             questionStateDir: this.storageDir(),
             codexPath: this.config().get<string>("codexPath", "codex"),
+            transportDiagnostics: this.config().get<boolean>("transportDiagnostics", true),
             cwd: this.cwd(),
             model: this.config().get<string>("model", "") || undefined,
             effort: this.config().get<string>("effort", "") || undefined,

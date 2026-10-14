@@ -140,6 +140,17 @@ npm run smoke:question
 
 上下文压缩诊断写入同一份本机日志：`[compaction_prepare]` 记录手动压缩前的连接准备时间；`[compaction]` 记录手动／自动触发、模型、请求受理、服务端开始通知、重试、结束结果与耗时，等待期间每 30 秒记录一次。`elapsedMs` 是从插件请求（自动压缩则从开始通知）起算的时间，`serverElapsedMs` 从服务端开始通知起算，均不是服务端内部计算耗时。`preTokens` 为开始前最近上报用量；`latestTokens` 仅为压缩期间收到的用量，不能保证是压缩后值，未上报为 `null`。埋点不记录对话、工具输出或错误正文，不发送到外部统计服务，也不改变压缩阈值。排查时按日志中的会话、时间和压缩 `id` 关联阶段；请求受理不代表压缩完成。
 
+`codexChat.transportDiagnostics` 默认开启，下次建立 Codex 连接时生效。它将该子进程的 OTel 日志和指标导出地址临时指向随机端口、随机路径的 `127.0.0.1` 采集器，不改写 `~/.codex/config.toml`；原来配置了自定义 OTel 导出的用户可关闭此设置以继续使用原导出地址。插件不启用被用户禁用的 `analytics`，因此指标可能不会上报。采集器仅将白名单字段写入 `[transport]`，丢弃提示词、工具输出、邮箱、账号信息、凭据、URL 查询参数和错误正文；监听失败不阻止聊天，进程关闭后释放监听。普通历史读取进程不开启此采集器。
+
+新增字段与判断边界：
+
+- `[compaction]`：`requestAcceptedMs`、`firstUsageMs`、`latestUsage`、结构化 `errorCategory` / `httpStatusCode`，以及本机管道收包计数与 `maxTimerDelayMs`。这些可帮助判断请求是否被受理、是否断流重试、扩展宿主是否长时间未调度；管道活跃不代表到 OpenAI 的网络正常，计时器延迟也可能来自系统休眠。
+- `[transport]`：原生 HTTP 请求耗时、WebSocket 建连耗时及连接复用、`ttft_ms`、输入／缓存／输出 token 数。HTTP 耗时与首 token 时间包含多种等待，不能单独当成纯网络延迟或服务端排队时间。字段只在 CLI 实际提供时出现。
+- `processRunId` 区分子进程；`sourceTimeMs` / `sourceTimeBasis` 保留事件发生时间及来源，`receivedAtMs` 是批量导出到达时间，两者差不能当作模型延迟。存在匹配的线程和源时间时，`compactionId` 可关联最近一次压缩；不确定时为 `null`，不会把迟到的导出归给新轮次。
+- 后端可能提供 `responses_api_inference_time.duration_ms`、`responses_api_overhead.duration_ms` 与首 token／token 间隔指标。这些直方图明确标为 `process_aggregate`，保留统计起止时间、`count` / `sum` / `min` / `max` 和 `aggregationTemporality`，不能把多个请求的累计值当成单次压缩耗时。原生指标可能延迟导出；缺少上报不代表耗时为零。`serverQueueMs`、`networkTransitMs`、`inferenceMs` 在压缩摘要中保持 `null`，除非未来协议能给出可准确关联的证据；不做减法猜测归因。
+
+当前已验证的 Codex CLI `0.162.1` 中，`thread/compact/start` 只有 `threadId`，没有独立的 `model` / `effort` / `serviceTier` 参数。插件不为压缩偷偷切换会话模型。诊断依据：[官方 App Server](https://learn.chatgpt.com/docs/app-server)、[官方 OTel 事件与指标说明](https://learn.chatgpt.com/docs/config-file/config-advanced)。
+
 ## 发布
 
 远程仓库：`git@github.com:blackrock1121/vscode-codex.git`。按项目 `AGENTS.md` 的发布闭环，每次功能或缺陷修复通过验证后同步打包、提交、推送并安装到本机 VS Code。

@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.70",
+  "version": "0.1.71",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -268,6 +268,11 @@
           "default": 720,
           "minimum": 60,
           "description": "持续没有事件的超时时间（秒），达到后重置连接；等待用户审批或压缩上下文期间不计时。"
+        },
+        "codexChat.transportDiagnostics": {
+          "type": "boolean",
+          "default": true,
+          "description": "将插件启动的 Codex 请求耗时与用量诊断收集到本机日志，用于排查压缩延迟；不保存提示词、工具输出或凭据。仅为该子进程覆盖 OTel 日志/指标导出地址，不修改全局配置，不开启已禁用的 analytics。已有自定义 OTel 导出需求时可关闭；下次连接生效。"
         },
         "codexChat.appendSystemPrompt": {
           "type": "string",

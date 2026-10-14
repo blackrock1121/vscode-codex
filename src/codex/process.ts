@@ -5,6 +5,7 @@ import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedService
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, validateQuestionImages } from '../questionImages';
+import { TransportDiagnostic } from './telemetry';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
@@ -25,6 +26,7 @@ const ASK_USER_QUESTION_TOOL = {
 export interface CodexProcessOptions {
   codexPath: string; cwd: string; model?: string; effort?: string; speedMode?: SpeedMode; permissionMode: string;
   questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
+  transportDiagnostics?: boolean;
 }
 export interface PermissionRequest {
   requestId: string; toolUseId?: string; toolName: string; displayName?: string;
@@ -56,10 +58,21 @@ export function saveQuestionState(dir: string, sessionId: string, turnId: string
   fs.writeFileSync(file + '.tmp', JSON.stringify({ version: 1, sessionId, turnId, beganAt, request }), { mode: 0o600 });
   fs.renameSync(file + '.tmp', file);
 }
+function safeCompactionError(error: any): { errorCategory: string; httpStatusCode: number | null } {
+  const info = error?.codexErrorInfo;
+  const names = ['contextWindowExceeded', 'sessionBudgetExceeded', 'usageLimitExceeded', 'rateLimitExceeded',
+    'flexUnavailable', 'serverOverloaded', 'internalServerError', 'unauthorized', 'badRequest', 'other',
+    'httpConnectionFailed', 'responseStreamConnectionFailed', 'responseStreamDisconnected', 'responseTooManyFailedAttempts'];
+  const category = typeof info === 'string' && names.includes(info) ? info :
+    info && typeof info === 'object' ? names.find(k => Object.hasOwn(info, k)) : undefined;
+  const code = category && typeof info === 'object' ? info[category]?.httpStatusCode : undefined;
+  return { errorCategory: category ?? 'unknown', httpStatusCode: Number.isInteger(code) && code >= 100 && code <= 599 ? code : null };
+}
 export class CodexProcess {
   private readonly rpc: CodexRpc;
   private sessionId?: string;
   private activeModel = "";
+  private lastDispatched?: { model: string; effort: string; speedMode: SpeedMode };
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
   private modelsLoaded = false;
@@ -77,9 +90,13 @@ export class CodexProcess {
   private compactionSequence = 0;
   private compactionTrace?: {
     id: number; trigger: 'manual' | 'auto'; startedAt: number; serverStartedAt?: number;
+    startedWallMs: number; endedWallMs?: number; threadId?: string; turnId?: string; itemId?: string;
+    requestAcceptedMs?: number; firstUsageMs?: number; lastTickAt: number; maxTimerDelayMs: number;
+    speedMode: SpeedMode; effort: string; usage?: Record<string, number>;
     preTokens?: number; contextWindow?: number; latestTokens?: number; usageUpdates: number;
     retries: number; errors: number; model: string;
   };
+  private readonly recentCompactions: NonNullable<CodexProcess['compactionTrace']>[] = [];
   private compactionTimer?: NodeJS.Timeout;
   private stopTimer?: NodeJS.Timeout;
   private readonly pending = new Map<string, { id: RpcId; method: string; params: any }>();
@@ -88,7 +105,16 @@ export class CodexProcess {
   private activeBlock?: string;
   private readonly tools = new Map<string, any>();
   constructor(private readonly opts: CodexProcessOptions, private readonly hooks: CodexProcessHooks) {
-    this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env);
+    this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env, opts.transportDiagnostics !== false);
+    this.rpc.on('diagnostic', (row: TransportDiagnostic) => {
+      // OTLP 会批量延迟到达：按源时间及线程关联，不能归到当前正在运行的轮次。
+      const source = typeof row.sourceTimeMs === 'number' ? row.sourceTimeMs : undefined;
+      const thread = row['conversation.id'] ?? row.thread_id;
+      const trace = row.type === 'event' && source !== undefined && thread ?
+        [...this.recentCompactions, ...(this.compactionTrace ? [this.compactionTrace] : [])].find(t =>
+          thread === t.threadId && source >= t.startedWallMs && source <= (t.endedWallMs ?? Date.now())) : undefined;
+      this.emit({ kind: 'diag', message: `[transport] ${JSON.stringify({ ...row, compactionId: trace?.id ?? null })}` });
+    });
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
@@ -201,6 +227,7 @@ export class CodexProcess {
       if (!supportsSpeed(this.models.find(m => m.id === model), speed))
         throw new Error(`无法确认当前账号的模型「${model}」支持${speedLabel(speed)}模式。请改用普通模式、选择提供该档位的模型，或更新 Codex CLI 后重试。`);
       this.emit({ kind: 'diag', message: `[dispatch] model=${model} speed=${speed} effort=${params.effort ?? 'default'} 目录等待${Date.now() - this.beganAt}ms` });
+      this.lastDispatched = { model, speedMode: speed, effort: params.effort ?? 'default' };
       return this.timedRequest('turn/start', params);
     };
     this.startingTurn = dispatch().then(r => {
@@ -220,6 +247,7 @@ export class CodexProcess {
     this.busy = true; this.compacting = true; this.beganAt = Date.now(); this.emit({ kind: 'busy', busy: true }); this.emit({ kind: 'compacting' });
     void this.rpc.request('thread/compact/start', { threadId: this.sessionId }).then(() => {
       // RPC 响应只表示请求已受理，可能晚于完成通知，必须关联原来的压缩记录。
+      trace.requestAcceptedMs = Math.round(performance.now() - trace.startedAt);
       this.logCompactionTrace('request_accepted', trace);
     }).catch(e => {
       this.logCompactionTrace('request_failed', trace, { timeout: /请求超时/.test(String(e)) });
@@ -231,24 +259,38 @@ export class CodexProcess {
     if (this.compactionTrace) return this.compactionTrace;
     const trace = this.compactionTrace = {
       id: ++this.compactionSequence, trigger, startedAt: performance.now(),
+      startedWallMs: Date.now(), threadId: this.sessionId, turnId: trigger === 'auto' ? this.turnId : undefined,
+      lastTickAt: performance.now(), maxTimerDelayMs: 0,
+      speedMode: this.lastDispatched?.speedMode ?? this.opts.speedMode ?? 'default',
+      effort: this.lastDispatched?.effort ?? this.opts.effort ?? 'default',
       preTokens: this.contextUsage?.used, contextWindow: this.contextUsage?.total,
       usageUpdates: 0, retries: 0, errors: 0,
-      model: this.activeModel,
+      model: this.lastDispatched?.model ?? this.activeModel,
     };
     this.logCompactionTrace('start', trace);
-    this.compactionTimer = setInterval(() => this.logCompactionTrace('waiting', trace), 30_000);
+    this.compactionTimer = setInterval(() => {
+      const now = performance.now();
+      trace.maxTimerDelayMs = Math.max(trace.maxTimerDelayMs, Math.round(Math.max(0, now - trace.lastTickAt - 30_000)));
+      trace.lastTickAt = now;
+      this.logCompactionTrace('waiting', trace);
+    }, 30_000);
     this.compactionTimer.unref();
     return trace;
   }
   private logCompactionTrace(stage: string, trace: NonNullable<CodexProcess['compactionTrace']>, extra = {}) {
     const now = performance.now();
     this.emit({ kind: 'diag', message: `[compaction] ${JSON.stringify({
-      id: trace.id, trigger: trace.trigger, stage, model: trace.model,
+      id: trace.id, trigger: trace.trigger, stage, model: trace.model, modelSource: 'active_thread',
+      threadId: trace.threadId ?? null, turnId: trace.turnId ?? null, itemId: trace.itemId ?? null,
+      startedAt: new Date(trace.startedWallMs).toISOString(), speedMode: trace.speedMode, effort: trace.effort,
       elapsedMs: Math.round(now - trace.startedAt),
+      requestAcceptedMs: trace.requestAcceptedMs ?? null, firstUsageMs: trace.firstUsageMs ?? null,
       serverElapsedMs: trace.serverStartedAt === undefined ? null : Math.round(now - trace.serverStartedAt),
+      timingScope: 'client_observed_notifications', serverQueueMs: null, networkTransitMs: null, inferenceMs: null,
+      maxTimerDelayMs: trace.maxTimerDelayMs, ...this.rpc.transportSnapshot(),
       preTokens: trace.preTokens ?? null, contextWindow: trace.contextWindow ?? null,
       // 仅记录收到的用量快照；通知可能延后，不冒充压缩后精确用量。
-      latestTokens: trace.latestTokens ?? null, usageUpdates: trace.usageUpdates,
+      latestTokens: trace.latestTokens ?? null, latestUsage: trace.usage ?? null, usageUpdates: trace.usageUpdates,
       retries: trace.retries, errors: trace.errors, ...extra,
     })}` });
   }
@@ -256,7 +298,12 @@ export class CodexProcess {
     clearInterval(this.compactionTimer); this.compactionTimer = undefined;
     const trace = this.compactionTrace;
     this.compactionTrace = undefined;
-    if (trace) this.logCompactionTrace('end', trace, { outcome });
+    if (trace) {
+      trace.endedWallMs = Date.now();
+      this.recentCompactions.push(trace);
+      if (this.recentCompactions.length > 16) this.recentCompactions.shift();
+      this.logCompactionTrace('end', trace, { outcome });
+    }
   }
   private block(id: string, type: 'text' | 'thinking') {
     if (this.activeBlock !== id) { this.activeBlock = id; this.emit({ kind: 'block_start', blockType: type }); }
@@ -311,6 +358,11 @@ export class CodexProcess {
         if (this.compactionTrace) {
           this.compactionTrace.latestTokens = u.last.totalTokens;
           this.compactionTrace.usageUpdates++;
+          this.compactionTrace.firstUsageMs ??= Math.round(performance.now() - this.compactionTrace.startedAt);
+          this.compactionTrace.usage = Object.fromEntries(['inputTokens', 'cachedInputTokens', 'outputTokens',
+            'reasoningOutputTokens', 'totalTokens'].filter(k => Number.isSafeInteger(u.last[k]) && u.last[k] >= 0)
+            .map(k => [k, u.last[k]]));
+          this.logCompactionTrace('usage_updated', this.compactionTrace);
         }
       }
       if (u?.modelContextWindow) this.emit({ kind: 'context', used: u.last?.totalTokens ?? 0, total: u.modelContextWindow });
@@ -322,7 +374,7 @@ export class CodexProcess {
     if (m.method === 'error') {
       if (this.compactionTrace) {
         if (p.willRetry) this.compactionTrace.retries++; else this.compactionTrace.errors++;
-        this.logCompactionTrace(p.willRetry ? 'retry' : 'error', this.compactionTrace);
+        this.logCompactionTrace(p.willRetry ? 'retry' : 'error', this.compactionTrace, safeCompactionError(p.error));
       }
       if (p.willRetry) this.emit({kind:'status',label:'Codex 正在重试请求…'}); else this.error(p.error?.message ?? p.message ?? 'Codex 请求失败'); return;
     }
@@ -365,6 +417,8 @@ export class CodexProcess {
     if (item.type === 'contextCompaction') {
       if (!done) {
         const trace = this.beginCompactionTrace(this.compacting ? 'manual' : 'auto');
+        trace.itemId = item.id;
+        trace.turnId = p.turnId ?? this.turnId;
         if (trace.serverStartedAt === undefined) {
           trace.serverStartedAt = performance.now();
           this.logCompactionTrace('server_started', trace);

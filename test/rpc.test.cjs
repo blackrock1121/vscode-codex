@@ -31,6 +31,18 @@ async function client(t){
  await rpc.start();return rpc;
 }
 
+test('传输诊断只对显式开启的进程建立本机采集器，关闭进程释放监听',async t=>{
+ for(const enabled of [false,true]){
+  const rpc=new CodexRpc(executable,process.cwd(),undefined,enabled);const rows=[];
+  rpc.on('diagnostic',row=>rows.push(row));t.after(()=>rpc.disposeAndWait());await rpc.start();
+  assert.equal(!!rpc.telemetry,enabled);assert.ok(rpc.transportSnapshot().localReceivedMessages>0);
+  assert.ok(rpc.transportSnapshot().localReceivedBytes>0);
+  assert.equal(rows.some(r=>r.status==='local_collector_ready'),enabled);
+  const endpoint=rpc.telemetry?.endpoint('logs');await rpc.disposeAndWait();
+  if(endpoint)await assert.rejects(fetch(endpoint));
+ }
+});
+
 test('JSONL 在初始化、大型工具输出和通知中保留 Unicode 分隔符及跨块 UTF-8',async t=>{
  const rpc=new CodexRpc(path.resolve('test/fake-codex.cjs'),process.cwd(),{TEST_UNICODE_INITIALIZE:'1'});
  t.after(()=>rpc.disposeAndWait());

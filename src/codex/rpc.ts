@@ -3,6 +3,9 @@ import { EventEmitter } from 'node:events';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { randomUUID } from 'node:crypto';
+import { LocalTelemetry, TransportDiagnostic } from './telemetry';
 
 export type RpcId = string | number;
 export interface RpcMessage { id?: RpcId; method?: string; params?: any; result?: any; error?: { code: number; message: string }; }
@@ -29,14 +32,36 @@ export class CodexRpc extends EventEmitter {
   private closed = false;
   private closeReason?: Error;
   private killTimer?: NodeJS.Timeout;
-  constructor(private readonly executable: string, private readonly cwd: string, private readonly env?: NodeJS.ProcessEnv) { super(); }
+  private telemetry?: LocalTelemetry;
+  private readonly processRunId = randomUUID();
+  private receivedMessages = 0;
+  private receivedBytes = 0;
+  private lastReceivedAt?: number;
+  constructor(private readonly executable: string, private readonly cwd: string, private readonly env?: NodeJS.ProcessEnv,
+    private readonly diagnostics = false) { super(); }
+  transportSnapshot() {
+    return { processRunId: this.processRunId, localReceivedMessages: this.receivedMessages,
+      localReceivedBytes: this.receivedBytes, localLastMessageAgeMs: this.lastReceivedAt === undefined ? null :
+        Math.round(performance.now() - this.lastReceivedAt), localPendingRequests: this.pending.size };
+  }
+  private diagnostic(row: TransportDiagnostic) {
+    this.emit('diagnostic', { ...row, processRunId: this.processRunId, receivedAtMs: Date.now() });
+  }
   get isClosed(): boolean { return this.closed; }
   start(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Codex 连接已关闭'));
     return this.starting ??= this.initialize();
   }
   private async initialize(): Promise<void> {
-    const child = spawn(resolveCodex(this.executable), ['app-server', '--listen', 'stdio://'], {
+    if (this.diagnostics) {
+      try {
+        this.telemetry = await LocalTelemetry.start(row => this.diagnostic(row));
+        this.diagnostic({ type: 'telemetry_status', status: 'local_collector_ready',
+          serverQueueMs: null, networkTransitMs: null, note: 'backend_timings_only_when_reported' });
+      } catch { this.diagnostic({ type: 'telemetry_status', status: 'unavailable' }); }
+    }
+    if (this.closed) { this.telemetry?.close(); throw new Error('Codex 连接已关闭'); }
+    const child = spawn(resolveCodex(this.executable), ['app-server', '--listen', 'stdio://', ...(this.telemetry?.args() ?? [])], {
       cwd: this.cwd, env: { ...process.env, ...this.env }, stdio: 'pipe', windowsHide: true,
     });
     this.child = child;
@@ -45,6 +70,7 @@ export class CodexRpc extends EventEmitter {
     child.stdout.on('error', e => this.fail(e));
     child.stderr.on('data', () => { /* CLI stderr 可能含配置和路径，不写入聊天日志。 */ });
     child.once('close', code => {
+      this.telemetry?.close(); this.telemetry = undefined;
       this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`));
       clearTimeout(this.killTimer);
       this.emit('close', code, this.closeReason);
@@ -58,6 +84,7 @@ export class CodexRpc extends EventEmitter {
       let msg: RpcMessage;
       try { msg = JSON.parse(line); } catch { this.fail(new Error(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       if (!isRpcMessage(msg)) { this.fail(new Error(`Codex 返回了无效协议消息结构（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
+      this.receivedMessages++; this.lastReceivedAt = performance.now();
       if (msg.method) {
         this.emit(msg.id === undefined ? 'notification' : 'request', msg);
       } else if (msg.id !== undefined) {
@@ -70,6 +97,7 @@ export class CodexRpc extends EventEmitter {
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
       if (this.closed) return;
+      this.receivedBytes += Buffer.byteLength(chunk);
       let start = 0;
       let end: number;
       while ((end = chunk.indexOf('\n', start)) !== -1) {
@@ -87,7 +115,9 @@ export class CodexRpc extends EventEmitter {
       fragments = [];
       this.fail(new Error('Codex 输出通道已关闭'));
     });
-    await this.request('initialize', { clientInfo: { name: 'vscode_codex_copilot', title: 'Codex Copilot', version: '0.1.0' }, capabilities: { experimentalApi: true } });
+    const initialized = await this.request('initialize', { clientInfo: { name: 'vscode_codex_copilot', title: 'Codex Copilot', version: '0.1.0' }, capabilities: { experimentalApi: true } });
+    if (this.diagnostics) this.diagnostic({ type: 'cli_info', version:
+      typeof initialized?.userAgent === 'string' ? initialized.userAgent.match(/\b\d+\.\d+\.\d+(?:-[\w.-]+)?\b/)?.[0] ?? null : null });
     this.write({ method: 'initialized' });
   }
   request<T = any>(method: string, params: unknown = {}, timeout = 60_000): Promise<T> {

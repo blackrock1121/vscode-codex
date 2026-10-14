@@ -110,3 +110,32 @@ test('压缩外及其他会话的事件不产生压缩埋点',t=>{
  p.notification({method:'item/started',params:{threadId:'other',item}});
  assert.deepEqual(logs(),[]);assert.equal(p.compactionTimer,undefined);
 });
+
+test('压缩记录用量明细、结构化错误类别及 HTTP 状态，不推测服务端排队时间',t=>{
+ const {p,note,item,logs}=fixture(t);p.busy=true;
+ note('item/started',{turnId:'turn-a',item});
+ note('thread/tokenUsage/updated',{tokenUsage:{last:{totalTokens:900,inputTokens:800,cachedInputTokens:700,
+  outputTokens:100,reasoningOutputTokens:0,privateText:'PRIVATE_USAGE'},modelContextWindow:100000}});
+ note('error',{willRetry:true,error:{message:'PRIVATE_ERROR',codexErrorInfo:{responseStreamDisconnected:{httpStatusCode:502,extra:'PRIVATE'}}}});
+ const retry=logs().at(-1);assert.equal(retry.errorCategory,'responseStreamDisconnected');assert.equal(retry.httpStatusCode,502);
+ note('error',{willRetry:true,error:{codexErrorInfo:'serverOverloaded'}});
+ assert.equal(logs().at(-1).errorCategory,'serverOverloaded');
+ note('item/completed',{item});const end=logs().at(-1);
+ assert.equal(end.turnId,'turn-a');assert.equal(end.itemId,'compact-1');
+ assert.equal(end.latestUsage.cachedInputTokens,700);assert.equal(end.latestUsage.reasoningOutputTokens,0);
+ assert.ok(end.firstUsageMs>=0);assert.equal(end.serverQueueMs,null);assert.equal(end.networkTransitMs,null);
+ assert.equal(end.inferenceMs,null);assert.equal(end.timingScope,'client_observed_notifications');
+ assert.doesNotMatch(JSON.stringify(logs()),/PRIVATE/);
+});
+
+test('批量延迟送达的遥测按源时间和线程关联旧压缩，进程指标不冒充单次压缩',t=>{
+ const {p,note,item,events}=fixture(t);p.busy=true;note('item/started',{item});
+ const sourceTimeMs=p.compactionTrace.startedWallMs;note('item/completed',{item});
+ const event={type:'event',sourceTimeMs,'conversation.id':'test-session',event:'codex.sse_event'};
+ const latest=()=>JSON.parse(events.filter(e=>e.kind==='diag'&&e.message.startsWith('[transport] ')).at(-1).message.slice(12));
+ p.rpc.emit('diagnostic',event);assert.equal(latest().compactionId,1);
+ p.rpc.emit('diagnostic',{...event,'conversation.id':'other'});assert.equal(latest().compactionId,null);
+ p.rpc.emit('diagnostic',{...event,sourceTimeMs:sourceTimeMs-1});assert.equal(latest().compactionId,null);
+ p.rpc.emit('diagnostic',{...event,type:'metric'});assert.equal(latest().compactionId,null);
+ p.rpc.emit('diagnostic',{...event,sourceTimeMs:null});assert.equal(latest().compactionId,null);
+});
