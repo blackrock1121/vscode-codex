@@ -78,73 +78,56 @@ test('不支持的图片格式提示原因且不提交，私密问题不展示�
  emit({kind:'permission_request',requestId:'secret-image',toolName:'AskUserQuestion',input:{questions:[{id:'s',question:'密码',isSecret:true,options:[]}]},initialImages:{s:[{mediaType:'image/png',data:'aGVsbG8='}]},suggestions:[]});
  assert.equal(w.document.querySelector('.askp-add-image'),null);assert.equal(w.document.querySelector('.askp-images img'),null);
 });
-test('历史长回复按标题层级生成独立目录，忽略用户消息和代码中的伪标题',t=>{
+test('回复标题正常显示但不再占用目录空间',t=>{
  const {w,emit,errors}=setup(t);
- emit({kind:'load_history',sessionId:'outline',items:[
-  {type:'user',text:'# 用户标题'},
-  {type:'assistant_text',text:'## 原因\n内容\n### 细节\n内容\n```md\n# 代码里的标题\n```\n## 结论\n完成'},
-  {type:'user',text:'第二问'},
-  {type:'assistant_text',text:'## 原因\n第二条\n## 结论\n第二条结论'},
-  {type:'user',text:'短回复'},
-  {type:'assistant_text',text:'## 只有一个标题\n简短内容'},
+ emit({kind:'load_history',sessionId:'no-outline',items:[
+  {type:'user',text:'解释一下'},
+  {type:'assistant_text',text:'## 原因\n内容\n### 细节\n说明\n## 结论\n完成'},
  ],checkpoints:[]});
- const replies=w.document.querySelectorAll('.msg.assistant');
- assert.deepEqual([...replies[0].querySelectorAll('.reply-toc-item')].map(b=>b.textContent),['原因','细节','结论']);
- assert.equal(replies[0].querySelectorAll('.reply-toc-item')[1].style.getPropertyValue('--toc-depth'),'1');
- assert.deepEqual([...replies[1].querySelectorAll('.reply-toc-item')].map(b=>b.textContent),['原因','结论']);
- assert.equal(replies[2].querySelector('.reply-toc'),null);
- assert.equal(replies[0].querySelector('.reply-toc').open,false);
- assert.equal(replies[0].querySelector('.text-seg').classList.contains('summary-node'),false,'目录不能改变正文的时间线判定');
- w.dispatchEvent(new w.KeyboardEvent('keydown',{key:'f',ctrlKey:true,bubbles:true}));
- const find=w.document.querySelector('.find-input');find.value='细节';find.dispatchEvent(new w.Event('input'));
- assert.equal(w.document.querySelector('.find-count').textContent,'1 / 1','查找不应把目录标题重复计为正文命中');
- assert.equal(w.document.querySelector('.reply-toc mark'),null);
+ assert.deepEqual([...w.document.querySelectorAll('.msg.assistant .text-seg h2')].map(h=>h.textContent),['原因','结论']);
+ assert.equal(w.document.querySelector('.reply-toc'),null);
  assert.deepEqual(errors,[]);
 });
-test('流式目录保持展开、更新新增标题，正文重绘后仍跳到正确的同名标题且不自动拉回底部',async t=>{
- const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
- emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});
- emit({kind:'text_delta',text:'## 同名标题\n第一段\n## 同名标题\n第二段\n'});
- const toc=w.document.querySelector('.reply-toc');
- toc.querySelector('summary').click();assert.equal(toc.open,true);
- toc.querySelectorAll('button')[1].focus();
- toc.querySelector('nav').scrollTop=60;
- const oldHeading=w.document.querySelectorAll('.text-seg h2')[1];
- emit({kind:'text_delta',text:'## 测试结果\n通过\n'});
- await new Promise(r=>setTimeout(r,40));
- assert.equal(toc.open,true);assert.equal(toc.querySelectorAll('button').length,3);
- assert.equal(w.document.activeElement,toc.querySelectorAll('button')[1],'新增标题后保留正在操作的目录焦点');
- assert.equal(toc.querySelector('nav').scrollTop,60);
- assert.equal(oldHeading.isConnected,false);
- const headings=w.document.querySelectorAll('.text-seg h2');
- scroll(100);
- Object.defineProperty(toc,'offsetHeight',{get:()=>30});
- headings[1].getBoundingClientRect=()=>({top:600});
- toc.querySelectorAll('button')[1].click();
- assert.equal(toc.open,false);
- assert.equal(w.document.activeElement,headings[1]);
- assert.equal(messages.scrollTop,618);
- setHeight(2300);emit({kind:'text_delta',text:'后续仍在输出\n'});
- await new Promise(r=>setTimeout(r,40));
- assert.equal(messages.scrollTop,618);
- emit({kind:'result',isError:false,numTurns:1});
- assert.equal(w.document.querySelectorAll('.reply-toc').length,1);
- assert.equal(toc.querySelectorAll('button').length,3);
+test('常用工具实时默认折叠、点击整行展开，完成后保留手动状态',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'tool_input',toolId:'bash',name:'Bash',input:{command:'echo hello\necho world',description:'检查输出'}});
+ const bash=w.document.querySelector('.tool-card[data-tool-id="bash"]');
+ const toggle=bash.querySelector('.tool-toggle');
+ assert.equal(bash.classList.contains('collapsed'),true);
+ assert.equal(toggle.getAttribute('aria-expanded'),'false');
+ assert.equal(bash.querySelector('.tool-sub').textContent,'检查输出');
+ toggle.click();assert.equal(bash.classList.contains('collapsed'),false);
+ emit({kind:'tool_result',toolUseId:'bash',content:'hello\nworld',isError:false});
+ assert.equal(bash.classList.contains('collapsed'),false,'手动展开在完成后保持');
+ assert.match(bash.querySelector('.tool-meta').textContent,/2 行/);
+ toggle.click();assert.equal(bash.classList.contains('collapsed'),true);
+ assert.equal(toggle.tagName,'BUTTON');
+ emit({kind:'tool_input',toolId:'search',name:'WebSearch',input:{query:'索引优化'}});
+ emit({kind:'tool_result',toolUseId:'search',content:'Links: [{"title":"结果","url":"https://example.com"}]',isError:false});
+ const search=w.document.querySelector('.tool-card[data-tool-id="search"]');
+ assert.equal(search.classList.contains('collapsed'),true);
+ assert.equal(search.querySelector('.tool-sub').textContent,'索引优化');
+ assert.match(search.querySelector('.tool-meta').textContent,/1 条/);
+ search.querySelector('.tool-toggle').click();
+ assert.equal(search.querySelectorAll('.search-hit').length,1);
  assert.deepEqual(errors,[]);
 });
-test('目录可用 Escape 收起，回复快照删掉标题或切换会话时清理旧目录',t=>{
- const {w,emit}=setup(t);
- emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});
- emit({kind:'text_delta',text:'## 一\n段落\n## 二\n段落\n'});
- const toc=w.document.querySelector('.reply-toc');toc.querySelector('summary').click();
- toc.querySelector('button').dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));
- assert.equal(toc.open,false);assert.equal(w.document.activeElement,toc.querySelector('summary'));
- emit({kind:'text_snap',text:'无标题的更正回复'});
- assert.equal(w.document.querySelector('.reply-toc'),null);
- emit({kind:'text_snap',text:'## 新标题一\n正文\n## 新标题二\n正文\n'});
- assert.equal(w.document.querySelectorAll('.reply-toc').length,1);
- emit({kind:'load_history',items:[],checkpoints:[]});
- assert.equal(w.document.querySelector('.reply-toc'),null);
+test('历史工具默认折叠，报错和待确认工具自动展开',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'user',text:'检查'},
+  {type:'tool',toolId:'old',name:'Bash',input:{command:'echo old'},result:'old',isError:false},
+  {type:'tool',toolId:'failed',name:'Bash',input:{command:'exit 1'},result:'失败原因',isError:true},
+ ],checkpoints:[]});
+ assert.equal(w.document.querySelector('.tool-card[data-tool-id="old"]').classList.contains('collapsed'),true);
+ const failed=w.document.querySelector('.tool-card[data-tool-id="failed"]');
+ assert.equal(failed.classList.contains('collapsed'),false);
+ assert.match(failed.querySelector('.tool-why').textContent,/失败/);
+ emit({kind:'permission_request',requestId:'approval',toolName:'Bash',input:{command:'rm demo'},suggestions:[]});
+ const approval=w.document.querySelector('.tool-card[data-tool-id="approval"]');
+ assert.equal(approval.classList.contains('collapsed'),false);
+ assert.ok(approval.querySelector('.perm-bar'));
+ assert.deepEqual(errors,[]);
 });
 test('从我的消息查看历史后，一键回到最新回复并恢复流式跟随',async t=>{
  const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);

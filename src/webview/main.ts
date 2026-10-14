@@ -207,87 +207,12 @@ function ensureAssistant(): HTMLElement {
   return assistantEl.querySelector(".msg-body") as HTMLElement;
 }
 
-/** 只收录本条回复正文的标题，工具输出、代码和其他回复不进入目录。 */
-function replyHeadings(msg: HTMLElement): HTMLElement[] {
-  return Array.from(msg.querySelectorAll<HTMLElement>(".msg-body > .text-seg :is(h1,h2,h3,h4,h5,h6)"))
-    .filter(h => h.textContent?.trim());
-}
-const replyOutlineSignatures = new WeakMap<HTMLElement, string>();
-function updateReplyOutline(msg: HTMLElement | null) {
-  if (!msg) return;
-  const headings = replyHeadings(msg);
-  let toc = msg.querySelector<HTMLDetailsElement>(".reply-toc");
-  if (headings.length < 2) {
-    toc?.remove();
-    replyOutlineSignatures.delete(msg);
-    return;
-  }
-  const signature = JSON.stringify(headings.map(h => [h.tagName, h.textContent]));
-  if (toc && replyOutlineSignatures.get(msg) === signature) return;
-  if (!toc) {
-    toc = el("details", "reply-toc");
-    const summary = el("summary", "reply-toc-summary");
-    summary.title = "展开本条回复的标题目录";
-    const icon = el("span", "reply-toc-icon");
-    icon.innerHTML = ICON.outline;
-    icon.setAttribute("aria-hidden", "true");
-    const chevron = el("span", "reply-toc-chevron");
-    chevron.innerHTML = ICON.chevron;
-    chevron.setAttribute("aria-hidden", "true");
-    summary.append(icon, el("span", "reply-toc-label", "回复目录"), el("span", "reply-toc-count"), chevron);
-    toc.append(summary, el("nav", "reply-toc-list"));
-    toc.querySelector("nav")!.setAttribute("aria-label", "本条回复目录");
-    // 在自动跟随中展开目录也是阅读操作，后续输出不能改变视口。
-    summary.addEventListener("click", () => { pinnedToBottom = false; });
-    toc.addEventListener("keydown", event => {
-      if (event.key === "Escape") {
-        toc!.open = false;
-        summary.focus({ preventScroll: true });
-        event.stopPropagation();
-      }
-    });
-    msg.querySelector(".msg-body")!.prepend(toc);
-  }
-  toc.querySelector(".reply-toc-count")!.textContent = `${headings.length} 节`;
-  toc.querySelector("summary")!.setAttribute("aria-label", `回复目录，共 ${headings.length} 节`);
-  const list = toc.querySelector("nav")!;
-  const focusedIndex = Array.from(list.children).indexOf(document.activeElement as Element);
-  const scrollTop = list.scrollTop;
-  const baseLevel = Math.min(...headings.map(h => Number(h.tagName.slice(1))));
-  const buttons = headings.map((heading, index) => {
-    const button = el("button", "reply-toc-item", heading.textContent!.trim());
-    button.type = "button";
-    button.style.setProperty("--toc-depth", String(Number(heading.tagName.slice(1)) - baseLevel));
-    button.addEventListener("click", () => {
-      // 流式渲染会替换正文节点，点击时重新查找，避免跳到已脱离文档的旧标题。
-      const target = replyHeadings(msg)[index];
-      if (!target) return;
-      toc!.open = false;
-      pinnedToBottom = false;
-      const top = messagesEl.getBoundingClientRect().top + 44 + toc!.offsetHeight + 8;
-      messagesEl.scrollTop += target.getBoundingClientRect().top - top;
-      target.setAttribute("tabindex", "-1");
-      target.focus({ preventScroll: true });
-      updateJumpLatest();
-      updateQuestionBar();
-    });
-    return button;
-  });
-  list.replaceChildren(...buttons);
-  if (focusedIndex >= 0) {
-    (buttons[focusedIndex] ?? toc.querySelector("summary")!).focus({ preventScroll: true });
-    list.scrollTop = scrollTop;
-  }
-  replyOutlineSignatures.set(msg, signature);
-}
-
 function finalizeTurn() {
   flushThinkNode(); // 以思考收尾的轮次（如中断）也要把节点落下
   finalizeLive();
   removeWorking();
   cancelPendingInteractions();
   if (assistantEl) {
-    updateReplyOutline(assistantEl);
     assistantEl.classList.remove("streaming-turn");
     assistantEl.querySelector(".thread-active")?.remove(); // stop the progress pulse
     const body = assistantEl.querySelector(".msg-body");
@@ -306,7 +231,7 @@ function finalizeTurn() {
       // "first content" skips the thread-line/active divs that now live in the
       // body — a lone text reply must NOT get a closing node.
       const firstContent = Array.from(body.children).find(
-        (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active") && !c.classList.contains("reply-toc"),
+        (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active"),
       );
       if (last && firstContent !== last) last.classList.add("summary-node");
       endTimelineAtLastNode(assistantEl); // stop the line at the last node
@@ -329,7 +254,7 @@ function assistantHasContent(msg: HTMLElement): boolean {
   return (
     !!body &&
     Array.from(body.children).some(
-      (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active") && !c.classList.contains("working-pill") && !c.classList.contains("reply-toc"),
+      (c) => !c.classList.contains("thread-line") && !c.classList.contains("thread-active") && !c.classList.contains("working-pill"),
     )
   );
 }
@@ -424,7 +349,6 @@ function renderLive() {
   } else {
     liveBlock.lineEl.textContent = tail;
   }
-  updateReplyOutline(assistantEl);
   scheduleLiveLayout();
 }
 
@@ -447,7 +371,6 @@ function finalizeLive() {
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
   hydrateLocalImages(liveBlock.el);
-  updateReplyOutline(assistantEl);
   updateActiveLine();
   maybeScroll();
 }
@@ -1363,26 +1286,47 @@ function onTextDelta(text: string) {
 // File tools render compact (no icon, no inline result/diff); click -> editor.
 const FILE_VIEW_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Skill"]);
 const DIFF_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
+const FOLDABLE_TOOLS = new Set(["Bash", "WebSearch", "WebFetch"]);
+let toolBodySeq = 0;
+
+function setToolFolded(card: HTMLElement, folded: boolean) {
+  card.classList.toggle("collapsed", folded);
+  const toggle = card.querySelector<HTMLButtonElement>(".tool-toggle");
+  if (toggle) toggle.setAttribute("aria-expanded", String(!folded));
+}
 
 function createToolCard(parent: HTMLElement, toolId: string, name: string): HTMLElement {
   if (toolCards.has(toolId)) return toolCards.get(toolId)!;
   const compact = FILE_VIEW_TOOLS.has(name);
-  const card = el("div", "tool-card running" + (compact ? " compact" : ""));
+  const foldable = FOLDABLE_TOOLS.has(name);
+  const card = el("div", "tool-card running" + (compact ? " compact" : "") + (foldable ? " foldable collapsed" : ""));
   card.dataset.toolId = toolId;
   card.dataset.toolName = name;
   const head = el("div", "tool-head");
   const icon = compact ? "" : toolIcon(name);
   // 与官方 Codex 一致：TodoWrite 卡片标题显示为 "更新计划"。
   const displayName = name === "TodoWrite" ? "更新计划" : name;
-  head.innerHTML =
+  const titleHtml =
     `<span class="tool-name">${escapeHtml(displayName)}</span>` +
     `${icon ? `<span class="tool-icon">${icon}</span>` : ""}` +
-    `<span class="tool-why"></span><span class="tool-sub"></span>` +
-    `<div class="tool-actions"></div>`;
+    `<span class="tool-why"></span><span class="tool-sub"></span>`;
   const bodyWrap = el("div", "tool-body");
+  if (foldable) {
+    bodyWrap.id = `tool-body-${++toolBodySeq}`;
+    head.innerHTML =
+      `<button type="button" class="tool-toggle" aria-expanded="false" aria-controls="${bodyWrap.id}">` +
+      `<span class="tool-fold-caret" aria-hidden="true">${ICON.chevron}</span>` + titleHtml +
+      `<span class="tool-meta">执行中…</span></button><div class="tool-actions"></div>`;
+    head.querySelector<HTMLButtonElement>(".tool-toggle")!.addEventListener("click", () => {
+      setToolFolded(card, !card.classList.contains("collapsed"));
+      pinnedToBottom = false;
+    });
+  } else {
+    head.innerHTML = titleHtml + `<div class="tool-actions"></div>`;
+  }
   card.append(head, bodyWrap);
   // Wrap as a timeline step with a node dot on the left rail (green for edits).
-  const step = el("div", "step" + (DIFF_TOOLS.has(name) ? " edit" : ""));
+  const step = el("div", "step" + (DIFF_TOOLS.has(name) ? " edit" : "") + (foldable ? " foldable-step" : ""));
   step.append(el("div", "step-dot"), card);
   parent.appendChild(step);
   markIfFirstNode(parent, step);
@@ -1541,16 +1485,22 @@ function setToolResult(toolUseId: string, content: string, isError: boolean) {
   const interrupted = isInterruptSentinel(content);
   const bad = isError || interrupted;
   card.classList.toggle("error", bad);
+  if (bad && card.classList.contains("foldable")) setToolFolded(card, false);
   card.closest(".step")?.classList.toggle("error", bad); // red timeline dot
   // A Bash step that ran clean turns its node green — executed, side effects in
   // place — matching the green Edit/Write dots. Read stays a neutral gray.
   if (!bad && (card.dataset.toolName || "") === "Bash") card.closest(".step")?.classList.add("ok");
   const why = card.querySelector(".tool-why") as HTMLElement | null;
   if (why) {
-    // Only name an interruption; a plain failure needs no badge — the red
-    // timeline node already carries it.
     why.classList.toggle("warn", interrupted && !isError);
-    why.textContent = interrupted && !isError ? "已中断" : "";
+    why.textContent = interrupted && !isError ? "已中断" : isError ? "失败" : "";
+  }
+  const tn = card.dataset.toolName || "";
+  const meta = card.querySelector<HTMLElement>(".tool-meta");
+  if (meta) {
+    const links = !bad && (tn === "WebSearch" || tn === "WebFetch") ? extractSearchLinks(content) : [];
+    const lines = content.replace(/\n+$/, "").split("\n").length;
+    meta.textContent = bad ? "查看详情" : content.trim() ? `完成 · ${links.length ? `${links.length} 条` : `${lines} 行`}` : "完成 · 无输出";
   }
   // A failed tool drops its head icon too, so the title is just the name.
   if (bad) card.querySelector(".tool-head .tool-icon")?.remove();
@@ -1564,7 +1514,6 @@ function setToolResult(toolUseId: string, content: string, isError: boolean) {
   if (isBusy) showWorking();
   // File tools (Read/Edit/Write/…) don't show their result body — only errors.
   // TodoWrite 的结果只是 "Todos have been modified" 一类的确认语，也不用展示。
-  const tn = card.dataset.toolName || "";
   if ((FILE_VIEW_TOOLS.has(tn) || tn === "TodoWrite") && !isError) {
     maybeScroll();
     return;
@@ -1778,6 +1727,7 @@ function attachPermission(m: Extract<ToWebview, { kind: "permission_request" }>)
     updateToolInput(m.toolUseId || m.requestId, m.toolName, m.input);
   }
   host.classList.add("needs-approval");
+  if (host.classList.contains("foldable")) setToolFolded(host, false);
   // The amber node on the timeline is the status marker for "waiting on you" —
   // the bar itself stays neutral instead of painting the whole card yellow.
   host.closest(".step")?.classList.add("needs-approval");
@@ -4553,7 +4503,6 @@ function findCollect(q: string): HTMLElement[] {
       if (!v || !v.toLowerCase().includes(lc)) return NodeFilter.FILTER_REJECT;
       const p = node.parentElement;
       if (!p) return NodeFilter.FILTER_REJECT;
-      if (p.closest(".reply-toc")) return NodeFilter.FILTER_REJECT;
       const tag = p.tagName;
       if (tag === "SCRIPT" || tag === "STYLE" || tag === "MARK") return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
