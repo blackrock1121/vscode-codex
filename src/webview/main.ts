@@ -1087,7 +1087,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       attachPermission(m);
       break;
     case "permission_resolved":
-      if (waitingQuestionId === m.requestId) { waitingQuestionId = undefined; statusLine.textContent = ""; }
+      if (waitingQuestionId === m.requestId) {
+        // 答案提交成功会启动新的回答轮次；重新回答可能一直保持 busy，
+        // 不能依赖 busy 的切换重置计时，否则会沿用回退前的旧起点。
+        if (m.behavior === "allow") turnStartedAt = performance.now();
+        waitingQuestionId = undefined;
+        statusLine.textContent = "";
+      }
       if (isBusy) setGlow("running"); // answered — back to work
       resolvePermission(m.requestId, m.behavior);
       refreshComposerHint();
@@ -4412,7 +4418,7 @@ function showWorking(label?: string) {
     w.dataset.wseed = String(Math.floor(Math.random() * THINKING_WORDS.length)); // varies the starting verb
     w.innerHTML =
       `<span class="typing"><span></span><span></span><span></span></span>` +
-      `<span class="wk-label"></span><span class="wk-time" title="本轮在当前窗口的累计用时，包含工具执行和等待时间"></span><span class="wk-tokens"></span>`;
+      `<span class="wk-label"></span><span class="wk-time" title="本次发送或问题答案提交成功后的累计用时，包含工具执行和响应等待；提交新答案后重新计时"></span><span class="wk-tokens"></span>`;
     body.appendChild(w);
   }
   workingFixed = label ?? "";

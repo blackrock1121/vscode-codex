@@ -540,7 +540,7 @@ test('思考片段、累计用时和最近静默分开呈现，短暂静默不�
  emit({kind:'load_history',items:[{type:'thinking',text:'历史思考',secs:1}],checkpoints:[]});
  assert.equal(w.document.querySelector('.think-node').textContent,'思考片段');
 });
-test('回答问题后重建状态保留本轮累计用时，新一轮重新计时',t=>{
+test('答案提交成功后重新计时，不累计回答前的执行与等待时间',t=>{
  const {w,emit}=setup(t);const advance=manualSeconds(w);
  emit({kind:'busy',busy:true});advance(65);
  emit({kind:'permission_request',requestId:'q-time',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'继续？',options:[]}]},suggestions:[]});
@@ -548,11 +548,39 @@ test('回答问题后重建状态保留本轮累计用时，新一轮重新计�
  advance(30);
  emit({kind:'permission_resolved',requestId:'q-time',behavior:'allow'});
  emit({kind:'busy',busy:true});
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分35秒');
- advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分40秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 5秒');
  emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
  advance(10);emit({kind:'busy',busy:true});
  assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
+});
+test('运行中回退重新回答不会沿用旧轮次的三十多分钟，重试成功才开始计时',t=>{
+ const {w,emit,errors}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});advance(36*60);
+ emit({kind:'busy',busy:true});emit({kind:'restoring'});advance(5);
+ emit({kind:'load_history',sessionId:'rewound',items:[],checkpoints:[]});
+ emit({kind:'busy',busy:true});
+ emit({kind:'permission_request',requestId:'q-retry-time',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'修改答案',options:[]}]},suggestions:[]});
+ advance(120);
+ emit({kind:'question_answer_rejected',requestId:'q-retry-time',message:'提交失败，请重试'});
+ advance(30);assert.equal(w.document.querySelector('.working-pill'),null);
+ emit({kind:'permission_resolved',requestId:'q-retry-time',behavior:'allow'});
+ emit({kind:'busy',busy:true});
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
+ advance(150);emit({kind:'compacting',trigger:'auto'});
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 2分30秒');
+ emit({kind:'compacted',trigger:'auto',preTokens:1000,postTokens:500});
+ emit({kind:'busy',busy:true});advance(10);
+ assert.equal(w.document.querySelector('.wk-time').textContent,'累计 2分40秒');
+ assert.deepEqual(errors,[]);
+});
+test('普通工具授权和迟到的重复答案确认不会重置计时',t=>{
+ const {w,emit}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});advance(65);
+ emit({kind:'permission_request',requestId:'tool-time',toolName:'Bash',input:{command:'echo ok'},suggestions:[]});
+ emit({kind:'permission_resolved',requestId:'tool-time',behavior:'allow'});
+ emit({kind:'permission_resolved',requestId:'old-question',behavior:'allow'});
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分10秒');
 });
 test('中途说明后长时间无新事件，状态与秒数持续显示，下一次思考及时接续',t=>{
  const {w,emit,errors}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
