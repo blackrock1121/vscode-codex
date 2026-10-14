@@ -36,12 +36,16 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function provider() {
   const p = Object.create(proto);
-  p.context = { extension: { id: 'blackrock1121.vscode-codex' }, extensionUri: { fsPath: '/tmp/extension with spaces' } };
+  const usageAlertState = new Map();
+  p.context = { extension: { id: 'blackrock1121.vscode-codex' }, extensionUri: { fsPath: '/tmp/extension with spaces' },
+    globalState: { get: key => usageAlertState.get(key), update: async (key, value) => { usageAlertState.set(key, value); } } };
   p.notificationWindowKey = 'window-A';
   p.sessions = new Set([{ sessionId: 'session-A' }]);
   p.detached = new Map([['detached', {}]]);
   p.store = { list: () => [{ id: 'history' }] };
   p.notifyTimers = new Set();
+  p.usageAlertPending = new Set();
+  p.usageAlertDelivered = new Map();
   p.output = { appendLine: () => {} };
   return p;
 }
@@ -346,10 +350,73 @@ test('配置面板保存两个独立渠道，测试本机不会触发飞书测�
   assert.equal(w.document.querySelector('#local').checked, false);
   w.document.querySelector('#local').checked = true;
   w.document.querySelector('#save').click();
-  assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))), { type: 'notifySave', webhook: 'https://example.invalid/hook', minSec: 60, local: true, quietHours: { enabled: false, start: '08:30', end: '18:00' } });
+  assert.deepEqual(JSON.parse(JSON.stringify(sent.at(-1))), { type: 'notifySave', webhook: 'https://example.invalid/hook', minSec: 60, local: true,
+    usageThresholdPct: 98, usageFeishu: true, usageLocal: false, quietHours: { enabled: false, start: '08:30', end: '18:00' } });
+  w.document.querySelector('#usagethreshold').value = '95';
+  w.document.querySelector('#usagefeishu').checked = false;
+  w.document.querySelector('#usagelocal').checked = true;
+  w.document.querySelector('#save').click();
+  assert.equal(sent.at(-1).usageThresholdPct, 95);
+  assert.equal(sent.at(-1).usageFeishu, false);
+  assert.equal(sent.at(-1).usageLocal, true);
   w.document.querySelector('#testlocal').click();
   assert.equal(sent.at(-1).type, 'notifyLocalTest');
   assert.equal(sent.some(m => m.type === 'notifyTest'), false);
+});
+
+test('每周用量预警按阈值和重置周期分别发送飞书与本机通知，重启后不重复', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyUsageThresholdPct: 98,
+    notifyUsageFeishu: true, notifyUsageLocal: true };
+  const p = provider(), remote = [], local = [];
+  p.sendWebhook = async (...args) => { remote.push(args); return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async (...args) => { local.push(args); return true; };
+  const resetAt = Math.floor(Date.now() / 1000) + 86400;
+  p.maybeNotifyUsage({ kind: 'usage', weekPct: 97, weekResetAt: resetAt });
+  await flush();
+  assert.equal(remote.length, 0); assert.equal(local.length, 0);
+  const usage = { kind: 'usage', weekPct: 98, weekResetAt: resetAt };
+  p.maybeNotifyUsage(usage); p.maybeNotifyUsage(usage);
+  await flush();
+  assert.equal(remote.length, 1); assert.equal(local.length, 1);
+  assert.match(remote[0][1], /每周限额已使用 98%.*预警阈值 98%/);
+  assert.equal(local[0].length, 2, '额度通知不绑定会话，不能覆盖或清理其他会话通知');
+  const restarted = provider(); restarted.context.globalState = p.context.globalState;
+  restarted.sendWebhook = p.sendWebhook; restarted.sendLocalNotice = p.sendLocalNotice;
+  restarted.maybeNotifyUsage(usage); await flush();
+  assert.equal(remote.length, 1); assert.equal(local.length, 1);
+  restarted.maybeNotifyUsage({ ...usage, weekResetAt: resetAt + 7 * 86400 }); await flush();
+  assert.equal(remote.length, 2); assert.equal(local.length, 2);
+});
+
+test('每周用量预警两个渠道独立开关，发送失败下次刷新可重试', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyUsageThresholdPct: 95,
+    notifyUsageFeishu: true, notifyUsageLocal: false };
+  const p = provider(); let attempts = 0, local = 0;
+  p.sendWebhook = async () => ({ ok: ++attempts > 1, status: attempts > 1 ? 200 : 503 });
+  p.sendLocalNotice = async () => { local++; return true; };
+  const usage = { kind: 'usage', weekPct: 96, weekResetAt: Math.floor(Date.now() / 1000) + 86400 };
+  p.maybeNotifyUsage(usage); await flush();
+  p.maybeNotifyUsage(usage); await flush();
+  assert.equal(attempts, 2); assert.equal(local, 0);
+  config.notifyUsageFeishu = false; config.notifyUsageLocal = true;
+  p.maybeNotifyUsage(usage); await flush();
+  assert.equal(attempts, 2); assert.equal(local, 1);
+  config.notifyUsageLocal = false;
+  p.maybeNotifyUsage({ ...usage, weekResetAt: usage.weekResetAt + 7 * 86400 }); await flush();
+  assert.equal(attempts, 2); assert.equal(local, 1);
+});
+
+test('没有打开会话时定时查询仍触发每周用量预警', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyUsageThresholdPct: 98,
+    notifyUsageFeishu: true, notifyUsageLocal: false };
+  const p = provider(), sent = [];
+  p.sessions = new Set();
+  p.store = { read: async () => ({ rateLimits: { primary: { usedPercent: 99, windowDurationMins: 10080,
+    resetsAt: Math.floor(Date.now() / 1000) + 86400 } } }) };
+  p.sendWebhook = async (...args) => { sent.push(args); return { ok: true, status: 200 }; };
+  p.fetchUsage(true); await flush();
+  assert.equal(sent.length, 1);
+  assert.match(sent[0][1], /每周限额已使用 99%/);
 });
 
 
@@ -505,11 +572,16 @@ test('重建推送面板后恢复表单与已保存设置，绑定消息早于�
   assert.equal(el('quietstart').value, '09:00');
   const before = first.sent.filter(m => m.kind === 'notify_config').length;
   await first.receive({ type: 'notifySave', webhook: 'https://example.invalid/updated', minSec: 90, local: false,
+    usageThresholdPct: 97, usageFeishu: true, usageLocal: true,
     quietHours: { enabled: true, start: '10:00', end: '19:00' } });
   assert.equal(first.sent.filter(m => m.kind === 'notify_config').length - before, 1, '保存多个字段后一次性同步，不用中间状态刷新表单');
   assert.equal(el('minsec').value, '90');
+  assert.equal(el('usagethreshold').value, '97');
+  assert.equal(el('usagefeishu').checked, true);
+  assert.equal(el('usagelocal').checked, true);
   saveError = '模拟保存失败';
   await first.receive({ type: 'notifySave', webhook: '', minSec: 30, local: false,
+    usageThresholdPct: 97, usageFeishu: false, usageLocal: false,
     quietHours: { enabled: false, start: '08:30', end: '18:00' } });
   assert.match(el('status').textContent, /模拟保存失败/);
   calendar.refresh = async () => { throw new Error('模拟日历失败'); };

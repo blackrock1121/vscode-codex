@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.85",
+  "version": "0.1.86",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -315,6 +315,23 @@
           "type": "boolean",
           "default": false,
           "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主。"
+        },
+        "codexChat.notifyUsageThresholdPct": {
+          "type": "number",
+          "default": 98,
+          "minimum": 1,
+          "maximum": 100,
+          "description": "每周限额已使用百分比达到此值时发送用量预警；同一重置周期、同一渠道只成功通知一次。"
+        },
+        "codexChat.notifyUsageFeishu": {
+          "type": "boolean",
+          "default": true,
+          "description": "达到每周用量预警阈值时，通过 codexChat.notifyWebhook 发送飞书等远程通知；须填写 webhook 地址。"
+        },
+        "codexChat.notifyUsageLocal": {
+          "type": "boolean",
+          "default": false,
+          "description": "达到每周用量预警阈值时发送 macOS 本机通知，点击打开通知配置页；与任务通知的本机开关独立。"
         },
         "codexChat.notifyFeishuQuietHours": {
           "type": "object",

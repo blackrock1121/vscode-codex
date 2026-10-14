@@ -215,6 +215,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private usageFails = 0;
     private usageInFlight = false;
     private lastUsage?: ToWebview;
+    private usageAlertPending = new Set<string>();
+    private usageAlertDelivered = new Map<string, string>();
     private readonly snapshotWarningSignatures = new Map<string, string>();
     private readonly snapshotWarningPaths = new Map<string, Set<string>>();
     private snapshotExclusionUpdate: Promise<void> = Promise.resolve();
@@ -2425,6 +2427,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             panel.webview.postMessage({ kind: "notify_result", ok: false, message: "工作时间必须是同一天的 HH:mm，结束时间须晚于开始时间，例如 08:30–18:00。" } satisfies ToWebview);
                             break;
                         }
+                        if (!Number.isInteger(m.usageThresholdPct) || m.usageThresholdPct < 1 || m.usageThresholdPct > 100) {
+                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: "每周用量预警阈值须为 1–100 的整数。" } satisfies ToWebview);
+                            break;
+                        }
                         saving = true;
                         try {
                             const cfg = vscode.workspace.getConfiguration("codexChat");
@@ -2432,9 +2438,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             await cfg.update("notifyMinDurationSec", Math.max(0, Math.round(m.minSec) || 0), vscode.ConfigurationTarget.Global);
                             await cfg.update("notifyLocal", m.local === true, vscode.ConfigurationTarget.Global);
                             await cfg.update("notifyFeishuQuietHours", quietHours, vscode.ConfigurationTarget.Global);
+                            await cfg.update("notifyUsageThresholdPct", m.usageThresholdPct, vscode.ConfigurationTarget.Global);
+                            await cfg.update("notifyUsageFeishu", m.usageFeishu === true, vscode.ConfigurationTarget.Global);
+                            await cfg.update("notifyUsageLocal", m.usageLocal === true, vscode.ConfigurationTarget.Global);
                         } finally { saving = false; }
                         this.postNotifyConfig();
-                        panel.webview.postMessage({ kind: "notify_result", ok: true, message: "已保存。" } satisfies ToWebview);
+                        panel.webview.postMessage({ kind: "notify_result", ok: true,
+                            message: m.usageFeishu && !m.webhook.trim() ? "已保存；飞书用量预警需要填写上方 Webhook 地址。" : "已保存。" } satisfies ToWebview);
                         break;
                     }
                     case "notifyCalendarRefresh": {
@@ -2478,7 +2488,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         });
         const cfgSub = vscode.workspace.onDidChangeConfiguration((ev) => {
-            if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec") || ev.affectsConfiguration("codexChat.notifyLocal") || ev.affectsConfiguration("codexChat.notifyFeishuQuietHours")) {
+            if (ev.affectsConfiguration("codexChat.notifyWebhook") || ev.affectsConfiguration("codexChat.notifyMinDurationSec") || ev.affectsConfiguration("codexChat.notifyLocal") || ev.affectsConfiguration("codexChat.notifyFeishuQuietHours") || ev.affectsConfiguration("codexChat.notifyUsageThresholdPct") || ev.affectsConfiguration("codexChat.notifyUsageFeishu") || ev.affectsConfiguration("codexChat.notifyUsageLocal")) {
                 if (!saving) this.postNotifyConfig();
             }
         });
@@ -2500,6 +2510,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             localSupported: localNotificationsSupported(),
             webhook: cfg.get<string>("notifyWebhook") ?? "",
             minSec: cfg.get<number>("notifyMinDurationSec") ?? 60,
+            usageThresholdPct: cfg.get<number>("notifyUsageThresholdPct") ?? 98,
+            usageFeishu: cfg.get<boolean>("notifyUsageFeishu") ?? true,
+            usageLocal: cfg.get<boolean>("notifyUsageLocal") ?? false,
         } satisfies ToWebview);
         this.postNotifyCalendar();
     }
@@ -2517,6 +2530,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   body { font-family: var(--vscode-font-family); color: var(--vscode-foreground); background: var(--vscode-editor-background); margin: 0; display: flex; justify-content: center; }
   .wrap { width: 100%; max-width: 560px; padding: 24px 20px 40px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; }
   h2 { margin: 0; font-size: 16px; }
+  h3 { margin: 10px 0 0; padding-top: 14px; border-top: 1px solid var(--vscode-panel-border, rgba(127,127,127,.3)); font-size: 13px; }
   label.f { display: flex; flex-direction: column; gap: 5px; font-size: 12px; }
   label.f > span { font-weight: 600; opacity: .85; }
   input[type=text], input[type=number], input[type=time] { width: 100%; box-sizing: border-box; background: var(--vscode-input-background); color: var(--vscode-input-foreground);
@@ -2553,6 +2567,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <div class="sub">启用后每天联网更新日历，断网最多使用七天内缓存；无有效日历时照常推送。请保持本机通知开启，以便上班时收到提醒。</div>
   <div class="sub" id="calendarstatus">日历尚未加载。</div>
   <button id="refreshcalendar" class="btn">立即更新节假日与调休日历</button>
+  <h3>每周用量预警</h3>
+  <label class="f"><span>已使用达到（%）</span><input id="usagethreshold" type="number" min="1" max="100" step="1" placeholder="98" /></label>
+  <label><input id="usagefeishu" type="checkbox" /> 飞书通知（使用上方 Webhook 地址）</label>
+  <label><input id="usagelocal" type="checkbox" /> 本机通知</label>
+  <div class="sub" id="usagehint">达到阈值后，每个重置周期、每个勾选渠道只提醒一次；两个渠道可以同时勾选。飞书通知需填写上方 Webhook。用量预警不受任务耗时阈值和工作时间静默设置影响。</div>
   <div id="status" class="status hidden"></div>
   <div class="acts">
     <button id="test" class="btn">测试远程推送</button>
@@ -2580,6 +2599,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (m.kind === "notify_config") {
       $("webhook").value = m.webhook || "";
       $("minsec").value = m.minSec;
+      $("usagethreshold").value = m.usageThresholdPct ?? 98;
+      $("usagefeishu").checked = m.usageFeishu ?? true;
+      $("usagelocal").checked = m.usageLocal ?? false;
       const quiet = m.quietHours || { enabled: false, start: "08:30", end: "18:00" };
       $("quiet").checked = quiet.enabled;
       $("quietstart").value = quiet.start;
@@ -2588,6 +2610,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       updateQuietFields();
       $("local").disabled = !m.localSupported;
       $("testlocal").disabled = !m.localSupported;
+      $("usagelocal").disabled = !m.localSupported;
       if (!m.localSupported) $("localhint").textContent = "本机通知目前仅支持本机 macOS 的 VS Code。SSH、容器、浏览器及其他系统请继续使用飞书等远程推送。";
     } else if (m.kind === "notify_calendar") {
       $("calendarstatus").textContent = m.message;
@@ -2615,7 +2638,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   $("save").addEventListener("click", () => {
     // 阈值留空按默认 60 处理——空值存成 0 会变成"任何时长都推"，与占位符暗示不符
     const raw = $("minsec").value.trim();
+    const usageRaw = $("usagethreshold").value.trim();
     vscode.postMessage({ type: "notifySave", webhook: $("webhook").value, minSec: raw === "" ? 60 : Number(raw), local: $("local").checked,
+      usageThresholdPct: usageRaw === "" ? 98 : Number(usageRaw), usageFeishu: $("usagefeishu").checked, usageLocal: $("usagelocal").checked,
       quietHours: { enabled: $("quiet").checked, start: $("quietstart").value, end: $("quietend").value } });
   });
   $("test").addEventListener("click", () => {
@@ -2719,6 +2744,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.handleEmitInner(ctx, e);
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview): void {
+        if (e.kind === "usage") this.maybeNotifyUsage(e);
         if (e.kind === "models") this.modelCatalog = e.models;
         if (e.kind === "compacting") ctx.compacting = true;
         else if (e.kind === "compacted" || e.kind === "busy" || e.kind === "result" ||
@@ -3049,9 +3075,44 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.lastUsageAt = Date.now();
         void this.store.read("account/rateLimits/read", { excludeResetCreditDetails: false }).then(r => {
             this.lastUsage = usageView(r.rateLimits, r.rateLimitResetCredits);
+            this.maybeNotifyUsage(this.lastUsage);
             for (const ctx of this.sessions)
                 for (const event of quotaEvents(r.rateLimits, r.rateLimitResetCredits)) this.handleEmit(ctx, event);
         }).catch(e => this.output.appendLine(`[usage] ${String(e)}`)).finally(() => { this.usageInFlight = false; });
+    }
+    /** 周额度达到阈值后按重置周期和渠道分别记录成功通知；失败允许下次额度刷新重试。 */
+    private maybeNotifyUsage(usage: Extract<ToWebview, { kind: "usage" }>): void {
+        const pct = usage.weekPct;
+        const resetAt = usage.weekResetAt;
+        if (typeof pct !== "number" || !Number.isFinite(pct) ||
+            typeof resetAt !== "number" || !Number.isFinite(resetAt) || resetAt <= Date.now() / 1000) return;
+        const cfg = this.config();
+        const threshold = cfg.get<number>("notifyUsageThresholdPct") ?? 98;
+        if (!Number.isInteger(threshold) || threshold < 1 || threshold > 100 || pct < threshold) return;
+        const signature = `${Math.trunc(resetAt)}:${threshold}`;
+        const resetText = new Date(resetAt * 1000).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
+        const title = `⚠️ Codex 每周限额已使用 ${pct}%`;
+        const message = `${title}（预警阈值 ${threshold}%）\n下次重置：${resetText}`;
+        const deliver = (channel: "feishu" | "local", send: () => Promise<boolean>) => {
+            const storageKey = `codexChat.usageAlert.${channel}`;
+            const pendingKey = `${channel}:${signature}`;
+            if (this.usageAlertDelivered.get(channel) === signature ||
+                this.context.globalState.get<string>(storageKey) === signature ||
+                this.usageAlertPending.has(pendingKey)) return;
+            this.usageAlertPending.add(pendingKey);
+            void send().then(async ok => {
+                if (!ok) { this.output.appendLine(`[usage-alert] channel=${channel} result=failed resetAt=${Math.trunc(resetAt)}`); return; }
+                this.usageAlertDelivered.set(channel, signature);
+                await this.context.globalState.update(storageKey, signature);
+                this.output.appendLine(`[usage-alert] channel=${channel} result=sent percent=${pct} threshold=${threshold} resetAt=${Math.trunc(resetAt)}`);
+            }).catch(error => this.output.appendLine(`[usage-alert] channel=${channel} result=error errorType=${error instanceof Error ? error.name : typeof error}`))
+                .finally(() => this.usageAlertPending.delete(pendingKey));
+        };
+        const webhook = (cfg.get<string>("notifyWebhook") ?? "").trim();
+        if ((cfg.get<boolean>("notifyUsageFeishu") ?? true) && webhook)
+            deliver("feishu", async () => (await this.sendWebhook(webhook, message, { usageAlert: true, usedPercent: pct, thresholdPercent: threshold, resetsAt: resetAt })).ok);
+        if ((cfg.get<boolean>("notifyUsageLocal") ?? false) && localNotificationsSupported())
+            deliver("local", () => this.sendLocalNotice(title, `下次重置：${resetText}`));
     }
     private onPermission(ctx: SessionCtx, req: PermissionRequest): void {
         if (req.toolName === "AskUserQuestion") {

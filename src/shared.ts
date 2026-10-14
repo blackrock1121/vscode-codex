@@ -177,7 +177,7 @@ export type ToWebview =
   | { kind: "active_file"; path: string | null }
   | { kind: "attach_files"; paths: string[] }
   | { kind: "changed_files"; files: ChangedFile[]; totalAdded: number; totalRemoved: number }
-  | { kind: "notify_config"; webhook: string; minSec: number; local: boolean; localSupported: boolean; quietHours: QuietHours }
+  | { kind: "notify_config"; webhook: string; minSec: number; local: boolean; localSupported: boolean; quietHours: QuietHours; usageThresholdPct: number; usageFeishu: boolean; usageLocal: boolean }
   | { kind: "notify_calendar"; message: string }
   | { kind: "notify_result"; ok: boolean; message: string }
   | { kind: "prefill"; text: string };
@@ -305,7 +305,7 @@ export type FromWebview =
   | { type: "validateSymbols"; syms: { id: string; name: string }[] }
   // ---- 推送通知配置面板 ----
   | { type: "notifyLoad" }
-  | { type: "notifySave"; webhook: string; minSec: number; local: boolean; quietHours: QuietHours }
+  | { type: "notifySave"; webhook: string; minSec: number; local: boolean; quietHours: QuietHours; usageThresholdPct: number; usageFeishu: boolean; usageLocal: boolean }
   /** 用表单里的（可能未保存的）地址发一条测试消息。 */
   | { type: "notifyTest"; webhook: string }
   | { type: "notifyLocalTest" }
