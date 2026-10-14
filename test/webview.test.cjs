@@ -192,6 +192,48 @@ test('回到底部按钮适配输入区高度、手动滚到底部和切换空�
  assert.equal(button.classList.contains('hidden'),true);
  assert.equal(w.document.querySelectorAll('.jump-latest').length,1);
 });
+test('阅读历史时中间事件不跳底，完整回复结束后才提示有新回复',async t=>{
+ const {w,emit,errors}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
+ const button=w.document.querySelector('.jump-latest');
+ const badge=button.querySelector('.jump-new-reply');
+ scroll(100);
+ emit({kind:'busy',busy:true});
+ emit({kind:'block_start',blockType:'tool_use',toolId:'tool-1',toolName:'Bash'});
+ emit({kind:'permission_request',requestId:'req-1',toolUseId:'tool-1',toolName:'Bash',input:{},suggestions:[]});
+ emit({kind:'compacted',trigger:'auto',preTokens:1000,postTokens:500});
+ emit({kind:'notice',message:'仍在处理中'});
+ emit({kind:'block_start',blockType:'text'});
+ emit({kind:'text_delta',text:'部分 agent 回复'});
+ setHeight(2300);
+ await new Promise(r=>setTimeout(r,40));
+ assert.equal(messages.scrollTop,100);
+ assert.equal(badge.classList.contains('hidden'),true,'中间输出不算完整回复');
+ emit({kind:'block_end'});
+ assert.equal(badge.classList.contains('hidden'),true);
+ emit({kind:'result',isError:false,numTurns:1});
+ assert.equal(messages.scrollTop,100);
+ assert.equal(badge.classList.contains('hidden'),false);
+ assert.equal(badge.textContent,'有新回复');
+ button.click();
+ assert.equal(messages.scrollTop,1700);
+ assert.equal(badge.classList.contains('hidden'),true);
+ assert.deepEqual(errors,[]);
+});
+test('向上滚轮进入阅读状态后，小幅离开底部也不被流式更新拉回',async t=>{
+ const {w,emit}=setup(t),{messages,scroll,setHeight}=scrollFixture(w);
+ messages.dispatchEvent(new w.WheelEvent('wheel',{deltaY:-25,bubbles:true}));
+ scroll(1360); // 只离开底部 40px，仍在旧的自动跟随阈值内
+ emit({kind:'busy',busy:true});
+ emit({kind:'block_start',blockType:'text'});
+ setHeight(2300);
+ emit({kind:'text_delta',text:'新内容'});
+ await new Promise(r=>setTimeout(r,40));
+ assert.equal(messages.scrollTop,1360);
+ emit({kind:'result',isError:false});
+ assert.equal(w.document.querySelector('.jump-new-reply').classList.contains('hidden'),false);
+ scroll(1700);
+ assert.equal(w.document.querySelector('.jump-new-reply').classList.contains('hidden'),true);
+});
 test('打开的选择菜单随窗口缩窄重新定位，矮窗口限制在按钮上方',t=>{
  const {w}=setup(t);
  let width=1280,height=800;

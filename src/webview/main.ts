@@ -169,6 +169,10 @@ interface LiveBlock {
 let assistantEl: HTMLElement | null = null;
 let liveBlock: LiveBlock | null = null;
 let pinnedToBottom = true;
+let readingHistory = false;
+let lastObservedScrollTop = 0;
+let turnHasReply = false;
+let newReplyAvailable = false;
 let isBusy = false;
 let turnStartedAt: number | null = null;
 /** Subscription quota spent: sending is blocked until the window resets.
@@ -766,7 +770,7 @@ const composerEl = $("composer");
 const jumpLatestBtn = el("button", "jump-latest hidden") as HTMLButtonElement;
 jumpLatestBtn.type = "button";
 jumpLatestBtn.title = "跳到最新已输出的末尾，并跟随后续输出";
-jumpLatestBtn.innerHTML = `${ICON.chevron}<span>跳到底部</span>`;
+jumpLatestBtn.innerHTML = `${ICON.chevron}<span>跳到底部</span><span class="jump-new-reply hidden">有新回复</span>`;
 messagesEl.parentElement!.appendChild(jumpLatestBtn);
 jumpLatestBtn.addEventListener("click", () => {
   closeMsgNav();
@@ -776,6 +780,7 @@ jumpLatestBtn.addEventListener("click", () => {
 function updateJumpLatest() {
   const away = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight >= 80;
   jumpLatestBtn.classList.toggle("hidden", !away);
+  jumpLatestBtn.querySelector(".jump-new-reply")?.classList.toggle("hidden", !away || !newReplyAvailable);
 }
 
 if (composerEl && "ResizeObserver" in window) {
@@ -797,10 +802,24 @@ function maybeScroll() {
   updateJumpLatest();
 }
 messagesEl.addEventListener("scroll", () => {
-  pinnedToBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+  const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
+  // A small upward wheel move may still be inside the 80px follow threshold.
+  // Keep reading mode until the user moves down again or clicks the jump button.
+  if (readingHistory && messagesEl.scrollTop > lastObservedScrollTop && nearBottom) readingHistory = false;
+  pinnedToBottom = nearBottom && !readingHistory;
+  lastObservedScrollTop = messagesEl.scrollTop;
+  if (pinnedToBottom) newReplyAvailable = false;
   updateJumpLatest();
   updateQuestionBar();
 });
+// Stop following on the first upward wheel event, before the next stream update.
+messagesEl.addEventListener("wheel", event => {
+  if (event.deltaY < 0) {
+    readingHistory = true;
+    pinnedToBottom = false;
+    lastObservedScrollTop = messagesEl.scrollTop;
+  } else if (event.deltaY > 0) readingHistory = false;
+}, { passive: true });
 
 // ---------------------------------------------------------------------------
 // 顶部「我的消息」导航：悬浮栏点开后列出本会话所有用户消息，点某条跳到对应
@@ -1032,6 +1051,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       liveBlock!.committedLen = 0;
       liveBlock!.committedEl.innerHTML = "";
       liveBlock!.shown = m.text.length;
+      if (m.text.trim()) turnHasReply = true;
       renderLive();
       break;
     case "thinking_delta":
@@ -1111,7 +1131,10 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       // A turn the user cancelled is not a failure: no red rim.
       if (userStopped) setGlow("idle");
       else setGlow(m.isError ? "error" : "done");
+      if (turnHasReply && !userStopped && !pinnedToBottom) newReplyAvailable = true;
+      turnHasReply = false;
       finalizeTurn();
+      updateJumpLatest();
       // 压缩的收尾也是一个普通 result。只靠 compacted 复位的话，压缩失败、或
       // 会话太小 CLI 直接跳过压缩（实测此时不发 compact_boundary）时，
       // 仪表盘会永远转圈且再也点不动。
@@ -1138,7 +1161,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       ctxGauge.classList.remove("compacting");
       finalizeTurn(); // clears the working pill AND the otherwise-empty assistant bubble
       messagesEl.appendChild(renderCompactionDivider(m.preTokens, m.postTokens));
-      scrollToBottom();
+      maybeScroll();
       updateContextGauge(m.postTokens, lastCtxTotal);
       if (m.trigger === "auto" && isBusy) showWorking("上下文已压缩，等待继续回复…");
       break;
@@ -1153,6 +1176,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
         appendNotice(m.message, "error");
         break;
       }
+      turnHasReply = false;
       if (restoreInProgress) queuePausedAfterRestore = true;
       hideRestoring(); // 还原失败也要撤掉遮罩，队列仍等待用户主动继续
       setGlow("error");
@@ -1319,6 +1343,7 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
 
 function onTextDelta(text: string) {
   addStreamEst(text); // keep the running token estimate growing
+  if (text.trim()) turnHasReply = true;
   if (!liveBlock) onBlockStart("text");
   const first = liveBlock!.raw.length === 0;
   liveBlock!.raw += text;
@@ -1776,7 +1801,7 @@ function attachPermission(m: Extract<ToWebview, { kind: "permission_request" }>)
   actions.append(deny, allow);
   bar.append(label, actions);
   (host.querySelector(".tool-body") as HTMLElement).appendChild(bar);
-  scrollToBottom();
+  maybeScroll();
 }
 
 /** Build an "AskUserQuestion" timeline node: a separate title + a boxed
@@ -2180,7 +2205,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   step.append(el("div", "step-dot"), wrap);
   body.append(step);
   markIfFirstNode(body, step);
-  scrollToBottom();
+  maybeScroll();
 }
 
 function resolvePermission(requestId: string, behavior: "allow" | "deny") {
@@ -2212,6 +2237,7 @@ let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: str
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
   questionInteractions.clear();
   waitingQuestionId = undefined;
+  turnHasReply = false;
   historyState = { items, checkpoints: checkpoints || [] };
   seedInputHistory(items); // ↑ 能调回本会话之前发过的消息
   // 空历史也必须解除旧绑定，避免 /clear 或还原到开头后重载又复活旧会话。
@@ -2393,7 +2419,7 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       finalizeTurn();
       const cp = cpByOrdinal.get(userOrdinal);
       if (cp) messagesEl.appendChild(renderCheckpointDivider(cp.id, cp.synthetic, userOrdinal > 0)); // 第一条前也画：还原到它之前 = 清空对话重来
-      const m = appendUser(it.text, it.files || [], it.images || []);
+      const m = appendUser(it.text, it.files || [], it.images || [], false);
       if (cp) m.dataset.checkpointId = cp.id; // link message -> checkpoint (for edit)
       const answerCard = m.querySelector<HTMLElement>(".askq-card");
       if (cp && answerCard) attachReanswer(answerCard, cp.id);
@@ -2788,7 +2814,7 @@ function onCheckpointMarker(checkpointId: string) {
   if (lastUserEl) lastUserEl.dataset.checkpointId = checkpointId; // link message -> its checkpoint (for edit)
   if (!lastUserEl) return;
   messagesEl.insertBefore(renderCheckpointDivider(checkpointId, undefined, userMsgCount > 1), lastUserEl); // 第一条前也画：还原到它之前 = 清空对话重来
-  scrollToBottom();
+  maybeScroll();
 }
 
 // ---------------------------------------------------------------------------
@@ -3050,18 +3076,20 @@ function doSend() {
     renderQueue();
     return;
   }
-  performSend(payload);
+  performSend(payload, true);
 }
 
 /** Actually start a turn from a payload (used for live sends and queued ones). */
-function performSend(p: QueueItem) {
+function performSend(p: QueueItem, jumpToLatest: boolean) {
   queuePausedAfterRestore = false;
+  turnHasReply = false;
   setGlow("running"); // immediate — don't wait for the host's busy event
   // NOTE: stoppingView is NOT cleared here. The stopped turn's deltas may still
   // be in flight; clearing the gate now would append them to this new bubble.
   // Only `setBusy(true)` — which the host always emits before the new turn's
   // first stream event — reopens rendering.
-  appendUser(p.text, p.labels, p.imageUris);
+  appendUser(p.text, p.labels, p.imageUris, jumpToLatest);
+  if (!jumpToLatest) maybeScroll();
   finalizeTurn();
   turnTokens = 0; // reset token counters for the new turn
   turnEst = 0;
@@ -3095,7 +3123,7 @@ function flushQueue() {
   if (isBusy || !taskQueue.length) return;
   const next = taskQueue.shift()!;
   renderQueue();
-  performSend(next);
+  performSend(next, false);
 }
 
 /** Take a queued item back into the composer without flattening its newlines. */
@@ -3983,7 +4011,7 @@ messagesEl.addEventListener("click", (e) => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function appendUser(text: string, contextLabels: string[] = [], images: string[] = []) {
+function appendUser(text: string, contextLabels: string[] = [], images: string[] = [], scroll = true) {
   messagesEl.querySelector(".empty-state")?.remove();
   const msg = el("div", "msg user");
   msg.dataset.rawText = text;
@@ -4040,7 +4068,7 @@ function appendUser(text: string, contextLabels: string[] = [], images: string[]
   messagesEl.appendChild(msg);
   lastUserEl = msg;
   userMsgCount++;
-  scrollToBottom();
+  if (scroll) scrollToBottom();
   return msg;
 }
 
@@ -4194,7 +4222,7 @@ function makeThumb(src: string): HTMLElement {
 function appendNotice(text: string, kind: "info" | "error") {
   const n = el("div", `notice ${kind}`, text);
   messagesEl.appendChild(n);
-  scrollToBottom();
+  maybeScroll();
 }
 
 function renderSnapshotSkips(m: Extract<ToWebview, { kind: "snapshot_skips" }>) {
@@ -4234,7 +4262,7 @@ function renderSnapshotSkips(m: Extract<ToWebview, { kind: "snapshot_skips" }>) 
   actions.append(all, dismiss);
   card.appendChild(actions);
   messagesEl.appendChild(card);
-  scrollToBottom();
+  maybeScroll();
 }
 
 /** Subscription quota banner. `exhausted` is blocking — the composer is locked
@@ -4288,7 +4316,7 @@ function renderRateLimit(m: Extract<ToWebview, { kind: "rate_limit" }>) {
   }
   box.append(head, acts);
   messagesEl.appendChild(box);
-  scrollToBottom();
+  maybeScroll();
 
   if (blocking) {
     rateLimited = true;
@@ -4376,7 +4404,10 @@ inputEl.addEventListener("input", ackGlow); // typing counts as acknowledgement
 inputEl.addEventListener("mousedown", ackGlow);
 
 function setBusy(busy: boolean) {
-  if (busy && !isBusy) turnStartedAt = performance.now();
+  if (busy && !isBusy) {
+    turnStartedAt = performance.now();
+    turnHasReply = false;
+  }
   if (!busy) turnStartedAt = null;
   isBusy = busy;
   stopPending = false;
@@ -4452,7 +4483,9 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: stri
 }
 function scrollToBottom() {
   // 立即恢复跟随，下一批流式文字无需等待浏览器 scroll 事件就能继续滚动。
+  readingHistory = false;
   pinnedToBottom = true;
+  newReplyAvailable = false;
   messagesEl.scrollTop = messagesEl.scrollHeight;
   updateJumpLatest();
   updateQuestionBar();

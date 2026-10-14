@@ -158,6 +158,12 @@ body ::-webkit-scrollbar-thumb { border-radius: 0; }
   font: inherit; font-size: 12px; line-height: 1.5; white-space: nowrap; cursor: pointer;
 }
 .jump-latest svg { width: 16px; height: 16px; flex: 0 0 auto; }
+.jump-new-reply {
+  margin-left: 3px; padding-left: 8px;
+  border-left: 1px solid var(--vscode-panel-border, rgba(128,128,128,.35));
+  color: var(--vscode-textLink-foreground);
+  font-weight: 600;
+}
 .jump-latest:hover { border-color: var(--vscode-focusBorder); color: var(--vscode-textLink-foreground); }
 .jump-latest:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
