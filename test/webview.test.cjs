@@ -1087,6 +1087,47 @@ function manualSeconds(w){
  w.setInterval=f=>{intervals.set(++next,f);return next;};w.clearInterval=id=>intervals.delete(id);
  return seconds=>{now+=seconds*1000;[...intervals.values()].forEach(f=>f());};
 }
+test('九十六分钟长任务分开展示总耗时与最近思考进展，不靠动画虚构状态',t=>{
+ const {w,emit,errors}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});advance(96*60);
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 1小时36分0秒');
+ assert.match(w.document.querySelector('.wk-progress').textContent,/尚未收到任务进展/);
+ emit({kind:'block_start',blockType:'thinking'});
+ emit({kind:'thinking_delta',text:'隐藏的思考内容不得显示'});advance(5);
+ assert.equal(w.document.querySelector('.wk-label').textContent,'模型思考中…');
+ assert.equal(w.document.querySelector('.wk-progress').textContent,'距最近进展 5秒 · 收到思考进展');
+ emit({kind:'busy',busy:true});
+ assert.equal(w.document.querySelector('.wk-label').textContent,'模型思考中…','重复 busy 不能覆盖真实阶段');
+ advance(5);
+ assert.equal(w.document.querySelector('.wk-label').textContent,'模型思考中…','计时动画不能伪造新状态');
+ emit({kind:'block_end'});advance(57);
+ emit({kind:'response_wait',idleMs:57000});
+ assert.equal(w.document.querySelector('.wk-label').textContent,'模型处理中…');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 1小时37分7秒');
+ assert.equal(w.document.querySelector('.wk-progress').textContent,'距最近进展 57秒 · 模型阶段完成');
+ emit({kind:'usage',weekPct:20});emit({kind:'status',label:'Codex 正在重试请求…'});advance(8);
+ assert.match(w.document.querySelector('.wk-progress').textContent,/距最近进展 1分5秒/,'额度、重试不能刷新进展时间');
+ emit({kind:'block_start',blockType:'thinking'});emit({kind:'thinking_delta',text:''});
+ assert.equal(w.document.querySelector('.wk-progress').textContent,'距最近进展 0秒 · 收到思考进展');
+ assert.equal(w.document.querySelector('.wk-wait'),null);
+ assert.equal(w.document.querySelector('.think-node'),null);
+ assert.doesNotMatch(w.document.getElementById('messages').textContent,/隐藏的思考内容不得显示/);
+ emit({kind:'busy',busy:false});advance(60);
+ assert.equal(w.document.querySelector('.working-pill'),null);assert.deepEqual(errors,[]);
+});
+test('并行工具期间模型块结束不显示等待，最后一个工具完成才回到模型状态',t=>{
+ const {w,emit}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});
+ for(const id of ['one','two'])emit({kind:'tool_input',toolId:id,name:'Bash',input:{command:'test'}});
+ emit({kind:'block_end'});advance(30);
+ assert.equal(w.document.querySelector('.wk-label').textContent,'正在执行工具…');
+ emit({kind:'tool_result',toolUseId:'one',content:'ok',isError:false});
+ assert.equal(w.document.querySelector('.wk-label').textContent,'正在执行工具…');
+ advance(12);assert.equal(w.document.querySelector('.wk-progress').textContent,'距最近进展 12秒 · 收到工具结果');
+ emit({kind:'tool_result',toolUseId:'two',content:'failed',isError:true});
+ assert.equal(w.document.querySelector('.wk-label').textContent,'模型处理中…');
+ assert.equal(w.document.querySelector('.wk-progress').textContent,'距最近进展 0秒 · 收到工具结果');
+});
 test('思考过程只保留运行状态、累计用时和静默提醒，不生成时间线行',t=>{
  const {w,emit}=setup(t);const advance=manualSeconds(w);
  emit({kind:'busy',busy:true});advance(230);
@@ -1095,8 +1136,9 @@ test('思考过程只保留运行状态、累计用时和静默提醒，不生�
  emit({kind:'block_end'});advance(57);
  emit({kind:'response_wait',idleMs:57000});
  assert.equal(w.document.querySelector('.think-node'),null);
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 4分48秒');
- assert.equal(w.document.querySelector('.wk-wait').textContent,'最近 57秒未收到新进展，仍在等待响应。');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 4分48秒');
+ assert.match(w.document.querySelector('.wk-progress').textContent,/距最近进展 57秒/);
+ assert.match(w.document.querySelector('.wk-wait').textContent,/后端尚未返回新进展/);
  assert.doesNotMatch(w.document.querySelector('.wk-wait').textContent,/停止|重试|卡死/);
  emit({kind:'response_wait',idleMs:0});
  emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'回复继续'});
@@ -1115,11 +1157,11 @@ test('答案提交成功后重新计时，不累计回答前的执行与等待�
  advance(30);
  emit({kind:'permission_resolved',requestId:'q-time',behavior:'allow'});
  emit({kind:'busy',busy:true});
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
- advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 5秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 0秒');
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 5秒');
  emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
  advance(10);emit({kind:'busy',busy:true});
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 0秒');
 });
 test('运行中回退重新回答不会沿用旧轮次的三十多分钟，重试成功才开始计时',t=>{
  const {w,emit,errors}=setup(t);const advance=manualSeconds(w);
@@ -1133,12 +1175,12 @@ test('运行中回退重新回答不会沿用旧轮次的三十多分钟，重�
  advance(30);assert.equal(w.document.querySelector('.working-pill'),null);
  emit({kind:'permission_resolved',requestId:'q-retry-time',behavior:'allow'});
  emit({kind:'busy',busy:true});
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 0秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 0秒');
  advance(150);emit({kind:'compacting',trigger:'auto'});
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 2分30秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 2分30秒');
  emit({kind:'compacted',trigger:'auto',preTokens:1000,postTokens:500});
  emit({kind:'busy',busy:true});advance(10);
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 2分40秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 2分40秒');
  assert.deepEqual(errors,[]);
 });
 test('普通工具授权和迟到的重复答案确认不会重置计时',t=>{
@@ -1147,7 +1189,7 @@ test('普通工具授权和迟到的重复答案确认不会重置计时',t=>{
  emit({kind:'permission_request',requestId:'tool-time',toolName:'Bash',input:{command:'echo ok'},suggestions:[]});
  emit({kind:'permission_resolved',requestId:'tool-time',behavior:'allow'});
  emit({kind:'permission_resolved',requestId:'old-question',behavior:'allow'});
- advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分10秒');
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 1分10秒');
 });
 test('中途说明后长时间无新事件，状态与秒数持续显示，下一次思考及时接续',t=>{
  const {w,emit,errors}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
@@ -1155,13 +1197,13 @@ test('中途说明后长时间无新事件，状态与秒数持续显示，下�
  assert.match(w.document.querySelector('.wk-tokens').textContent,/待回传/);
  emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'首轮回归已通过，继续检查。'});flush();
  assert.match(w.document.querySelector('.wk-label').textContent,/正在回复/);
- advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 5秒');
+ advance(5);assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 5秒');
  emit({kind:'block_end'});
- assert.match(w.document.querySelector('.wk-label').textContent,/等待后续响应/);
- advance(60);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分5秒');
+ assert.match(w.document.querySelector('.wk-label').textContent,/模型处理中/);
+ advance(60);assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 1分5秒');
  assert.match(w.document.querySelector('.wk-tokens').textContent,/≈.*tokens/);
  emit({kind:'block_start',blockType:'thinking'});advance(20);
- assert.equal(w.document.querySelector('.wk-time').textContent,'累计 1分25秒');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 1分25秒');
  emit({kind:'block_end'});assert.equal(w.document.querySelector('.think-node'),null);
  assert.equal(w.document.querySelector('.msg-body').lastElementChild.className,'working-pill');
  emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});advance(10);
@@ -1171,7 +1213,7 @@ test('文件工具等待期间也显示计时，重建状态保留已收到的�
  const {w,emit}=setup(t);const advance=manualSeconds(w);const flush=manualFrames(w);
  emit({kind:'busy',busy:true});emit({kind:'thinking_tokens',tokens:123});
  emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/tmp/a.txt'}});
- advance(12);assert.equal(w.document.querySelector('.wk-time').textContent,'累计 12秒');
+ advance(12);assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 12秒');
  assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
  flush();assert.equal(w.document.querySelector('.wk-tokens').textContent,'123 tokens');
  emit({kind:'tool_result',toolUseId:'read',content:'ok',isError:false});

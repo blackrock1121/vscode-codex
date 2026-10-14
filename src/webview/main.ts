@@ -441,13 +441,6 @@ let turnEst = 0; // live estimate from streamed chars (the CLI doesn't stream co
 let turnThinkTokens = 0; // real thinking-token count from the CLI (system/thinking_tokens)
 let msgTokenBase = 0; // sum of PREVIOUS messages' finals within this turn
 let lastMsgTokens = 0; // the current message's cumulative count so far
-// The CLI doesn't stream status text in -p mode, so (like Codex's TUI) we
-// cycle through its whimsical "working" verbs locally to show it's alive.
-const THINKING_WORDS = [
-  "思考中", "分析中", "梳理中", "推敲中", "处理中",
-];
-let workingRotate = false; // when true the ticker cycles the pill label
-let workingFixed = ""; // a fixed phase label (e.g. preparing options) — no rotation
 function fmtTokens(n: number): string {
   return n >= 1000 ? (n / 1000).toFixed(1).replace(/\.0$/, "") + "k" : String(n);
 }
@@ -706,13 +699,33 @@ usagePill.addEventListener("click", (e) => {
   }
 });
 function formatElapsed(seconds: number): string {
+  if (seconds >= 3600) return `${Math.floor(seconds / 3600)}小时${Math.floor(seconds % 3600 / 60)}分${seconds % 60}秒`;
   return seconds < 60 ? `${seconds}秒` : `${Math.floor(seconds / 60)}分${seconds % 60}秒`;
 }
 function paintWorkingTime(wk: HTMLElement): number {
-  const elapsed = Math.max(0, Math.floor((performance.now() - Number(wk.dataset.start ?? performance.now())) / 1000));
+  const now = performance.now();
+  const elapsed = Math.max(0, Math.floor((now - Number(wk.dataset.start ?? now)) / 1000));
   const time = wk.querySelector(".wk-time");
-  if (time) time.textContent = `累计 ${formatElapsed(elapsed)}`;
+  if (time) time.textContent = `本轮总耗时 ${formatElapsed(elapsed)}`;
+  const recent = wk.querySelector(".wk-progress");
+  const idle = Math.max(0, Math.floor((now - Number(wk.dataset.progressAt ?? now)) / 1000));
+  if (recent) recent.textContent = wk.dataset.progress
+    ? `距最近进展 ${formatElapsed(idle)} · ${wk.dataset.progress}`
+    : `尚未收到任务进展 · 已等待 ${formatElapsed(idle)}`;
   return elapsed;
+}
+/** 只记录真实任务事件；计时动画、额度刷新和重试提示不代表任务有进展。 */
+function recordWorkingProgress(label: string) {
+  if (!isBusy || stoppingView || waitingQuestionId || glowState === "waiting") return;
+  const wk = assistantEl?.querySelector(".working-pill") as HTMLElement | null;
+  if (!wk) return;
+  wk.dataset.progressAt = String(performance.now());
+  wk.dataset.progress = label;
+  wk.querySelector(".wk-wait")?.remove();
+  paintWorkingTime(wk);
+}
+function showModelOrToolWorking() {
+  showWorking(assistantEl?.querySelector(".tool-card.running") ? "正在执行工具…" : "模型处理中…");
 }
 function startTick() {
   if (tickTimer) return;
@@ -723,13 +736,7 @@ function startTick() {
       tickTimer = 0;
       return;
     }
-    const elapsed = paintWorkingTime(wk);
-    // Cycle the label so the wait feels alive (Codex shows more than one state).
-    if (workingRotate && !workingFixed) {
-      const lbl = wk.querySelector(".wk-label") as HTMLElement | null;
-      const seed = Number(wk.dataset.wseed || 0);
-      if (lbl) lbl.textContent = `${THINKING_WORDS[(seed + Math.floor(elapsed / 3)) % THINKING_WORDS.length]}…`;
-    }
+    paintWorkingTime(wk);
     updateActiveLine(); // keep the active glow tracking the pill as content grows
   }, 1000);
 }
@@ -995,7 +1002,12 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "response_wait":
       assistantEl?.querySelector(".wk-wait")?.remove();
       if (m.idleMs >= 30000 && isBusy && !compacting && !stoppingView && !waitingQuestionId && glowState !== "waiting") {
-        const hint = el("span", "wk-wait", `最近 ${formatElapsed(Math.floor(m.idleMs / 1000))}未收到新进展，仍在等待响应。`);
+        const wk = assistantEl?.querySelector(".working-pill") as HTMLElement | null;
+        if (wk) {
+          wk.dataset.progressAt = String(performance.now() - m.idleMs);
+          paintWorkingTime(wk);
+        }
+        const hint = el("span", "wk-wait", "后端尚未返回新进展；仅凭静默无法确认是否卡住。");
         hint.setAttribute("role", "status");
         assistantEl?.querySelector(".working-pill")?.appendChild(hint);
         maybeScroll();
@@ -1008,7 +1020,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "block_end":
       finalizeLive();
       liveBlock = null;
-      if (isBusy) showWorking("等待后续响应…");
+      if (isBusy) showModelOrToolWorking();
       break;
     case "text_delta":
       onTextDelta(m.text);
@@ -1062,6 +1074,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "tool_result":
       setToolResult(m.toolUseId, m.content, m.isError);
+      if (isBusy && !compacting) showModelOrToolWorking();
       break;
     case "permission_request":
       assistantEl?.querySelector(".wk-wait")?.remove();
@@ -1244,6 +1257,19 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       renderChangedFiles(m.files, m.totalAdded, m.totalRemoved);
       break;
   }
+  const progress = {
+    block_start: "任务阶段开始", block_end: "模型阶段完成",
+    text_delta: "收到回复内容", text_snap: "收到回复内容",
+    thinking_delta: "收到思考进展", tool_input: "收到工具输入",
+    tool_input_partial: "收到工具输入", tool_result: "收到工具结果",
+    compacting: "开始压缩上下文", compacted: "上下文压缩完成",
+  };
+  if (m.kind in progress) {
+    const label = m.kind === "block_start"
+      ? m.blockType === "thinking" ? "开始模型思考" : m.blockType === "tool_use" ? "工具开始执行" : "开始生成回复"
+      : progress[m.kind as keyof typeof progress];
+    recordWorkingProgress(label);
+  }
 });
 
 /** The avatar is the reply's first node — the FIRST content step must not draw
@@ -1280,7 +1306,7 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
     // 只保留运行中的状态反馈；结束后不插入重复的“思考片段”时间线行。
     finalizeLive();
     liveBlock = null;
-    showWorking();
+    showWorking("模型思考中…");
     return;
   }
   finalizeLive(); // finalize previous text block with full highlighting
@@ -1559,8 +1585,6 @@ function updatePreparingQuestions(json: string) {
   const opts = (json.match(/"label"\s*:/g) || []).length;
   let label = "准备选项…";
   if (qs > 0) label = `准备选项 · ${qs} 个问题` + (opts > 0 ? ` ${opts} 选项…` : "…");
-  workingFixed = label;
-  workingRotate = false;
   const lbl = wk.querySelector(".wk-label") as HTMLElement | null;
   if (lbl) lbl.textContent = label;
 }
@@ -4539,7 +4563,7 @@ function setBusy(busy: boolean) {
   if (busy) {
     if (waitingQuestionId) removeWorking();
     else {
-      showWorking("等待 Codex 响应…");
+      if (!assistantEl?.querySelector(".working-pill")) showWorking("等待 Codex 响应…");
       if (assistantEl) assistantEl.classList.add("streaming-turn");
     }
   } else {
@@ -4552,8 +4576,7 @@ function setBusy(busy: boolean) {
 }
 
 /** 本轮尚未结束时持续保留状态，正文暂停或块间等待也不会失去计时反馈。 */
-/** Show the live activity pill. With no arg it cycles "thinking" verbs; pass a
- *  fixed `label` for a specific phase (e.g. preparing the option picker). */
+/** 状态由后端事件决定；本地计时器只更新时长，不虚构活动阶段。 */
 function showWorking(label?: string) {
   if (stoppingView || waitingQuestionId) return;
   const body = ensureAssistant();
@@ -4561,18 +4584,15 @@ function showWorking(label?: string) {
   if (!w) {
     w = el("div", "working-pill");
     w.dataset.start = String(turnStartedAt ?? performance.now());
-    w.dataset.wseed = String(Math.floor(Math.random() * THINKING_WORDS.length)); // varies the starting verb
+    w.dataset.progressAt = String(performance.now());
     w.innerHTML =
       `<span class="typing"><span></span><span></span><span></span></span>` +
-      `<span class="wk-label"></span><span class="wk-time" title="本次发送或问题答案提交成功后的累计用时，包含工具执行和响应等待；提交新答案后重新计时"></span><span class="wk-tokens"></span>`;
+      `<span class="wk-label"></span><span class="wk-time" title="整轮任务的总耗时，包含模型处理、工具执行和响应等待；不是卡住或静默的时长。提交新答案后重新计时"></span><span class="wk-tokens"></span><span class="wk-progress" role="status"></span>`;
     body.appendChild(w);
   }
-  workingFixed = label ?? "";
   paintWorkingTime(w);
-  workingRotate = !label;
   const lbl = w.querySelector(".wk-label") as HTMLElement;
-  const seed = Number(w.dataset.wseed || 0);
-  if (lbl) lbl.textContent = label ?? `${THINKING_WORDS[seed % THINKING_WORDS.length]}…`;
+  if (lbl) lbl.textContent = label ?? "模型处理中…";
   const tk = w.querySelector(".wk-tokens") as HTMLElement;
   setPillTokens();
   // 阶段切换时直接接续当前数值，旧动画帧不能把已显示的计数拉回零。
@@ -4586,8 +4606,6 @@ function showWorking(label?: string) {
 }
 function removeWorking() {
   assistantEl?.querySelector(".working-pill")?.remove();
-  workingRotate = false;
-  workingFixed = "";
 }
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, cls = "", text?: string): HTMLElementTagNameMap[K] {
