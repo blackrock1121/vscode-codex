@@ -55,7 +55,7 @@ test('空白会话发送前独立选择，服务端分配 ID 后保留并保存�
  const f=fixture();delete f.session.sessionId;
  await f.provider.setSpeedMode(f.session,'fast');
  assert.equal(f.state.size,0);assert.equal(f.provider.speedMode(f.other),'default');
- f.session.checkpoints={setSession:()=>{}};f.provider.refreshSessions=()=>{};
+ f.session.checkpoints={setSession:()=>{}};f.provider.refreshSessions=()=>{};f.provider.store={findFile:()=>undefined};
  f.provider.onSessionId(f.session,'server-id',false);
  assert.equal(f.state.get('codexChat.sessionSpeed.server-id'),'fast');
  assert.equal(f.provider.speedMode({sessionId:'server-id'}),'fast');

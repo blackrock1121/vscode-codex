@@ -10,13 +10,13 @@ const exec = promisify(execFile);
 export const NOTIFIER_APP = "Codex Copilot Notifications.app";
 
 // 在生成跳转 URI 之前排队，避免较早通知的慢回调盖过新通知或回复后的清理。
-const sessionOperations = new Map<string, Promise<void>>();
-export async function queueSessionNotification(sessionId: string | undefined, action: () => Promise<void>): Promise<void> {
+const sessionOperations = new Map<string, Promise<unknown>>();
+export async function queueSessionNotification<T>(sessionId: string | undefined, action: () => Promise<T>): Promise<T> {
     if (!sessionId) return action(); // 无会话的测试通知独立处理
     const previous = sessionOperations.get(sessionId) ?? Promise.resolve();
     const next = previous.catch(() => {}).then(action);
     sessionOperations.set(sessionId, next);
-    try { await next; }
+    try { return await next; }
     finally { if (sessionOperations.get(sessionId) === next) sessionOperations.delete(sessionId); }
 }
 

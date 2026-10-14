@@ -24,8 +24,9 @@ async function fixture(t,cut=1){
  const ctx={sessionId:'source',checkpoints,proc:{isBusy:true}};
  const provider=Object.create(ChatViewProvider.prototype);
  const messages=[],forks=[],opened=[];let reads=0;
- Object.assign(provider,{store,forking:new Set(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},openSession:async id=>opened.push(id)});
+ Object.assign(provider,{store,forking:new Set(),restoring:new Set(),sessions:new Set([ctx]),detached:new Map(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},openSession:async id=>opened.push(id)});
  store.hydrate=async id=>{assert.equal(id,'source');reads++;store.threads.set(id,{id,turns:[first,current]});};
+ store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
  store.fork=async(source,leaf)=>{forks.push({source,leaf});store.threads.set('branch',{id:'branch',turns:[first]});return 'branch';};
  return {provider,store,ctx,checkpoints,id,first,current,messages,forks,opened,dir,reads:()=>reads};
 }
@@ -42,6 +43,43 @@ test('派生即时反馈、分阶段更新、重复点击不重复创建，收�
  assert.ok(progress.some(m=>m.label==='正在创建独立会话…'));
  assert.ok(progress.some(m=>m.label==='正在打开新会话…'));
  assert.equal(progress.at(-1).busy,false);assert.equal(f.provider.forking.size,0);
+});
+test('派生连接在读取原会话前启动，校验失败也释放连接',async t=>{
+ for(const fail of [false,true]){
+  const f=await fixture(t),steps=[];
+  const hydrate=f.store.hydrate;
+  f.store.prepareFork=()=>{steps.push('prepare');return {ready:Promise.resolve(),dispose:async()=>steps.push('dispose')};};
+  f.store.hydrate=async id=>{steps.push('hydrate');if(fail)throw Error('读取失败');await hydrate(id);};
+  f.provider.openSession=async(id,cached)=>{steps.push('open');assert.equal(id,'branch');assert.equal(cached,true);};
+  await f.provider.forkCheckpoint(f.ctx,f.id);
+  assert.deepEqual(steps.slice(0,2),['prepare','hydrate']);
+  assert.equal(steps.at(-1),'dispose');
+ }
+});
+test('派生与还原互斥，不允许同时改写同一标签的分支归属',async t=>{
+ const f=await fixture(t);f.provider.restoring.add(f.ctx);
+ await f.provider.forkCheckpoint(f.ctx,f.id);
+ assert.equal(f.forks.length,0);assert.equal(f.messages.at(-1).busy,false);
+ f.provider.restoring.clear();f.provider.forking.add(f.ctx);
+ await f.provider.restoreCheckpoint(f.ctx,f.id);
+ assert.match(f.messages.at(-1).message,/正在派生/);
+});
+test('新派生首次显示直接用完整缓存，后续打开仍读取最新历史',async t=>{
+ const f=await fixture(t),rendered=[];
+ f.provider.rememberSessionSpeed=()=>{};f.provider.renderSessionInto=(_ctx,id)=>rendered.push(id);
+ f.ctx.initialHistoryCached=true;
+ f.provider.loadSessionInto(f.ctx,'source');
+ assert.equal(f.reads(),0);assert.deepEqual(rendered,['source']);
+ f.provider.loadSessionInto(f.ctx,'source');await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(f.reads(),1);assert.deepEqual(rendered,['source','source']);
+});
+test('服务端派生 ID 与本地还原点冲突时不覆盖、不删除既有分支',async t=>{
+ const f=await fixture(t),file=path.join(f.dir,'checkpoints-branch.json');
+ await fs.writeFile(file,'已有分支快照');let deletes=0;f.store.delete=async()=>{deletes++;};
+ await f.provider.forkCheckpoint(f.ctx,f.id);
+ assert.match(f.messages.find(m=>m.kind==='error').message,/ID.*冲突/);
+ assert.equal(await fs.readFile(file,'utf8'),'已有分支快照');assert.equal(deletes,0);
+ assert.equal(f.opened.length,0);assert.equal(f.ctx.sessionId,'source');
 });
 test('取消确认和派生异常均结束加载，异常不终止原会话',async t=>{
  for(const scenario of ['cancel','error']){

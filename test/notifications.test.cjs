@@ -79,7 +79,7 @@ test('较早通知的慢跳转解析不能越过回复清理和最新通知，�
   await p.sendLocalNotice('派生通知','', 'branch');
   assert.equal(nativeCalls.length,1);assert.equal(nativeCalls[0].data.sessionId,'branch');
   release();await Promise.all([old,latest]);
-  assert.deepEqual(nativeCalls.filter(x=>x.data.sessionId==='source').map(x=>x.data.operation),['show','clear','show']);
+  assert.deepEqual(nativeCalls.filter(x=>x.data.sessionId==='source').map(x=>x.data.operation),['clear','show']);
   assert.equal(nativeCalls.at(-1).data.title,'最新通知');
   const clear=nativeCalls.find(x=>x.data.operation==='clear').data;
   assert.equal(clear.id,'codex-session:source');assert.equal(clear.url,undefined);
@@ -109,6 +109,26 @@ test('直接发送消息成功后清理该会话，发送失败保留旧通知',
     await p.handleSend(ctx,'直接在派生会话回复');
     assert.deepEqual(cleared,accepted?['branch']:[]);
   }
+});
+test('完整 UUID 用于通知去重，相同前缀的不同会话不会覆盖',async()=>{
+  nativeCalls=[];const p=provider();
+  const a='01999999-aaaa-7000-8000-000000000001',b='01999999-aaaa-7000-8000-000000000002';
+  await p.sendLocalNotice('原会话','',a);await p.sendLocalNotice('派生','',b);
+  assert.notEqual(nativeCalls[0].data.id,nativeCalls[1].data.id);
+  assert.equal(nativeCalls[0].data.sessionId,a);assert.equal(nativeCalls[1].data.sessionId,b);
+});
+test('还原后的同一标签不接收旧会话的延迟等待提醒',t=>{
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:100000});
+  config={notifyLocal:true,notifyMinDurationSec:60};
+  const p=provider(),sent=[];p.dispatchNotification=(ctx)=>sent.push(ctx.sessionId);
+  p.clearSessionNotification=()=>{};
+  const req={requestId:'same-question',toolName:'AskUserQuestion',input:{questions:[{question:'继续？'}]}};
+  const ctx={sessionId:'source',pendingPerm:{kind:'permission_request',...req},lastUserActionAt:Date.now()};
+  p.maybeNotifyWaiting(ctx,req);
+  p.resetRestoredNotifications(ctx,'source');ctx.sessionId='branch';
+  ctx.pendingPerm={kind:'permission_request',...req};p.maybeNotifyWaiting(ctx,req);
+  t.mock.timers.tick(60000);
+  assert.deepEqual(sent,['branch']);
 });
 
 test('默认不启用本机通知，飞书原文本格式保持不变', async t => {

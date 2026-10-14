@@ -47,6 +47,13 @@ test('自动压缩开始立即提示，完成后仍等待本轮回复，不能�
  assert.equal(events.at(-1).text,'继续回复');
 });
 function waitUntil(predicate){return new Promise((resolve,reject)=>{const end=Date.now()+5000;const tick=()=>{if(predicate())resolve();else if(Date.now()>end)reject(Error('等待超时'));else setTimeout(tick,10);};tick();});}
+test('恢复接口返回别的会话 ID 时拒绝绑定，避免串会话与通知',async t=>{
+ const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',resumeSessionId:'expected-session'},
+ {emit:()=>{},onPermission:()=>{},onSessionId:()=>assert.fail('不能绑定错误会话'),onClose:()=>{}});
+ t.after(()=>p.disposeAndWait());
+ await assert.rejects(p.start(),/不同的会话 ID/);
+ assert.equal(p.isExited,true);
+});
 async function client(t,extra={}){const events=[],requests=[];const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',...extra},{emit:e=>events.push(e),onPermission:r=>requests.push(r),onSessionId:()=>{},onClose:()=>{}});t.after(()=>p.disposeAndWait());await p.start();return {p,events,requests};}
 test('初始化不发送预热；流式消息不重复且报告上下文',async t=>{const {p,events}=await client(t);assert.equal(events.some(e=>e.kind==='result'),false);assert.equal(p.sendUserMessage('你好'),true);await waitUntil(()=>events.some(e=>e.kind==='result'));assert.equal(events.filter(e=>e.kind==='text_delta').map(e=>e.text).join(''),'你好');assert.deepEqual(events.find(e=>e.kind==='context'),{kind:'context',used:123,total:1000});});
 test('审批只在用户应答后完成，支持本会话允许',async t=>{const {p,events,requests}=await client(t);p.sendUserMessage('approval');await waitUntil(()=>requests.length);assert.equal(p.isBusy,true);assert.equal(events.some(e=>e.kind==='result'),false);p.respondPermission(requests[0].requestId,{behavior:'allow',suggestionId:'session'});await waitUntil(()=>events.some(e=>e.kind==='result'));assert.match(events.find(e=>e.kind==='tool_result').content,/acceptForSession/);});

@@ -31,7 +31,7 @@ async function fixture(t){
  const id=checkpoints.beginTurn(reply('A'),1,true);checkpoints.recordSnapshot(file,'提问前已完成的修改');checkpoints.completeSnapshot();checkpoints.flush();
  const ctx={sessionId:'source',checkpoints};const messages=[],forks=[];
  const provider=Object.create(ChatViewProvider.prototype);
- Object.assign(provider,{store,sessions:new Set([ctx]),detached:new Map(),restoring:new Set(),
+ Object.assign(provider,{store,sessions:new Set([ctx]),detached:new Map(),restoring:new Set(),forking:new Set(),
   context:{workspaceState:{get:()=>undefined,update:async()=>{}}},storageDir:()=>dir,workspaceDirs:()=>[workspace],cwd:()=>workspace,
   localSnapshotExcludedPaths:()=>new Set(),reportSnapshotSkips:()=>{},config:()=>({get:(_key,fallback)=>fallback}),
   output:{appendLine:()=>{}},post:(_ctx,m)=>messages.push(m),speedMode:()=> 'default',rememberSessionSpeed:()=>{},
@@ -74,6 +74,26 @@ test('成功回复只清理当前真实会话的通知，提交失败不能清�
   if(accepted)await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'});
   else await assert.rejects(f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'}),/未提交/);
   assert.deepEqual(cleared,accepted?['source']:[]);
+ }
+});
+test('还原成功切换通知归属，回到开头同样清理；取消或失败保留原通知',async t=>{
+ for(const mode of ['branch','start','cancel','failed']){
+  const f=await fixture(t),cleared=[];
+  f.provider.clearSessionNotification=id=>cleared.push(id);
+  f.ctx.lastUserText='旧任务';f.ctx.pendingPerm={kind:'permission_request',requestId:'old'};
+  if(mode==='cancel')choice=undefined;
+  if(mode==='failed')f.provider.cpRestore=()=>{throw Error('还原失败');};
+  const id=mode==='start'?f.checkpoints.list()[0].id:f.id;
+  await f.provider.restoreCheckpoint(f.ctx,id);
+  if(['branch','start'].includes(mode)){
+   assert.deepEqual(cleared,['source']);
+   assert.equal(f.ctx.sessionId,mode==='start'?undefined:'branch');
+   assert.equal(f.ctx.lastUserText,undefined);assert.equal(f.ctx.pendingPerm,undefined);
+   assert.ok(f.store.findFile('source'),'原会话仍可从历史打开');
+  }else{
+   assert.deepEqual(cleared,[]);assert.equal(f.ctx.sessionId,'source');
+   assert.equal(f.ctx.lastUserText,'旧任务');
+  }
  }
 });
 test('重新回答准确回到答案之前，只撤销答案后的文件，保留原会话并恢复可编辑的问题',async t=>{

@@ -3,6 +3,11 @@ import { timeline, userView, parseQuestionReply, normalizeQuestions } from './ev
 import { SessionSummary, TimelineItem } from '../shared';
 import { QuestionImages, QUESTION_IMAGE_ANSWER } from '../questionImages';
 
+export interface ForkPreparation {
+  ready: Promise<CodexRpc>;
+  dispose(): Promise<void>;
+}
+
 /** 仅缩短编辑器标签，不改会话名称；为原生关闭按钮留出空间。 */
 export function sessionTabTitle(title?: string): string {
   const text = title?.replace(/\s+/g, ' ').trim() || 'Codex Copilot';
@@ -35,6 +40,8 @@ export class SessionStore {
   private hydrating = new Map<string, Promise<void>>();
   private pending = new Map<string, { title: string; updatedAt: number }>();
   private listing?: Promise<void>;
+  private forkIds = new Set<string>();
+  private preparations = new Set<ForkPreparation>();
   constructor(private readonly cwd: string, private readonly executable: () => string) {}
   async connection(): Promise<CodexRpc> {
     if (this.rpc?.isClosed) { this.rpc = undefined; this.connecting = undefined; }
@@ -88,7 +95,11 @@ export class SessionStore {
   }
   private async hydrateWith(rpc: CodexRpc, id: string): Promise<void> {
     const r = await rpc.request('thread/read', { threadId: id, includeTurns: true });
-    const thread = r.thread;
+    if (r.thread?.id !== id) throw new Error('Codex 返回了不同的会话 ID，已中止读取，避免覆盖其他会话。');
+    await this.hydrateThread(rpc, r.thread);
+  }
+  private async hydrateThread(rpc: CodexRpc, thread: any): Promise<void> {
+    const id = thread.id;
     if (thread.historyMode === 'paginated' || !Array.isArray(thread.turns)) {
       let cursor: string | null = null; const turns: any[] = [];
       do {
@@ -173,20 +184,41 @@ export class SessionStore {
     await rpc.request('thread/archive', { threadId: id });
     await rpc.request('thread/delete', { threadId: id }); this.threads.delete(id); this.pending.delete(id); return true;
   }
-  async fork(id: string, lastTurnId: string): Promise<string> {
+  prepareFork(): ForkPreparation {
+    const rpc = new CodexRpc(this.executable(), this.cwd);
+    let closing: Promise<void> | undefined;
+    const preparation: ForkPreparation = {
+      ready: rpc.start().then(() => rpc),
+      dispose: () => closing ??= rpc.disposeAndWait().finally(() => this.preparations.delete(preparation)),
+    };
+    // 初始化与原会话校验并行，错误仍由 fork 的 await 报告，避免提前拒绝未被捕获。
+    void preparation.ready.catch(() => {});
+    this.preparations.add(preparation);
+    return preparation;
+  }
+  async fork(id: string, lastTurnId: string, preparation = this.prepareFork()): Promise<string> {
     // thread/fork grants its app-server process the new thread's writer lock.
     // A long-lived management RPC would block the chat process from resuming it.
-    const rpc = new CodexRpc(this.executable(), this.cwd);
     try {
-      await rpc.start();
+      const rpc = await preparation.ready;
       const r = await rpc.request('thread/fork', { threadId: id, lastTurnId, cwd: this.cwd });
-      this.threads.set(r.thread.id, r.thread);
-      await this.hydrateWith(rpc, r.thread.id);
-      this.notePending(r.thread.id, this.threads.get(id)?.preview || '派生会话');
-      return r.thread.id;
+      const newId = r.thread?.id;
+      if (typeof newId !== 'string' || !/^[\w-]{1,128}$/.test(newId) || newId === id ||
+          this.threads.has(newId) || this.pending.has(newId) || this.forkIds.has(newId))
+        throw new Error('Codex 返回了无效或重复的派生会话 ID，已中止，未覆盖或删除原会话。');
+      this.forkIds.add(newId);
+      const thread = r.thread;
+      // legacy fork 响应已含完整历史时直接复用；分页、缺少内容或边界不符则完整读取。
+      if (['legacy', 'full', undefined].includes(thread.historyMode) && Array.isArray(thread.turns) &&
+          thread.turns.length && thread.turns.at(-1).id === lastTurnId && thread.turns.every((turn: any) => Array.isArray(turn.items)))
+        this.threads.set(newId, thread);
+      else if (thread.historyMode === 'paginated') await this.hydrateThread(rpc, thread);
+      else await this.hydrateWith(rpc, newId);
+      this.notePending(newId, this.threads.get(id)?.preview || '派生会话');
+      return newId;
     } finally {
-      await rpc.disposeAndWait();
+      await preparation.dispose();
     }
   }
-  dispose() { this.rpc?.dispose(); }
+  dispose() { this.rpc?.dispose(); for (const preparation of this.preparations) void preparation.dispose(); }
 }

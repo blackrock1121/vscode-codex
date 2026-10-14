@@ -136,6 +136,8 @@ export class CodexProcess {
       const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
       // resume 不支持 dynamicTools；旧会话沿用持久化工具，原生异步提问另行接入同一暂停流程。
       const result = await this.timedRequest(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : { ...params, dynamicTools: [ASK_USER_QUESTION_TOOL] });
+      if (this.opts.resumeSessionId && result.thread?.id !== this.opts.resumeSessionId)
+        throw new Error('Codex 恢复了不同的会话 ID，已中止连接，避免串到其他会话。');
       this.activeModel = result.model ?? this.opts.model ?? "";
       this.sessionId = result.thread.id;
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
