@@ -3,7 +3,7 @@ import hljs from "highlight.js/lib/common";
 import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
-import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind } from "../shared";
+import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits } from "../shared";
 import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
@@ -574,6 +574,14 @@ type UsageData = {
   weekModelName?: string;
 };
 let lastUsageData: UsageData = {};
+let lastResetCredits: ResetCredits | null = null;
+function availableResetCredits(): { count: number; cards: NonNullable<ResetCredits["cards"]> | null } | null {
+  const summary = lastResetCredits;
+  if (!summary) return null;
+  const cards = summary.cards?.filter(card => typeof card.expiresAt !== "number" || card.expiresAt > Date.now() / 1000) ?? null;
+  const expired = summary.cards ? summary.cards.length - (cards?.length ?? 0) : 0;
+  return { count: Math.max(cards?.length ?? 0, summary.availableCount - expired), cards };
+}
 let currentPlanType: string | undefined;
 const PLAN_NAMES: Record<string, string> = {
   free: "ChatGPT Free", go: "ChatGPT Go", plus: "ChatGPT Plus", pro: "ChatGPT Pro",
@@ -589,11 +597,13 @@ function renderUsage(sessionPct?: number, sessionResetAt?: number, weekPct?: num
   lastUsageData = { sessionPct, sessionResetAt, weekPct, weekResetAt, weekModelPct, weekModelName };
   // Dim label + bright number, no mini bars — the pill is a glance value, the
   // full bars live one click away in the popover.
-  const item = (key: string, pct: number) =>
-    `<span class="up-item"><span class="up-key">${key}</span><span class="up-pct">${pct}%</span></span>`;
+  const item = (key: string, value: string) =>
+    `<span class="up-item"><span class="up-key">${key}</span><span class="up-pct">${value}</span></span>`;
   const parts: string[] = [];
-  if (typeof sessionPct === "number") parts.push(item("会话", sessionPct));
-  if (typeof weekPct === "number") parts.push(item("周", weekPct));
+  if (typeof sessionPct === "number") parts.push(item("会话", `${sessionPct}%`));
+  if (typeof weekPct === "number") parts.push(item("周", `${weekPct}%`));
+  const resetCards = availableResetCredits();
+  if (!parts.length && resetCards?.count) parts.push(item("重置卡", `${resetCards.count} 张`));
   if (!parts.length) {
     usagePill.classList.add("hidden");
     usageMenu.classList.add("hidden");
@@ -620,16 +630,40 @@ function usageRow(label: string, pct: number | undefined, resetText: string): st
   const p = has ? Math.max(0, Math.min(100, pct as number)) : 0;
   const shown = has ? `${pct}%` : "—";
   const warn = p >= 90 ? " warn-high" : p >= 70 ? " warn-mid" : "";
-  // Name, reset and percentage share one baseline; the bar sits under them.
-  // The reset on its own line made every row three lines tall.
+  // 左边是下次重置时间；右边将额度名与已用百分比紧挨着展示。
   return (
     `<div class="usage-row${warn}">` +
-    `<div class="usage-row-top"><span class="usage-name">${label}</span><span class="spacer"></span>` +
-    (resetText ? `<span class="usage-reset">${resetText}</span>` : "") +
-    `<span class="usage-pct">${shown}</span></div>` +
+    `<div class="usage-row-top">${resetText ? `<span class="usage-reset">${resetText}</span>` : ""}` +
+    `<span class="usage-metric"><span class="usage-name">${label}</span><span class="usage-pct">${shown}</span></span></div>` +
     `<div class="usage-bar"><span style="width:${p}%"></span></div>` +
     `</div>`
   );
+}
+function creditExpiry(expiresAt?: number | null): string {
+  if (expiresAt === null) return "长期有效";
+  if (typeof expiresAt !== "number") return "有效期未提供";
+  const date = new Date(expiresAt * 1000);
+  if (Number.isNaN(date.getTime())) return "有效期未提供";
+  const year = date.getFullYear() === new Date().getFullYear() ? "" : `${date.getFullYear()}年`;
+  return `${year}${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 到期`;
+}
+function resetCreditsHtml(): string {
+  const visible = availableResetCredits();
+  if (!visible) return "";
+  const now = Date.now() / 1000;
+  const { count, cards } = visible;
+  let html = `<div class="usage-credits"><div class="usage-credits-head"><span>重置卡</span><span>可用 ${count} 张</span></div>`;
+  if (!count) html += `<div class="usage-credits-note">暂无可用重置卡</div>`;
+  else if (!cards?.length) html += `<div class="usage-credits-note">接口暂未返回逐张有效期</div>`;
+  else {
+    cards.forEach((card, index) => {
+      const urgency = typeof card.expiresAt === "number" ? card.expiresAt - now : Infinity;
+      const warn = urgency <= 24 * 3600 ? " urgent" : urgency <= 7 * 24 * 3600 ? " soon" : "";
+      html += `<div class="usage-credit${warn}"><span class="usage-credit-title" title="${escapeHtml(card.title || `重置卡 ${index + 1}`)}">${escapeHtml(card.title || `重置卡 ${index + 1}`)}</span><span class="usage-credit-expiry">${creditExpiry(card.expiresAt)}</span></div>`;
+    });
+    if (count > cards.length) html += `<div class="usage-credits-note">另有 ${count - cards.length} 张未返回有效期</div>`;
+  }
+  return html + `</div>`;
 }
 /** Expanded "套餐用量" panel — mirrors the official Plan-usage popover. */
 function buildUsageMenu() {
@@ -643,6 +677,7 @@ function buildUsageMenu() {
   if (typeof d.weekModelPct === "number") {
     html += usageRow(`仅 ${escapeHtml(d.weekModelName || "特定模型")}`, d.weekModelPct, "");
   }
+  html += resetCreditsHtml();
   usageMenu.innerHTML = html;
 }
 /** Anchor the popover directly above the usage pill (right edges aligned). */
@@ -1082,6 +1117,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "usage":
       if (m.planType !== undefined) currentPlanType = m.planType;
+      if (m.resetCredits !== undefined) lastResetCredits = m.resetCredits;
       renderUsage(m.sessionPct, m.sessionResetAt, m.weekPct, m.weekResetAt, m.weekModelPct, m.weekModelName);
       break;
     case "compacting":
@@ -1163,7 +1199,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "speed_context":
       if (m.model !== undefined) actualSpeedModel = m.model;
       if (m.billing !== undefined) speedBilling = m.billing;
-      if (m.billing !== undefined && m.billing !== "chatgpt") currentPlanType = undefined;
+      if (m.billing !== undefined && m.billing !== "chatgpt") { currentPlanType = undefined; lastResetCredits = null; }
       else if (m.planType !== undefined) currentPlanType = m.planType;
       if (!usageMenu.classList.contains("hidden")) buildUsageMenu();
       syncPickers();
@@ -2915,6 +2951,7 @@ function cmdHelp(): string {
 function cmdUsage(): string {
   const d = lastUsageData;
   const plan = currentPlanName();
+  const resetCards = availableResetCredits();
   const line = (label: string, pct?: number, reset?: string) =>
     typeof pct === "number" ? `  ${label}：${pct}%${reset ? " · " + reset : ""}` : `  ${label}：暂无数据`;
   return [
@@ -2922,6 +2959,9 @@ function cmdUsage(): string {
     ...(typeof d.sessionPct === "number" ? [line("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt))] : []),
     ...(typeof d.weekPct === "number" ? [line("每周限额", d.weekPct, cnReset(d.weekResetAt))] : []),
     ...(typeof d.weekModelPct === "number" ? [line(`每周 · 仅 ${d.weekModelName || "特定模型"}`, d.weekModelPct)] : []),
+    ...(resetCards ? [`  重置卡：可用 ${resetCards.count} 张`,
+      ...(resetCards.cards?.map((card, index) => `    ${card.title || `重置卡 ${index + 1}`}：${creditExpiry(card.expiresAt)}`) ?? []),
+      ...(resetCards.count > (resetCards.cards?.length ?? 0) ? [`    另有 ${resetCards.count - (resetCards.cards?.length ?? 0)} 张未返回有效期`] : [])] : []),
   ].join("\n");
 }
 

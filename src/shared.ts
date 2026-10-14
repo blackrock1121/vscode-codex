@@ -46,6 +46,7 @@ export const ICONS: Record<string, string> = {
 
 export type SpeedMode = "default" | "fast" | "ultrafast";
 export type BillingKind = "chatgpt" | "api" | "unknown";
+export type ResetCredits = { availableCount: number; cards: { title?: string; expiresAt?: number | null }[] | null };
 export const SPEED_MODES: { id: SpeedMode; label: string }[] = [
   { id: "default", label: "普通" }, { id: "fast", label: "快速" }, { id: "ultrafast", label: "超高速" },
 ];
@@ -151,7 +152,7 @@ export type ToWebview =
   | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number }
   /** weekModel*: 除 "all models" 外的按模型周限额行（CLI 输出哪个模型就显示哪个，
    *  不写死模型名，以服务端返回为准）。 */
-  | { kind: "usage"; sessionPct?: number; sessionResetAt?: number; weekPct?: number; weekResetAt?: number; weekModelPct?: number; weekModelName?: string; planType?: string }
+  | { kind: "usage"; sessionPct?: number; sessionResetAt?: number; weekPct?: number; weekResetAt?: number; weekModelPct?: number; weekModelName?: string; planType?: string; resetCredits?: ResetCredits | null }
   | { kind: "compacting" }
   | { kind: "compacted"; trigger: string; preTokens: number; postTokens: number }
   /** Subscription quota. `exhausted` blocks further turns until `resetsAt` —

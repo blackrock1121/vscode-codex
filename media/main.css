@@ -1541,15 +1541,13 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .usage-row { --bar: var(--vscode-textLink-foreground, #4a9eff); }
 .usage-row.warn-mid { --bar: #e0a33e; }
 .usage-row.warn-high { --bar: #e5534b; }
-/* Name, reset time and percentage share one baseline — the reset used to sit
-   on its own line under the bar, so each row cost three lines to read. */
-.usage-row-top { display: flex; align-items: baseline; gap: 8px; }
+/* Reset time on the left, quota name and percentage as one group on the right. */
+.usage-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.usage-metric { display: inline-flex; align-items: baseline; gap: 5px; flex: 0 0 auto; }
 .usage-name { font-size: 12px; color: var(--vscode-foreground); white-space: nowrap; }
-.usage-row-top .spacer { flex: 1; }
-.usage-reset { font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.usage-reset { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
 .usage-pct {
   font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
-  min-width: 30px; text-align: right;
   color: var(--vscode-foreground);
 }
 .usage-row.warn-mid .usage-pct, .usage-row.warn-high .usage-pct { color: var(--bar); }
@@ -1561,6 +1559,16 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   display: block; height: 100%; border-radius: 2px; min-width: 3px;
   background: var(--bar); transition: width .35s ease;
 }
+.usage-credits { border-top: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25)); padding-top: 9px; }
+.usage-credits-head, .usage-credit { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.usage-credits-head { font-size: 11.5px; font-weight: 600; }
+.usage-credits-head span:last-child { font-weight: 400; color: var(--vscode-descriptionForeground); }
+.usage-credit { margin-top: 8px; font-size: 11px; }
+.usage-credit-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.usage-credit-expiry { flex: 0 0 auto; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.usage-credit.soon .usage-credit-expiry { color: #e0a33e; }
+.usage-credit.urgent .usage-credit-expiry { color: #e5534b; }
+.usage-credits-note { margin-top: 8px; font-size: 11px; color: var(--vscode-descriptionForeground); }
 .pick-row {
   display: flex; align-items: center; gap: 9px; width: 100%;
   background: transparent; border: none; cursor: pointer; text-align: left;

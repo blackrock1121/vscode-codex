@@ -1,4 +1,4 @@
-import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview } from '../shared';
+import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview, ResetCredits } from '../shared';
 
 export const QUESTION_REPLY_PREFIX = '用户已回答刚才的问题，请根据以下答案继续原任务：\n';
 
@@ -92,17 +92,41 @@ export function timeline(turns: any[]): TimelineItem[] {
   }
   return out;
 }
-export function usageView(rate: any): Extract<ToWebview, { kind: 'usage' }> {
+/** 只展示后端标记为可用、且尚未过期的重置卡；缺少明细与零张不同。 */
+export function resetCreditsView(summary: any, nowSec = Date.now() / 1000): ResetCredits | null | undefined {
+  if (summary == null) return summary;
+  const count = Number(summary.availableCount);
+  if (!Number.isSafeInteger(count) || count < 0) return null;
+  if (!Array.isArray(summary.credits)) return { availableCount: count, cards: null };
+  let expired = 0;
+  const cards = summary.credits.flatMap((credit: any) => {
+    if (!credit || credit.status !== 'available') return [];
+    if (typeof credit.expiresAt === 'number' && Number.isFinite(credit.expiresAt) && credit.expiresAt <= nowSec) {
+      expired++;
+      return [];
+    }
+    const expiresAt = credit.expiresAt === null ? null :
+      typeof credit.expiresAt === 'number' && Number.isFinite(credit.expiresAt) ? credit.expiresAt : undefined;
+    const title = typeof credit.title === 'string' ? credit.title.trim().slice(0, 100) : '';
+    return [{ ...(title ? { title } : {}), expiresAt }];
+  });
+  cards.sort((a: { expiresAt?: number | null }, b: { expiresAt?: number | null }) =>
+    (a.expiresAt ?? Infinity) - (b.expiresAt ?? Infinity));
+  return { availableCount: Math.max(cards.length, count - expired), cards };
+}
+
+export function usageView(rate: any, resetSummary?: unknown): Extract<ToWebview, { kind: 'usage' }> {
   const windows = [rate?.primary, rate?.secondary].filter((window): window is { usedPercent: number; windowDurationMins: number; resetsAt?: number } =>
     typeof window?.usedPercent === 'number' && typeof window?.windowDurationMins === 'number');
   const session = windows.find(window => window.windowDurationMins === 300);
   const week = windows.find(window => window.windowDurationMins === 10080);
   return { kind: 'usage', sessionPct: session?.usedPercent, sessionResetAt: session?.resetsAt, weekPct: week?.usedPercent, weekResetAt: week?.resetsAt,
-    planType: typeof rate?.planType === 'string' ? rate.planType : undefined };
+    planType: typeof rate?.planType === 'string' ? rate.planType : undefined,
+    ...(resetSummary !== undefined ? { resetCredits: resetCreditsView(resetSummary) } : {}) };
 }
 
-export function quotaEvents(rate: any): ToWebview[] {
-  const events: ToWebview[] = [usageView(rate)];
+export function quotaEvents(rate: any, resetSummary?: unknown): ToWebview[] {
+  const events: ToWebview[] = [usageView(rate, resetSummary)];
   let exhausted = false;
   for (const window of [rate?.primary, rate?.secondary]) {
     if (!window || typeof window.usedPercent !== 'number') continue;

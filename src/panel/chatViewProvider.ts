@@ -3047,10 +3047,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         this.usageInFlight = true;
         this.lastUsageAt = Date.now();
-        void this.store.read("account/rateLimits/read").then(r => {
-            this.lastUsage = usageView(r.rateLimits);
+        void this.store.read("account/rateLimits/read", { excludeResetCreditDetails: false }).then(r => {
+            this.lastUsage = usageView(r.rateLimits, r.rateLimitResetCredits);
             for (const ctx of this.sessions)
-                for (const event of quotaEvents(r.rateLimits)) this.handleEmit(ctx, event);
+                for (const event of quotaEvents(r.rateLimits, r.rateLimitResetCredits)) this.handleEmit(ctx, event);
         }).catch(e => this.output.appendLine(`[usage] ${String(e)}`)).finally(() => { this.usageInFlight = false; });
     }
     private onPermission(ctx: SessionCtx, req: PermissionRequest): void {
