@@ -97,7 +97,8 @@ export function usageView(rate: any): Extract<ToWebview, { kind: 'usage' }> {
     typeof window?.usedPercent === 'number' && typeof window?.windowDurationMins === 'number');
   const session = windows.find(window => window.windowDurationMins === 300);
   const week = windows.find(window => window.windowDurationMins === 10080);
-  return { kind: 'usage', sessionPct: session?.usedPercent, sessionResetAt: session?.resetsAt, weekPct: week?.usedPercent, weekResetAt: week?.resetsAt };
+  return { kind: 'usage', sessionPct: session?.usedPercent, sessionResetAt: session?.resetsAt, weekPct: week?.usedPercent, weekResetAt: week?.resetsAt,
+    planType: typeof rate?.planType === 'string' ? rate.planType : undefined };
 }
 
 export function quotaEvents(rate: any): ToWebview[] {

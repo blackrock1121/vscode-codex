@@ -99,7 +99,7 @@ export function modelChoices(data: any[]): ModelChoice[] {
 
 export type ToWebview =
   | { kind: "models"; models: ModelChoice[] }
-  | { kind: "speed_context"; model?: string; billing?: BillingKind }
+  | { kind: "speed_context"; model?: string; billing?: BillingKind; planType?: string }
   /** `permissionMode` is the mode the CLI process ACTUALLY runs in (from its
    *  init event) — the picker syncs to this, never to a local guess. */
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }
@@ -151,7 +151,7 @@ export type ToWebview =
   | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number }
   /** weekModel*: 除 "all models" 外的按模型周限额行（CLI 输出哪个模型就显示哪个，
    *  不写死模型名，以服务端返回为准）。 */
-  | { kind: "usage"; sessionPct?: number; sessionResetAt?: number; weekPct?: number; weekResetAt?: number; weekModelPct?: number; weekModelName?: string }
+  | { kind: "usage"; sessionPct?: number; sessionResetAt?: number; weekPct?: number; weekResetAt?: number; weekModelPct?: number; weekModelName?: string; planType?: string }
   | { kind: "compacting" }
   | { kind: "compacted"; trigger: string; preTokens: number; postTokens: number }
   /** Subscription quota. `exhausted` blocks further turns until `resetsAt` —

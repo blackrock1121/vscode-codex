@@ -574,6 +574,16 @@ type UsageData = {
   weekModelName?: string;
 };
 let lastUsageData: UsageData = {};
+let currentPlanType: string | undefined;
+const PLAN_NAMES: Record<string, string> = {
+  free: "ChatGPT Free", go: "ChatGPT Go", plus: "ChatGPT Plus", pro: "ChatGPT Pro",
+  prolite: "ChatGPT Pro Lite", promax: "ChatGPT Pro Max", team: "ChatGPT Team",
+  business: "ChatGPT Business", enterprise: "ChatGPT Enterprise",
+  edu: "ChatGPT Edu", edu_plus: "ChatGPT Edu Plus", edu_pro: "ChatGPT Edu Pro",
+};
+function currentPlanName(): string | undefined {
+  return currentPlanType && Object.hasOwn(PLAN_NAMES, currentPlanType) ? PLAN_NAMES[currentPlanType] : undefined;
+}
 const usageMenu = $("usage-menu");
 function renderUsage(sessionPct?: number, sessionResetAt?: number, weekPct?: number, weekResetAt?: number, weekModelPct?: number, weekModelName?: string) {
   lastUsageData = { sessionPct, sessionResetAt, weekPct, weekResetAt, weekModelPct, weekModelName };
@@ -624,9 +634,10 @@ function usageRow(label: string, pct: number | undefined, resetText: string): st
 /** Expanded "套餐用量" panel — mirrors the official Plan-usage popover. */
 function buildUsageMenu() {
   const d = lastUsageData;
-  let html = `<div class="pick-head usage-head">套餐用量</div>`;
+  const plan = currentPlanName();
+  let html = `<div class="pick-head usage-head">套餐用量${plan ? ` · ${plan}` : ""}</div>`;
   if (typeof d.sessionPct === "number") html += usageRow("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt));
-  if (typeof d.weekPct === "number") html += usageRow("每周 · 全部模型", d.weekPct, cnReset(d.weekResetAt));
+  if (typeof d.weekPct === "number") html += usageRow("每周限额", d.weekPct, cnReset(d.weekResetAt));
   // 按模型的周限额行：CLI 输出了才显示（模型名由服务端提供）。
   // 模型名来自解析 CLI 的 stdout——外部字符串进 innerHTML 必须转义。
   if (typeof d.weekModelPct === "number") {
@@ -1070,6 +1081,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       }
       break;
     case "usage":
+      if (m.planType !== undefined) currentPlanType = m.planType;
       renderUsage(m.sessionPct, m.sessionResetAt, m.weekPct, m.weekResetAt, m.weekModelPct, m.weekModelName);
       break;
     case "compacting":
@@ -1151,6 +1163,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "speed_context":
       if (m.model !== undefined) actualSpeedModel = m.model;
       if (m.billing !== undefined) speedBilling = m.billing;
+      if (m.billing !== undefined && m.billing !== "chatgpt") currentPlanType = undefined;
+      else if (m.planType !== undefined) currentPlanType = m.planType;
+      if (!usageMenu.classList.contains("hidden")) buildUsageMenu();
       syncPickers();
       break;
     case "models":
@@ -2899,12 +2914,13 @@ function cmdHelp(): string {
 
 function cmdUsage(): string {
   const d = lastUsageData;
+  const plan = currentPlanName();
   const line = (label: string, pct?: number, reset?: string) =>
     typeof pct === "number" ? `  ${label}：${pct}%${reset ? " · " + reset : ""}` : `  ${label}：暂无数据`;
   return [
-    "订阅用量：",
+    `订阅用量${plan ? ` · ${plan}` : ""}：`,
     ...(typeof d.sessionPct === "number" ? [line("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt))] : []),
-    ...(typeof d.weekPct === "number" ? [line("每周 · 全部模型", d.weekPct, cnReset(d.weekResetAt))] : []),
+    ...(typeof d.weekPct === "number" ? [line("每周限额", d.weekPct, cnReset(d.weekResetAt))] : []),
     ...(typeof d.weekModelPct === "number" ? [line(`每周 · 仅 ${d.weekModelName || "特定模型"}`, d.weekModelPct)] : []),
   ].join("\n");
 }

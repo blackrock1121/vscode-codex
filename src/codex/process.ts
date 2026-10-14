@@ -157,7 +157,8 @@ export class CodexProcess {
       this.modelsReady = this.loadModels();
       const account = await this.timedRequest('account/read', {});
       if (!account.account && account.requiresOpenaiAuth) throw new Error('请先执行“Codex: 登录账号”，或在终端运行 codex login。');
-      this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type) });
+      this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type),
+        planType: account.account?.type === 'chatgpt' ? account.account.planType : undefined });
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
       const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
       // resume 不支持 dynamicTools；旧会话沿用持久化工具，原生异步提问另行接入同一暂停流程。
