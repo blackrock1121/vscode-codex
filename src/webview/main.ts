@@ -585,8 +585,8 @@ function availableResetCredits(): { count: number; cards: NonNullable<ResetCredi
 }
 let currentPlanType: string | undefined;
 const PLAN_NAMES: Record<string, string> = {
-  free: "ChatGPT Free", go: "ChatGPT Go", plus: "ChatGPT Plus", pro: "ChatGPT Pro",
-  prolite: "ChatGPT Pro Lite", promax: "ChatGPT Pro Max", team: "ChatGPT Team",
+  free: "ChatGPT Free", go: "ChatGPT Go", plus: "ChatGPT Plus", pro: "ChatGPT Pro 200",
+  prolite: "ChatGPT Pro 100", promax: "ChatGPT Pro 500", team: "ChatGPT Team",
   business: "ChatGPT Business", enterprise: "ChatGPT Enterprise",
   edu: "ChatGPT Edu", edu_plus: "ChatGPT Edu Plus", edu_pro: "ChatGPT Edu Pro",
 };
@@ -666,13 +666,13 @@ function resetCreditsHtml(): string {
   }
   return html + `</div>`;
 }
-/** Expanded "套餐用量" panel — mirrors the official Plan-usage popover. */
+/** Expanded weekly usage panel — mirrors the official Plan-usage popover. */
 function buildUsageMenu() {
   const d = lastUsageData;
   const plan = currentPlanName();
-  let html = `<div class="pick-head usage-head">套餐用量${plan ? ` · ${plan}` : ""}</div>`;
+  let html = `<div class="pick-head usage-head">每周限额${plan ? ` · ${plan}` : ""}</div>`;
   if (typeof d.sessionPct === "number") html += usageRow("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt));
-  if (typeof d.weekPct === "number") html += usageRow("每周限额", d.weekPct, cnReset(d.weekResetAt));
+  if (typeof d.weekPct === "number") html += usageRow("已使用", d.weekPct, cnReset(d.weekResetAt));
   // 按模型的周限额行：CLI 输出了才显示（模型名由服务端提供）。
   // 模型名来自解析 CLI 的 stdout——外部字符串进 innerHTML 必须转义。
   if (typeof d.weekModelPct === "number") {
