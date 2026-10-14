@@ -22,10 +22,20 @@ func callbackURL(_ value: String) -> URL? {
 }
 
 func notificationSession(_ value: String) -> String? {
-    guard let url = callbackURL(value) else { return nil }
-    let values = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.filter { $0.name == "session" } ?? []
-    guard values.count == 1, let value = values[0].value, !value.isEmpty else { return nil }
-    return value
+    guard let url = callbackURL(value),
+          let raw = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedQuery else { return nil }
+    // vscode.Uri.toString() 会把整个 query 中的 = 和 & 也编码。
+    // 仅在没有明文分隔符时解开这一层；不能修改用于系统跳转的原始 URL。
+    let query = raw.contains("=") ? raw : (raw.removingPercentEncoding ?? "")
+    let values = query.split(separator: "&", omittingEmptySubsequences: false).compactMap { item -> String? in
+        let pair = item.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+        guard pair[0].removingPercentEncoding == "session" else { return nil }
+        return pair.count == 2 ? String(pair[1]) : ""
+    }
+    guard values.count == 1,
+          let session = values[0].replacingOccurrences(of: "+", with: " ").removingPercentEncoding,
+          !session.isEmpty else { return nil }
+    return session
 }
 
 // 清理只接受完整会话 ID；编号与回调互相矛盾、缺失或重复参数时宁可保留。

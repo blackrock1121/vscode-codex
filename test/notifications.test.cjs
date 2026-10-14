@@ -10,8 +10,8 @@ const vscode = {
   UIKind: { Desktop: 1 },
   ConfigurationTarget: { Global: 1 },
   ViewColumn: { Active: -1 },
-  Uri: { from: parts => ({ ...parts, toString: () => `${parts.scheme}://${parts.authority}${parts.path}?${parts.query}` }) },
-  env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => ({ toString: () => uri.toString() + '&windowId=42' }) },
+  Uri: { from: parts => ({ ...parts, toString: () => `${parts.scheme}://${parts.authority}${parts.path}?${encodeURIComponent(parts.query)}` }) },
+  env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => vscode.Uri.from({ ...uri, query: uri.query + '&windowId=42' }) },
   workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目' }] },
   window: { showWarningMessage: text => warnings.push(text) },
 };
@@ -56,7 +56,7 @@ test('同一会话通知复用编号，重载窗口不变，派生和其他会�
   await p.sendLocalNotice('派生完成', '独立', 'branch');
   assert.deepEqual(nativeCalls.map(x=>x.data.id), ['codex-session:source','codex-session:source','codex-session:source','codex-session:branch']);
   assert.equal(nativeCalls[3].data.sessionId, 'branch');
-  assert.match(nativeCalls[3].data.url, /session=branch/);
+  assert.match(nativeCalls[3].data.url, /session%3Dbranch/);
   assert.ok(nativeCalls.every((x,i)=>i===0||x.data.createdAt>nativeCalls[i-1].data.createdAt));
 });
 
@@ -315,7 +315,7 @@ test('通知使用 VS Code 返回的完整窗口 URI，通过文件传递中文�
   assert.equal(call.file, '/usr/bin/open');
   assert.equal(call.mode, 0o700);
   assert.equal(call.args[2], '/tmp/extension with spaces/dist/Codex Copilot Notifications.app');
-  assert.equal(call.data.url, 'vscode://blackrock1121.vscode-codex/notification?window=window-A&session=session-A&windowId=42');
+  assert.equal(call.data.url, 'vscode://blackrock1121.vscode-codex/notification?window%3Dwindow-A%26session%3Dsession-A%26windowId%3D42');
   assert.equal(call.data.body, '中文 `echo` "引号"\n正文');
   assert.equal(call.args.some(arg => arg.includes('touch BAD')), false);
   await assert.rejects(fs.stat(path.dirname(call.request)), { code: 'ENOENT' });

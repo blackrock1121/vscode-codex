@@ -37,6 +37,12 @@ for notice in notices {
     precondition(!notificationBelongsToSession(identifier: notice.0, url: notice.1, sessionId: nil))
     precondition(!notificationBelongsToSession(identifier: notice.0, url: notice.1, sessionId: ""))
 }
+let encoded = "vscode://blackrock1121.vscode-codex/notification?window%3Dold-window%26session%3D\\(a)%26windowId%3D42"
+precondition(notificationSession(encoded) == a, "必须识别 VS Code 编码后的完整查询串")
+precondition(notificationBelongsToSession(identifier: "codex-session:\\(a)", url: encoded, sessionId: a))
+precondition(!notificationBelongsToSession(identifier: "codex-session:\\(branch)", url: encoded, sessionId: a))
+precondition(notificationSession(encoded + "%26session%3D\\(branch)") == nil)
+precondition(notificationSession("vscode://blackrock1121.vscode-codex/notification?window%3Dtest%26session%3D") == nil)
 print("ownership verified")
 `;
   const file = path.join(dir, 'main.swift'), binary = path.join(dir, 'ownership');
