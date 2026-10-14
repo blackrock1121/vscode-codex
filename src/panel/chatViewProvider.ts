@@ -979,14 +979,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "answerQuestion": {
                     if (ctx.answeringQuestion) break;
                     ctx.answeringQuestion = true;
+                    const answerStartedAt = performance.now();
+                    const answerSessionId = ctx.sessionId ?? "none";
                     try {
                         await this.submitQuestionAnswer(ctx, m.requestId, m.answers, m.images);
                     } catch (err) {
+                        this.output.appendLine(`[question] rejected session=${answerSessionId} elapsedMs=${Math.round(performance.now() - answerStartedAt)} errorType=${err instanceof Error ? err.name : typeof err}`);
                         this.post(ctx, { kind: "question_answer_rejected", requestId: m.requestId, message: String((err as Error)?.message ?? err) });
                         break;
                     } finally {
                         ctx.answeringQuestion = false;
                     }
+                    this.output.appendLine(`[question] accepted session=${answerSessionId} elapsedMs=${Math.round(performance.now() - answerStartedAt)}`);
                     ctx.pendingQuestionAt = undefined;
                     ctx.pendingPerm = undefined;
                     ctx.lastUserActionAt = Date.now();
@@ -2073,6 +2077,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return { result, rewoundToStart: false };
     }
     private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages): Promise<void> {
+        const startedAt = performance.now();
         const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
         const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
         if (ctx.questionAnswerSeq !== seq) {
@@ -2082,7 +2087,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const sourceId = ctx.sessionId;
         const answer = proc?.prepareQuestionAnswer(requestId, answers, images);
         if (!sourceId || !proc || !answer) throw new Error("答案未提交，问题可能已失效，请重新打开会话后重试。");
+        this.output.appendLine(`[question] preparing session=${sourceId}`);
         await this.store.hydrate(sourceId);
+        this.output.appendLine(`[question] hydrated session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}`);
         const cut = this.store.countLines(sourceId);
         if (this.store.rewindLeafFor(sourceId, cut) !== answer.turnId) throw new Error("问题与当前会话进度不一致，未提交答案，请重新打开会话。");
         if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId) throw new Error("提交已取消，原问题或会话状态已变化。");
@@ -2095,6 +2102,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             snapshot = new WorkspaceSnapshot(roots, 20000, excludes, this.localSnapshotExcludedPaths(roots));
             await snapshot.capture();
         }
+        this.output.appendLine(`[question] snapshot_ready session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}`);
         if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images)) throw new Error("提交已取消，原问题或会话状态已变化。");
         const displayText = userView([{ type: "text", text: answer.text }]).text;
         const checkpointId = ctx.checkpoints.beginTurn(displayText, cut, !!snapshot);
@@ -2105,7 +2113,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.checkpoints.discardEmpty(checkpointId);
             throw err;
         }
-        this.output.appendLine(`[question] session=${sourceId} 答案已转交 Codex，开始清理待回答通知`);
+        this.output.appendLine(`[question] handed_off session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}; clearing_notification=true`);
         void this.clearSessionNotification(sourceId, "question_answer");
         this.post(ctx, { kind: "question_checkpoint", requestId, checkpointId });
         if (snapshot) this.reportSnapshotSkips(ctx, snapshot);
@@ -2864,9 +2872,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const epoch = this.notificationVersion(sessionId);
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
+        const event = extra.waiting === true ? "waiting" : extra.isError === true ? "error" : "complete";
+        const localEnabled = cfg.get<boolean>("notifyLocal") === true;
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
         let muted = false;
-        if (cfg.get<boolean>("notifyLocal") === true && localNotificationsSupported() && isFeishuWebhook(url) && quiet?.enabled) {
+        if (localEnabled && localNotificationsSupported() && isFeishuWebhook(url) && quiet?.enabled) {
             try {
                 void this.workdayCalendar.refresh();
                 muted = this.workdayCalendar.shouldMute(quiet);
@@ -2874,24 +2884,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.output.appendLine(`[notify] 日历判断失败，飞书照常推送: ${String(error)}`);
             }
         }
+        this.output.appendLine(`[notify] dispatch session=${sessionId ?? "none"} event=${event} local=${localEnabled} remote=${!!url && !muted} muted=${muted} epoch=${epoch}`);
         if (muted) this.output.appendLine("[notify] 当前为中国大陆工作日的配置时段，已跳过飞书推送（本机通知不受影响）");
         const sendRemote = () => {
+            const remoteStartedAt = performance.now();
             void this.sendWebhook(url, msg, extra).then(r => {
-                this.output.appendLine(`[notify] ${r.ok ? `webhook HTTP ${r.status}` : `webhook 失败: ${r.error}`}`);
-            }).catch(error => this.output.appendLine(`[notify] webhook 失败: ${String(error)}`));
+                this.output.appendLine(`[notify] remote_result session=${sessionId ?? "none"} event=${event} ok=${r.ok} status=${r.status ?? "none"} elapsedMs=${Math.round(performance.now() - remoteStartedAt)}`);
+            }).catch(error => this.output.appendLine(`[notify] remote_error session=${sessionId ?? "none"} event=${event} errorType=${error instanceof Error ? error.name : typeof error}`));
         };
         if (url && !muted) sendRemote();
-        if (cfg.get<boolean>("notifyLocal")) {
+        if (localEnabled) {
             const { title, body } = formatLocalNotification(msg, {
                 ...extra,
                 project: typeof extra.project === "string" ? localNotificationProject(extra.project) : extra.project,
             });
+            const localStartedAt = performance.now();
             void this.sendLocalNotice(title, body, sessionId).then(sent => {
-                this.output.appendLine(sent === false ? "[notify] 已跳过失效的旧通知" : "[notify] 系统已接受本机通知");
+                this.output.appendLine(`[notify] local_result session=${sessionId ?? "none"} event=${event} result=${sent === false ? "stale" : "accepted"} elapsedMs=${Math.round(performance.now() - localStartedAt)}`);
             }).catch(error => {
-                this.output.appendLine(`[notify] 本机通知失败（不影响远程推送）: ${String(error)}`);
+                this.output.appendLine(`[notify] local_error session=${sessionId ?? "none"} event=${event} elapsedMs=${Math.round(performance.now() - localStartedAt)} errorType=${error instanceof Error ? error.name : typeof error}`);
                 if (muted && ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch) {
-                    this.output.appendLine("[notify] 本机通知未成功，取消本条消息的飞书静默并补发");
+                    this.output.appendLine(`[notify] remote_fallback session=${sessionId ?? "none"} event=${event}`);
                     sendRemote();
                 }
             });
@@ -2940,39 +2953,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async clearSessionNotification(sessionId?: string, reason = "user_action"): Promise<void> {
         if (!sessionId) return;
-        (this.notificationEpochs ??= new Map()).set(sessionId, this.notificationVersion(sessionId) + 1);
-        if (!this.config().get<boolean>("notifyLocal") || !localNotificationsSupported()) return;
+        const epoch = this.notificationVersion(sessionId) + 1;
+        (this.notificationEpochs ??= new Map()).set(sessionId, epoch);
+        const enabled = this.config().get<boolean>("notifyLocal") === true;
+        const supported = enabled && localNotificationsSupported();
+        if (!enabled || !supported) {
+            this.output.appendLine(`[notify] clear_skipped session=${sessionId} reason=${reason} enabled=${enabled} supported=${supported} epoch=${epoch}`);
+            return;
+        }
         const createdAt = notificationTime();
         const extensionPath = this.context.extensionUri.fsPath;
-        this.output.appendLine(`[notify] clear_requested session=${sessionId} reason=${reason}`);
+        const startedAt = performance.now();
+        this.output.appendLine(`[notify] clear_requested session=${sessionId} reason=${reason} epoch=${epoch}`);
         // 各安装路径对应不同的系统通知归属，旧路径清理不能阻塞当前路径的新通知。
         void clearPreviousLocalNotifications(extensionPath, sessionId, createdAt).then(result => {
-            if (result.completed || result.failed)
-                this.output.appendLine(`[notify] clear_previous session=${sessionId} completed=${result.completed} failed=${result.failed}`);
-        }).catch(error => this.output.appendLine(`[notify] 历史版本通知清理失败 session=${sessionId}: ${String(error)}`));
+            this.output.appendLine(`[notify] clear_previous session=${sessionId} completed=${result.completed} failed=${result.failed} elapsedMs=${Math.round(performance.now() - startedAt)}`);
+        }).catch(error => this.output.appendLine(`[notify] clear_previous_error session=${sessionId} errorType=${error instanceof Error ? error.name : typeof error}`));
         return queueSessionNotification(sessionId, () => clearLocalNotification(extensionPath, sessionId, createdAt))
-            .then(() => this.output.appendLine(`[notify] clear_completed session=${sessionId} reason=${reason}`))
-            .catch(error => this.output.appendLine(`[notify] 清理会话通知失败 session=${sessionId}: ${String(error)}`));
+            .then(() => this.output.appendLine(`[notify] clear_acknowledged session=${sessionId} reason=${reason} elapsedMs=${Math.round(performance.now() - startedAt)}`))
+            .catch(error => this.output.appendLine(`[notify] clear_error session=${sessionId} reason=${reason} errorType=${error instanceof Error ? error.name : typeof error}`));
     }
     async handleNotificationUri(uri: vscode.Uri): Promise<void> {
         if (uri.path !== "/notification") return;
         const query = new URLSearchParams(uri.query);
+        const sessionId = query.get("session");
         if (query.get("window") !== this.notificationWindowKey) {
+            this.output.appendLine(`[notify] click_rejected session=${sessionId ?? "none"} reason=other_window`);
             void vscode.window.showWarningMessage("该通知所属的 VS Code 窗口已关闭或重载，请在对应项目的会话历史中打开任务。");
             return;
         }
-        const sessionId = query.get("session");
         try {
             if (!sessionId) {
+                this.output.appendLine("[notify] click_open_settings");
                 this.showNotifyConfig();
             } else if ([...this.sessions].some(ctx => ctx.sessionId === sessionId) || this.detached.has(sessionId) ||
                        this.store.list().some(session => session.id === sessionId)) {
+                this.output.appendLine(`[notify] click_open_session session=${sessionId}`);
                 await this.openSession(sessionId);
             } else {
+                this.output.appendLine(`[notify] click_rejected session=${sessionId} reason=missing_session`);
                 void vscode.window.showWarningMessage("该通知对应的会话已不在当前项目的历史中。");
             }
         } catch (error) {
-            this.output.appendLine(`[notify] 返回会话失败: ${String(error)}`);
+            this.output.appendLine(`[notify] click_error session=${sessionId ?? "none"} errorType=${error instanceof Error ? error.name : typeof error}`);
             void vscode.window.showWarningMessage("未能打开通知对应的会话，请从会话历史重试。");
         }
     }
