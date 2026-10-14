@@ -1318,15 +1318,16 @@ const FILE_VIEW_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "Notebook
 const DIFF_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FOLDABLE_TOOLS = new Set(["Bash", "WebSearch", "WebFetch"]);
 const TOOL_GROUP_MIN = 2;
-type ToolGroupKind = "bash" | "edit" | "web" | "mixed";
+type ToolGroupKind = "bash" | "edit" | "web" | "other" | "mixed";
 let toolBodySeq = 0;
 let toolGroupSeq = 0;
 
 function toolGroupKind(name: string): Exclude<ToolGroupKind, "mixed"> | null {
+  if (name === "AskUserQuestion") return null;
   if (name === "Bash") return "bash";
   if (DIFF_TOOLS.has(name)) return "edit";
   if (name === "WebSearch" || name === "WebFetch") return "web";
-  return null;
+  return "other";
 }
 
 function setToolFolded(card: HTMLElement, folded: boolean) {
@@ -1356,7 +1357,7 @@ function setToolGroupFolded(group: HTMLElement, folded: boolean) {
 
 function updateToolGroup(group: HTMLElement) {
   const cards = Array.from(group.querySelectorAll<HTMLElement>(".tool-group-items > .step > .tool-card"));
-  const counts = { bash: 0, edit: 0, web: 0 };
+  const counts = { bash: 0, edit: 0, web: 0, other: 0 };
   for (const card of cards) {
     const kind = toolGroupKind(card.dataset.toolName || "");
     if (kind) counts[kind]++;
@@ -1377,6 +1378,7 @@ function updateToolGroup(group: HTMLElement) {
       counts.bash ? `${counts.bash} Bash` : "",
       counts.edit ? `${counts.edit} 文件修改` : "",
       counts.web ? `${counts.web} 网页检索` : "",
+      counts.other ? `${counts.other} 其他工具` : "",
     ].filter(Boolean).join(" · ")}` :
       kind === "edit" && files.size ? ` · ${files.size === 1 ? shortPath([...files][0]!) : `${files.size} 文件`}` : "");
   group.querySelector(".tool-group-status")!.textContent = [
@@ -1392,8 +1394,8 @@ function updateToolGroup(group: HTMLElement) {
   group.dataset.waitingCount = String(waiting);
 }
 
-/** Consecutive Bash, web tools and file modifications share one timeline node. Text,
- *  other tools and approvals end a run; child cards retain their order. */
+/** Any two consecutive tool calls share one timeline node, regardless of name.
+ *  Text and interactive questions/approvals end a run; child cards retain their order. */
 function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false) {
   const group = el("div", "step tool-group-step collapsed");
   const id = `tool-group-${++toolGroupSeq}`;

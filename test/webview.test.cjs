@@ -167,6 +167,50 @@ test('两次 Bash 就成组，思考事件不占行且每条命令可继续展�
  assert.equal(group.querySelectorAll('.tool-group-items > .foldable-step').length,5);
  assert.deepEqual(errors,[]);
 });
+test('任意不同工具连续两次立即合并，第三种工具继续加入同一组',t=>{
+ for(const names of [
+  ['Bash','WebSearch','mcp__example__lookup'],
+  ['Read','Grep','Glob'],
+  ['Skill','Agent','TodoWrite'],
+  ['mcp__example__first','mcp__example__second','future-tool'],
+ ]){
+  const {w,emit,errors}=setup(t);
+  names.forEach((name,index)=>{
+   emit({kind:'tool_input',toolId:'any'+index,name,input:{command:'echo ok',query:'资料',file_path:'/project/a.ts',pattern:'test',skill:'test',todos:[]}});
+   if(index===0){
+    assert.equal(w.document.querySelector('.tool-group-step'),null);
+    emit({kind:'tool_result',toolUseId:'any0',content:'ok',isError:false});
+   }else{
+    const groups=w.document.querySelectorAll('.tool-group-step');
+    assert.equal(groups.length,1);
+    assert.equal(w.document.querySelectorAll('.msg-body > .step').length,1);
+    assert.equal(groups[0].querySelectorAll('.tool-card').length,index+1,'第二次调用即合并，无需同类工具重复');
+    assert.equal(groups[0].classList.contains('collapsed'),true);
+    assert.match(groups[0].querySelector('.tool-group-status').textContent,/1 完成/);
+   }
+  });
+  assert.deepEqual([...w.document.querySelectorAll('.tool-group-items .tool-card')].map(card=>card.dataset.toolName),names);
+  assert.deepEqual(errors,[]);
+ }
+});
+test('历史中的读取、搜索、技能和自定义工具连续合并，交互问题仍可直接回答',t=>{
+ const {w,emit,errors}=setup(t);
+ const names=['Read','Grep','Glob','Skill','Agent','TodoWrite','mcp__example__lookup','Bash','WebSearch'];
+ emit({kind:'load_history',items:[{type:'user',text:'检查项目'},...names.map((name,index)=>({type:'tool',toolId:'all-history'+index,name,input:{file_path:'/project/a.ts',skill:'test',pattern:'test',command:'echo ok',query:'资料'},result:'ok',isError:false}))],checkpoints:[]});
+ const group=w.document.querySelector('.tool-group-step');
+ assert.equal(w.document.querySelectorAll('.msg-body > .step').length,1);
+ assert.deepEqual([...group.querySelectorAll('.tool-card')].map(card=>card.dataset.toolName),names);
+ assert.match(group.querySelector('.tool-group-status').textContent,/9 完成/);
+ assert.equal(group.classList.contains('collapsed'),true);
+ emit({kind:'permission_request',requestId:'all-question',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'选择方案',options:[{label:'方案一'},{label:'方案二'}]}]},suggestions:[]});
+ const question=w.document.querySelector('.askp');
+ assert.ok(question);
+ assert.equal(question.closest('.tool-group-step'),null);
+ emit({kind:'tool_input',toolId:'after-question1',name:'Read',input:{file_path:'/project/b.ts'}});
+ emit({kind:'tool_input',toolId:'after-question2',name:'mcp__example__lookup',input:{query:'核对'}});
+ assert.equal(w.document.querySelectorAll('.tool-group-step').length,2);
+ assert.deepEqual(errors,[]);
+});
 test('交错的 Bash 和文件修改合成一组，正文断开，末尾两次 Bash 也合并',t=>{
  const {w,emit,errors}=setup(t);
  const names=['Bash','Bash','Edit','Bash','Bash','Edit','Write'];
@@ -273,7 +317,7 @@ test('搜索加入混合组后到达的审批仍独立显示，前后工具按�
  assert.deepEqual([...group.querySelectorAll('.tool-card')].map(card=>card.dataset.toolId),['web-approval2','web-approval3']);
  assert.deepEqual(errors,[]);
 });
-test('正文与读取工具会断开 Bash 组，失败保留在组内而待确认独立显示',t=>{
+test('读取工具继续加入 Bash 组，正文断开，失败保留在组内而待确认独立显示',t=>{
  const {w,emit,errors}=setup(t);
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'first'+i,name:'Bash',input:{command:'echo '+i}});
  const first=w.document.querySelector('.tool-group-step');
@@ -292,7 +336,8 @@ test('正文与读取工具会断开 Bash 组，失败保留在组内而待确�
  assert.equal(first.classList.contains('collapsed'),true);
  emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/project/a.ts'}});
  emit({kind:'tool_input',toolId:'lone',name:'Bash',input:{command:'echo alone'}});
- assert.equal(w.document.querySelector('.tool-card[data-tool-id="lone"]').closest('.tool-group-step'),null);
+ assert.equal(w.document.querySelector('.tool-card[data-tool-id="lone"]').closest('.tool-group-step'),first);
+ assert.equal(first.querySelector('.tool-group-count').textContent,'5 次 · 4 Bash · 1 其他工具');
  emit({kind:'block_start',blockType:'text'});
  emit({kind:'text_delta',text:'这是正文'});
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'next'+i,name:'Bash',input:{command:'echo next'+i}});
@@ -373,7 +418,7 @@ test('两次文件修改就成组，保留每个文件的差异入口',t=>{
  assert.ok(sent.some(m=>m.type==='openDiff' && m.path==='/project/src/b.ts'));
  assert.deepEqual(errors,[]);
 });
-test('编辑组遇到读取或正文会断开，失败详情默认收起，待确认独立显示',t=>{
+test('读取加入编辑组，正文断开，失败详情默认收起，待确认独立显示',t=>{
  const {w,emit,errors}=setup(t);
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'edit'+i,name:'Edit',input:{file_path:'/project/a.ts',old_string:'a',new_string:String(i)}});
  const first=w.document.querySelector('.tool-group-step[data-group-kind="edit"]');
@@ -392,10 +437,11 @@ test('编辑组遇到读取或正文会断开，失败详情默认收起，待�
  assert.equal(failed.classList.contains('error-details-collapsed'),true);
  emit({kind:'tool_input',toolId:'read',name:'Read',input:{file_path:'/project/a.ts'}});
  emit({kind:'tool_input',toolId:'single',name:'Edit',input:{file_path:'/project/b.ts',old_string:'a',new_string:'b'}});
- assert.equal(w.document.querySelector('.tool-card[data-tool-id="single"]').closest('.tool-group-step'),null);
+ assert.equal(w.document.querySelector('.tool-card[data-tool-id="single"]').closest('.tool-group-step'),first);
+ assert.equal(first.querySelector('.tool-group-count').textContent,'5 次 · 4 文件修改 · 1 其他工具');
  emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'继续修改'});
  for(let i=1;i<=3;i++)emit({kind:'tool_input',toolId:'later'+i,name:'MultiEdit',input:{file_path:'/project/c.ts',edits:[{old_string:'a',new_string:'b'}]}});
- const groups=w.document.querySelectorAll('.tool-group-step[data-group-kind="edit"]');
+ const groups=w.document.querySelectorAll('.tool-group-step');
  assert.equal(groups.length,2);
  emit({kind:'permission_request',requestId:'edit-approval',toolUseId:'later3',toolName:'MultiEdit',input:{file_path:'/project/c.ts'},suggestions:[]});
  const approval=w.document.querySelector('.tool-card[data-tool-id="later3"]');
