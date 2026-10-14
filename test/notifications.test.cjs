@@ -5,7 +5,7 @@ const path = require('node:path');
 const Module = require('node:module');
 const { JSDOM } = require('jsdom');
 
-let config = {}, warnings = [], nativeCalls = [], resultError;
+let config = {}, warnings = [], nativeCalls = [], resultError, beforeNativeResult;
 const vscode = {
   UIKind: { Desktop: 1 },
   ConfigurationTarget: { Global: 1 },
@@ -22,7 +22,9 @@ Module._load = function(id, ...args) {
     execFile(file, args, options, callback) {
       (async () => {
         const request = args.at(-1), dir = path.dirname(request);
-        nativeCalls.push({ file, args, options, request, data: JSON.parse(await fs.readFile(request, 'utf8')), mode: (await fs.stat(dir)).mode & 0o777 });
+        const call = { file, args, options, request, data: JSON.parse(await fs.readFile(request, 'utf8')), mode: (await fs.stat(dir)).mode & 0o777 };
+        nativeCalls.push(call);
+        await beforeNativeResult?.(call);
         await fs.writeFile(path.join(dir, 'result.json'), JSON.stringify(resultError ? { ok: false, error: resultError } : { ok: true }));
       })().then(() => callback(null, '', ''), callback);
     },
@@ -48,6 +50,23 @@ function provider() {
   p.usageAlertDelivered = new Map();
   p.output = { appendLine: () => {} };
   return p;
+}
+
+function closingProvider(ctx, other) {
+  const p = provider();
+  p.sessions = new Set([ctx, ...(other ? [other] : [])]);
+  p.detached = new Map();
+  p.activeCtx = ctx;
+  p.broadcastRunning = () => {};
+  p.refreshSessions = () => {};
+  return p;
+}
+
+function captureClearing(p) {
+  const clear = p.clearSessionNotification.bind(p);
+  let pending;
+  p.clearSessionNotification = (...args) => pending = clear(...args);
+  return () => pending;
 }
 
 test('同一会话通知复用编号，重载窗口不变，派生和其他会话有独立编号', async () => {
@@ -116,6 +135,162 @@ test('直接发送消息成功后清理该会话，发送失败保留旧通知',
     assert.deepEqual(cleared,accepted?['branch']:[]);
   }
 });
+
+test('关闭已完成会话清除该完整会话 ID 的通知，不清除同前缀的派生会话', async () => {
+  config = { notifyLocal: true }; nativeCalls = []; resultError = undefined;
+  const source = '01999999-aaaa-7000-8000-000000000001', branch = '01999999-aaaa-7000-8000-000000000002';
+  const ctx = { sessionId: source }, other = { sessionId: branch };
+  const p = closingProvider(ctx, other), cleared = captureClearing(p), logs = [];
+  p.output.appendLine = line => logs.push(line);
+  await p.sendLocalNotice('原会话已完成', '', source);
+  await p.sendLocalNotice('派生会话已完成', '', branch);
+  p.onPanelClosed(ctx);
+  await cleared();
+  assert.deepEqual(nativeCalls.map(call => [call.data.operation, call.data.sessionId]), [
+    ['show', source], ['show', branch], ['clear', source],
+  ]);
+  assert.equal(nativeCalls.at(-1).data.id, `codex-session:${source}`);
+  assert.equal(p.sessions.has(ctx), false);
+  assert.equal(p.sessions.has(other), true);
+  assert.equal(p.activeCtx, undefined);
+  assert.equal(p.lastClosedSessionId, source);
+  assert.ok(logs.some(line => line.includes(`session=${source} reason=session_closed`)));
+});
+
+test('关闭无进程或进程已退出的会话也清除通知并释放旧进程', () => {
+  for (const exited of [false, true]) {
+    let disposed = 0;
+    const ctx = { sessionId: exited ? 'closed-exited' : 'closed-without-process',
+      proc: exited ? { isExited: true, dispose: () => disposed++ } : undefined,
+      starting: Promise.resolve() };
+    const p = closingProvider(ctx), cleared = [];
+    p.clearSessionNotification = (...args) => { cleared.push(args); return Promise.resolve(); };
+    p.onPanelClosed(ctx);
+    assert.deepEqual(cleared, [[ctx.sessionId, 'session_closed']]);
+    assert.equal(ctx.proc, undefined);
+    assert.equal(ctx.starting, undefined);
+    assert.equal(disposed, exited ? 1 : 0);
+    assert.equal(p.detached.has(ctx.sessionId), false);
+  }
+});
+
+test('关闭会话后，慢跳转地址解析完成也不能重新展示旧通知', async t => {
+  config = { notifyLocal: true }; nativeCalls = []; resultError = undefined;
+  const ctx = { sessionId: 'closed-slow-uri' }, p = closingProvider(ctx), cleared = captureClearing(p);
+  const original = vscode.env.asExternalUri;
+  let release, entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  vscode.env.asExternalUri = async uri => {
+    entered();
+    await new Promise(resolve => { release = resolve; });
+    return original(uri);
+  };
+  t.after(() => { vscode.env.asExternalUri = original; release?.(); });
+  const old = p.sendLocalNotice('关闭前完成', '', ctx.sessionId);
+  await started;
+  p.onPanelClosed(ctx);
+  await cleared();
+  assert.deepEqual(nativeCalls.map(call => call.data.operation), ['clear']);
+  release();
+  assert.equal(await old, false);
+  assert.deepEqual(nativeCalls.map(call => call.data.operation), ['clear']);
+});
+
+test('关闭会话让已排队的旧提醒失效，正在发送的旧提醒之后仍执行清理', async t => {
+  config = { notifyLocal: true }; nativeCalls = []; resultError = undefined;
+  const ctx = { sessionId: 'closed-queued-notice' }, p = closingProvider(ctx), cleared = captureClearing(p);
+  let release, entered;
+  const started = new Promise(resolve => { entered = resolve; });
+  beforeNativeResult = async call => {
+    if (call.data.sessionId === ctx.sessionId && call.data.title === '正在发送的旧提醒') {
+      entered();
+      await new Promise(resolve => { release = resolve; });
+    }
+  };
+  t.after(() => { beforeNativeResult = undefined; release?.(); });
+  const sending = p.sendLocalNotice('正在发送的旧提醒', '', ctx.sessionId);
+  await started;
+  const queued = p.sendLocalNotice('排队中的旧提醒', '', ctx.sessionId);
+  await flush();
+  p.onPanelClosed(ctx);
+  release();
+  assert.equal(await sending, true);
+  assert.equal(await queued, false);
+  await cleared();
+  assert.deepEqual(nativeCalls.map(call => call.data.operation), ['show', 'clear']);
+});
+
+test('关闭运行中的标签保留后台进程，取消旧等待提醒并允许未来完成通知', async t => {
+  t.mock.timers.enable({ apis: ['setTimeout', 'Date'], now: 100000 });
+  config = { notifyWebhook: 'https://example.invalid/hook', notifyMinDurationSec: 60, notifyLocal: false };
+  const proc = { isBusy: true, isExited: false, dispose: () => assert.fail('关闭标签不能终止后台任务') };
+  const req = { requestId: 'closed-question', toolName: 'AskUserQuestion', input: { questions: [{ question: '继续？' }] } };
+  const ctx = { sessionId: 'closed-background', proc, pendingPerm: { ...req, kind: 'permission_request' },
+    lastUserActionAt: Date.now(), lastUserText: '后台任务' };
+  const p = closingProvider(ctx), sent = [], cleared = captureClearing(p);
+  p.dispatchNotification = (...args) => sent.push(args);
+  p.maybeNotifyWaiting(ctx, req);
+  p.onPanelClosed(ctx);
+  await cleared();
+  assert.equal(p.detached.get(ctx.sessionId), ctx);
+  assert.equal(ctx.proc, proc);
+  t.mock.timers.tick(60000);
+  assert.equal(sent.length, 0, '关闭前的延迟等待提醒不能在关闭后重新出现');
+  assert.equal(p.notifyTimers.size, 0);
+  p.maybeNotifyTurnDone(ctx, { isError: false, durationMs: 60000 });
+  assert.equal(sent.length, 1, '后台任务在关闭后真正完成时仍可提醒');
+  assert.equal(sent[0][0].sessionId, ctx.sessionId);
+  assert.equal(sent[0][2].waiting, undefined);
+  assert.equal(sent[0][2].question, '后台任务');
+});
+
+test('结果已收到后在快照整理期间关闭会话不再通知，关闭后才收到结果仍正常通知', async () => {
+  config = { notifyWebhook: 'https://example.invalid/hook', notifyMinDurationSec: 60, notifyLocal: false };
+  for (const closeBeforeResult of [false, true]) {
+    let release;
+    const changed = new Promise(resolve => { release = resolve; });
+    const checkpoints = [], posts = [], notices = [], hydrated = [], refreshed = [];
+    const ctx = {
+      sessionId: closeBeforeResult ? 'result-after-close' : 'close-during-finalize',
+      proc: { isBusy: true, isExited: false, dispose: () => assert.fail('快照整理期间关闭不能终止后台进程') },
+      lastUserText: '整理文件还原点', mayHaveModifiedWorkspace: true,
+      snapshot: { changed: () => changed, unrestorableChanges: new Set(['/tmp/unrestorable.txt']) },
+      checkpoints: {
+        recordSnapshot: (...args) => checkpoints.push(['snapshot', ...args]),
+        recordUnrestorable: files => checkpoints.push(['unrestorable', [...files]]),
+        completeSnapshot: () => checkpoints.push(['complete']),
+        flush: () => checkpoints.push(['flush']),
+      },
+    };
+    const p = closingProvider(ctx), cleared = captureClearing(p);
+    p.post = (_ctx, message) => posts.push(message);
+    p.dispatchNotification = (...args) => notices.push(args);
+    p.store.hydrate = async id => hydrated.push(id);
+    p.refreshChangedFiles = current => refreshed.push(current);
+    p.fetchUsage = () => refreshed.push('usage');
+    const result = { kind: 'result', isError: false, durationMs: 60000, numTurns: 1 };
+    if (closeBeforeResult) p.onPanelClosed(ctx);
+    p.handleEmit(ctx, result);
+    assert.equal(posts.length, 0, '结果应等待文件快照整理');
+    if (!closeBeforeResult) p.onPanelClosed(ctx);
+    await cleared();
+    release(new Map([['/tmp/modified.txt', '原始文件内容']]));
+    await ctx.finalizing;
+    assert.deepEqual(checkpoints, [
+      ['snapshot', '/tmp/modified.txt', '原始文件内容'],
+      ['unrestorable', ['/tmp/unrestorable.txt']], ['complete'], ['flush'],
+    ]);
+    assert.deepEqual(posts, [{ kind: 'busy', busy: false }, result]);
+    assert.deepEqual(hydrated, [ctx.sessionId]);
+    assert.deepEqual(refreshed, [ctx, 'usage']);
+    assert.equal(ctx.snapshot, undefined);
+    assert.equal(ctx.lastUserText, undefined);
+    assert.equal(p.detached.get(ctx.sessionId), ctx);
+    assert.equal(notices.length, closeBeforeResult ? 1 : 0);
+    if (closeBeforeResult) assert.equal(notices[0][2].question, '整理文件还原点');
+  }
+});
+
 test('完整 UUID 用于通知去重，相同前缀的不同会话不会覆盖',async()=>{
   nativeCalls=[];const p=provider();
   const a='01999999-aaaa-7000-8000-000000000001',b='01999999-aaaa-7000-8000-000000000002';

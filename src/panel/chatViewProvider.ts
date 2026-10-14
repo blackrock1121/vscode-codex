@@ -637,6 +637,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private onPanelClosed(ctx: SessionCtx): void {
         this.sessions.delete(ctx);
+        // 关闭标签清理当前提醒，并使关闭前仍在排队的旧提醒失效。
+        void this.clearSessionNotification(ctx.sessionId, "session_closed");
         if (ctx.sessionId)
             this.lastClosedSessionId = ctx.sessionId;
         if (this.activeCtx === ctx)
@@ -2719,6 +2721,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (e.kind === "busy" && !e.busy)
             return;
         if (e.kind === "result") {
+            // 结果已收到；快照整理期间关闭或回复后，不能再补发这条旧提醒。
+            const sessionId = ctx.sessionId;
+            const epoch = this.notificationVersion(sessionId);
             ctx.finalizing = (async () => {
                 const finalizeAt = Date.now();
                 try {
@@ -2737,13 +2742,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 this.output.appendLine(`[${new Date().toISOString()}] [finalize] 文件差异与还原点整理 ${Date.now() - finalizeAt}ms`);
                 this.handleEmitInner(ctx, { kind: "busy", busy: false });
-                this.handleEmitInner(ctx, e);
+                this.handleEmitInner(ctx, e, ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch);
             })();
             return;
         }
         this.handleEmitInner(ctx, e);
     }
-    private handleEmitInner(ctx: SessionCtx, e: ToWebview): void {
+    private handleEmitInner(ctx: SessionCtx, e: ToWebview, notifyTurnDone = true): void {
         if (e.kind === "usage") this.maybeNotifyUsage(e);
         if (e.kind === "models") this.modelCatalog = e.models;
         if (e.kind === "compacting") ctx.compacting = true;
@@ -2822,16 +2827,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 void this.store.hydrate(ctx.sessionId).catch(e => this.output.appendLine(String(e)));
             this.refreshSessions();
             this.fetchUsage();
-            this.maybeNotifyTurnDone(ctx, e);
+            this.maybeNotifyTurnDone(ctx, e, notifyTurnDone);
         }
     }
     private maybeNotifyTurnDone(ctx: SessionCtx, e: {
         durationMs?: number;
         isError: boolean;
-    }): void {
+    }, notificationValid = true): void {
         const lastText = ctx.lastUserText;
         ctx.lastUserText = undefined;
-        if (!lastText)
+        if (!lastText || !notificationValid)
             return;
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
