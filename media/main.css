@@ -784,9 +784,10 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
 .tool-group-toggle {
   display: flex; align-items: center; gap: 6px;
   width: 100%; min-height: 28px; padding: 2px 0;
-  border: 0; background: transparent; color: var(--vscode-foreground);
-  font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+  border: 0; background: transparent; color: var(--vscode-descriptionForeground);
+  font: inherit; font-size: 11px; text-align: left; cursor: pointer;
 }
+.tool-group-toggle .tool-name { color: var(--vscode-descriptionForeground); font-weight: 500; }
 .tool-group-toggle:hover .tool-name { color: var(--vscode-textLink-foreground); }
 .tool-group-toggle:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; border-radius: 3px; }
 .tool-group-count, .tool-group-status { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
