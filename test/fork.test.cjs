@@ -24,7 +24,7 @@ async function fixture(t,cut=1){
  const ctx={sessionId:'source',checkpoints,proc:{isBusy:true}};
  const provider=Object.create(ChatViewProvider.prototype);
  const messages=[],forks=[],opened=[];let reads=0;
- Object.assign(provider,{store,forking:new Set(),restoring:new Set(),sessions:new Set([ctx]),detached:new Map(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},openSession:async id=>opened.push(id)});
+ Object.assign(provider,{store,forking:new Set(),restoring:new Set(),sessions:new Set([ctx]),detached:new Map(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},sessionEffort:()=> 'medium',saveSessionEffort:async()=>{},openSession:async id=>opened.push(id)});
  store.hydrate=async id=>{assert.equal(id,'source');reads++;store.threads.set(id,{id,turns:[first,current]});};
  store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
  store.fork=async(source,leaf)=>{forks.push({source,leaf});store.threads.set('branch',{id:'branch',turns:[first]});return 'branch';};

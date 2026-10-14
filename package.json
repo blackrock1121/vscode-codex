@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.97",
+  "version": "0.1.98",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -231,8 +231,8 @@
             "max",
             "ultra"
           ],
-          "default": "",
-          "description": "推理强度；留空使用 Codex 默认值，可用档位取决于模型。"
+          "default": "medium",
+          "description": "新会话的默认推理强度为 medium（均衡）；会话内选择独立保存，仅影响该会话下一轮。留空使用模型默认值，可用档位取决于模型。"
         },
         "codexChat.snapshotFilesForRestore": {
           "type": "boolean",
@@ -294,22 +294,20 @@
           "type": "boolean",
           "default": false,
           "description": "旧版快速开关，仅用于兼容。",
-          "deprecationMessage": "请改用 codexChat.speedMode 三档选择器；尚未设置新选项时仍兼容此旧值。"
+          "deprecationMessage": "请改用 codexChat.speedMode 快速模式开关；尚未设置新选项时仍兼容此旧值。"
         },
         "codexChat.speedMode": {
           "type": "string",
           "enum": [
             "default",
-            "fast",
-            "ultrafast"
+            "fast"
           ],
           "default": "default",
           "enumDescriptions": [
             "普通：订阅内额度 1×。",
-            "快速：官方已列模型订阅内额度 2.5×；需当前账号模型列表提供该档位。",
-            "超高速：GPT-6 Astra / GPT-6.1 Sol 订阅内额度 8×；需符合套餐、工作区和地区条件且模型列表提供该档位。"
+            "快速：官方已列模型订阅内额度 2.5×；需当前账号模型列表提供该档位。"
           ],
-          "description": "新会话的默认速度模式；会话内选择独立保存，仅影响该会话下一轮，不改变模型与推理强度。API 按服务档位单独定价，不适用订阅倍率。新设置优先于旧 fastMode 设置。"
+          "description": "新会话的默认速度模式（普通/快速）；会话内选择独立保存，仅影响该会话下一轮，不改变模型与推理强度。API 按服务档位单独定价，不适用订阅倍率。新设置优先于旧 fastMode 设置。"
         },
         "codexChat.notifyLocal": {
           "type": "boolean",

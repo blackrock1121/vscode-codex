@@ -38,7 +38,7 @@ async function fixture(t, env = {}, options = {}) {
     output: { appendLine: () => {} }, post: (_, event) => events.push(event),
     store: { countLines: () => 0, notePending: () => {} }, renderSessions: () => {},
     clearSessionNotification: () => {}, activeCtx: ctx,
-    context: { workspaceState: { update: async () => {} } },
+    context: { workspaceState: { get: () => undefined, update: async () => {} } },
     resetRestoredNotifications: () => {}, postModelConfig: () => {},
     storageDir: () => dir, refreshChangedFiles: () => {}, refreshSessions: () => {},
   });

@@ -5,7 +5,7 @@ import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits } from "../shared";
-import { ICONS as ICON, GPT_LOGO, SPEED_MODES, SPEED_DOCS_URL, isSpeedMode, speedLabel, speedCost, speedGain, supportsSpeed } from "../shared";
+import { ICONS as ICON, GPT_LOGO, speedLabel, speedCost, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
 // VS Code bridge
@@ -141,7 +141,8 @@ const modeMenu = $("mode-menu");
 const modelTrigger = $("model-trigger");
 const modelLabel = $("model-label");
 const speedTrigger = $("speed-trigger") as HTMLButtonElement;
-const speedMenu = $("speed-menu");
+const effortTrigger = $("effort-trigger") as HTMLButtonElement;
+const effortMenu = $("effort-menu");
 const modelMenu = $("model-menu");
 const pickBackdrop = $("pick-backdrop");
 const contextChips = $("context-chips");
@@ -1236,6 +1237,8 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
         const keys = document.querySelector(".foot-keys");
         if (keys) keys.innerHTML = modEnterToSend ? "<kbd>⌘/Ctrl ↵</kbd>发送<kbd>Enter</kbd>换行" : "<kbd>Enter</kbd>发送<kbd>⇧↵</kbd>换行";
       }
+      effortPending = false;
+      speedPending = false;
       currentMode = m.permissionMode || "default";
       currentModel = m.model || "";
       currentEffort = m.effort || "";
@@ -3528,11 +3531,12 @@ function refitComposer() {
   // Two stages, each re-measured so we only shed what's necessary:
   //   1) `compact`      — icon-only pickers, usage keeps numbers (no labels)
   //   2) `compact-more` — also drop the usage readouts entirely
-  composerTools.classList.remove("compact", "compact-more");
+  composerTools.classList.remove("compact", "compact-more", "compact-wrap");
   const overflow = () => composerTools.scrollWidth > composerTools.clientWidth + 1; // +1px sub-pixel slack
   if (overflow()) {
     composerTools.classList.add("compact");
     if (overflow()) composerTools.classList.add("compact-more");
+    if (overflow()) composerTools.classList.add("compact-wrap");
   }
 }
 if (composerTools && "ResizeObserver" in window) {
@@ -3870,22 +3874,24 @@ const EFFORTS = [
   { id: "none", label: "关闭", desc: "不启用推理（模型支持时）" },
   { id: "minimal", label: "最少", desc: "最少推理（模型支持时）" },
   { id: "low", label: "低", desc: "快速、直接的实现" },
-  { id: "medium", label: "中", desc: "均衡，标准测试" },
-  { id: "high", label: "高", desc: "全面实现，充分测试" },
+  { id: "medium", label: "中", desc: "均衡速度与推理深度" },
+  { id: "high", label: "高", desc: "适合复杂问题的深入分析" },
   { id: "xhigh", label: "极高", desc: "扩展推理，深入分析" },
   { id: "max", label: "最高", desc: "更充分的推理" },
   { id: "ultra", label: "超高", desc: "最充分的推理" },
   { id: "", label: "默认", desc: "使用模型默认推理强度" },
 ];
 function availableEfforts() {
-  const supported = modelEfforts[currentModel];
+  const supported = modelEfforts[currentModel || actualSpeedModel];
   return supported?.length
     ? supported.map(id => EFFORTS.find(e => e.id === id) ?? { id, label: id, desc: "模型支持的推理强度" })
     : EFFORTS.filter(e => e.id);
 }
 let currentMode = "default";
 let currentModel = "";
-let currentEffort = "";
+let currentEffort = "medium";
+let effortPending = false;
+let speedPending = false;
 let currentSpeedMode: SpeedMode = "default";
 let speedModels: ModelChoice[] = [];
 let actualSpeedModel = "";
@@ -3898,35 +3904,24 @@ function speedAvailability(mode: SpeedMode): string {
   if (!speedModel()?.speedModes) return "尚未取得此模型的速度能力，请更新或重连 Codex 后确认";
   return "当前账号的此模型未提供该档位";
 }
-function buildSpeedMenu() {
-  const model = speedModelId();
-  const costLabel = speedBilling === "api" ? "API 费用" : "订阅额度";
-  let html = `<div class="pick-head speed-head"><span>速度模式</span><span>下轮生效</span></div>`;
-  html += `<div class="speed-columns" aria-hidden="true"><span>模式</span><span title="相对同模型普通模式的生成速度，不代表整个任务耗时">生成速度</span><span>${costLabel}</span><span></span></div>`;
-  for (const mode of SPEED_MODES) {
-    const enabled = supportsSpeed(speedModel(), mode.id);
-    const cost = speedCost(mode.id, model, speedBilling);
-    const gain = speedGain(mode.id, model, speedBilling);
-    const on = currentSpeedMode === mode.id;
-    const costBadge = cost.badge === "倍率待确认" ? "待确认" : cost.badge;
-    const availability = enabled ? "" : speedAvailability(mode.id);
-    const title = `${mode.label}；生成速度：${gain.badge}。${gain.text} ${costLabel}：${cost.badge}。${cost.text}${availability ? ` ${availability}${on ? "；当前设置无法使用，请另选" : ""}` : ""}`;
-    html += `<button type="button" class="pick-row speed-row${on ? " on" : ""}" data-speed="${mode.id}" aria-pressed="${on}" aria-label="${escapeHtml(title)}" ${enabled ? "" : "disabled"} title="${escapeHtml(title)}"><span class="speed-name">${mode.label}${enabled ? "" : `<span class="speed-unavailable">${on ? "请另选" : "暂不可用"}</span>`}</span><span class="speed-gain" title="${escapeHtml(gain.text)}">${escapeHtml(gain.badge)}</span><span class="speed-cost" title="${escapeHtml(cost.text)}">${escapeHtml(costBadge)}</span><span class="pick-check">${on ? ICON.check : ""}</span></button>`;
-  }
-  html += `<div class="speed-footer"><span title="${speedBilling === "api" ? "API 按模型与服务档位单独定价，不适用订阅额度倍率。" : "额度列仅表示订阅内额度消耗；购买额度和企业按量计费不同，详见官方说明。"}">${speedBilling === "api" ? "API 按档位计费" : speedBilling === "unknown" ? "额度按订阅内计算" : "额度为订阅内消耗"}</span><a href="${SPEED_DOCS_URL}">官方说明 ↗</a></div>`;
-  speedMenu.innerHTML = html;
-}
-
-
 function syncPickers() {
-  const cost = speedCost(currentSpeedMode, speedModelId(), speedBilling);
-  const gain = speedGain(currentSpeedMode, speedModelId(), speedBilling);
-  const available = supportsSpeed(speedModel(), currentSpeedMode);
-  $("speed-label").textContent = `${speedLabel(currentSpeedMode)}${available ? "" : " · 待确认"}`;
-  speedTrigger.dataset.accelerated = String(currentSpeedMode !== "default");
-  speedTrigger.setAttribute("aria-label", `速度：${speedLabel(currentSpeedMode)}；点击选择普通、快速或超高速`);
-  speedTrigger.title = `${speedLabel(currentSpeedMode)}；生成速度：${gain.badge}。${gain.text} ${cost.text} ${speedAvailability(currentSpeedMode)}。仅当前会话下轮生效。`;
-  if (!speedMenu.classList.contains("hidden")) buildSpeedMenu();
+  const fast = currentSpeedMode !== "default";
+  const available = fast || supportsSpeed(speedModel(), "fast");
+  const normalCost = speedCost("default", speedModelId(), speedBilling);
+  const fastCost = speedCost("fast", speedModelId(), speedBilling);
+  $("speed-label").textContent = fast ? "快速" : "普通";
+  speedTrigger.dataset.accelerated = String(fast);
+  speedTrigger.setAttribute("aria-checked", String(fast));
+  speedTrigger.setAttribute("aria-label", `快速模式：${fast ? "开启" : "关闭"}；点击切换${fast ? "普通" : "快速"}`);
+  speedTrigger.disabled = speedPending || !available;
+  speedTrigger.title = `普通：${normalCost.text} 快速：${fastCost.text} ${speedBilling === "api" ? "" : "购买额度及企业按量计费为普通模式的 2×，以官方计费说明为准。"} ${speedAvailability("fast")}。仅当前会话下轮生效。`;
+  const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
+  const effort = EFFORTS.find(e => e.id === selectedEffort);
+  const effortLabel = effort?.label || selectedEffort || "默认";
+  $("effort-label").textContent = `推理：${effortLabel}`;
+  effortTrigger.title = `推理强度：${effortLabel}${effort ? `；${effort.desc}` : ""}。仅当前会话下轮生效；其他会话保持各自设置。`;
+  effortTrigger.setAttribute("aria-label", `推理强度：${effortLabel}；点击选择`);
+  if (!effortMenu.classList.contains("hidden")) buildEffortMenu();
 
   // An unknown mode must show ITSELF, never silently degrade to MODES[0] —
   // labelling an unrecognised (possibly permission-skipping) mode "发送前确认"
@@ -3947,8 +3942,8 @@ function syncPickers() {
 syncPickers(); // paint the real labels immediately (host `config` refines them)
 
 function closePickers() {
-  speedMenu.classList.add("hidden");
-  speedTrigger.setAttribute("aria-expanded", "false");
+  effortMenu.classList.add("hidden");
+  effortTrigger.setAttribute("aria-expanded", "false");
   modeMenu.classList.add("hidden");
   modelMenu.classList.add("hidden");
   usageMenu.classList.add("hidden");
@@ -3978,8 +3973,13 @@ function buildModelMenu() {
       `<span class="pick-text"><span class="pick-title">${escapeHtml(m.label)}</span><span class="pick-desc">${escapeHtml(m.desc)}</span></span>` +
       `<span class="pick-check">${on ? ICON.check : ""}</span></button>`;
   }
+  modelMenu.innerHTML = html;
+}
+
+function buildEffortMenu() {
+  let html = `<div class="pick-head">推理强度 · 仅当前会话下轮生效</div>`;
   const available = availableEfforts();
-  const selectedEffort = currentEffort || modelDefaultEfforts[currentModel];
+  const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
   const selected = EFFORTS.find(e => e.id === selectedEffort)?.label || selectedEffort || "默认";
   const activeIndex = available.findIndex(e => e.id === selectedEffort);
   html += `<div class="pick-sep"></div><div class="pick-effort" title="仅当前会话下轮生效"><span class="effort-current">推理程度 · ${escapeHtml(selected)}</span><div class="effort-options" role="group" aria-label="推理程度">`;
@@ -3988,7 +3988,8 @@ function buildModelMenu() {
     html += `<button type="button" class="effort-option${index <= activeIndex ? " filled" : ""}${selectedEffort === e.id ? " on" : ""}" data-effort="${escapeHtml(e.id)}" aria-pressed="${selectedEffort === e.id}" aria-label="${escapeHtml(title)}" title="${escapeHtml(title)}"><span class="effort-caption">${escapeHtml(e.label)}</span><span class="effort-bar" aria-hidden="true"></span></button>`;
   }
   html += `</div></div>`;
-  modelMenu.innerHTML = html;
+  effortMenu.innerHTML = html;
+  for (const option of Array.from(effortMenu.querySelectorAll<HTMLButtonElement>("[data-effort]"))) option.disabled = effortPending;
 }
 
 /** Anchor a picker directly above its trigger button (same scheme as the
@@ -4006,7 +4007,7 @@ function positionPickMenu(menu: HTMLElement, trigger: HTMLElement) {
   menu.style.left = `${Math.max(8, Math.min(t.left - pr.left, pr.width - w - 8))}px`;
 }
 window.addEventListener("resize", () => {
-  for (const [menu, trigger] of [[modelMenu, modelTrigger], [modeMenu, modeTrigger], [speedMenu, speedTrigger]]) {
+  for (const [menu, trigger] of [[modelMenu, modelTrigger], [modeMenu, modeTrigger], [effortMenu, effortTrigger]]) {
     if (!menu.classList.contains("hidden")) positionPickMenu(menu, trigger);
   }
   if (!usageMenu.classList.contains("hidden")) positionUsageMenu();
@@ -4036,26 +4037,30 @@ modelTrigger.onclick = (e) => {
 pickBackdrop.onclick = closePickers;
 speedTrigger.onclick = (e) => {
   e.stopPropagation();
-  const open = !speedMenu.classList.contains("hidden");
+  if (speedTrigger.disabled) return;
+  closePickers();
+  speedPending = true;
+  send({ type: "setSpeedMode", mode: currentSpeedMode === "default" ? "fast" : "default" });
+  syncPickers(); // 等保存回执，不提前改变开关，避免显示与实际消费不一致。
+};
+effortTrigger.onclick = (e) => {
+  e.stopPropagation();
+  const open = !effortMenu.classList.contains("hidden");
   closePickers();
   if (!open) {
-    buildSpeedMenu();
-    speedMenu.classList.remove("hidden");
-    speedTrigger.setAttribute("aria-expanded", "true");
-    positionPickMenu(speedMenu, speedTrigger);
+    buildEffortMenu();
+    effortMenu.classList.remove("hidden");
+    effortTrigger.setAttribute("aria-expanded", "true");
+    positionPickMenu(effortMenu, effortTrigger);
     pickBackdrop.classList.remove("hidden");
   }
 };
-speedMenu.addEventListener("click", e => {
-  if ((e.target as HTMLElement).closest("a")) {
-    e.preventDefault();
-    send({ type: "openExternalLink", url: SPEED_DOCS_URL });
-    return;
-  }
-  const row = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-speed]");
-  if (!row || row.disabled || !isSpeedMode(row.dataset.speed)) return;
-  send({ type: "setSpeedMode", mode: row.dataset.speed });
-  // 等宿主保存成功后的 config 回执，不伪造已选状态。
+effortMenu.addEventListener("click", e => {
+  const option = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-effort]");
+  if (!option || option.disabled || effortPending) return;
+  effortPending = true;
+  send({ type: "setEffort", effort: option.dataset.effort || "" });
+  buildEffortMenu(); // 保存失败后由 config 恢复；选择成功前不伪造已选状态。
 });
 
 modeMenu.addEventListener("click", (e) => {
@@ -4069,15 +4074,6 @@ modeMenu.addEventListener("click", (e) => {
 });
 modelMenu.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
-  const dot = t.closest("[data-effort]") as HTMLElement | null;
-  if (dot) {
-    currentEffort = dot.dataset.effort || "";
-    send({ type: "setEffort", effort: currentEffort });
-    const scrollTop = modelMenu.scrollTop;
-    buildModelMenu();
-    modelMenu.scrollTop = scrollTop;
-    return;
-  }
   const row = t.closest("[data-model]") as HTMLElement | null;
   if (!row) return;
   currentModel = row.dataset.model || "";

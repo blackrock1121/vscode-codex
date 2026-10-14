@@ -9,10 +9,10 @@ const {modelChoices,speedCost,speedGain,configuredSpeedMode,supportsSpeed}=requi
 function fixture(save=true, state=new Map()){
  const provider=Object.create(ChatViewProvider.prototype),messages=[],applied=[];
  const settings={model:'test-model',effort:'high',speedMode:'default',fastMode:false};
- const session={sessionId:'a',proc:{modelForNextTurn:'test-model',setSpeedMode:async value=>applied.push(['a',value])}};
- const other={sessionId:'b',proc:{modelForNextTurn:'test-model',setSpeedMode:async value=>applied.push(['b',value])}};
- const hidden={sessionId:'hidden',proc:{setSpeedMode:async value=>applied.push(['hidden',value])}};
- Object.assign(provider,{modelSelectionQueue:Promise.resolve(),modelCatalog:[{id:'test-model',speedModes:['default','fast','ultrafast']}],sessions:new Set([session,other]),detached:new Map([['hidden',hidden]]),
+ const session={sessionId:'a',proc:{modelForNextTurn:'test-model',setSpeedMode:async value=>applied.push(['a',value]),setEffort:async value=>applied.push(['effort','a',value])}};
+ const other={sessionId:'b',proc:{modelForNextTurn:'test-model',setSpeedMode:async value=>applied.push(['b',value]),setEffort:async value=>applied.push(['effort','b',value])}};
+ const hidden={sessionId:'hidden',proc:{setSpeedMode:async value=>applied.push(['hidden',value]),setEffort:async value=>applied.push(['effort','hidden',value])}};
+ Object.assign(provider,{modelSelectionQueue:Promise.resolve(),modelCatalog:[{id:'test-model',efforts:['low','medium','high'],speedModes:['default','fast','ultrafast']}],sessions:new Set([session,other]),detached:new Map([['hidden',hidden]]),
  context:{workspaceState:{get:key=>state.get(key),update:async(key,value)=>{if(!save)throw new Error('save failed');state.set(key,value);}}},output:{appendLine:()=>{}},
  config:()=>({get:(key,fallback)=>settings[key]??fallback,inspect:key=>({workspaceValue:settings[key]})}),post:(ctx,m)=>messages.push({...m,target:ctx.sessionId}),updateConfig:async()=>{throw new Error('会话速度不应写入公共配置');}});
  return {provider,session,other,hidden,settings,messages,applied,state};
@@ -34,15 +34,15 @@ test('A 保持普通，B 切快速只更新 B，后台会话和公共默认值�
  assert.deepEqual(f.messages.map(m=>[m.target,m.speedMode]),[['a','default'],['b','fast']]);
 });
 test('各会话连续切换独立保存，重建 provider 后仍能按会话 ID 恢复',async()=>{
- const f=fixture();await Promise.all([f.provider.setSpeedMode(f.session,'ultrafast'),f.provider.setSpeedMode(f.other,'fast'),f.provider.setSpeedMode(f.session,'default')]);
- assert.deepEqual(f.applied,[['a','ultrafast'],['b','fast'],['a','default']]);
+ const f=fixture();await Promise.all([f.provider.setSpeedMode(f.session,'fast'),f.provider.setSpeedMode(f.other,'fast'),f.provider.setSpeedMode(f.session,'default')]);
+ assert.deepEqual(f.applied,[['a','fast'],['b','fast'],['a','default']]);
  const restored=fixture(true,f.state);
  assert.equal(restored.provider.speedMode(restored.session),'default');
  assert.equal(restored.provider.speedMode(restored.other),'fast');
  // 修改默认设置也不应覆盖已初始化的会话。
- restored.settings.speedMode='ultrafast';
+ restored.settings.speedMode='fast';
  assert.equal(restored.provider.speedMode(restored.session),'default');
- assert.equal(restored.provider.speedMode({}),'ultrafast');
+ assert.equal(restored.provider.speedMode({}),'fast');
 });
 test('修改权限时广播配置仍保留每个会话自己的速度',async()=>{
  const f=fixture();await f.provider.setSpeedMode(f.other,'fast');
@@ -64,16 +64,16 @@ test('派生会话继承速度，之后调整不改变原会话',async()=>{
  const f=fixture();await f.provider.setSpeedMode(f.session,'fast');
  const fork={sessionId:'fork',speedMode:f.provider.speedMode(f.session)};
  await f.provider.saveSessionSpeed(fork,fork.speedMode);
- await f.provider.setSpeedMode(fork,'ultrafast');
+ await f.provider.setSpeedMode(fork,'default');
  assert.equal(f.provider.speedMode({sessionId:'a'}),'fast');
- assert.equal(f.provider.speedMode({sessionId:'fork'}),'ultrafast');
+ assert.equal(f.provider.speedMode({sessionId:'fork'}),'default');
 });
 test('保存失败、能力缺失或无效档位都不能把加速设置应用到进程',async()=>{
  for(const condition of ['save-failed','unsupported','unknown','invalid']) {
   const f=fixture(condition!=='save-failed');
-  if(condition==='unsupported')f.provider.modelCatalog[0].speedModes=['default','fast'];
+  if(condition==='unsupported')f.provider.modelCatalog[0].speedModes=['default'];
   if(condition==='unknown')f.provider.modelCatalog=[];
-  await f.provider.setSpeedMode(f.session,condition==='invalid'?'bogus':'ultrafast');
+  await f.provider.setSpeedMode(f.session,condition==='invalid'?'bogus':'fast');
   assert.deepEqual(f.applied,[]);assert.equal(f.settings.speedMode,'default');
   assert.equal(f.messages.at(-1).speedMode,'default');
   assert.ok(f.messages.every(m=>m.target==='a'));
@@ -81,9 +81,9 @@ test('保存失败、能力缺失或无效档位都不能把加速设置应用�
 });
 test('默认模型依据已连接会话的实际模型，不能猜目录默认模型',async()=>{
  const f=fixture();f.settings.model='';
- await f.provider.setSpeedMode(f.session,'ultrafast');assert.equal(f.provider.speedMode(f.session),'ultrafast');
+ await f.provider.setSpeedMode(f.session,'fast');assert.equal(f.provider.speedMode(f.session),'fast');
  f.session.proc.modelForNextTurn='unknown';
- await f.provider.setSpeedMode(f.session,'fast');assert.equal(f.provider.speedMode(f.session),'ultrafast');
+ await f.provider.setSpeedMode(f.session,'fast');assert.equal(f.provider.speedMode(f.session),'fast');
  f.session.proc=undefined;
  await f.provider.setSpeedMode(f.session,'default');assert.equal(f.provider.speedMode(f.session),'default');
  await f.provider.setSpeedMode(f.session,'fast');assert.equal(f.provider.speedMode(f.session),'default');
@@ -131,4 +131,79 @@ test('生成速度按模型和计费方式区分，保留最高限定且不把�
   ['fast','gpt-5.6-sol','chatgpt'],['ultrafast','gpt-6-astra','api'],
   ['ultrafast','gpt-6-astra','unknown'],['fast','new-model','api'],
  ]) assert.equal(speedGain(mode,model,billing).badge,'未公布');
+});
+
+test('默认 medium，各会话推理强度独立保存，重载和公共配置广播保持各自选择',async()=>{
+ const f=fixture();delete f.settings.effort;
+ assert.equal(f.provider.sessionEffort(f.session),'medium');
+ assert.equal(f.provider.sessionEffort(f.hidden),'medium');
+ await f.provider.setEffort(f.other,'low');
+ assert.deepEqual(f.applied,[['effort','b','low']]);
+ assert.equal(f.provider.sessionEffort(f.session),'medium');
+ assert.equal(f.provider.sessionEffort(f.other),'low');
+ assert.equal(f.provider.sessionEffort(f.hidden),'medium');
+ f.messages.length=0;f.provider.broadcastModelConfig();
+ assert.deepEqual(f.messages.map(m=>[m.target,m.effort]),[['a','medium'],['b','low']]);
+ const restored=fixture(true,f.state);delete restored.settings.effort;
+ assert.equal(restored.provider.sessionEffort(restored.other),'low');
+ restored.settings.effort='high';assert.equal(restored.provider.sessionEffort(restored.other),'low');
+ assert.equal(restored.provider.sessionEffort({}),'high');
+});
+test('推理设置保存失败或不支持时不能改变进程，错误只发给当前会话',async()=>{
+ for(const condition of ['save-failed','unsupported']){
+  const f=fixture(condition!=='save-failed');
+  await f.provider.setEffort(f.other,condition==='unsupported'?'max':'low');
+  assert.deepEqual(f.applied,[]);assert.equal(f.provider.sessionEffort(f.other),'high');
+  assert.ok(f.messages.every(m=>m.target==='b'));
+  assert.equal(f.messages.at(-1).effort,'high');
+ }
+});
+test('空白会话保留所选推理强度，分配 ID 后写入；派生继承后独立修改',async()=>{
+ const f=fixture();delete f.session.sessionId;
+ await f.provider.setEffort(f.session,'low');assert.equal(f.state.size,0);
+ f.session.checkpoints={setSession:()=>{}};f.provider.refreshSessions=()=>{};f.provider.store={findFile:()=>undefined};
+ f.provider.onSessionId(f.session,'created',false);
+ assert.equal(f.state.get('codexChat.sessionEffort.created'),'low');
+ await f.provider.saveSessionEffort({sessionId:'fork'},f.provider.sessionEffort(f.session));
+ const fork={sessionId:'fork'};assert.equal(f.provider.sessionEffort(fork),'low');
+ await f.provider.setEffort(fork,'medium');
+ assert.equal(f.provider.sessionEffort(f.session),'low');assert.equal(f.provider.sessionEffort({sessionId:'fork'}),'medium');
+});
+test('模型默认值空字符串也能持久化，后台会话不被其他会话的推理切换覆盖',async()=>{
+ const f=fixture();await f.provider.setEffort(f.hidden,'');
+ await f.provider.setEffort(f.session,'medium');
+ assert.equal(f.provider.sessionEffort(f.hidden),'');
+ assert.equal(f.provider.sessionEffort({sessionId:'hidden'}),'');
+ assert.equal(f.provider.sessionEffort(f.other),'high');
+ assert.deepEqual(f.applied,[['effort','hidden',''],['effort','a','medium']]);
+});
+test('旧超高速设置回到普通，新界面与设置不再允许启用超高速',async()=>{
+ const f=fixture();f.state.set('codexChat.sessionSpeed.a','ultrafast');
+ assert.equal(f.provider.speedMode(f.session),'default');
+ f.settings.speedMode='ultrafast';assert.equal(f.provider.defaultSpeedMode(),'default');
+ await f.provider.setSpeedMode(f.other,'ultrafast');assert.equal(f.applied.length,0);
+ const pkg=require('../package.json');assert.equal(pkg.contributes.configuration.properties['codexChat.effort'].default,'medium');
+ assert.deepEqual(pkg.contributes.configuration.properties['codexChat.speedMode'].enum,['default','fast']);
+});
+
+test('切换模型只重置不兼容的会话档位，默认强度及兼容会话保持不变',async()=>{
+ const f=fixture();await f.provider.setEffort(f.other,'low');f.applied.length=0;
+ f.provider.modelCatalog.push({id:'low-only',efforts:['low'],speedModes:['default']});
+ f.provider.updateConfig=async(key,value)=>{f.settings[key]=value;return true;};
+ for(const session of [f.session,f.other,f.hidden])session.proc.setModel=async()=>{};
+ await f.provider.setModel(f.session,'low-only');
+ assert.equal(f.settings.effort,'high');assert.equal(f.provider.sessionEffort(f.session),'');
+ assert.equal(f.provider.sessionEffort(f.other),'low');assert.equal(f.provider.sessionEffort(f.hidden),'');
+ assert.deepEqual(f.applied,[['effort','a',''],['effort','hidden','']]);
+});
+test('模型切换途中保存失败会撤回已保存的重置，不改变任一会话的运行设置',async()=>{
+ const f=fixture();f.state.set('codexChat.sessionEffort.a','high');
+ f.provider.modelCatalog.push({id:'low-only',efforts:['low']});
+ f.provider.updateConfig=async(key,value)=>{f.settings[key]=value;return true;};
+ for(const session of [f.session,f.other,f.hidden])session.proc.setModel=async()=>assert.fail('不能切换模型');
+ const save=f.provider.saveSessionEffort.bind(f.provider);
+ f.provider.saveSessionEffort=async(ctx,value)=>{if(ctx.sessionId==='b')throw Error('保存失败');await save(ctx,value);};
+ await f.provider.setModel(f.session,'low-only');
+ assert.equal(f.settings.model,'test-model');assert.equal(f.provider.sessionEffort(f.session),'high');
+ assert.equal(f.state.get('codexChat.sessionEffort.a'),'high');assert.deepEqual(f.applied,[]);
 });
