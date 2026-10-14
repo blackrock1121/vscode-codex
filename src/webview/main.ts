@@ -208,7 +208,6 @@ function ensureAssistant(): HTMLElement {
 }
 
 function finalizeTurn() {
-  flushThinkNode(); // 以思考收尾的轮次（如中断）也要把节点落下
   finalizeLive();
   removeWorking();
   cancelPendingInteractions();
@@ -278,7 +277,7 @@ function endTimelineAtLastNode(msg: HTMLElement) {
   const line = msg.querySelector(".thread-line") as HTMLElement | null;
   if (!line) return;
   const compute = () => {
-    // Grouped Bash calls contain nested steps, but the outer group owns the
+    // Grouped tool calls contain nested steps, but the outer group owns the
     // timeline dot. A collapsed inner step must never extend the rail.
     const nodes = msg.querySelectorAll(".msg-body > .step, .msg-body > .text-seg.summary-node");
     const last = nodes[nodes.length - 1] as HTMLElement | undefined;
@@ -1006,7 +1005,6 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       onBlockStart(m.blockType, m.toolId, m.toolName);
       break;
     case "block_end":
-      flushThinkNode();
       finalizeLive();
       liveBlock = null;
       if (isBusy) showWorking("等待后续响应…");
@@ -1027,7 +1025,6 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "thinking_delta":
       addStreamEst(m.text); // not displayed, but grows the live token estimate
-      if (liveThink) liveThink.text += m.text; // 收集思考全文，落节点时挂 tooltip
       break;
     case "tokens":
       onTokens(m.output);
@@ -1248,10 +1245,6 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
   }
 });
 
-/** 直播中的思考块（进行中）。结束时落成与历史回放完全一致的时间线节点——
- *  此前直播只给转圈药丸、不落节点，同一会话"直播看没有 思考中、回放看有"。 */
-let liveThink: { text: string } | null = null;
-
 /** The avatar is the reply's first node — the FIRST content step must not draw
  *  its own dot. Marked in JS because during a live turn the body also holds
  *  transient elements (thread-line/active, working pill) that break any
@@ -1263,23 +1256,7 @@ function markIfFirstNode(body: HTMLElement, step: HTMLElement) {
   if (first === step) step.classList.add("first-node");
 }
 
-/** 已收到的思考片段。传输用时不代表模型思考用时，不显示推算秒数。 */
-function flushThinkNode() {
-  if (!liveThink) return;
-  const body = ensureAssistant();
-  const step = el("div", "step think");
-  const node = el("div", "think-node", "思考片段");
-  if (liveThink.text) node.title = truncateText(liveThink.text, 800);
-  step.append(el("div", "step-dot"), node);
-  body.appendChild(step);
-  markIfFirstNode(body, step);
-  liveThink = null;
-  updateActiveLine();
-  maybeScroll();
-}
-
 function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, toolName?: string) {
-  flushThinkNode(); // 上一个思考块到此结束（连续思考块也各落各的节点）
   const body = ensureAssistant();
   if (type === "tool_use" && toolId) {
     finalizeLive();
@@ -1299,10 +1276,9 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
     return;
   }
   if (type === "thinking") {
-    // 思考中显示转圈药丸；块结束时由 flushThinkNode 落下与回放一致的节点。
+    // 只保留运行中的状态反馈；结束后不插入重复的“思考片段”时间线行。
     finalizeLive();
     liveBlock = null;
-    liveThink = { text: "" };
     showWorking();
     return;
   }
@@ -1340,9 +1316,16 @@ function onTextDelta(text: string) {
 const FILE_VIEW_TOOLS = new Set(["Read", "Edit", "Write", "MultiEdit", "NotebookEdit", "Skill"]);
 const DIFF_TOOLS = new Set(["Edit", "Write", "MultiEdit", "NotebookEdit"]);
 const FOLDABLE_TOOLS = new Set(["Bash", "WebSearch", "WebFetch"]);
-const BASH_GROUP_MIN = 3;
+const TOOL_GROUP_MIN = 3;
+type ToolGroupKind = "bash" | "edit";
 let toolBodySeq = 0;
-let bashGroupSeq = 0;
+let toolGroupSeq = 0;
+
+function toolGroupKind(name: string): ToolGroupKind | null {
+  if (name === "Bash") return "bash";
+  if (DIFF_TOOLS.has(name)) return "edit";
+  return null;
+}
 
 function setToolFolded(card: HTMLElement, folded: boolean) {
   card.classList.toggle("collapsed", folded);
@@ -1356,93 +1339,80 @@ function timelineNodes(body: HTMLElement): HTMLElement[] {
   );
 }
 
-function isBashStep(node: HTMLElement): boolean {
-  return node.classList.contains("foldable-step") &&
-    node.querySelector(":scope > .tool-card")?.getAttribute("data-tool-name") === "Bash";
+function isGroupableStep(node: HTMLElement, kind: ToolGroupKind): boolean {
+  if (!node.classList.contains("step")) return false;
+  const name = node.querySelector(":scope > .tool-card")?.getAttribute("data-tool-name") || "";
+  return toolGroupKind(name) === kind;
 }
 
-function setBashGroupFolded(group: HTMLElement, folded: boolean) {
+function setToolGroupFolded(group: HTMLElement, folded: boolean) {
   group.classList.toggle("collapsed", folded);
-  group.querySelector<HTMLButtonElement>(".bash-group-toggle")?.setAttribute("aria-expanded", String(!folded));
+  group.querySelector<HTMLButtonElement>(".tool-group-toggle")?.setAttribute("aria-expanded", String(!folded));
 }
 
-function updateBashGroup(group: HTMLElement) {
-  const cards = Array.from(group.querySelectorAll<HTMLElement>(".bash-group-items > .foldable-step > .tool-card"));
+function updateToolGroup(group: HTMLElement) {
+  const cards = Array.from(group.querySelectorAll<HTMLElement>(".tool-group-items > .step > .tool-card"));
   const failed = cards.filter((card) => card.classList.contains("error")).length;
   const waiting = cards.filter((card) => !card.classList.contains("error") && card.classList.contains("needs-approval")).length;
   const running = cards.filter((card) => !card.classList.contains("error") && !card.classList.contains("needs-approval") && card.classList.contains("running")).length;
   const done = cards.length - failed - waiting - running;
-  group.querySelector(".bash-group-count")!.textContent = `${cards.length} 次`;
-  group.querySelector(".bash-group-status")!.textContent = [
+  const files = new Set(cards.map((card) => card.querySelector(".file-chip[data-path]")?.getAttribute("data-path")).filter(Boolean));
+  group.querySelector(".tool-group-count")!.textContent = `${cards.length} 次` +
+    (group.dataset.groupKind === "edit" && files.size
+      ? ` · ${files.size === 1 ? shortPath([...files][0]!) : `${files.size} 文件`}` : "");
+  group.querySelector(".tool-group-status")!.textContent = [
     done ? `${done} 完成` : "", failed ? `${failed} 失败` : "",
     waiting ? `${waiting} 待确认` : "", running ? `${running} 执行中` : "",
   ].filter(Boolean).join(" · ");
   group.classList.toggle("error", failed > 0);
   group.classList.toggle("needs-approval", waiting > 0 && !failed);
   group.classList.toggle("ok", done === cards.length);
-  // Open only when a new failure/approval appears; later successful results
-  // must not undo a user's manual decision to close the group.
   if (failed > Number(group.dataset.failedCount || 0) || waiting > Number(group.dataset.waitingCount || 0)) {
-    setBashGroupFolded(group, false);
+    setToolGroupFolded(group, false);
   }
   group.dataset.failedCount = String(failed);
   group.dataset.waitingCount = String(waiting);
 }
 
-/** Keep short runs flat. On the third Bash call, fold the run as one timeline
- *  node; later Bash calls and thinking snippets join it until another kind of
- *  content appears. Both live streaming and history replay use this path. */
-function groupAdjacentBash(body: HTMLElement, step: HTMLElement) {
+/** Three or more consecutive calls become one timeline node. Bash calls form
+ *  one kind of group; file modifications (Edit/Write/MultiEdit/NotebookEdit)
+ *  form another. Text and all other tools end a run. */
+function groupAdjacentTools(body: HTMLElement, step: HTMLElement, kind: ToolGroupKind) {
   const nodes = timelineNodes(body);
-  const between: HTMLElement[] = [];
-  let previousIndex = nodes.length - 2;
-  while (previousIndex >= 0 && nodes[previousIndex].classList.contains("think")) {
-    between.unshift(nodes[previousIndex--]);
-  }
-  const previous = nodes[previousIndex];
-  if (previous?.classList.contains("bash-group-step")) {
-    const items = previous.querySelector(".bash-group-items")!;
-    for (const node of between) items.appendChild(node);
-    items.appendChild(step);
+  const previous = nodes[nodes.length - 2];
+  if (previous?.classList.contains("tool-group-step") && previous.dataset.groupKind === kind) {
+    previous.querySelector(".tool-group-items")!.appendChild(step);
     step.classList.remove("first-node");
-    updateBashGroup(previous);
+    updateToolGroup(previous);
     return;
   }
   const run: HTMLElement[] = [step];
-  let count = 1;
-  for (let i = nodes.length - 2; i >= 0; i--) {
-    const node = nodes[i];
-    if (isBashStep(node)) { run.unshift(node); count++; }
-    else if (node.classList.contains("think")) run.unshift(node);
-    else break;
-  }
-  if (count < BASH_GROUP_MIN) return;
-  // A thought before the first Bash belongs to the preceding context. Only
-  // thought nodes actually between Bash calls move into the group.
-  while (run[0].classList.contains("think")) run.shift();
-  const group = el("div", "step bash-group-step collapsed");
-  const id = `bash-group-${++bashGroupSeq}`;
-  const title = el("div", "bash-group");
+  for (let i = nodes.length - 2; i >= 0 && isGroupableStep(nodes[i], kind); i--) run.unshift(nodes[i]);
+  if (run.length < TOOL_GROUP_MIN) return;
+  const group = el("div", "step tool-group-step collapsed" + (kind === "edit" ? " edit" : ""));
+  group.dataset.groupKind = kind;
+  const id = `tool-group-${++toolGroupSeq}`;
+  const title = el("div", "tool-group");
   title.innerHTML =
-    `<button type="button" class="bash-group-toggle" aria-expanded="false" aria-controls="${id}">` +
+    `<button type="button" class="tool-group-toggle" aria-expanded="false" aria-controls="${id}">` +
     `<span class="tool-fold-caret" aria-hidden="true">${ICON.chevron}</span>` +
-    `<span class="tool-name">Bash 调用</span><span class="bash-group-count"></span>` +
-    `<span class="bash-group-status"></span></button><div id="${id}" class="bash-group-items"></div>`;
+    `<span class="tool-name">${kind === "bash" ? "Bash 调用" : "文件修改"}</span><span class="tool-group-count"></span>` +
+    `<span class="tool-group-status"></span></button><div id="${id}" class="tool-group-items"></div>`;
   group.append(el("div", "step-dot"), title);
   const opened = run.some((node) => node.querySelector(".tool-card.foldable:not(.collapsed)"));
   body.insertBefore(group, run[0]);
-  const items = group.querySelector(".bash-group-items")!;
+  const items = group.querySelector(".tool-group-items")!;
   for (const node of run) {
     node.classList.remove("first-node");
     items.appendChild(node);
   }
   markIfFirstNode(body, group);
-  title.querySelector<HTMLButtonElement>(".bash-group-toggle")!.addEventListener("click", () => {
-    setBashGroupFolded(group, !group.classList.contains("collapsed"));
+  title.querySelector<HTMLButtonElement>(".tool-group-toggle")!.addEventListener("click", () => {
+    setToolGroupFolded(group, !group.classList.contains("collapsed"));
     pinnedToBottom = false;
   });
-  updateBashGroup(group);
-  if (opened) setBashGroupFolded(group, false);
+  updateToolGroup(group);
+  if (opened) setToolGroupFolded(group, false);
 }
 
 function createToolCard(parent: HTMLElement, toolId: string, name: string): HTMLElement {
@@ -1481,7 +1451,8 @@ function createToolCard(parent: HTMLElement, toolId: string, name: string): HTML
   parent.appendChild(step);
   markIfFirstNode(parent, step);
   toolCards.set(toolId, card);
-  if (name === "Bash") groupAdjacentBash(parent, step);
+  const kind = toolGroupKind(name);
+  if (kind) groupAdjacentTools(parent, step, kind);
   updateActiveLine(); // the new dot becomes the active progress start
   maybeScroll();
   return card;
@@ -1506,6 +1477,8 @@ function updateToolInput(toolId: string, name: string, input: Record<string, unk
   if (FILE_VIEW_TOOLS.has(name)) {
     // Read/Edit/…: filename on the SAME line as the tool name (in the header), no wrap.
     if (sub) sub.innerHTML = html;
+    const group = card.closest<HTMLElement>(".tool-group-step");
+    if (group) updateToolGroup(group);
     return;
   }
   if (sub) sub.textContent = subtitle;
@@ -1569,6 +1542,8 @@ function updateToolPartial(toolId: string, name: string, json: string) {
     const cls = DIFF_TOOLS.has(name) ? "file-chip diff-chip" : "file-chip";
     const action = DIFF_TOOLS.has(name) ? "diff" : "open";
     sub.innerHTML = `<a class="${cls}" data-action="${action}" data-path="${escapeHtml(fp)}">${escapeHtml(rel)}</a>${extra}`;
+    const group = card.closest<HTMLElement>(".tool-group-step");
+    if (group) updateToolGroup(group);
   } else {
     sub.textContent = rel;
   }
@@ -1653,8 +1628,8 @@ function setToolResult(toolUseId: string, content: string, isError: boolean) {
     const lines = content.replace(/\n+$/, "").split("\n").length;
     meta.textContent = bad ? "查看详情" : content.trim() ? `完成 · ${links.length ? `${links.length} 条` : `${lines} 行`}` : "完成 · 无输出";
   }
-  const bashGroup = card.closest<HTMLElement>(".bash-group-step");
-  if (bashGroup) updateBashGroup(bashGroup);
+  const group = card.closest<HTMLElement>(".tool-group-step");
+  if (group) updateToolGroup(group);
   // A failed tool drops its head icon too, so the title is just the name.
   if (bad) card.querySelector(".tool-head .tool-icon")?.remove();
   // Interrupted: the "[Request interrupted by user]" text is shown once at the
@@ -1881,8 +1856,8 @@ function attachPermission(m: Extract<ToWebview, { kind: "permission_request" }>)
   }
   host.classList.add("needs-approval");
   if (host.classList.contains("foldable")) setToolFolded(host, false);
-  const bashGroup = host.closest<HTMLElement>(".bash-group-step");
-  if (bashGroup) updateBashGroup(bashGroup);
+  const group = host.closest<HTMLElement>(".tool-group-step");
+  if (group) updateToolGroup(group);
   // The amber node on the timeline is the status marker for "waiting on you" —
   // the bar itself stays neutral instead of painting the whole card yellow.
   host.closest(".step")?.classList.add("needs-approval");
@@ -2322,7 +2297,7 @@ function resolvePermission(requestId: string, behavior: "allow" | "deny") {
   }
   const bar = messagesEl.querySelector(`.perm-bar[data-request-id="${requestId}"]`) as HTMLElement;
   if (!bar) return;
-  const bashGroup = bar.closest<HTMLElement>(".bash-group-step");
+  const group = bar.closest<HTMLElement>(".tool-group-step");
   bar.closest(".tool-card")?.classList.remove("needs-approval");
   bar.closest(".step")?.classList.remove("needs-approval");
   if (behavior === "allow") {
@@ -2331,7 +2306,7 @@ function resolvePermission(requestId: string, behavior: "allow" | "deny") {
     bar.classList.add("resolved");
     bar.innerHTML = `<span class="perm-label deny">已拒绝</span>`;
   }
-  if (bashGroup) updateBashGroup(bashGroup);
+  if (group) updateToolGroup(group);
 }
 
 // ---------------------------------------------------------------------------
@@ -2377,7 +2352,6 @@ function renderHistory(showAll: boolean) {
   railObservers.length = 0;
   assistantEl = null;
   liveBlock = null;
-  liveThink = null;
   lastUserEl = null;
   userMsgCount = 0;
   ctxGauge.classList.add("hidden"); // refreshes from the next turn's usage
@@ -2488,7 +2462,6 @@ function expandHistory(banner: HTMLElement, cutoff: number, cpByOrdinal: Map<num
   while (messagesEl.firstChild) tail.appendChild(messagesEl.firstChild);
   assistantEl = null;
   liveBlock = null;
-  liveThink = null;
   lastUserEl = null;
   if (from > 0) messagesEl.appendChild(makeExpandBanner(from, cpByOrdinal)); // 还有更早的：横幅留在最上面
   renderItemRange(items, from, cutoff, cpByOrdinal);
@@ -2543,14 +2516,8 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       hydrateLocalImages(seg);
       body.appendChild(seg);
     } else if (it.type === "thinking") {
-      // 历史和直播都用过去的片段标签，不冒充当前仍在思考。
-      const body = ensureAssistant();
-      const step = el("div", "step think");
-      const node = el("div", "think-node", "思考片段");
-      if (it.text) node.title = truncateText(it.text, 800);
-      step.append(el("div", "step-dot"), node);
-      body.appendChild(step);
-      markIfFirstNode(body, step);
+      // 思考内容仍保留在历史数据中，不占聊天可视区域。
+      continue;
     } else if (it.type === "compaction") {
       finalizeTurn();
       messagesEl.appendChild(renderCompactionDivider(it.preTokens, it.postTokens));
@@ -3139,7 +3106,6 @@ function handleSlashCommand(payload: QueueItem): boolean {
       messagesEl.innerHTML = "";
       assistantEl = null;
       liveBlock = null;
-      liveThink = null;
       toolCards.clear();
       userMsgCount = 0;
       taskQueue.length = 0;
@@ -4275,7 +4241,6 @@ function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, reg
   // Reset streaming state and re-append the edited message as the new turn.
   assistantEl = null;
   liveBlock = null;
-  liveThink = null;
   toolCards.clear();
   userMsgCount = messagesEl.querySelectorAll(".msg.user").length;
   appendUser(newText, [], imageUris);

@@ -780,27 +780,27 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
 .step { position: relative; margin: 12px 0 20px; }
 .step .tool-card { margin: 0; }
 .step.foldable-step { margin: 7px 0 10px; }
-.step.bash-group-step { margin: 7px 0 10px; }
-.bash-group-toggle {
+.step.tool-group-step { margin: 7px 0 10px; }
+.tool-group-toggle {
   display: flex; align-items: center; gap: 6px;
   width: 100%; min-height: 28px; padding: 2px 0;
   border: 0; background: transparent; color: var(--vscode-foreground);
   font: inherit; font-size: 12px; text-align: left; cursor: pointer;
 }
-.bash-group-toggle:hover .tool-name { color: var(--vscode-textLink-foreground); }
-.bash-group-toggle:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; border-radius: 3px; }
-.bash-group-count, .bash-group-status { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
-.bash-group-status { margin-left: auto; }
-.bash-group-step.error .bash-group-status { color: var(--vscode-errorForeground); }
-.bash-group-step.collapsed .bash-group-items { display: none; }
-.bash-group-step:not(.collapsed) > .bash-group > .bash-group-toggle .tool-fold-caret svg { transform: none; }
-.bash-group-items {
+.tool-group-toggle:hover .tool-name { color: var(--vscode-textLink-foreground); }
+.tool-group-toggle:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; border-radius: 3px; }
+.tool-group-count, .tool-group-status { color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
+.tool-group-count { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.tool-group-status { flex: 0 0 auto; margin-left: auto; }
+.tool-group-step.error .tool-group-status { color: var(--vscode-errorForeground); }
+.tool-group-step.collapsed .tool-group-items { display: none; }
+.tool-group-step:not(.collapsed) > .tool-group > .tool-group-toggle .tool-fold-caret svg { transform: none; }
+.tool-group-items {
   margin: 4px 0 2px 5px; padding-left: 14px;
   border-left: 1px solid var(--vscode-panel-border, rgba(128,128,128,.25));
 }
-.bash-group-items > .step { margin: 4px 0 7px; }
-.bash-group-items > .step.think { margin: 2px 0 5px; }
-.bash-group-items > .step > .step-dot { display: none; }
+.tool-group-items > .step { margin: 4px 0 7px; }
+.tool-group-items > .step > .step-dot { display: none; }
 /* 8px dot with a background-coloured ring, so it punches a clean hole in the
    rail line instead of adding a 10px blob on top of it. */
 .step-dot {
@@ -820,11 +820,6 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
 /* a question waiting on a choice (blue ≠ the amber permission wait) */
 .step.ask .step-dot { background: var(--vscode-textLink-foreground, #4daafc); }
 .step.ask .askp { margin: 0; }
-/* "Thinking · Ns" — a quiet gray step, hover shows the thought text */
-.step.think .think-node {
-  font-size: 12px; color: var(--vscode-descriptionForeground);
-  line-height: 18px; cursor: default;
-}
 /* short reason badge in the card head ("执行失败" / "已中断") */
 .tool-why { flex: 0 0 auto; font-size: 10.5px; line-height: 1; padding: 2px 6px; border-radius: 8px;
   color: #fff; background: var(--vscode-errorForeground, #f14c4c); }
