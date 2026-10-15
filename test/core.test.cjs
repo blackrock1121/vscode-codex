@@ -369,9 +369,9 @@ test('同一会话切换速度后直接压缩，先同步所选档位且不额�
  }
  const calls=(await read()).filter(m=>['thread/settings/update','thread/compact/start','turn/start'].includes(m.method));
  assert.deepEqual(calls.map(({method,params})=>({method,params})),[
-  {method:'thread/settings/update',params:{threadId:'thread-1',serviceTier:'default'}},
+  {method:'thread/settings/update',params:{threadId:'thread-1',serviceTier:'default',model:'test-model',effort:'high'}},
   {method:'thread/compact/start',params:{threadId:'thread-1'}},
-  {method:'thread/settings/update',params:{threadId:'thread-1',serviceTier:'priority'}},
+  {method:'thread/settings/update',params:{threadId:'thread-1',serviceTier:'priority',model:'test-model',effort:'high'}},
   {method:'thread/compact/start',params:{threadId:'thread-1'}},
  ]);
 });

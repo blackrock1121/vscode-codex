@@ -5,6 +5,9 @@ const {once}=require('node:events');
 const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {WebSocket,WebSocketServer}=require('ws');
 const {CompactionRelay,routeCompaction,compactionUpstream}=require('../dist/test/codex/compactionRelay.js');
+const {CompactionPolicy,CompactionValidationStore}=require('../dist/test/codex/compactionPolicy.js');
+const policy=new CompactionPolicy(new CompactionValidationStore());
+const select=(source,tier)=>policy.select(source,tier,[{id:'gpt-6.1-sol',efforts:['xhigh'],speedModes:['default','fast']}]);
 const make=(extra={})=>({type:'response.create',model:'gpt-6-astra',reasoning:{effort:'medium',context:'all_turns'},
  input:[{type:'message',role:'user',content:[{type:'input_text',text:'保留约束'}]},{type:'function_call_output',call_id:'a',output:'完整输出'},{type:'compaction_trigger'}],tools:[{type:'function',name:'test'}],...extra});
 const raw=body=>Buffer.from(JSON.stringify(body));
@@ -12,7 +15,7 @@ const raw=body=>Buffer.from(JSON.stringify(body));
 test('原生压缩只换模型和推理：缺省/普通/快速档位及历史工具逐项保留',()=>{
  for(const tier of [undefined,null,'default','priority']){
   const input=make(tier===undefined?{}:{service_tier:tier});
-  const r=routeCompaction(raw(input),false,()=>true),body=JSON.parse(r.body);
+  const r=routeCompaction(raw(input),false,select),body=JSON.parse(r.body);
   assert.equal(body.model,'gpt-6.1-sol');assert.equal(body.reasoning.effort,'xhigh');
   assert.equal(body.service_tier,tier);assert.equal(r.route.serviceTier,tier??null);
   assert.deepEqual(body,{...input,model:'gpt-6.1-sol',reasoning:{...input.reasoning,effort:'xhigh'}});
@@ -22,10 +25,10 @@ test('原生压缩只换模型和推理：缺省/普通/快速档位及历史工
 test('普通回答、其他模型、未知协议、旧接口和不支持的档位均按原字节透传',()=>{
  const cases=[make({input:[{type:'message',content:'compaction_trigger'}]}),make({model:'gpt-6-luna'}),
   make({type:'response.append'}),make({service_tier:'unknown'}),make({input:[{type:'compaction_trigger'},{type:'message'}]})];
- for(const body of cases){const b=raw(body);assert.equal(routeCompaction(b,false,()=>true).body,b);}
- for(const legacy of [false,true]){const b=raw(make());assert.equal(routeCompaction(b,legacy,()=>false).body,b);}
- const b=raw(make());assert.equal(routeCompaction(b,true,()=>true).body,b);
- for(const b of [Buffer.from('{broken'),Buffer.alloc(33*1024*1024)])assert.equal(routeCompaction(b,false,()=>true).body,b);
+ for(const body of cases){const b=raw(body);assert.equal(routeCompaction(b,false,select).body,b);}
+ for(const legacy of [false,true]){const b=raw(make());assert.equal(routeCompaction(b,legacy,()=>undefined).body,b);}
+ const b=raw(make());assert.equal(routeCompaction(b,true,select).body,b);
+ for(const b of [Buffer.from('{broken'),Buffer.alloc(33*1024*1024)])assert.equal(routeCompaction(b,false,select).body,b);
 });
 
 test('仅识别官方账号与默认提供方，自定义网关及未知账号不接管',()=>{
@@ -39,7 +42,7 @@ test('仅识别官方账号与默认提供方，自定义网关及未知账号�
 async function fixture(t,handler=()=>{},onRoute,options){
  const server=http.createServer(handler),wss=new WebSocketServer({server}),routes=[];
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>true,onRoute??(r=>routes.push(r)),options);
+ const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,select,onRoute??(r=>routes.push(r)),options);
  const base=relay.baseUrl;
  t.after(()=>{relay.close();for(const ws of wss.clients)ws.terminate();wss.close();server.closeAllConnections();server.close();});
  return {server,wss,relay,base,routes};
@@ -104,7 +107,7 @@ test('回环路径密钥、Origin 和路径穿越校验阻止请求到达上游'
  for(const [url,headers] of [[u.origin+'/wrong/responses',{}],[base+'/responses',{origin:'https://example.invalid'}],
   [base+'/../outside',{}],[base+'/../../other',{}]])assert.equal((await request(url,'',headers)).status,404);
  assert.equal(received,0);
- await assert.rejects(CompactionRelay.start('https://example.invalid',()=>true,()=>{}));
+ await assert.rejects(CompactionRelay.start('https://example.invalid',select,()=>{}));
 });
 
 test('诊断回调失败不阻断请求',async t=>{

@@ -12,6 +12,8 @@ import { PerformanceTrace, PerformanceContext } from './performanceTrace';
 import { ChildThreadRegistry, childToolId } from './childThreads';
 import { executionConfig, executionInstructions } from './executionPolicy';
 import { CompactionRelay, CompactionRoute, compactionUpstream } from './compactionRelay';
+import { CompactionPolicy, CompactionValidationStore, modelRank } from './compactionPolicy';
+import { validateCompactionModel } from './compactionValidation';
 export { ChildThreadRegistry, childToolId } from './childThreads';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
@@ -35,6 +37,7 @@ export interface CodexProcessOptions {
   questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
   transportDiagnostics?: boolean;
   compactionMode?: 'balanced' | 'session';
+  compactionModel?: string; compactionAutoValidate?: boolean; compactionStateDir?: string;
   executionMode?: 'parallel' | 'tools' | 'standard';
 }
 export interface PermissionRequest {
@@ -88,6 +91,12 @@ export class CodexProcess {
   private compactionRelay?: CompactionRelay;
   private compactionConfig?: Promise<any>;
   private autoCompactionsWithoutProgress = 0;
+  private readonly compactionStore: CompactionValidationStore;
+  private readonly compactionPolicy: CompactionPolicy;
+  private compactionUpstreamUrl?: string;
+  private validationTimer?: NodeJS.Timeout;
+  private validationAbort?: AbortController;
+  private hasWorked = false;
   private lastDispatched?: { model: string; effort: string; speedMode: SpeedMode };
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
@@ -133,6 +142,8 @@ export class CodexProcess {
   private stoppingTree = false;
   private lastActivityAt = 0;
   constructor(private readonly opts: CodexProcessOptions, private readonly hooks: CodexProcessHooks) {
+    this.compactionStore = new CompactionValidationStore(opts.compactionStateDir);
+    this.compactionPolicy = new CompactionPolicy(this.compactionStore, opts.compactionModel?.trim() || 'auto');
     this.latency = new PerformanceTrace(row => this.emit({ kind: 'diag', message: `[perf] ${JSON.stringify(row)}` }),
       undefined, undefined, () => this.rpc.transportSnapshot());
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env, opts.transportDiagnostics !== false);
@@ -148,6 +159,7 @@ export class CodexProcess {
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
+      this.cancelCompactionValidation();
       this.latency.finish('connection_closed');
       this.compactionRelay?.close(); this.compactionRelay = undefined;
       this.endCompactionTrace('connection_closed');
@@ -200,7 +212,7 @@ export class CodexProcess {
       this.emit({ kind: 'models', models });
     } catch (e) {
       if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，普通模式仍可使用：${String(e)}` });
-    } finally { this.modelsLoaded = true; }
+    } finally { this.modelsLoaded = true; this.scheduleCompactionValidation(); }
   }
   /** 仅准备连接与模型目录；不创建会话、不发起模型生成。 */
   prepare(): Promise<void> {
@@ -258,17 +270,12 @@ export class CodexProcess {
       const identity = await this.rpc.request('getAuthStatus', { includeToken: false, refreshToken: false }, 200);
       const upstream = compactionUpstream(settings.config, { type: identity.authMethod === 'apikey' ? 'apiKey' : identity.authMethod });
       if (!upstream || this.exited || this.disposed) return;
-      const relay = await CompactionRelay.start(upstream, tier => {
-        const model = this.models.find(m => m.id === 'gpt-6.1-sol');
-        if (!model?.efforts.includes('xhigh')) return false;
-        if (tier === null || tier === 'default') return true;
-        return (tier === 'priority' || tier === 'fast') && supportsSpeed(model, 'fast');
-      }, route => this.compactionRouted(route), {
+      const relay = await CompactionRelay.start(upstream, (source, tier) => this.selectCompaction(source, tier), route => this.compactionRouted(route), {
         archiveDirectory: path.join(os.homedir(), '.codex-chat', 'compaction-archive'),
         onOptimized: (threadId, savings) => this.emit({ kind: 'diag', message: `[compaction_input] ${JSON.stringify({ threadId, ...savings })}` }),
       });
       if (this.exited || this.disposed) { relay.close(); return; }
-      this.compactionRelay = relay;
+      this.compactionRelay = relay; this.compactionUpstreamUrl = upstream;
       this.emit({ kind: 'diag', message: '[compaction_route] {"stage":"ready","scope":"manual_and_auto"}' });
     } catch {
       this.emit({ kind: 'notice', message: '自动压缩优化连接未启用，当前连接继续使用 CLI 原生压缩。' });
@@ -280,8 +287,44 @@ export class CodexProcess {
     if (route.stage === 'request' && trace && route.threadId === trace.threadId) {
       trace.model = route.toModel; trace.effort = route.effort; trace.modelSource = 'transport_override';
       this.logCompactionTrace('model_routed', trace);
-      this.emit({ kind: 'status', label: '正在使用 GPT-6.1-Sol 压缩上下文…' });
+      this.emit({ kind: 'status', label: `正在使用 ${route.toModel} 压缩上下文…` });
     }
+  }
+  private selectCompaction(source: string, tier: string | null) {
+    return this.opts.compactionMode === 'session' ? undefined : this.compactionPolicy.select(source, tier, this.models);
+  }
+  private cancelCompactionValidation(): void {
+    clearTimeout(this.validationTimer); this.validationTimer = undefined;
+    this.validationAbort?.abort(); this.validationAbort = undefined;
+  }
+  private scheduleCompactionValidation(): void {
+    if (this.opts.compactionMode === 'session' || this.opts.compactionAutoValidate === false || !this.opts.compactionStateDir ||
+      !this.hasWorked || this.busy || this.exited || this.disposed || !this.compactionRelay || !this.compactionUpstreamUrl || this.validationAbort || this.validationTimer) return;
+    this.validationTimer = setTimeout(() => { this.validationTimer = undefined; void this.runCompactionValidation(); }, 15_000);
+    this.validationTimer.unref();
+  }
+  private async runCompactionValidation(): Promise<void> {
+    if (this.busy || this.exited || this.disposed || this.validationAbort || !this.compactionUpstreamUrl ||
+      this.opts.compactionMode === 'session' || this.opts.compactionAutoValidate === false) return;
+    const source = this.modelForNextTurn;
+    const candidate = this.compactionPolicy.pending(source, this.models);
+    if (!candidate) return;
+    const baseline = new CompactionPolicy(this.compactionStore).select(source, null, this.models)?.model ?? source;
+    const reader = this.models.find(m => m.id === baseline && m.efforts.includes('medium'));
+    if (!reader || !this.models.find(m => m.id === baseline)?.efforts.includes('xhigh') || !this.compactionStore.claim(candidate.id)) return;
+    const controller = this.validationAbort = new AbortController();
+    this.emit({ kind: 'notice', message: `发现新的压缩候选 ${candidate.id}，正在用合成样本做一次限额验证；当前会话继续沿用已验证策略。` });
+    try {
+      const result = await validateCompactionModel({ codexPath: this.opts.codexPath, env: this.opts.env, upstream: this.compactionUpstreamUrl,
+        candidate: candidate.id, baseline, reader: reader.id, signal: controller.signal });
+      this.compactionStore.complete(candidate.id, result);
+      this.emit({ kind: 'diag', message: `[compaction_validation] ${JSON.stringify({ model: candidate.id, ...result })}` });
+      this.emit({ kind: 'notice', message: result.passed ? `${candidate.id} 已通过压缩验证，后续符合层级和档位要求的压缩可自动使用。` :
+        `${candidate.id} 未通过本次质量或耗时检查，继续沿用已验证的压缩策略。` });
+    } catch {
+      this.compactionStore.complete(candidate.id);
+      if (!controller.signal.aborted) this.emit({ kind: 'notice', message: `${candidate.id} 的压缩验证未完成，保留当前策略，不自动重复评测。` });
+    } finally { if (this.validationAbort === controller) this.validationAbort = undefined; }
   }
   private saveQuestion(): void {
     const paused = this.pausedQuestion;
@@ -320,6 +363,7 @@ export class CodexProcess {
   sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[], traceContext?: PerformanceContext): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
     this.autoCompactionsWithoutProgress = 0;
+    this.hasWorked = true; clearTimeout(this.validationTimer); this.validationTimer = undefined;
     if (this.opts.transportDiagnostics !== false) this.latency.begin(this.sessionId, { model: this.modelForNextTurn, effort: this.opts.effort || 'default', speedMode: this.opts.speedMode ?? 'default', trigger: 'message' }, traceContext);
     this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
     this.rootCompletion = undefined; this.stoppingTree = false; this.lastActivityAt = 0;
@@ -364,24 +408,27 @@ export class CodexProcess {
   }
   compact(): void {
     if (!this.sessionId || this.busy || this.exited) return;
+    this.hasWorked = true; clearTimeout(this.validationTimer); this.validationTimer = undefined;
     if (this.opts.transportDiagnostics !== false) this.latency.begin(this.sessionId, { model: this.modelForNextTurn, effort: this.opts.effort || 'default', speedMode: this.opts.speedMode ?? 'default', trigger: 'manual_compaction' });
     const trace = this.beginCompactionTrace('manual');
+    // 模型/推理也在点击压缩时冻结，避免刚切到 Luna 却仍按上一轮 Astra 压缩。
+    const selectedSettings = { ...(this.opts.model ? { model: trace.model } : {}), ...(this.opts.effort ? { effort: trace.effort } : {}) };
     this.busy = true; this.compacting = true; this.beganAt = Date.now(); this.emit({ kind: 'busy', busy: true }); this.emit({ kind: 'compacting' });
     let settingsSynced = false;
     const dispatch = async () => {
       let override: { model: string; effort: string } | undefined;
-      if (!this.compactionRelay && this.opts.compactionMode !== 'session' && trace.model === 'gpt-6-astra') {
+      if (!this.compactionRelay && this.opts.compactionMode !== 'session' && (modelRank(trace.model) ?? 0) > 2) {
         await this.modelsReady;
         if (this.compactionTrace !== trace || this.exited || this.stopTimer) return;
-        const candidate = this.models.find(m => m.id === 'gpt-6.1-sol');
+        const candidate = this.selectCompaction(trace.model, speedServiceTier(trace.speedMode));
         const restoreEffort = trace.effort === 'default' ? this.activeEffort : trace.effort;
         // 只使用实测过的组合；无法确认账号能力或原推理设置时沿用会话模型。
-        if (candidate?.efforts.includes('xhigh') && supportsSpeed(candidate, trace.speedMode) && restoreEffort) {
+        if (candidate && restoreEffort) {
           this.compactionRestore = { model: trace.model, effort: restoreEffort, pending: false, isError: false };
-          override = { model: candidate.id, effort: 'xhigh' };
-          trace.model = candidate.id; trace.effort = 'xhigh'; trace.modelSource = 'manual_override';
+          override = candidate;
+          trace.model = candidate.model; trace.effort = candidate.effort; trace.modelSource = 'manual_override';
           this.logCompactionTrace('model_selected', trace);
-          this.emit({ kind: 'status', label: '正在使用 GPT-6.1-Sol 压缩上下文…' });
+          this.emit({ kind: 'status', label: `正在使用 ${candidate.model} 压缩上下文…` });
         } else {
           this.emit({ kind: 'notice', message: '无法确认压缩模型所需配置，继续使用当前会话模型压缩。' });
         }
@@ -389,7 +436,7 @@ export class CodexProcess {
       // 速度切换平时在下一次 turn/start 才传给 CLI；直接压缩也必须应用本会话的选择。
       // 普通档位显式传 default，不能省略后沿用上一轮的 priority。
       await this.rpc.request('thread/settings/update', {
-        threadId: trace.threadId, serviceTier: speedServiceTier(trace.speedMode), ...override,
+        threadId: trace.threadId, serviceTier: speedServiceTier(trace.speedMode), ...selectedSettings, ...override,
       });
       if (this.compactionTrace !== trace || this.exited || this.stopTimer) return;
       settingsSynced = true;
@@ -417,10 +464,10 @@ export class CodexProcess {
       // 手动压缩使用本次选择；自动压缩属于正在执行的轮次，不能被下轮设置覆盖。
       speedMode: trigger === 'manual' ? this.opts.speedMode ?? 'default' :
         this.lastDispatched?.speedMode ?? this.opts.speedMode ?? 'default',
-      effort: this.lastDispatched?.effort ?? this.opts.effort ?? 'default',
+      effort: (trigger === 'manual' ? this.opts.effort : undefined) || this.lastDispatched?.effort || this.opts.effort || 'default',
       preTokens: this.contextUsage?.used, contextWindow: this.contextUsage?.total,
       usageUpdates: 0, retries: 0, errors: 0,
-      model: this.lastDispatched?.model ?? this.activeModel, modelSource: 'active_thread' as const,
+      model: (trigger === 'manual' ? this.opts.model : undefined) || this.lastDispatched?.model || this.activeModel, modelSource: 'active_thread' as const,
     };
     this.logCompactionTrace('start', trace);
     this.compactionTimer = setInterval(() => {
@@ -1038,7 +1085,8 @@ export class CodexProcess {
     for (const key of this.pending.keys()) this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
+    this.scheduleCompactionValidation();
   }
-  dispose() { this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
-  async disposeAndWait() { this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
+  dispose() { this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
+  async disposeAndWait() { this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
 }

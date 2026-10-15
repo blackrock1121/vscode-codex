@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-15",
+  "purpose": "verification_of_native_compaction_evaluation_pipeline",
+  "cliVersion": "0.162.1",
+  "fixtureRevision": "native-compact-v1",
+  "history": "synthetic Orbit fixture from src/codex/compactionValidation.ts",
+  "billingTier": "default",
+  "baseline": {"model": "gpt-6.1-sol", "effort": "xhigh", "compactionMs": 49192, "score": 22},
+  "candidate": {"model": "gpt-6.1-sol", "effort": "xhigh", "compactionMs": 26593, "score": 22},
+  "reader": {"model": "gpt-6.1-sol", "effort": "medium"},
+  "facts": 16,
+  "decisions": 6,
+  "passed": true,
+  "limitations": ["同一模型验证评测流程，不能据此推断不同型号的优劣", "小型合成样本不能保证所有长历史压缩质量", "单次耗时受缓存、网络及服务负载影响"]
+}

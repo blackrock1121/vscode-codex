@@ -98,6 +98,7 @@ export function speedGain(mode: SpeedMode, model: string, billing: BillingKind):
 export interface ModelChoice {
   id: string; name: string; description: string; efforts: string[];
   defaultEffort?: string; isDefault?: boolean; speedModes?: SpeedMode[];
+  upgrade?: string; upgradeInfo?: { model: string };
 }
 export function supportsSpeed(model: ModelChoice | undefined, mode: SpeedMode): boolean {
   return mode === "default" || model?.speedModes?.includes(mode) === true;
@@ -112,7 +113,9 @@ export function modelChoices(data: any[]): ModelChoice[] {
     if (tiers?.includes("ultrafast")) speedModes!.push("ultrafast");
     return { id: m.model, name: m.displayName, description: m.description,
       efforts: (m.supportedReasoningEfforts ?? []).map((e: any) => e.reasoningEffort),
-      defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault, speedModes };
+      defaultEffort: m.defaultReasoningEffort, isDefault: m.isDefault, speedModes,
+      ...(typeof m.upgrade === 'string' ? { upgrade: m.upgrade } : {}),
+      ...(typeof m.upgradeInfo?.model === 'string' ? { upgradeInfo: { model: m.upgradeInfo.model } } : {}) };
   });
 }
 

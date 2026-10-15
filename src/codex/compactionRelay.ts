@@ -6,11 +6,11 @@ import { getProxyForUrl } from 'proxy-from-env';
 import * as path from 'node:path';
 import { CompactionArchive, InputSavings, optimizeCompactionInput, ResponseHistory } from './compactionInput';
 
-interface RelayOptions { archiveDirectory?: string; onOptimized?: (threadId: string, savings: InputSavings) => void; }
+interface RelayOptions { constrain?: (raw: Buffer) => Buffer; archiveDirectory?: string; onOptimized?: (threadId: string, savings: InputSavings) => void; }
 
 const MAX_PAYLOAD = 128 * 1024 * 1024;
 const MAX_REWRITE = 32 * 1024 * 1024;
-const COMPACTION_MODEL = 'gpt-6.1-sol';
+import { CompactionSelector } from './compactionPolicy';
 export interface CompactionRoute {
   stage: 'request' | 'response';
   threadId?: string;
@@ -32,23 +32,25 @@ export function compactionUpstream(config: any, account: any): string | undefine
 }
 
 /** 仅替换原生压缩请求的模型/推理；历史、工具、阈值、收费档位逐项保留。 */
-export function routeCompaction(raw: Buffer, legacy: boolean, canRoute: (tier: string | null) => boolean):
+export function routeCompaction(raw: Buffer, legacy: boolean, select: CompactionSelector):
   { body: Buffer; route?: Omit<CompactionRoute, 'threadId' | 'transport' | 'stage'> } {
   if (raw.length > MAX_REWRITE) return { body: raw };
   let body: any;
   try { body = JSON.parse(raw.toString('utf8')); } catch { return { body: raw }; }
-  if (!body || typeof body !== 'object' || body.model !== 'gpt-6-astra') return { body: raw };
+  if (!body || typeof body !== 'object' || typeof body.model !== 'string') return { body: raw };
   const triggered = Array.isArray(body.input) && body.input.at(-1)?.type === 'compaction_trigger';
   if (!legacy && !triggered) return { body: raw };
   // 只优化已评测的原生 v2。旧 /responses/compact 保留原样，避免误用不同模型协议。
   if (legacy || (body.type !== undefined && body.type !== 'response.create')) return { body: raw };
   const tier = body.service_tier ?? null;
   if (tier !== null && !['default', 'priority', 'fast', 'ultrafast', 'flex', 'auto'].includes(tier)) return { body: raw };
-  if (!canRoute(tier)) return { body: raw };
-  body.model = COMPACTION_MODEL;
-  body.reasoning = { ...(body.reasoning ?? {}), effort: 'xhigh' };
+  const selection = select(body.model, tier);
+  if (!selection) return { body: raw };
+  const fromModel = body.model;
+  body.model = selection.model;
+  body.reasoning = { ...(body.reasoning ?? {}), effort: selection.effort };
   return { body: Buffer.from(JSON.stringify(body)), route: {
-    fromModel: 'gpt-6-astra', toModel: COMPACTION_MODEL, effort: 'xhigh', serviceTier: tier,
+    fromModel, toModel: selection.model, effort: selection.effort, serviceTier: tier,
   } };
 }
 
@@ -76,7 +78,7 @@ export class CompactionRelay {
   private readonly prefix = '/' + randomBytes(32).toString('hex');
   private agent?: http.Agent;
   private closed = false;
-  private constructor(private readonly upstream: string, private readonly canRoute: (tier: string | null) => boolean,
+  private constructor(private readonly upstream: string, private readonly select: CompactionSelector,
     private readonly onRoute: (route: CompactionRoute) => void, private readonly options: RelayOptions) {
     const target = new URL(upstream);
     if (!(target.protocol === 'https:' && ['chatgpt.com', 'api.openai.com'].includes(target.hostname)) &&
@@ -89,9 +91,9 @@ export class CompactionRelay {
     });
     this.server.on('clientError', (_error, socket) => socket.destroy());
   }
-  static async start(upstream: string, canRoute: (tier: string | null) => boolean,
+  static async start(upstream: string, select: CompactionSelector,
     onRoute: (route: CompactionRoute) => void, options: RelayOptions = {}): Promise<CompactionRelay> {
-    const relay = new CompactionRelay(upstream.replace(/\/$/, ''), canRoute, onRoute, options);
+    const relay = new CompactionRelay(upstream.replace(/\/$/, ''), select, onRoute, options);
     try {
       const proxy = getProxyForUrl(upstream);
       if (proxy) {
@@ -123,7 +125,7 @@ export class CompactionRelay {
   }
   private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], history?: ResponseHistory): Promise<{ body: Buffer; route?: CompactionRoute }> {
     if (!target.pathname.endsWith('/responses') || req.headers['content-encoding']) return { body: raw };
-    const result = routeCompaction(raw, false, this.canRoute);
+    const result = routeCompaction(raw, false, this.select);
     const id = req.headers['thread-id'] ?? req.headers['session-id'];
     const threadId = typeof id === 'string' && /^[\w-]{1,100}$/.test(id) ? id : undefined;
     if (result.route && this.options.archiveDirectory && threadId && raw.length <= MAX_REWRITE) {
@@ -144,6 +146,7 @@ export class CompactionRelay {
         }
       } catch { /* 历史不完整、未知协议或归档失败时沿用原生输入 */ }
     }
+    if (this.options.constrain) result.body = this.options.constrain(result.body);
     if (result.route) {
       const route: CompactionRoute = { ...result.route, threadId, transport, stage: 'request' };
       this.report(route);

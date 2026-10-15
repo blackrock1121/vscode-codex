@@ -5,6 +5,9 @@ const fs=require('node:fs');const os=require('node:os');const path=require('node
 const {WebSocketServer}=require('ws');
 const {CodexRpc,resolveCodex}=require('../dist/test/codex/rpc.js');
 const {CompactionRelay}=require('../dist/test/codex/compactionRelay.js');
+const {CompactionPolicy,CompactionValidationStore}=require('../dist/test/codex/compactionPolicy.js');
+const policy=new CompactionPolicy(new CompactionValidationStore());
+const select=(source,tier)=>policy.select(source,tier,[{id:'gpt-6.1-sol',efforts:['xhigh'],speedModes:['default','fast']}]);
 (async()=>{
  let count=0,tools=0,compacted=0,fail,finish,timer;const seen=[],routes=[],savings=[];
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'codex-auto-fixture-')),executable=path.join(dir,'codex-fixture');
@@ -23,7 +26,7 @@ const {CompactionRelay}=require('../dist/test/codex/compactionRelay.js');
   ws.send(JSON.stringify({type:'response.completed',response:{id,model:b.model,status:'completed',output,usage:{input_tokens:!compact&&tools===0?80000:100,output_tokens:10,total_tokens:!compact&&tools===0?80010:110,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}}}));
  }));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>true,r=>routes.push(r),{
+ const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,select,r=>routes.push(r),{
   archiveDirectory:path.join(dir,'archive'),onOptimized:(_id,s)=>savings.push(s),
  });
  const quote=s=>"'"+s.replaceAll("'","'\"'\"'")+"'";

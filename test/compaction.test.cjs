@@ -341,9 +341,9 @@ test('自动优化只覆盖本线程连接配置；模型/档位按账号能力�
  await p.start();const relay=p.compactionRelay;assert.ok(relay);
  const config=calls.find(c=>c.method==='thread/start').params.config;
  assert.match(config.openai_base_url,/^http:\/\/127\.0\.0\.1:\d+\/[a-f0-9]{64}$/);
- assert.equal(relay.canRoute(null),true);assert.equal(relay.canRoute('priority'),true);assert.equal(relay.canRoute('flex'),false);
- p.models[0].speedModes=['default'];assert.equal(relay.canRoute('priority'),false);assert.equal(relay.canRoute(null),true);
- p.models[0].efforts=['medium'];assert.equal(relay.canRoute(null),false);
+ assert.equal(!!relay.select('gpt-6-astra',null),true);assert.equal(!!relay.select('gpt-6-astra','priority'),true);assert.equal(!!relay.select('gpt-6-astra','flex'),false);
+ p.models[0].speedModes=['default'];assert.equal(!!relay.select('gpt-6-astra','priority'),false);assert.equal(!!relay.select('gpt-6-astra',null),true);
+ p.models[0].efforts=['medium'];assert.equal(!!relay.select('gpt-6-astra',null),false);
  p.dispose();assert.throws(()=>relay.baseUrl,/关闭/);
  assert.equal(calls.some(c=>c.method==='config/value/write'),false);
 });
@@ -391,5 +391,68 @@ test('正常回复、工具结果或新用户轮次会重置计数；手动压�
    assert.equal(p.sendUserMessage('新任务'),true);await flush();
   }
   note('item/started',{item});assert.equal(stopped,0);
+ }
+});
+
+test('手动及自动策略：未来 Astra 使用验证目标，Sol/Luna/未知家族不改模型或推理',async t=>{
+ const {routeCompaction}=require('../dist/test/codex/compactionRelay.js');
+ for(const id of ['gpt-6.2-astra','gpt-6-sol','gpt-6.2-sol','gpt-7-luna','custom']){
+  const {p}=astraFixture(t),calls=[];p.activeModel=id;p.lastDispatched.model=id;
+  p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+  p.compact();await flush();
+  const astra=id==='gpt-6.2-astra';
+  assert.equal(calls[0].params.model,astra?'gpt-6.1-sol':undefined);
+  assert.equal(calls[0].params.effort,astra?'xhigh':undefined);
+  const raw=Buffer.from(JSON.stringify({model:id,reasoning:{effort:'low'},input:[{type:'compaction_trigger'}],service_tier:'default'}));
+  const routed=routeCompaction(raw,false,(source,tier)=>p.selectCompaction(source,tier));
+  if(astra)assert.equal(JSON.parse(routed.body).model,'gpt-6.1-sol');else assert.equal(routed.body,raw);
+ }
+});
+
+test('验证结果跨重启供自动与手动共用，状态文案显示新模型而非固定版本',async t=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path');
+ const {CompactionValidationStore}=require('../dist/test/codex/compactionPolicy.js');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'compact-process-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
+ const store=new CompactionValidationStore(dir);store.claim('gpt-6.2-sol');
+ store.complete('gpt-6.2-sol',{passed:true,baselineModel:'gpt-6.1-sol',baselineMs:1000,candidateMs:800,baselineScore:22,candidateScore:22,total:22});
+ const events=[],calls=[];
+ const p=new CodexProcess({codexPath:'/unused',cwd:process.cwd(),permissionMode:'default',compactionStateDir:dir},
+  {emit:e=>events.push(e),onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});t.after(()=>p.dispose());
+ p.sessionId='test';p.activeModel='gpt-6-astra';p.activeEffort='medium';
+ p.models=['gpt-6.1-sol','gpt-6.2-sol'].map(id=>({id,efforts:['xhigh'],speedModes:['default','fast']}));
+ assert.equal(p.selectCompaction('gpt-6-astra','priority').model,'gpt-6.2-sol');
+ p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+ p.compact();await flush();assert.equal(calls[0].params.model,'gpt-6.2-sol');
+ assert.ok(events.some(e=>e.kind==='status'&&e.label.includes('gpt-6.2-sol')));
+});
+
+test('仅用户操作后空闲调度验证，忙碌/关闭/未接入时不调度，销毁取消独立评测',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ for(const blocked of ['initial','busy','disabled','session','no-relay','no-store','disposed','none']){
+  const {p}=astraFixture(t);p.hasWorked=true;p.opts.compactionStateDir='/unused';
+  p.compactionUpstreamUrl='https://chatgpt.com/backend-api/codex';p.compactionRelay={close(){}};
+  if(blocked==='initial')p.hasWorked=false;
+  if(blocked==='busy')p.busy=true;
+  if(blocked==='disabled')p.opts.compactionAutoValidate=false;
+  if(blocked==='session')p.opts.compactionMode='session';
+  if(blocked==='no-relay')p.compactionRelay=undefined;
+  if(blocked==='no-store')p.opts.compactionStateDir=undefined;
+  if(blocked==='disposed')p.disposed=true;
+  let runs=0;p.runCompactionValidation=async()=>{runs++;};
+  p.scheduleCompactionValidation();p.scheduleCompactionValidation();t.mock.timers.tick(15000);
+  assert.equal(runs,blocked==='none'?1:0,blocked);
+  const control=new AbortController();p.validationAbort=control;p.dispose();assert.equal(control.signal.aborted,true);
+ }
+});
+
+
+test('刚从 Astra 切到 Luna 后立即手动压缩，先同步当前模型与推理，不按上一轮升级为 Sol',async t=>{
+ for(const relay of [false,true]){
+  const {p,logs}=astraFixture(t),calls=[];if(relay)p.compactionRelay={close(){}};
+  await p.setModel('gpt-6-luna');await p.setEffort('low');
+  p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+  p.compact();await flush();
+  assert.deepEqual(calls[0],{method:'thread/settings/update',params:{threadId:'test-session',serviceTier:'default',model:'gpt-6-luna',effort:'low'}});
+  assert.equal(calls[1].method,'thread/compact/start');assert.equal(logs()[0].model,'gpt-6-luna');assert.equal(p.compactionRestore,undefined);
  }
 });

@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.130",
+  "version": "0.1.131",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -294,7 +294,7 @@
           ],
           "default": "balanced",
           "enumDescriptions": [
-            "Astra 会话的自动及手动压缩使用 GPT-6.1-Sol xhigh，并精简较旧的冗长工具结果；回答仍用会话模型。",
+            "仅 Astra 会话使用已验证的 Sol xhigh 优化原生自动及手动压缩；Sol、Luna 和未知家族沿用会话。",
             "压缩沿用会话模型与原生输入，关闭插件的压缩优化。"
           ],
           "description": "平衡模式优化官方提供方的原生自动及手动压缩：较旧的长工具输出先完整归档到本机，再使用原文摘录或重复引用；最近两轮和最近八个工具结果不做前置精简。原生压缩仍可能丢失细节。不改触发阈值，普通/快速档位严格沿用本轮。无法归档或还原增量历史时保留原输入；账号能力不足或自定义网关不接管，手动压缩保留兼容优化。下次连接生效。"
@@ -404,6 +404,16 @@
             }
           },
           "description": "可选飞书静默时段，默认关闭；仅当 codexChat.notifyLocal 已开启时生效，关闭本机通知后飞书照常推送。每日联网更新中国大陆节假日与调休，失败使用七天内缓存，无有效日历则照常推送。静默提醒不补发，手动测试不受限制。"
+        },
+        "codexChat.compactionModel": {
+          "type": "string",
+          "default": "auto",
+          "description": "压缩目标：auto 从账号模型目录及官方升级关系发现后继 Sol，验证通过后采用。也可指定目录中的 Sol 模型 ID，但仍须通过验证，且不能为 Sol/Luna 会话升级模型。未知、不可用或未验证时沿用会话。下次连接生效。"
+        },
+        "codexChat.compactionAutoValidate": {
+          "type": "boolean",
+          "default": true,
+          "description": "空闲时对新 Sol 候选执行一次合成历史验证，会额外消耗额度，不使用真实会话。所有窗口每天合计最多一个候选，最多四个生成请求、180 秒，普通收费档位；通过后缓存，失败不自动重复。关闭后仍可使用既有验证记录。下次连接生效。"
         }
       }
     }

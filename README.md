@@ -210,7 +210,15 @@ npm run smoke:question
 
 当前已验证的 Codex CLI `0.162.1` 中，`thread/compact/start` 只有 `threadId`，没有独立的 `model` / `effort` / `serviceTier` 参数。手动压缩会先等待本会话速度设置保存，再通过 `thread/settings/update` 同步所选档位：普通明确传 `default`，快速传 `priority`，成功后记录 `settings_synced` 并开始压缩；同步失败则取消压缩，不沿用可能过期的收费档位。自动压缩沿用正在执行的轮次档位，运行中切换只影响后续操作。插件不会为压缩额外开启快速模式。诊断依据：[官方 App Server](https://learn.chatgpt.com/docs/app-server)、[官方 OTel 事件与指标说明](https://learn.chatgpt.com/docs/config-file/config-advanced)。
 
-`codexChat.compactionMode` 默认 `balanced`：Astra 会话的**原生自动及手动压缩**使用 **GPT-6.1-Sol + xhigh**，回答仍使用原会话模型和推理设置，收费档位严格跟随该次原生请求。覆盖轮次开始前、工具执行后等 CLI 自动触发的位置，不额外调用手动压缩接口，不修改自动阈值，不增加后台摘要请求。只在压缩请求中精简较旧的长工具输出，原会话文件不改写。选 `session` 可关闭优化；设置在下次连接生效。
+`codexChat.compactionMode` 默认 `balanced`：仅 **Astra 家族**的原生自动及手动压缩改用**已验证的 Sol + xhigh**。Sol、Luna（含后继版本）及未知家族都沿用会话模型与推理设置，不会因为压缩升级模型。层级按已知家族识别，不拿版本号当通用能力等级；模型目录目前没有通用等级分数。回答仍使用原会话配置，收费档位严格跟随该次原生请求。覆盖轮次开始前、工具执行后等 CLI 自动触发的位置，不额外触发真实会话压缩，不修改自动阈值。已接入的旧工具输入精简仍遵循下文保护与归档规则。选 `session` 可关闭优化；设置在下次连接生效。
+
+压缩模型不固定在某一版本：`codexChat.compactionModel` 默认 `auto`，从连接时的 `model/list` 读取账号实际可用的 Sol 型号，优先参考官方 `upgrade` / `upgradeInfo` 关系发现候选。后继型号通过验证后，自动及手动压缩共用同一选择器采用较新的已验证版本。GPT-6.1-Sol 仅作为已有长历史评测的初始锚点；不会拼接出目录不存在的型号。也可指定某个 Sol ID，仍须验证且遵守层级约束；指定目标不可用或未验证时沿用会话。依据：[官方模型目录](https://learn.chatgpt.com/docs/app-server#models)、[官方模型选择说明](https://developers.openai.com/api/docs/guides/model-selection)。
+
+`codexChat.compactionAutoValidate` 默认开启：完成至少一次用户操作并空闲 15 秒后，对新候选用隔离的临时线程和固定合成历史做原生压缩，再用同一个读取模型检查 16 个最新事实和 6 个操作判断。基线与候选均须 22/22，且候选压缩耗时不超过基线的 1.25 倍；小样本检查只能拦截明显退化，不能保证所有长历史无损或稳定提速。失败保留已验证旧版；旧版下线且无可用验证版本时沿用会话。
+
+验证会额外消耗额度，但不读取真实会话，不启用快速档位，不提供工具，不阻塞正常操作；所有窗口每天合计最多领取一个候选，每个型号只自动尝试一次（失败、取消或崩溃不自动重试）。最多四个生成请求、12 个传输帧、768 KiB 累计请求体、180 秒；累计生成输出上限 44096 token，通常远低于上限。原生压缩要求 `max_output_tokens` 至少 20000，两个读取答案各限 2048；请求失败/重试同样扣减本机预算。验证元数据写入扩展全局存储的 `compaction-models`，不保存合成正文或凭据。关闭自动验证仍保留既有通过记录；新型号将在后续连接读取模型目录后发现。
+
+`node scripts/build-test.cjs && node scripts/smoke-compaction-validation.cjs` 使用原生 CLI 和本机模拟上游检查通过、丢失事实拒绝、取消三个流程，不调用在线模型。2026-10-15 已用真实 GPT-6.1-Sol 分别充当基线和候选跑通该机制，两次均 22/22；这不是新旧型号的速度或质量比较，详见 [验证记录](benchmarks/compaction-policy-20261015.json)。
 
 实现使用官方 `openai_base_url` 配置，为每个 CLI 连接创建固定上游的本机回环转发器，只识别 `/responses` 请求末尾的 `compaction_trigger`。普通回答按原字节转发，WebSocket、HTTP/SSE 继续使用原传输方式；转发器不自行重试模型或工具请求，重试仍由 CLI 管理。端口只监听 `127.0.0.1`，使用随机路径校验，不读取凭据文件、不将正文写入诊断日志、不更改全局配置。`[compaction_route]` 记录发送模型、档位和服务端返回模型；CLI 的 OTel `model` 仍可能是逻辑会话模型，不能独自作为压缩实际模型的依据。配置依据：[OpenAI 官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
 
