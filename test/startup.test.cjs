@@ -34,7 +34,7 @@ async function fixture(t, env = {}, options = {}) {
   };
   Object.assign(provider, {
     config: () => ({ get: (key, fallback) => options[key] ?? (['autosave', 'snapshotFilesForRestore'].includes(key) ? false : fallback) }),
-    createProcess: () => create(), speedMode: () => 'default', modelSelectionQueue: Promise.resolve(),
+    createProcess: () => create(), speedMode: () => 'default',
     output: { appendLine: () => {} }, post: (_, event) => events.push(event),
     store: { countLines: () => 0, notePending: () => {} }, renderSessions: () => {},
     clearSessionNotification: () => {}, activeCtx: ctx,

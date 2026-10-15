@@ -166,6 +166,7 @@ interface SessionCtx {
     model?: string;
     speedMode?: SpeedMode;
     effort?: string;
+    settingsQueue?: Promise<void>;
     proc?: CodexProcess;
     starting?: Promise<CodexProcess | undefined>;
     checkpoints: CheckpointManager;
@@ -602,6 +603,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.checkpoints.setSession(sessionId);
         this.sessionModel(ctx);
         this.speedMode(ctx);
+        this.sessionEffort(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
         this.activeCtx = ctx;
@@ -717,6 +719,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.checkpoints.setSession(sid);
         this.sessionModel(ctx);
         this.speedMode(ctx);
+        this.sessionEffort(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
         // 重载时分组位置、锁定状态和焦点由 VS Code 恢复。反序列化期间
@@ -1223,6 +1226,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }[];
         files?: string[];
     }): Promise<void> {
+        await this.waitSessionSettings(ctx);
         const old = ctx.sessionId;
         this.resetRestoredNotifications(ctx, old);
         ctx.proc?.dispose();
@@ -1376,7 +1380,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "busy", busy: false });
             return;
         }
-        await this.modelSelectionQueue;
+        await this.waitSessionSettings(ctx);
         await proc.setModel(this.sessionModel(ctx));
         await proc.setSpeedMode(this.speedMode(ctx));
         await proc.setEffort(this.sessionEffort(ctx));
@@ -1546,11 +1550,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return out;
     }
     private modelCatalog: ModelChoice[] = [];
-    private modelSelectionQueue: Promise<void> = Promise.resolve();
-    private queueModelSelection(change: () => Promise<void>): Promise<void> {
-        const task = this.modelSelectionQueue.then(change);
-        this.modelSelectionQueue = task.catch(() => undefined);
+    /** 同一会话的选择和恢复保存按顺序执行，各会话之间互不等待。 */
+    private queueSessionSettings(ctx: SessionCtx, change: () => Promise<void>): Promise<void> {
+        const task = (ctx.settingsQueue ?? Promise.resolve()).then(change);
+        ctx.settingsQueue = task.catch(() => undefined);
         return task;
+    }
+    private async waitSessionSettings(ctx: SessionCtx): Promise<void> {
+        let pending: Promise<void> | undefined;
+        do {
+            pending = ctx.settingsQueue;
+            await pending;
+        } while (pending !== ctx.settingsQueue);
     }
     private postModelConfig(ctx: SessionCtx): void {
         const cfg: ToWebview = {
@@ -1620,13 +1631,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             await this.context.workspaceState.update(`codexChat.sessionModel.${ctx.sessionId}`, model);
     }
     private rememberSessionModel(ctx: SessionCtx): void {
-        void this.saveSessionModel(ctx, this.sessionModel(ctx)).catch(err => {
+        this.sessionModel(ctx);
+        void this.queueSessionSettings(ctx, () => this.saveSessionModel(ctx, this.sessionModel(ctx))).catch(err => {
             this.output.appendLine(`[sessionModel] ${String(err)}`);
             this.post(ctx, { kind: "error", message: "无法保存此会话的模型，重新打开后可能丢失，请重新选择。" });
         });
     }
     private setModel(ctx: SessionCtx, model: string): Promise<void> {
-        return this.queueModelSelection(async () => {
+        return this.queueSessionSettings(ctx, async () => {
             const previousModel = this.sessionModel(ctx);
             const effort = this.sessionEffort(ctx);
             const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
@@ -1667,7 +1679,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             await this.context.workspaceState.update(`codexChat.sessionSpeed.${ctx.sessionId}`, mode);
     }
     private rememberSessionSpeed(ctx: SessionCtx): void {
-        void this.saveSessionSpeed(ctx, this.speedMode(ctx)).catch(err => {
+        this.speedMode(ctx);
+        void this.queueSessionSettings(ctx, () => this.saveSessionSpeed(ctx, this.speedMode(ctx))).catch(err => {
             this.output.appendLine(`[sessionSpeed] ${String(err)}`);
             this.post(ctx, { kind: "error", message: "无法保存此会话的速度模式，重新打开后可能丢失，请重新选择。" });
         });
@@ -1680,7 +1693,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return mode === "ultrafast" ? "default" : mode;
     }
     private setSpeedMode(ctx: SessionCtx, mode: SpeedMode): Promise<void> {
-        return this.queueModelSelection(async () => {
+        return this.queueSessionSettings(ctx, async () => {
             if (!isSpeedMode(mode) || mode === "ultrafast") {
                 this.post(ctx, { kind: "error", message: "无效的速度模式。" });
                 this.postModelConfig(ctx);
@@ -1723,13 +1736,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             await this.context.workspaceState.update(`codexChat.sessionEffort.${ctx.sessionId}`, effort);
     }
     private rememberSessionEffort(ctx: SessionCtx): void {
-        void this.saveSessionEffort(ctx, this.sessionEffort(ctx)).catch(err => {
+        this.sessionEffort(ctx);
+        void this.queueSessionSettings(ctx, () => this.saveSessionEffort(ctx, this.sessionEffort(ctx))).catch(err => {
             this.output.appendLine(`[sessionEffort] ${String(err)}`);
             this.post(ctx, { kind: "error", message: "无法保存此会话的推理强度，重新打开后可能丢失，请重新选择。" });
         });
     }
     private setEffort(ctx: SessionCtx, effort: string): Promise<void> {
-        return this.queueModelSelection(async () => {
+        return this.queueSessionSettings(ctx, async () => {
             const model = this.sessionModel(ctx) || ctx.proc?.modelForNextTurn || "";
             const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
             const supported = details?.efforts.length ? details.efforts : ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
@@ -1971,6 +1985,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         progress("正在复制文件还原点…");
         this.assertForkDestination(sourceId, newId);
+        await this.waitSessionSettings(ctx);
         if (ctx.sessionId !== sourceId) {
             this.refreshSessions();
             this.post(ctx, { kind: "notice", message: "派生会话已创建，原窗口已切换。可从会话历史打开新分支。" });
@@ -1983,10 +1998,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "派生失败：复制文件还原点失败，原会话未受影响。" });
             return;
         }
+        const model = this.sessionModel(ctx), speed = this.speedMode(ctx), effort = this.sessionEffort(ctx);
         try {
-            await this.saveSessionModel({ sessionId: newId }, this.sessionModel(ctx));
-            await this.saveSessionSpeed({ sessionId: newId }, this.speedMode(ctx));
-            await this.saveSessionEffort({ sessionId: newId }, this.sessionEffort(ctx));
+            await this.saveSessionModel({ sessionId: newId }, model);
+            await this.saveSessionSpeed({ sessionId: newId }, speed);
+            await this.saveSessionEffort({ sessionId: newId }, effort);
         } catch (err) {
             this.output.appendLine(`[sessionSettings] ${String(err)}`);
             this.post(ctx, { kind: "error", message: "派生会话已创建，但模型、速度或推理强度未能保存，请在新会话中重新选择。" });
@@ -2094,9 +2110,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         result: NonNullable<ReturnType<CheckpointManager["restore"]>>;
         rewoundToStart: boolean;
     }> {
+        await this.waitSessionSettings(ctx);
         const oldId = ctx.sessionId;
         this.sessionModel(ctx);
         this.speedMode(ctx);
+        this.sessionEffort(ctx);
         // 回退文件时 CheckpointManager 会重写当前会话的快照。先保存原文件，
         // 让保留在历史列表里的原会话仍能使用自己的还原点。
         ctx.checkpoints.flush();
@@ -2133,6 +2151,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         let result: ReturnType<CheckpointManager["restore"]>;
         try {
+            await this.waitSessionSettings(ctx);
             // 必须先保存待回答状态，落盘失败时不能已经回滚工作区。
             prepareBranch?.(newId);
             result = this.cpRestore(ctx, checkpointId, cutLine);
@@ -2180,6 +2199,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages): Promise<void> {
         const startedAt = performance.now();
         const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
+        await this.waitSessionSettings(ctx);
         const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
         if (ctx.questionAnswerSeq !== seq) {
             if (ctx.proc === proc && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === requestId) await proc?.interrupt();
@@ -2204,6 +2224,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             await snapshot.capture();
         }
         this.output.appendLine(`[question] snapshot_ready session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}`);
+        await this.waitSessionSettings(ctx);
         if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images)) throw new Error("提交已取消，原问题或会话状态已变化。");
         const displayText = userView([{ type: "text", text: answer.text }]).text;
         const checkpointId = ctx.checkpoints.beginTurn(displayText, cut, !!snapshot);

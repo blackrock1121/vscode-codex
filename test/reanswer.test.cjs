@@ -53,10 +53,26 @@ test('还原派生和回到开头均保留本会话模型，原会话保存值�
   f.provider.context.workspaceState={get:key=>state.get(key),update:async(key,value)=>state.set(key,value)};
   const id=toStart?f.checkpoints.list()[0].id:f.id;
   await f.provider.restoreCheckpoint(f.ctx,id);
+  await f.ctx.settingsQueue;
   assert.equal(f.ctx.sessionId,toStart?undefined:'branch');
   assert.equal(f.provider.sessionModel(f.ctx),'chosen-model');
   assert.equal(state.get('codexChat.sessionModel.source'),'chosen-model');
   if(!toStart)assert.equal(state.get('codexChat.sessionModel.branch'),'chosen-model');
+ }
+});
+test('还原派生和回到开头均继承原会话独立保存的快速模式和推理强度',async t=>{
+ for(const toStart of [false,true]){
+  const f=await fixture(t),state=new Map([['codexChat.sessionSpeed.source','fast'],['codexChat.sessionEffort.source','high']]);
+  f.provider.context.workspaceState={get:key=>state.get(key),update:async(key,value)=>state.set(key,value)};
+  delete f.provider.speedMode;delete f.provider.rememberSessionSpeed;
+  const id=toStart?f.checkpoints.list()[0].id:f.id;
+  await f.provider.restoreCheckpoint(f.ctx,id);await f.ctx.settingsQueue;
+  assert.equal(f.provider.speedMode(f.ctx),'fast');assert.equal(f.provider.sessionEffort(f.ctx),'high');
+  assert.equal(state.get('codexChat.sessionSpeed.source'),'fast');assert.equal(state.get('codexChat.sessionEffort.source'),'high');
+  if(!toStart){
+   assert.equal(state.get('codexChat.sessionSpeed.branch'),'fast');
+   assert.equal(state.get('codexChat.sessionEffort.branch'),'high');
+  }
  }
 });
 test('带图回答还原后按问题回填图片，落盘和宿主消息都保留附件',async t=>{
@@ -266,15 +282,36 @@ test('重复问题的不同答案不混淆还原点，秘密答案不回填或�
 });
 test('答案准备期间停止会取消提交，连续点击不会重复续轮',async t=>{
  const f=await fixture(t);f.store.threads.set('source',{id:'source',turns:[f.first]});
- let finishRead,submitted=0;
- f.store.hydrate=()=>new Promise(resolve=>{finishRead=resolve;});
+ let finishRead,startedRead,submitted=0;
+ const reading=new Promise(resolve=>{startedRead=resolve;});
+ f.store.hydrate=()=>new Promise(resolve=>{finishRead=resolve;startedRead();});
  f.ctx.proc={isExited:false,isBusy:true,interrupt:async()=>{},prepareQuestionAnswer:()=>({text:reply('B'),turnId:'ask-turn'}),answerQuestion:()=>{submitted++;return true;}};
  const message={type:'answerQuestion',requestId:'current',answers:{source:'B'}};
  const pending=f.provider.onPanelMessage(f.ctx,message);
  await f.provider.onPanelMessage(f.ctx,message);
+ await reading;
  await f.provider.stopContext(f.ctx);finishRead();await pending;
  assert.equal(submitted,0);assert.equal(f.messages.some(m=>m.kind==='question_checkpoint'),false);
  assert.match(f.messages.find(m=>m.kind==='question_answer_rejected').message,/取消/);
+});
+test('提交问题答案等待本会话保存的新档位，不沿用旧推理强度',async t=>{
+ const f=await fixture(t);f.store.threads.set('source',{id:'source',turns:[f.first]});
+ let release,submitted;
+ f.provider.modelCatalog=[];
+ f.provider.context.workspaceState.update=async key=>{
+  if(key==='codexChat.sessionEffort.source')await new Promise(resolve=>{release=resolve;});
+ };
+ f.ctx.proc={isExited:false,effort:'medium',
+  setEffort:async effort=>{f.ctx.proc.effort=effort;},
+  prepareQuestionAnswer:()=>({text:reply('B'),turnId:'ask-turn'}),
+  answerQuestion:()=>{submitted=f.ctx.proc.effort;return true;}};
+ const selecting=f.provider.setEffort(f.ctx,'high');
+ await new Promise(resolve=>setImmediate(resolve));
+ const answering=f.provider.submitQuestionAnswer(f.ctx,'request',{source:'B'});
+ await new Promise(resolve=>setImmediate(resolve));
+ try {assert.equal(submitted,undefined);}
+ finally {release();await Promise.all([selecting,answering]);}
+ assert.equal(submitted,'high');
 });
 test('工具返回相对路径时使用工作目录匹配快照，不误判缺少原文',async t=>{
  const f=await fixture(t);

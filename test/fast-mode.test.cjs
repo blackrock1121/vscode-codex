@@ -12,11 +12,46 @@ function fixture(save=true, state=new Map()){
  const session={sessionId:'a',proc:{modelForNextTurn:'test-model',setSpeedMode:async value=>applied.push(['a',value]),setEffort:async value=>applied.push(['effort','a',value])}};
  const other={sessionId:'b',proc:{modelForNextTurn:'test-model',setSpeedMode:async value=>applied.push(['b',value]),setEffort:async value=>applied.push(['effort','b',value])}};
  const hidden={sessionId:'hidden',proc:{setSpeedMode:async value=>applied.push(['hidden',value]),setEffort:async value=>applied.push(['effort','hidden',value])}};
- Object.assign(provider,{modelSelectionQueue:Promise.resolve(),modelCatalog:[{id:'test-model',efforts:['low','medium','high'],speedModes:['default','fast','ultrafast']}],sessions:new Set([session,other]),detached:new Map([['hidden',hidden]]),
+ Object.assign(provider,{modelCatalog:[{id:'test-model',efforts:['low','medium','high'],speedModes:['default','fast','ultrafast']}],sessions:new Set([session,other]),detached:new Map([['hidden',hidden]]),
  context:{workspaceState:{get:key=>state.get(key),update:async(key,value)=>{if(!save)throw new Error('save failed');state.set(key,value);}}},output:{appendLine:()=>{}},
  config:()=>({get:(key,fallback)=>settings[key]??fallback,inspect:key=>({workspaceValue:settings[key]})}),post:(ctx,m)=>messages.push({...m,target:ctx.sessionId}),updateConfig:async()=>{throw new Error('会话速度不应写入公共配置');}});
  return {provider,session,other,hidden,settings,messages,applied,state};
 }
+test('一个会话保存快速模式未完成时，另一个会话仍能独立保存推理强度',async()=>{
+ const f=fixture();let release,completed=false;
+ const update=f.provider.context.workspaceState.update;
+ f.provider.context.workspaceState.update=async(key,value)=>{
+  if(key==='codexChat.sessionSpeed.a')await new Promise(resolve=>{release=resolve;});
+  await update(key,value);
+ };
+ const first=f.provider.setSpeedMode(f.session,'fast');
+ await new Promise(resolve=>setImmediate(resolve));
+ const second=f.provider.setEffort(f.other,'low').then(()=>{completed=true;});
+ await new Promise(resolve=>setImmediate(resolve));
+ try {
+  assert.equal(completed,true,'B 不应等待 A 保存设置');
+  assert.equal(f.state.get('codexChat.sessionEffort.b'),'low');
+ } finally {release();await Promise.all([first,second]);}
+});
+test('切换档位保存期间重连，恢复流程不能把旧速度或旧推理强度写回',async()=>{
+ for(const kind of ['speed','effort']){
+  const f=fixture();let release;
+  f.provider.speedMode(f.session);f.provider.sessionEffort(f.session);
+  f.session.checkpoints={setSession:()=>{}};f.provider.refreshSessions=()=>{};f.provider.store={findFile:()=>undefined};
+  const key=kind==='speed'?'codexChat.sessionSpeed.a':'codexChat.sessionEffort.a';
+  const value=kind==='speed'?'fast':'low';
+  const update=f.provider.context.workspaceState.update;
+  f.provider.context.workspaceState.update=async(k,v)=>{
+   await update(k,v);
+   if(k===key&&v===value&&!release)await new Promise(resolve=>{release=resolve;});
+  };
+  const selecting=kind==='speed'?f.provider.setSpeedMode(f.session,value):f.provider.setEffort(f.session,value);
+  await new Promise(resolve=>setImmediate(resolve));
+  f.provider.onSessionId(f.session,'a',true);
+  release();await selecting;await f.session.settingsQueue;
+  assert.equal(f.state.get(key),value,'重连保存不能覆盖已确认的新档位');
+ }
+});
 test('A 保持普通，B 切快速只更新 B，后台会话和公共默认值不变',async()=>{
  const f=fixture();
  assert.equal(f.provider.speedMode(f.session),'default');
@@ -67,6 +102,7 @@ test('空白会话发送前独立选择，服务端分配 ID 后保留并保存�
  assert.equal(f.state.size,0);assert.equal(f.provider.speedMode(f.other),'default');
  f.session.checkpoints={setSession:()=>{}};f.provider.refreshSessions=()=>{};f.provider.store={findFile:()=>undefined};
  f.provider.onSessionId(f.session,'server-id',false);
+ await f.session.settingsQueue;
  assert.equal(f.state.get('codexChat.sessionSpeed.server-id'),'fast');
  assert.equal(f.provider.speedMode({sessionId:'server-id'}),'fast');
 });
@@ -175,6 +211,7 @@ test('空白会话保留所选推理强度，分配 ID 后写入；派生继承�
  await f.provider.setEffort(f.session,'low');assert.equal(f.state.size,0);
  f.session.checkpoints={setSession:()=>{}};f.provider.refreshSessions=()=>{};f.provider.store={findFile:()=>undefined};
  f.provider.onSessionId(f.session,'created',false);
+ await f.session.settingsQueue;
  assert.equal(f.state.get('codexChat.sessionEffort.created'),'low');
  await f.provider.saveSessionEffort({sessionId:'fork'},f.provider.sessionEffort(f.session));
  const fork={sessionId:'fork'};assert.equal(f.provider.sessionEffort(fork),'low');

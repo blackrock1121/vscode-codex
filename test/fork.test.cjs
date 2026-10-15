@@ -25,7 +25,7 @@ async function fixture(t,cut=1){
  const provider=Object.create(ChatViewProvider.prototype);
  const messages=[],forks=[],opened=[],state=new Map();let reads=0;
  Object.assign(provider,{context:{workspaceState:{get:key=>state.get(key),update:async(key,value)=>state.set(key,value)}},
-  config:()=>({get:(_key,fallback)=>fallback}),modelSelectionQueue:Promise.resolve(),modelCatalog:[]});
+  config:()=>({get:(_key,fallback)=>fallback}),modelCatalog:[]});
  Object.assign(provider,{store,forking:new Set(),restoring:new Set(),sessions:new Set([ctx]),detached:new Map(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},sessionEffort:()=> 'medium',saveSessionEffort:async()=>{},openSession:async id=>opened.push(id)});
  store.hydrate=async id=>{assert.equal(id,'source');reads++;store.threads.set(id,{id,turns:[first,current]});};
  store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
@@ -41,6 +41,18 @@ test('派生新标签继承原会话模型，之后修改不影响原会话',asy
  assert.equal(f.provider.sessionModel(f.ctx),'source-model');
  assert.equal(f.provider.sessionModel(branch),'branch-model');
  assert.equal(f.state.get('codexChat.sessionModel.source'),'source-model');
+});
+test('派生新标签继承速度和推理强度，之后调节只保存新分支设置',async t=>{
+ const f=await fixture(t);
+ for(const method of ['speedMode','saveSessionSpeed','sessionEffort','saveSessionEffort'])delete f.provider[method];
+ f.state.set('codexChat.sessionSpeed.source','fast');f.state.set('codexChat.sessionEffort.source','high');
+ await f.provider.forkCheckpoint(f.ctx,f.id);
+ const branch={sessionId:'branch'};
+ assert.equal(f.provider.speedMode(branch),'fast');assert.equal(f.provider.sessionEffort(branch),'high');
+ await f.provider.setSpeedMode(branch,'default');await f.provider.setEffort(branch,'low');
+ assert.equal(f.state.get('codexChat.sessionSpeed.branch'),'default');assert.equal(f.state.get('codexChat.sessionEffort.branch'),'low');
+ assert.equal(f.state.get('codexChat.sessionSpeed.source'),'fast');assert.equal(f.state.get('codexChat.sessionEffort.source'),'high');
+ assert.equal(f.provider.speedMode(f.ctx),'fast');assert.equal(f.provider.sessionEffort(f.ctx),'high');
 });
 test('派生即时反馈、分阶段更新、重复点击不重复创建，收尾恢复界面',async t=>{
  const f=await fixture(t);let release;

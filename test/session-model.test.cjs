@@ -26,7 +26,7 @@ function fixture(state = new Map()) {
   const a = makeSession('a'), b = makeSession('b'), hidden = makeSession('hidden');
   const storage = path.join(os.tmpdir(), 'codex-model-' + randomUUID());
   Object.assign(provider, {
-    modelSelectionQueue: Promise.resolve(), modeSeq: 0,
+    modeSeq: 0,
     modelCatalog: [
       { id: 'model-a', efforts: ['low', 'high'], speedModes: ['default', 'fast'], isDefault: true },
       { id: 'model-b', efforts: ['low', 'high'], speedModes: ['default', 'fast'] },
@@ -89,6 +89,7 @@ test('两个空白会话独立选择，获得服务端 ID 后保存各自模型'
   await f.provider.setModel(f.a, 'model-b'); await f.provider.setModel(f.b, '');
   assert.equal(f.state.size, 0);
   f.provider.onSessionId(f.a, 'created-a', false); f.provider.onSessionId(f.b, 'created-b', false);
+  await Promise.all([f.a.settingsQueue, f.b.settingsQueue]);
   assert.equal(f.state.get('codexChat.sessionModel.created-a'), 'model-b');
   assert.equal(f.state.get('codexChat.sessionModel.created-b'), '');
   assert.equal(f.provider.sessionModel({ sessionId: 'created-a' }), 'model-b');
@@ -112,9 +113,10 @@ test('加载最后会话时重新读取其模型，不沿用空白上下文的�
   assert.equal(ctx.sessionId, 'saved'); assert.equal(ctx.model, 'model-b');
 });
 
-test('旧会话初次加载保存初始模型，后续默认值变化不覆盖已保存的选择', () => {
+test('旧会话初次加载保存初始模型，后续默认值变化不覆盖已保存的选择', async () => {
   const f = fixture(); f.a.initialHistoryCached = true;
   f.provider.loadSessionInto(f.a, 'a');
+  await f.a.settingsQueue;
   assert.equal(f.state.get('codexChat.sessionModel.a'), 'model-a');
   const restored = fixture(f.state); restored.settings.model = 'model-b';
   assert.equal(restored.provider.sessionModel(restored.a), 'model-a');
@@ -158,7 +160,7 @@ test('保存模型或兼容档位失败时保留原设置，错误和配置回�
   }
 });
 
-test('真实进程请求使用各自模型，运行中切换仅影响该会话下一轮，断线重建仍恢复选择', async t => {
+test('真实进程请求使用各自模型、速度和推理强度，运行中切换仅影响下轮，断线重建仍恢复选择', async t => {
   const f = fixture(), calls = [], procs = [];
   delete f.a.proc; delete f.b.proc; delete f.hidden.proc;
   f.provider.handleEmit = (ctx, event) => f.provider.post(ctx, event);
@@ -168,7 +170,10 @@ test('真实进程请求使用各自模型，运行中切换仅影响该会话�
     proc.rpc.start = async () => {};
     proc.rpc.request = async (method, params) => {
       calls.push({ session: ctx.sessionId, method, params: structuredClone(params) });
-      if (method === 'model/list') return { data: [] };
+      if (method === 'model/list') return { data: f.provider.modelCatalog.map(model => ({
+        model: model.id, supportedReasoningEfforts: model.efforts.map(reasoningEffort => ({ reasoningEffort })),
+        serviceTiers: model.speedModes.includes('fast') ? [{ id: 'priority' }] : [],
+      })) };
       if (method === 'account/read') return {};
       if (method === 'thread/resume') return { thread: { id: params.threadId }, model: params.model };
       if (method === 'turn/start') return { turn: { id: randomUUID() } };
@@ -178,20 +183,61 @@ test('真实进程请求使用各自模型，运行中切换仅影响该会话�
   };
   t.after(async () => { await Promise.all(procs.map(proc => proc.disposeAndWait())); });
   await f.provider.setModel(f.b, 'model-b');
+  await f.provider.setSpeedMode(f.a, 'fast'); await f.provider.setEffort(f.b, 'low');
   await f.provider.handleSend(f.a, 'A 的第一轮'); await f.a.proc.startingTurn;
   await f.provider.handleSend(f.b, 'B 的第一轮'); await f.b.proc.startingTurn;
   await f.provider.setModel(f.a, 'low-only');
+  await f.provider.setSpeedMode(f.a, 'default');
+  await f.provider.setSpeedMode(f.b, 'fast'); await f.provider.setEffort(f.b, 'high');
   assert.equal(f.a.proc.isBusy, true); assert.equal(f.b.proc.isBusy, true);
-  assert.deepEqual(calls.filter(c => c.method === 'turn/start').map(c => [c.session, c.params.model]), [['a', 'model-a'], ['b', 'model-b']]);
+  const turns = () => calls.filter(c => c.method === 'turn/start').map(c => [c.session, c.params.model, c.params.serviceTier, c.params.effort]);
+  assert.deepEqual(turns(), [['a', 'model-a', 'priority', 'high'], ['b', 'model-b', 'default', 'low']]);
   f.a.proc.finish(false); f.b.proc.finish(false);
   await f.provider.handleSend(f.a, 'A 的第二轮'); await f.a.proc.startingTurn;
   await f.provider.handleSend(f.b, 'B 的第二轮'); await f.b.proc.startingTurn;
-  assert.deepEqual(calls.filter(c => c.method === 'turn/start').map(c => [c.session, c.params.model]), [
-    ['a', 'model-a'], ['b', 'model-b'], ['a', 'low-only'], ['b', 'model-b'],
+  assert.deepEqual(turns(), [
+    ['a', 'model-a', 'priority', 'high'], ['b', 'model-b', 'default', 'low'], ['a', 'low-only', 'default', null], ['b', 'model-b', 'priority', 'high'],
   ]);
   f.b.proc.finish(false); await f.b.proc.disposeAndWait();
-  delete f.b.model;
+  delete f.b.model; delete f.b.speedMode; delete f.b.effort;
   await f.provider.handleSend(f.b, 'B 重连后'); await f.b.proc.startingTurn;
   assert.equal(calls.filter(c => c.method === 'thread/resume').at(-1).params.model, 'model-b');
-  assert.equal(calls.filter(c => c.method === 'turn/start').at(-1).params.model, 'model-b');
+  assert.equal(calls.filter(c => c.method === 'thread/resume').at(-1).params.serviceTier, 'priority');
+  assert.deepEqual(turns().at(-1), ['b', 'model-b', 'priority', 'high']);
+});
+
+test('A 保存档位不会阻塞 B 发送；B 发送前仍等待自己的设置保存', async () => {
+  for (const blocked of ['a', 'b']) {
+    const f = fixture(); let release, sent = false;
+    f.provider.ensureProcess = async ctx => ctx.proc;
+    f.b.proc.sendUserMessage = () => { sent = true; return true; };
+    const update = f.provider.context.workspaceState.update;
+    f.provider.context.workspaceState.update = async (key, value) => {
+      if (key === 'codexChat.sessionEffort.' + blocked) await new Promise(resolve => { release = resolve; });
+      await update(key, value);
+    };
+    const changing = f.provider.setEffort(f[blocked], 'low');
+    await new Promise(resolve => setImmediate(resolve));
+    const sending = f.provider.handleSend(f.b, 'B 发送');
+    await new Promise(resolve => setImmediate(resolve));
+    try { assert.equal(sent, blocked === 'a'); }
+    finally { release(); await Promise.all([changing, sending]); }
+    assert.equal(sent, true);
+    assert.ok(f.applied.some(([id, key, value]) => id === 'b' && key === 'effort' && value === (blocked === 'b' ? 'low' : 'high')));
+  }
+});
+
+test('清空上下文先完成旧会话的设置保存，新上下文和旧历史各自保留正确档位', async () => {
+  const f = fixture(); let release;
+  const update = f.provider.context.workspaceState.update;
+  f.provider.context.workspaceState.update = async (key, value) => {
+    if (key === 'codexChat.sessionSpeed.a') await new Promise(resolve => { release = resolve; });
+    await update(key, value);
+  };
+  const changing = f.provider.setSpeedMode(f.a, 'fast');
+  await new Promise(resolve => setImmediate(resolve));
+  const clearing = f.provider.newContext(f.a, {});
+  release(); await Promise.all([changing, clearing]);
+  assert.equal(f.a.sessionId, undefined); assert.equal(f.provider.speedMode(f.a), 'default');
+  assert.equal(f.state.get('codexChat.sessionSpeed.a'), 'fast');
 });
