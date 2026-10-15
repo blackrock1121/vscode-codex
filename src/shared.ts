@@ -125,8 +125,10 @@ export type ToWebview =
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }
   | { kind: "busy"; busy: boolean }
   /** 还原点回退正在自动停止进行中的回复：界面立刻冻结直播观感并给出过渡提示，
-   *  等待随后的 busy:false + load_history 收尾（进程真实退出最长要等 5s）。 */
+   *  普通还原由 load_history 收尾；编辑重发和重新生成由 restored 收尾。 */
   | { kind: "restoring" }
+  /** 回退已完成，编辑重发即将开始；仅解除还原状态，不代表新轮次空闲。 */
+  | { kind: "restored" }
   | { kind: "forking"; checkpointId: string; busy: boolean; label?: string }
   | { kind: "status"; label: string }
   | { kind: "response_wait"; idleMs: number }

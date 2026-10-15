@@ -1025,6 +1025,58 @@ test('停止确认后明确显示整理还原点，归档完成前不放行队�
  assert.equal(stop.disabled,false);assert.deepEqual(errors,[]);
 });
 
+test('重新生成回退完成后，无论停止还是正常结束，下一条消息都能直接发送',async t=>{
+ for(const stopped of [true,false]){
+  const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
+  emit({kind:'load_history',sessionId:'source',items:[{type:'user',text:'原问题'},{type:'assistant_text',text:'原回答'}],checkpoints:[{id:'cp',label:'原问题',userText:'原问题'}]});
+  w.document.querySelector('.regen').click();
+  assert.ok(sent.some(m=>m.type==='editMessage'&&m.checkpointId==='cp'));
+  emit({kind:'restoring'});
+  assert.equal(w.document.querySelector('.restore-overlay'),null,'重新生成期间不遮挡消息区');
+  emit({kind:'restored'});
+  emit({kind:'busy',busy:true});emit({kind:'text_delta',text:'重新回答'});
+  if(stopped)w.document.getElementById('btn-stop').click();
+  emit({kind:'finalizing'});emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+  assert.match(input.placeholder,/给 Codex 发消息/);
+  input.value='结束后的新消息';w.document.getElementById('btn-send').click();
+  assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['结束后的新消息']);
+  assert.equal(w.document.querySelectorAll('.tq-row').length,0);
+  assert.deepEqual(errors,[]);
+ }
+});
+
+test('重新生成回退完成只解除还原状态，排队消息仍等新回答停止后按序发送',async t=>{
+ const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
+ emit({kind:'load_history',items:[{type:'user',text:'原问题'},{type:'assistant_text',text:'原回答'}],checkpoints:[]});
+ w.document.querySelector('.regen').click();emit({kind:'restoring'});
+ for(const text of ['第一条排队消息','第二条排队消息']){input.value=text;w.document.getElementById('btn-send').click();}
+ emit({kind:'restored'});
+ await new Promise(r=>setTimeout(r,180));
+ assert.equal(sent.some(m=>m.type==='send'),false,'回退完成后仍要等待重新生成的回答');
+ emit({kind:'busy',busy:true});w.document.getElementById('btn-stop').click();emit({kind:'finalizing'});
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(r=>setTimeout(r,180));
+ assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['第一条排队消息']);
+ assert.match(w.document.getElementById('task-queue').textContent,/第二条排队消息/);
+ emit({kind:'busy',busy:true});emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(r=>setTimeout(r,180));
+ assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['第一条排队消息','第二条排队消息']);
+ assert.deepEqual(errors,[]);
+});
+
+test('普通还原先空闲后加载历史，回退完成后重新唤醒被暂停的队列',async t=>{
+ const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
+ emit({kind:'busy',busy:true});input.value='还原后继续';w.document.getElementById('btn-send').click();
+ emit({kind:'restoring'});emit({kind:'busy',busy:false});
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ emit({kind:'load_history',sessionId:'restored',items:[],checkpoints:[]});
+ await new Promise(r=>setTimeout(r,180));
+ assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['还原后继续']);
+ assert.equal(w.document.querySelector('.restore-overlay'),null);
+ assert.deepEqual(errors,[]);
+});
+
 test('大文件和二进制改动显示说明，仍提供保留和回滚入口',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'changed_files',totalAdded:0,totalRemoved:0,files:[

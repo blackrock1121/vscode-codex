@@ -129,3 +129,38 @@ test('回到开头不提前创建不需要的派生连接',async t=>{
  await f.provider.restoreCheckpointInner(f.ctx,id);
  assert.equal(f.forks.length,1);
 });
+
+test('编辑重发在实际回退完成后通知界面解除还原状态，再开始发送',async t=>{
+ for(const first of [true,false]){
+  const f=await fixture(t);
+  f.turns[1].items=[user('再仔细检查一遍有没有问题')];
+  f.provider.forking=new Set();f.provider.restoring=new Set();
+  const id=first?f.checkpoints.list()[0].id:f.id;
+  const rewind=f.provider.forkRewind;let release;
+  f.provider.forkRewind=async(...args)=>{await new Promise(resolve=>{release=resolve;});return rewind(...args);};
+  let sent=false;
+  f.provider.handleSend=async(ctx,text)=>{
+   assert.equal(ctx,f.ctx);assert.equal(text,'重新回答');
+   assert.equal(f.provider.restoring.has(ctx),false);
+   assert.deepEqual(f.messages.map(m=>m.kind),['restoring','restored']);
+   sent=true;
+  };
+  const task=f.provider.editMessage(f.ctx,id,'重新回答');
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.messages.map(m=>m.kind),['restoring']);assert.equal(sent,false);
+  release();await task;
+  assert.equal(sent,true);assert.equal(f.forks.length,1);
+ }
+});
+
+test('编辑回退失败不发送完成通知或重发消息',async t=>{
+ const f=await fixture(t);
+ f.turns[1].items=[user('再仔细检查一遍有没有问题')];
+ f.provider.forking=new Set();f.provider.restoring=new Set();f.provider.loadCtxSession=()=>{};
+ f.provider.forkRewind=async()=>{throw Error('回退失败');};
+ f.provider.handleSend=async()=>assert.fail('回退失败不能重发');
+ await f.provider.editMessage(f.ctx,f.id,'重新回答');
+ assert.equal(f.messages.some(m=>m.kind==='restored'),false);
+ assert.ok(f.messages.some(m=>m.kind==='error'));
+ assert.equal(f.provider.restoring.has(f.ctx),false);
+});

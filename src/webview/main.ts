@@ -1082,6 +1082,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       statusLine.textContent = restoringRegen ? "正在重新生成…" : isBusy ? "正在停止回复并还原…" : "正在还原…";
       showRestoring();
       break;
+    case "restored":
+      hideRestoring();
+      break;
     case "forking":
       if (m.busy) showForking(m.checkpointId, m.label);
       else if (forkingCheckpoint === m.checkpointId) hideForking();
@@ -3502,6 +3505,9 @@ function hideRestoring() {
   messagesEl.classList.remove("restoring");
   document.querySelector(".restore-overlay")?.remove();
   restoringRegen = false;
+  // busy:false 可能早于还原完成，此前的队列调度会因 restoreInProgress 被拦住。
+  // 解除还原后重新检查；新轮次忙碌、等待问题或还原失败的暂停仍由 flushQueue 把关。
+  if (taskQueue.length) setTimeout(flushQueue, 150);
 }
 
 /** 立刻把直播观感「停」下来：吞掉后续流事件、收起活动药丸和

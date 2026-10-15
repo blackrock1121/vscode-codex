@@ -1455,7 +1455,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         let restored = false;
         try { restored = await this.editMessageRewind(ctx, checkpointId); }
         finally { this.restoring.delete(ctx); }
-        if (restored) await this.handleSend(ctx, text, undefined, images);
+        if (restored) {
+            // 编辑重发保留前端刚追加的用户气泡，不会通过 load_history 清理还原态。
+            // 必须在开始新轮次前显式收尾，否则停止后新消息仍会被当作还原中而排队。
+            this.post(ctx, { kind: "restored" });
+            await this.handleSend(ctx, text, undefined, images);
+        }
     }
     private async editMessageRewind(ctx: SessionCtx, checkpointId: string): Promise<boolean> {
         const sourceId = ctx.sessionId;
