@@ -1146,6 +1146,8 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
           addImagePreview(uri);
         }
       }
+      for (const file of m.files ?? []) addFile(file);
+      for (const context of m.contexts ?? []) addContextChip(context.label, context.text);
       refreshComposerHint();
       return;
     case "session":
@@ -1420,7 +1422,10 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       setBusy(true);
       break;
     case "checkpoint_marker":
-      onCheckpointMarker(m.checkpointId);
+      onCheckpointMarker(m.checkpointId, m.sendId);
+      break;
+    case "send_cancelled":
+      onSendCancelled(m.sendId);
       break;
     case "speed_context":
       if (m.model !== undefined) actualSpeedModel = m.model;
@@ -2631,6 +2636,7 @@ const HISTORY_CHUNK = 30; // 「加载更多」每次只向上渲染 30 轮—�
 let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: string; userText?: string }[] } | null = null;
 
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
+  localSends.clear();
   hideSpeedFeedback();
   hideSpeedTip();
   questionInteractions.clear();
@@ -3204,10 +3210,63 @@ function renderCompactionDivider(preTokens: number, postTokens: number): HTMLEle
 }
 
 /** Live: a restore point was created for the turn just sent. */
-function onCheckpointMarker(checkpointId: string) {
-  if (lastUserEl) lastUserEl.dataset.checkpointId = checkpointId; // link message -> its checkpoint (for edit)
-  if (!lastUserEl) return;
-  messagesEl.insertBefore(renderCheckpointDivider(checkpointId, undefined, userMsgCount > 1), lastUserEl); // 第一条前也画：还原到它之前 = 清空对话重来
+function onCheckpointMarker(checkpointId: string, sendId?: string) {
+  const user = sendId ? localSends.get(sendId)?.node : lastUserEl;
+  if (!user?.isConnected || user.dataset.checkpointId) return;
+  user.dataset.checkpointId = checkpointId;
+  if (sendId) localSends.delete(sendId);
+  messagesEl.insertBefore(renderCheckpointDivider(checkpointId, undefined,
+    Array.from(messagesEl.querySelectorAll(".msg.user")).indexOf(user) > 0), user);
+  maybeScroll();
+}
+
+/** 只有宿主确认未发送，才允许在本地撤回；不能把缺少还原点等同于未执行。 */
+function onSendCancelled(sendId: string) {
+  const entry = localSends.get(sendId);
+  if (!entry?.node.isConnected || entry.cancelled || entry.node.dataset.checkpointId) return;
+  entry.cancelled = true;
+  const divider = el("div", "checkpoint-divider");
+  const button = el("button", "cp-restore", "还原到此处");
+  button.title = "这条消息在发送前已终止，点击取回原文和附件";
+  button.onclick = () => {
+    if (isBusy || restoreInProgress) {
+      appendNotice("请先停止当前轮次，再还原这条未发送的消息。", "info");
+      return;
+    }
+    // 若后来已有实际执行的轮次，仍由宿主回滚该轮及之后的文件与对话。
+    let next = entry.node.nextElementSibling as HTMLElement | null;
+    while (next) {
+      if (next.matches(".msg.user")) {
+        if (next.dataset.checkpointId) {
+          send({ type: "restoreCheckpoint", checkpointId: next.dataset.checkpointId,
+            draft: { text: entry.payload.text, images: entry.payload.images,
+              files: entry.payload.files, contexts: entry.payload.contexts } });
+          return;
+        }
+        if (!localSends.get(next.dataset.sendId || "")?.cancelled) {
+          appendNotice("后续消息尚无可确认的还原点，请重新打开会话后再还原。", "error");
+          return;
+        }
+      }
+      next = next.nextElementSibling as HTMLElement | null;
+    }
+    finalizeTurn();
+    let node: Element | null = divider;
+    while (node) { const following: Element | null = node.nextElementSibling; node.remove(); node = following; }
+    for (const [id, item] of localSends) if (!item.node.isConnected) localSends.delete(id);
+    pruneRailObservers();
+    cancelLiveRender();
+    assistantEl = null;
+    liveBlock = null;
+    lastUserEl = Array.from(messagesEl.querySelectorAll<HTMLElement>(".msg.user")).at(-1) ?? null;
+    userMsgCount = messagesEl.querySelectorAll(".msg.user").length;
+    userStopped = false;
+    recallQueuedItem(entry.payload);
+    updateQuestionBar();
+    updateEmptyState();
+  };
+  divider.appendChild(button);
+  messagesEl.insertBefore(divider, entry.node);
   maybeScroll();
 }
 
@@ -3224,6 +3283,7 @@ interface QueueItem {
   labels: string[];
   imageUris: string[];
 }
+const localSends = new Map<string, { node: HTMLElement; payload: QueueItem; cancelled?: boolean }>();
 const taskQueue: QueueItem[] = [];
 const taskQueueEl = $("task-queue");
 
@@ -3424,6 +3484,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
       pruneRailObservers();
       cancelLiveRender();
       historyState = null;
+      localSends.clear();
       lastUserEl = null;
       assistantEl = null;
       liveBlock = null;
@@ -3488,7 +3549,10 @@ function performSend(p: QueueItem, jumpToLatest: boolean) {
   // be in flight; clearing the gate now would append them to this new bubble.
   // Only `setBusy(true)` — which the host always emits before the new turn's
   // first stream event — reopens rendering.
-  appendUser(p.text, p.labels, p.imageUris, jumpToLatest);
+  const sendId = crypto.randomUUID();
+  const user = appendUser(p.text, p.labels, p.imageUris, jumpToLatest);
+  user.dataset.sendId = sendId;
+  localSends.set(sendId, { node: user, payload: p });
   if (!jumpToLatest) maybeScroll();
   finalizeTurn();
   turnTokens = 0; // reset token counters for the new turn
@@ -3504,6 +3568,7 @@ function performSend(p: QueueItem, jumpToLatest: boolean) {
   if (assistantEl) assistantEl.classList.add("streaming-turn");
   send({
     type: "send",
+    sendId,
     text: p.text,
     queueMs: p.queuedAt === undefined ? undefined : Math.max(0, Math.round(performance.now() - p.queuedAt)),
     context: p.context,

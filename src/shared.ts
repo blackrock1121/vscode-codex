@@ -175,7 +175,7 @@ export type ToWebview =
   | { kind: "ping"; id: number }
   /** 重建 webview 后回填输入框草稿（宿主侧持有，整页重载不丢）；
    *  还原到此处时随草稿带回该轮消息的图片附件。 */
-  | { kind: "draft"; text: string; images?: { mediaType: string; data: string }[] }
+  | { kind: "draft"; text: string; images?: { mediaType: string; data: string }[]; files?: string[]; contexts?: { label: string; text: string }[] }
   | { kind: "update_available"; version: string }
   | { kind: "context"; used: number; total: number }
   | { kind: "refs_validated"; invalid: string[] }
@@ -203,7 +203,9 @@ export type ToWebview =
   | { kind: "sessions"; list: SessionSummary[]; activeId?: string; runningIds?: string[] }
   | { kind: "running"; sessionIds: string[] }
   // A restore point was created for the turn just sent (live).
-  | { kind: "checkpoint_marker"; checkpointId: string; userText: string }
+  | { kind: "checkpoint_marker"; checkpointId: string; userText: string; sendId?: string }
+  /** 准备阶段终止，消息尚未交给 Codex，可从界面取回原始输入。 */
+  | { kind: "send_cancelled"; sendId: string }
   /** modEnterToSend：Cmd/Ctrl+Enter 发送、Enter 换行（默认 Enter 发送）。 */
   | { kind: "config"; permissionMode: string; model: string; effort: string; speedMode?: SpeedMode; modEnterToSend?: boolean }
   | { kind: "context_added"; label: string; text: string }
@@ -286,7 +288,7 @@ export type FromWebview =
   | { type: "checkUpdate"; fromBanner?: boolean }
   | { type: "refreshUsage" }
   | { type: "performanceReport"; requestId?: string }
-  | { type: "send"; text: string; queueMs?: number; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
+  | { type: "send"; text: string; sendId?: string; queueMs?: number; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "excludeSnapshotPaths"; paths?: string[]; all?: boolean }
   /** 从 OS（Finder 等）拖入工作区外的文件/目录：webview 拿不到绝对路径，只能读出
    *  内容传给宿主，由宿主镜像写盘后再按普通路径附加。rel 含顶层名（如 "dir/a.ts"）。 */
@@ -307,7 +309,7 @@ export type FromWebview =
   /** 会话列表里置顶/取消置顶——宿主把 sessionId 加入/移出 globalState 的置顶集合。 */
   | { type: "pinSession"; sessionId: string; pinned: boolean }
   | { type: "deleteSessions"; sessionIds: string[] }
-  | { type: "restoreCheckpoint"; checkpointId: string }
+  | { type: "restoreCheckpoint"; checkpointId: string; draft?: { text: string; images?: { mediaType: string; data: string }[]; files?: string[]; contexts?: { label: string; text: string }[] } }
   /** 从该还原点派生一个新会话（复制截断点之前的对话到新 sessionId，新标签页打开；当前会话不动）。 */
   | { type: "forkCheckpoint"; checkpointId: string }
   | { type: "setPermissionMode"; mode: string }

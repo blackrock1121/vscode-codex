@@ -963,7 +963,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.stopSeq = ctx.sendSeq ?? 0;
         const proc = ctx.proc;
         this.output.appendLine(`[interrupt] session=${ctx.sessionId?.slice(0, 8)} requested busy=${!!proc?.isBusy}`);
-        if (!proc?.isBusy) { this.post(ctx, { kind: "busy", busy: false }); return; }
+        // 准备流程尚未退出时不能放行队列；由 handleSend 的 finally 确认取消并解锁。
+        if (!proc?.isBusy) {
+            if (!ctx.sending) this.post(ctx, { kind: "busy", busy: false });
+            return;
+        }
         this.post(ctx, { kind: "status", label: "正在停止，确认后再处理排队消息…" });
         try { await proc.interrupt(); }
         catch (err) {
@@ -1125,7 +1129,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.fetchUsage(true);
                     break;
                 case "send":
-                    await this.handleSend(ctx, m.text, m.context, m.images, m.files, undefined, m.queueMs);
+                    await this.handleSend(ctx, m.text, m.context, m.images, m.files, undefined, m.queueMs, m.sendId);
                     break;
                 case "editMessage":
                     await this.editMessage(ctx, m.checkpointId, m.text, m.images);
@@ -1165,7 +1169,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case "restoreCheckpoint":
-                    await this.restoreCheckpoint(ctx, m.checkpointId);
+                    await this.restoreCheckpoint(ctx, m.checkpointId, false, m.draft);
                     break;
                 case "reanswerQuestion":
                     await this.restoreCheckpoint(ctx, m.checkpointId, true);
@@ -1468,21 +1472,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string; data: string;
-    }[], files?: string[], allowed?: () => boolean, queueMs?: number): Promise<boolean> {
+    }[], files?: string[], allowed?: () => boolean, queueMs?: number, sendId?: string): Promise<boolean> {
         if (ctx.sending) { this.post(ctx, { kind: 'notice', message: '上一条消息正在准备，请稍后再发送。' }); return false; }
         ctx.sending = true;
+        const mySeq = (ctx.sendSeq = (ctx.sendSeq ?? 0) + 1);
         const priorSnapshot = ctx.snapshot;
         let accepted = false;
-        try { accepted = await this.handleSendInner(ctx, text, context, images, files, allowed, queueMs); return accepted; }
+        try { accepted = await this.handleSendInner(ctx, text, context, images, files, allowed, queueMs, sendId); return accepted; }
         finally {
             if (!accepted && !ctx.proc?.isBusy && ctx.snapshot !== priorSnapshot) ctx.snapshot = undefined;
             ctx.sending = false;
+            if (!accepted && (ctx.stopSeq ?? -1) >= mySeq) {
+                if (sendId) this.post(ctx, { kind: "send_cancelled", sendId });
+                if (!ctx.proc?.isBusy) this.post(ctx, { kind: "busy", busy: false });
+            }
         }
     }
     private async handleSendInner(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
         data: string;
-    }[], files?: string[], allowed?: () => boolean, queueMs?: number): Promise<boolean> {
+    }[], files?: string[], allowed?: () => boolean, queueMs?: number, sendId?: string): Promise<boolean> {
+        const mySeq = ctx.sendSeq!;
         const trace = performanceContext(queueMs);
         const enabled = this.config().get<boolean>("transportDiagnostics", true);
         const record = (event: string, fields: Record<string, unknown>) => {
@@ -1506,13 +1516,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const finalizingAt = performance.now();
         await ctx.finalizing;
         record("preparation_stage", { stage: "previous_finalization_wait", durationMs: Math.round(performance.now() - finalizingAt), outcome: "completed" });
+        if ((ctx.stopSeq ?? -1) >= mySeq) return false;
         if (allowed && !allowed()) return false;
         if (ctx.proc?.isBusy || ctx.pendingPerm?.kind === "permission_request") {
             this.post(ctx, { kind: "error", message: "上一轮尚未结束，请先完成问题或审批。", keepBusy: true });
             return false;
         }
         let attached = context;
-        const mySeq = (ctx.sendSeq = (ctx.sendSeq ?? 0) + 1);
         if (files && files.length) {
             const fileCtx = syncStage("attachments", () => this.buildFileContext(files));
             attached = attached ? `${fileCtx}\n\n${attached}` : fileCtx;
@@ -1547,7 +1557,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         })();
         await Promise.all([historyReady, snapshotReady]);
         if ((ctx.stopSeq ?? -1) >= mySeq || (allowed && !allowed())) {
-            this.post(ctx, { kind: "busy", busy: false });
+            if ((ctx.stopSeq ?? -1) < mySeq) this.post(ctx, { kind: "busy", busy: false });
             return false;
         }
         // A new thread is only durable after its first turn starts. Do not create
@@ -1575,7 +1585,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 void this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
                 await proc.disposeAndWait();
             }
-            this.post(ctx, { kind: "busy", busy: false });
+            if ((ctx.stopSeq ?? -1) < mySeq) this.post(ctx, { kind: "busy", busy: false });
             return false;
         }
         if (proc.isBusy) {
@@ -1617,7 +1627,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastUserActionAt = ctx.sendAt;
         this.output.appendLine(`[${new Date().toISOString()}] [send] session=${ctx.sessionId?.slice(0, 8)} 准备${Date.now() - prepareAt}ms 正文${text.length}字 附加${attached?.length ?? 0}字 图片${images?.length ?? 0}`);
         const checkpointId = ctx.checkpoints.beginTurn(text || "(图片)", lineBefore, !!ctx.snapshot);
-        this.post(ctx, { kind: "checkpoint_marker", checkpointId, userText: text });
+        this.post(ctx, { kind: "checkpoint_marker", checkpointId, userText: text, sendId });
         return true;
         } finally { record("preparation_end", { durationMs: Math.round(performance.now() - trace.startedAt), outcome: dispatched ? "dispatched" : "not_dispatched" }); }
     }
@@ -2454,7 +2464,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.post(ctx, { kind: "question_checkpoint", requestId, checkpointId });
         if (snapshot) this.reportSnapshotSkips(ctx, snapshot);
     }
-    private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string, reanswer = false): Promise<void> {
+    private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string, reanswer = false,
+        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"]): Promise<void> {
         if (this.forking.has(ctx)) {
             this.post(ctx, { kind: "notice", message: "正在派生，请完成后再还原。" });
             return;
@@ -2466,12 +2477,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (this.restoring.has(ctx)) return;
         this.restoring.add(ctx);
         try {
-            await this.restoreCheckpointInner(ctx, checkpointId, reanswer);
+            await this.restoreCheckpointInner(ctx, checkpointId, reanswer, draft);
         } finally {
             this.restoring.delete(ctx);
         }
     }
-    private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string, reanswer = false): Promise<void> {
+    private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string, reanswer = false,
+        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"]): Promise<void> {
         const sourceId = ctx.sessionId;
         const blocked = reanswer ? ctx.checkpoints.restoreBlockReason(checkpointId, false) : undefined;
         if (blocked) {
@@ -2498,14 +2510,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ? this.store.prepareFork() : undefined;
         const startedAt = performance.now();
         try {
-            await this.restoreCheckpointPrepared(ctx, checkpointId, reanswer, sourceId, preparation, startedAt);
+            await this.restoreCheckpointPrepared(ctx, checkpointId, reanswer, sourceId, preparation, startedAt, draft);
         } finally {
             await preparation?.dispose();
             this.output.appendLine(`[restore] 流程结束 elapsedMs=${Math.round(performance.now() - startedAt)}`);
         }
     }
     private async restoreCheckpointPrepared(ctx: SessionCtx, checkpointId: string, reanswer: boolean,
-        sourceId: string, preparation: ForkPreparation | undefined, startedAt: number): Promise<void> {
+        sourceId: string, preparation: ForkPreparation | undefined, startedAt: number,
+        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"]): Promise<void> {
         const progress = (label: string) => {
             this.post(ctx, { kind: "status", label });
             this.output.appendLine(`[restore] ${label} +${Math.round(performance.now() - startedAt)}ms`);
@@ -2602,12 +2615,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.refreshChangedFiles(ctx);
             return;
         }
-        const draftText = result.userText === "(图片)" ? "" : result.userText;
-        const draftImages = nextTurn?.images.length ? nextTurn.images : undefined;
+        const draftText = draft ? draft.text : result.userText === "(图片)" ? "" : result.userText;
+        const draftImages = draft ? draft.images : nextTurn?.images.length ? nextTurn.images : undefined;
         if (draftText || draftImages) {
             ctx.draft = draftText;
             ctx.draftImages = draftImages;
-            this.post(ctx, { kind: "draft", text: draftText, images: draftImages });
+            this.post(ctx, { kind: "draft", ...draft, text: draftText, images: draftImages });
         }
         this.refreshChangedFiles(ctx);
     }

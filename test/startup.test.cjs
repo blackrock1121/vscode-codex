@@ -175,15 +175,31 @@ test('文件保存期间停止首轮，不创建会话、不发起生成；连�
   let release;
   vscode.workspace.textDocuments = [{ isDirty: true, isUntitled: false, uri: {},
     save: () => new Promise(resolve => { release = () => resolve(true); }) }];
-  const sending = f.provider.handleSend(f.ctx, '1');
+  const sending = f.provider.handleSend(f.ctx, '1', undefined, undefined, undefined, undefined, undefined, 'saving-send');
   await until(() => !!release); await f.ctx.proc.prepare();
-  await f.provider.stopContext(f.ctx); release(); await sending;
+  await f.provider.stopContext(f.ctx);
+  assert.equal(f.events.some(e => e.kind === 'busy' && !e.busy), false, '准备退出前不能解锁队列');
+  assert.equal(f.events.some(e => e.kind === 'send_cancelled'), false, '尚未退出不能确认未发送');
+  release(); await sending;
+  assert.deepEqual(f.events.slice(-2), [{kind:'send_cancelled',sendId:'saving-send'}, {kind:'busy',busy:false}]);
   assert.equal(f.ctx.sessionId, undefined);
   assert.equal((await f.read()).some(m => ['thread/start', 'turn/start'].includes(m.method)), false);
   vscode.workspace.textDocuments = [];
   await f.provider.handleSend(f.ctx, '再次发送');
   await until(() => f.events.some(e => e.kind === 'result'));
   assert.equal(f.ctx.sessionId, 'thread-1');
+});
+
+test('等待上一轮归档时立即停止，不漏掉取消且不启动新一轮', async t => {
+  const f = await fixture(t);
+  let release;
+  f.ctx.finalizing = new Promise(resolve => { release = resolve; });
+  const sending = f.provider.handleSend(f.ctx, '尚未准备', undefined, undefined, undefined, undefined, undefined, 'early-send');
+  await f.provider.stopContext(f.ctx);
+  assert.equal(f.events.some(e => e.kind === 'busy' && !e.busy), false);
+  release(); assert.equal(await sending, false);
+  assert.deepEqual(f.events.slice(-2), [{kind:'send_cancelled',sendId:'early-send'}, {kind:'busy',busy:false}]);
+  assert.equal(f.procs.length, 0);
 });
 
 test('会话创建期间停止首轮，受理后清理未发送会话和连接', async t => {

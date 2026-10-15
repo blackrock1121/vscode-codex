@@ -75,6 +75,28 @@ async function fixture(t,env={}){
  return {w,provider,ctx,proc,events,sent,errors,tasks,send,stop,idle,answer};
 }
 
+test('准备阶段停止：确认取消后补还原入口，并且下一条排队消息只发送一次',async t=>{
+ const f=await fixture(t,{TEST_HOLD_REPLY:'1'});
+ let release;
+ f.ctx.finalizing=new Promise(resolve=>{release=resolve;});
+ f.send('准备期间终止');await until(()=>f.ctx.sending);
+ f.stop();f.send('wait');
+ await until(()=>f.ctx.stopSeq===f.ctx.sendSeq);
+ assert.equal(f.sent.filter(m=>m.type==='send').length,1);
+ assert.equal(f.w.document.querySelector('.cp-restore'),null);
+ release();await until(()=>!!f.proc.turnId);
+ assert.equal(f.sent.filter(m=>m.type==='send').length,2);
+ assert.equal(f.events.filter(m=>m.kind==='send_cancelled').length,1);
+ const users=[...f.w.document.querySelectorAll('.msg.user')];
+ assert.equal(users[0].dataset.rawText,'准备期间终止');
+ assert.ok(users[0].previousElementSibling.querySelector('.cp-restore'));
+ assert.equal(users[0].dataset.checkpointId,undefined);
+ assert.ok(users[1].dataset.checkpointId);
+ assert.equal(f.ctx.checkpoints.list().length,1,'未发送消息不能占用真实文件还原点');
+ f.stop();await until(f.idle);
+ assert.deepEqual(f.errors,[]);
+});
+
 for(const scenario of ['普通回复','AskUserQuestion 回答后','原生异步问题回答后','等待问题答案']){
  test(`${scenario}停止：确认前不执行队列，确认后继续排队与新发消息`,async t=>{
   const f=await fixture(t,{TEST_HOLD_REPLY:'1',TEST_INTERRUPT_DELAY:'80'});

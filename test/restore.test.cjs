@@ -37,6 +37,15 @@ test('末尾空中断轮次可还原：保留上一轮，恢复提问草稿',asy
  assert.equal(f.ctx.draft,'再仔细检查一遍有没有问题');
  assert.deepEqual(f.checkpoints.list().map(c=>c.userText),['第一轮']);
 });
+test('从未发送消息的位置回滚后续真实轮次，草稿恢复未发送消息及图片',async t=>{
+ const f=await fixture(t);
+ f.turns[1].items=[user('再仔细检查一遍有没有问题')];
+ const draft={text:'此前终止的消息',images:[{mediaType:'image/png',data:'original-image'}],files:['/tmp/original.ts'],contexts:[{label:'原始选区',text:'const original = 1;'}]};
+ await f.provider.restoreCheckpointInner(f.ctx,f.id,false,draft);
+ assert.equal(f.forks.length,1);
+ assert.equal(f.ctx.draft,draft.text);assert.deepEqual(f.ctx.draftImages,draft.images);
+ assert.deepEqual(f.messages.find(m=>m.kind==='draft'),{kind:'draft',...draft});
+});
 test('空中断特例不会放行后续有对话、运行中、非空、旧还原点和文件改动',async t=>{
  const f=await fixture(t);
  for(const status of ['completed','inProgress','failed']){

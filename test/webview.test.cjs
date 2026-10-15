@@ -732,6 +732,77 @@ test('流式文字收到后立即可见，无需等待动画帧',t=>{const {w,em
 test('流式回复中完整链接立即渲染，本地图片由宿主加载',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'请扫码 ![登录二维码](/tmp/qr.jpg) [打开图片](/tmp/qr.jpg)'});const messages=w.document.getElementById('messages');assert.equal(messages.textContent.includes('[打开图片]'),false);assert.ok(messages.querySelector('.code-ref[data-path="/tmp/qr.jpg"]'));assert.ok(sent.some(m=>m.type==='loadLocalImage'&&m.path==='/tmp/qr.jpg'));assert.ok(messages.querySelector('.local-image-placeholder'));emit({kind:'local_image',path:'/tmp/qr.jpg',dataUri:'data:image/jpeg;base64,YQ=='});const img=messages.querySelector('img[data-local-src="/tmp/qr.jpg"]');assert.ok(img);assert.equal(img.getAttribute('src'),'data:image/jpeg;base64,YQ==');img.dispatchEvent(new w.Event('load'));assert.equal(messages.querySelector('.local-image-placeholder'),null);assert.deepEqual(errors,[]);});
 test('历史回复的本地图片无法读取时显示清楚的占位文字',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'load_history',sessionId:'image',items:[{type:'assistant_text',text:'![测试二维码](/tmp/missing.jpg)'}],checkpoints:[]});assert.ok(sent.some(m=>m.type==='loadLocalImage'&&m.path==='/tmp/missing.jpg'));emit({kind:'local_image',path:'/tmp/missing.jpg'});assert.match(w.document.getElementById('messages').textContent,/图片无法加载：测试二维码/);assert.equal(w.document.querySelector('.md img'),null);assert.deepEqual(errors,[]);});
 test('发送与停止按钮传递真实消息契约',t=>{const {w,sent,emit}=setup(t);const input=w.document.getElementById('input');input.value='测试消息';input.dispatchEvent(new w.Event('input'));w.document.getElementById('btn-send').click();assert.ok(sent.some(m=>m.type==='send'&&m.text==='测试消息'));emit({kind:'busy',busy:true});w.document.getElementById('btn-stop').click();assert.ok(sent.some(m=>m.type==='interrupt'));});
+
+test('准备阶段停止后显示还原入口，原文和上下文可完整取回，不回滚已有对话',t=>{
+ const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
+ emit({kind:'load_history',items:[{type:'user',text:'上一轮'},{type:'assistant_text',text:'已有回答'}],checkpoints:[]});
+ emit({kind:'context_added',label:'选中代码',text:'const original = 1;'});
+ input.value='终止的消息\n第二行';w.document.getElementById('btn-send').click();
+ const request=sent.find(m=>m.type==='send');
+ w.document.getElementById('btn-stop').click();
+ assert.equal(w.document.querySelector('.cp-restore'),null,'宿主确认之前不能假装可还原');
+ emit({kind:'send_cancelled',sendId:request.sendId});emit({kind:'busy',busy:false});
+ emit({kind:'send_cancelled',sendId:request.sendId});
+ assert.equal(w.document.querySelectorAll('.cp-restore').length,1);
+ assert.equal(w.document.querySelector('.cp-fork'),null,'未发送消息没有服务端派生点');
+ input.value='保留新草稿';w.document.querySelector('.cp-restore').click();
+ assert.equal(input.value,'终止的消息\n第二行\n\n保留新草稿');
+ assert.deepEqual([...w.document.querySelectorAll('.msg.user')].map(m=>m.dataset.rawText),['上一轮']);
+ assert.match(w.document.getElementById('messages').textContent,/已有回答/);
+ assert.equal(sent.some(m=>m.type==='restoreCheckpoint'),false);
+ w.document.getElementById('btn-send').click();
+ assert.match(sent.filter(m=>m.type==='send').at(-1).context,/const original = 1/);
+ assert.deepEqual(errors,[]);
+});
+
+test('终止消息之后已有实际轮次，还原使用其真实检查点并恢复被终止的原文',t=>{
+ const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
+ input.value='未发送的原文';w.document.getElementById('btn-send').click();
+ const first=sent.find(m=>m.type==='send');
+ emit({kind:'send_cancelled',sendId:first.sendId});emit({kind:'busy',busy:false});
+ input.value='后来的消息';w.document.getElementById('btn-send').click();
+ const second=sent.filter(m=>m.type==='send').at(-1);
+ emit({kind:'checkpoint_marker',checkpointId:'actual-cp',userText:second.text,sendId:second.sendId});
+ emit({kind:'busy',busy:false});
+ w.document.querySelector('.cp-restore').click();
+ assert.equal(sent.at(-1).type,'restoreCheckpoint');assert.equal(sent.at(-1).checkpointId,'actual-cp');
+ assert.equal(sent.at(-1).draft.text,'未发送的原文');
+ assert.equal(w.document.querySelectorAll('.msg.user').length,2,'必须等宿主成功回滚才删界面');
+ assert.deepEqual(errors,[]);
+});
+
+test('仅图片消息在准备阶段终止后，还原保留原图片和文件附件',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ const images=[{mediaType:'image/png',data:'iVBORw0KGgo='}];
+ emit({kind:'draft',text:'',images,files:['/tmp/original.ts']});
+ w.document.getElementById('btn-send').click();
+ const first=sent.find(m=>m.type==='send');
+ w.document.getElementById('btn-stop').click();
+ emit({kind:'send_cancelled',sendId:first.sendId});emit({kind:'busy',busy:false});
+ w.document.querySelector('.cp-restore').click();
+ assert.equal(w.document.querySelectorAll('.msg.user').length,0);
+ w.document.getElementById('btn-send').click();
+ const second=sent.filter(m=>m.type==='send').at(-1);
+ assert.deepEqual(JSON.parse(JSON.stringify(second.images)),images);
+ assert.deepEqual([...second.files],['/tmp/original.ts']);
+ assert.deepEqual(errors,[]);
+});
+
+test('真实还原点和过期的取消回执按发送身份处理，不重复或挂错消息',t=>{
+ const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
+ input.value='相同内容';w.document.getElementById('btn-send').click();
+ const first=sent.find(m=>m.type==='send');
+ emit({kind:'checkpoint_marker',checkpointId:'cp',userText:first.text,sendId:first.sendId});
+ emit({kind:'send_cancelled',sendId:first.sendId});emit({kind:'busy',busy:false});
+ assert.equal(w.document.querySelectorAll('.cp-restore').length,1);
+ input.value='相同内容';w.document.getElementById('btn-send').click();
+ emit({kind:'checkpoint_marker',checkpointId:'stale',userText:first.text,sendId:first.sendId});
+ assert.equal(w.document.querySelectorAll('.cp-restore').length,1);
+ emit({kind:'load_history',items:[],checkpoints:[]});
+ emit({kind:'send_cancelled',sendId:sent.filter(m=>m.type==='send').at(-1).sendId});
+ assert.equal(w.document.querySelector('.cp-restore'),null);
+ assert.deepEqual(errors,[]);
+});
 test('排队消息可撤回到输入框，保留换行、图片、附件和已有草稿',t=>{const {w,sent,emit,errors}=setup(t);const input=w.document.getElementById('input');emit({kind:'busy',busy:true});emit({kind:'context_added',label:'选中代码',text:'const n = 1'});emit({kind:'attach_files',paths:['/tmp/example.ts']});emit({kind:'draft',text:'',images:[{mediaType:'image/png',data:'aGVsbG8='}]});input.value='第一行\n  缩进第二行\n\n末行  ';w.document.getElementById('btn-send').click();const queue=w.document.getElementById('task-queue');assert.equal(queue.querySelectorAll('.tq-row').length,1);assert.equal(sent.some(m=>m.type==='send'),false);input.value='已有草稿';queue.querySelector('.tq-recall').click();assert.equal(input.value,'第一行\n  缩进第二行\n\n末行  \n\n已有草稿');assert.equal(queue.querySelectorAll('.tq-row').length,0);assert.equal(w.document.activeElement,input);assert.match(w.document.getElementById('context-chips').textContent,/选中代码/);assert.match(w.document.getElementById('file-chips').textContent,/example.ts/);assert.equal(w.document.querySelectorAll('#image-previews .img-preview').length,1);assert.ok(sent.some(m=>m.type==='draft'&&m.text===input.value));assert.deepEqual(errors,[]);});
 test('排队图片缩略图与文字同一行，最多两张并显示余量，撤回保留全部图片',t=>{
  const {w,sent,emit,errors}=setup(t),input=w.document.getElementById('input');
