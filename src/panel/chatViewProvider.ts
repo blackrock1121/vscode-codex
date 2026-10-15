@@ -1020,6 +1020,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.missedPings = 0;
         try {
             switch (m.type) {
+                case "performanceReport": {
+                    try {
+                        await vscode.commands.executeCommand("codex-chat.performanceReport");
+                        this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: true, message: "诊断报告已在编辑器中打开" });
+                    } catch (error) {
+                        this.output.appendLine(`[performanceReport] ${String(error)}`);
+                        this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: false, message: "诊断报告打开失败，请重试或查看插件日志。" });
+                    }
+                    break;
+                }
                 case "pong":
                     break;
                 case "draft":

@@ -1602,5 +1602,33 @@ test('权限按钮旁的诊断入口在任务执行期间仍可打开报告，�
  emit({kind:'busy',busy:true});button.click();
  assert.equal(sent.filter(m=>m.type==='performanceReport').length,1);
  assert.equal(sent.some(m=>m.type==='send'),false);assert.equal(input.value,'尚未发送的草稿');
+ assert.equal(button.disabled,true);assert.match(w.document.getElementById('diagnostics-feedback').textContent,/正在生成/);
+ const request=sent.find(m=>m.type==='performanceReport');
+ emit({kind:'performance_report_result',requestId:request.requestId,ok:true,message:'诊断报告已在编辑器中打开'});
  assert.equal(button.disabled,false);assert.deepEqual(errors,[]);
+});
+
+test('诊断虫子图标悬停和键盘聚焦立即说明，移出和 Escape 收起',t=>{
+ const {w,errors}=setup(t),button=w.document.getElementById('diagnostics-trigger'),tip=w.document.getElementById('diagnostics-tooltip');
+ assert.equal(tip.hidden,true);assert.equal(button.hasAttribute('title'),false);
+ button.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false);assert.match(tip.textContent,/速度诊断报告/);assert.match(tip.textContent,/Bash.*压缩.*子 Agent/);
+ assert.equal(button.getAttribute('aria-describedby'),tip.id);
+ button.dispatchEvent(new w.MouseEvent('mouseleave'));assert.equal(tip.hidden,true);
+ button.dispatchEvent(new w.FocusEvent('focus'));assert.equal(tip.hidden,false);
+ w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(tip.hidden,true);assert.deepEqual(errors,[]);
+});
+
+test('诊断点击防重复，失败或无响应可重试，旧回执不能覆盖新请求',t=>{
+ const {w,sent,emit,errors}=setup(t),button=w.document.getElementById('diagnostics-trigger'),feedback=w.document.getElementById('diagnostics-feedback');
+ let expire;const nativeTimeout=w.setTimeout.bind(w);
+ w.setTimeout=(fn,ms)=>ms===15000?(expire=fn,77777):nativeTimeout(fn,ms);
+ button.click();button.click();assert.equal(sent.filter(m=>m.type==='performanceReport').length,1);assert.equal(feedback.hidden,false);
+ const first=sent.find(m=>m.type==='performanceReport');
+ emit({kind:'performance_report_result',requestId:first.requestId,ok:false,message:'报告读取失败，请重试'});
+ assert.equal(button.disabled,false);assert.match(feedback.textContent,/读取失败/);
+ button.click();const second=sent.filter(m=>m.type==='performanceReport').at(-1);assert.notEqual(first.requestId,second.requestId);
+ emit({kind:'performance_report_result',requestId:first.requestId,ok:true,message:'过期结果'});
+ assert.equal(button.disabled,true);assert.doesNotMatch(feedback.textContent,/过期结果/);
+ expire();assert.equal(button.disabled,false);assert.match(feedback.textContent,/未收到诊断响应/);
+ assert.equal(w.document.getElementById('messages').textContent.includes('报告读取失败'),false);assert.deepEqual(errors,[]);
 });

@@ -140,7 +140,7 @@ const questionInteractions = new Map<string, { resolve: (behavior: "allow" | "de
 const childQuestionIds = new Set<string>();
 const statusLine = $("status-line");
 const modeTrigger = $("mode-trigger");
-$("diagnostics-trigger").onclick = () => send({ type: "performanceReport" });
+const diagnosticsTrigger = $("diagnostics-trigger") as HTMLButtonElement;
 const modeIcon = $("mode-icon");
 const modeLabel = $("mode-label");
 const modeMenu = $("mode-menu");
@@ -229,6 +229,68 @@ modeTrigger.addEventListener("blur", hideModeTip);
 document.addEventListener("keydown", e => { if (e.key === "Escape") hideModeTip(); });
 window.addEventListener("resize", hideModeTip);
 document.addEventListener("scroll", hideModeTip, true);
+
+const diagnosticsTip = document.createElement("div");
+diagnosticsTip.id = "diagnostics-tooltip";
+diagnosticsTip.className = "speed-tooltip";
+diagnosticsTip.hidden = true;
+diagnosticsTip.setAttribute("role", "tooltip");
+diagnosticsTip.innerHTML = '<div class="speed-tip-heading">速度诊断报告</div><div>查看工具、Bash、压缩和子 Agent 的耗时与失败原因。</div><div class="speed-tip-action">点击在编辑器中打开报告</div>';
+document.body.appendChild(diagnosticsTip);
+diagnosticsTrigger.removeAttribute("title");
+diagnosticsTrigger.setAttribute("aria-describedby", diagnosticsTip.id);
+const diagnosticsFeedback = document.createElement("div");
+diagnosticsFeedback.id = "diagnostics-feedback";
+diagnosticsFeedback.className = "diagnostics-feedback";
+diagnosticsFeedback.hidden = true;
+diagnosticsFeedback.setAttribute("role", "status");
+diagnosticsFeedback.setAttribute("aria-live", "polite");
+document.body.appendChild(diagnosticsFeedback);
+let diagnosticsSequence = 0;
+let diagnosticsRequestId: string | undefined;
+let diagnosticsTimer = 0;
+function hideDiagnosticsTip() { diagnosticsTip.hidden = true; }
+function showDiagnosticsTip() {
+  hideModeTip(); hideSpeedTip(); hideSpeedFeedback();
+  if (diagnosticsRequestId) return;
+  diagnosticsFeedback.hidden = true;
+  diagnosticsTip.hidden = false;
+  positionSpeedPopover(diagnosticsTip, diagnosticsTrigger);
+}
+function diagnosticsResult(requestId: string | undefined, ok: boolean, message: string) {
+  if (!diagnosticsRequestId || requestId !== diagnosticsRequestId) return;
+  window.clearTimeout(diagnosticsTimer);
+  diagnosticsRequestId = undefined;
+  diagnosticsTrigger.disabled = false;
+  diagnosticsTrigger.removeAttribute("aria-busy");
+  diagnosticsFeedback.textContent = message;
+  diagnosticsFeedback.hidden = false;
+  positionSpeedPopover(diagnosticsFeedback, diagnosticsTrigger);
+  diagnosticsTimer = window.setTimeout(() => { diagnosticsFeedback.hidden = true; }, ok ? 3000 : 8000);
+}
+diagnosticsTrigger.addEventListener("mouseenter", showDiagnosticsTip);
+diagnosticsTrigger.addEventListener("mouseleave", hideDiagnosticsTip);
+diagnosticsTrigger.addEventListener("focus", showDiagnosticsTip);
+diagnosticsTrigger.addEventListener("blur", hideDiagnosticsTip);
+diagnosticsTrigger.onclick = () => {
+  if (diagnosticsRequestId) return;
+  window.clearTimeout(diagnosticsTimer);
+  hideDiagnosticsTip(); hideModeTip(); hideSpeedTip(); hideSpeedFeedback(); closePickers();
+  diagnosticsRequestId = String(++diagnosticsSequence);
+  const requestId = diagnosticsRequestId;
+  diagnosticsTrigger.disabled = true;
+  diagnosticsTrigger.setAttribute("aria-busy", "true");
+  diagnosticsFeedback.textContent = "正在生成速度诊断报告…";
+  diagnosticsFeedback.hidden = false;
+  positionSpeedPopover(diagnosticsFeedback, diagnosticsTrigger);
+  diagnosticsTimer = window.setTimeout(() => diagnosticsResult(requestId, false, "尚未收到诊断响应，请重载当前 VS Code 窗口后重试。"), 15000);
+  send({ type: "performanceReport", requestId });
+};
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") { hideDiagnosticsTip(); diagnosticsFeedback.hidden = true; }
+});
+window.addEventListener("resize", () => { hideDiagnosticsTip(); positionSpeedPopover(diagnosticsFeedback, diagnosticsTrigger); });
+document.addEventListener("scroll", hideDiagnosticsTip, true);
 
 const effortTrigger = $("effort-trigger") as HTMLButtonElement;
 const effortMenu = $("effort-menu");
@@ -1064,6 +1126,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     return;
   }
   switch (m.kind) {
+    case "performance_report_result":
+      diagnosticsResult(m.requestId, m.ok, m.message);
+      return;
     case "ping":
       send({ type: "pong", id: m.id }); // 看门狗心跳——必须无条件立即回
       return;

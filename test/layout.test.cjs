@@ -236,3 +236,26 @@ test('重载空白标签不会自动绑定到上一个会话',async t=>{
  provider.loadCtxSession(provider.activeCtx);
  assert.equal(provider.activeCtx.sessionId,undefined);
 });
+
+test('聊天面板诊断消息执行报告命令并回执原面板，不结束运行中的任务',async t=>{
+ const received=[],provider=Object.create(ChatViewProvider.prototype);
+ const ctx={sessionId:'running',draft:'草稿',proc:{isBusy:true},webview:{postMessage:m=>received.push(m)}};
+ Object.assign(provider,{sessions:new Set([ctx]),output:{appendLine:()=>{}}});
+ const original=vscode.commands.executeCommand;let called;
+ vscode.commands.executeCommand=async command=>{called=command;};t.after(()=>vscode.commands.executeCommand=original);
+ await provider.onPanelMessage(ctx,{type:'performanceReport',requestId:'diagnostic-1'});
+ assert.equal(called,'codex-chat.performanceReport');
+ assert.deepEqual(received,[{kind:'performance_report_result',requestId:'diagnostic-1',ok:true,message:'诊断报告已在编辑器中打开'}]);
+ assert.equal(ctx.proc.isBusy,true);assert.equal(ctx.draft,'草稿');
+});
+
+test('聊天面板报告打开失败返回可见失败回执，兼容不带请求 ID 的旧面板',async t=>{
+ const received=[],logs=[],provider=Object.create(ChatViewProvider.prototype);
+ const ctx={webview:{postMessage:m=>received.push(m)},proc:{isBusy:true}};
+ Object.assign(provider,{sessions:new Set([ctx]),output:{appendLine:line=>logs.push(line)}});
+ const original=vscode.commands.executeCommand;
+ vscode.commands.executeCommand=async()=>{throw new Error('模拟报告失败');};t.after(()=>vscode.commands.executeCommand=original);
+ await provider.onPanelMessage(ctx,{type:'performanceReport'});
+ assert.equal(received.length,1);assert.equal(received[0].kind,'performance_report_result');assert.equal(received[0].ok,false);
+ assert.match(received[0].message,/打开失败/);assert.equal(ctx.proc.isBusy,true);assert.match(logs[0],/performanceReport/);
+});

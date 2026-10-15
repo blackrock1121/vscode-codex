@@ -117,6 +117,7 @@ export function modelChoices(data: any[]): ModelChoice[] {
 }
 
 export type ToWebview =
+  | { kind: "performance_report_result"; requestId?: string; ok: boolean; message: string }
   | { kind: "remote_user"; text: string }
   | { kind: "models"; models: ModelChoice[] }
   | { kind: "speed_context"; model?: string; billing?: BillingKind; planType?: string }
@@ -281,7 +282,7 @@ export type FromWebview =
    *  否则（手动「检查更新」/自动轮询）只点亮横幅，不打断。 */
   | { type: "checkUpdate"; fromBanner?: boolean }
   | { type: "refreshUsage" }
-  | { type: "performanceReport" }
+  | { type: "performanceReport"; requestId?: string }
   | { type: "send"; text: string; queueMs?: number; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "excludeSnapshotPaths"; paths?: string[]; all?: boolean }
   /** 从 OS（Finder 等）拖入工作区外的文件/目录：webview 拿不到绝对路径，只能读出
