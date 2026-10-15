@@ -267,14 +267,28 @@ export class CodexProcess {
     if (!this.sessionId || this.busy || this.exited) return;
     const trace = this.beginCompactionTrace('manual');
     this.busy = true; this.compacting = true; this.beganAt = Date.now(); this.emit({ kind: 'busy', busy: true }); this.emit({ kind: 'compacting' });
-    void this.rpc.request('thread/compact/start', { threadId: this.sessionId }).then(() => {
+    let settingsSynced = false;
+    const dispatch = async () => {
+      // 速度切换平时在下一次 turn/start 才传给 CLI；直接压缩也必须应用本会话的选择。
+      // 普通档位显式传 default，不能省略后沿用上一轮的 priority；不改模型或推理强度。
+      await this.rpc.request('thread/settings/update', {
+        threadId: trace.threadId, serviceTier: speedServiceTier(trace.speedMode),
+      });
+      if (this.compactionTrace !== trace || this.exited || this.stopTimer) return;
+      settingsSynced = true;
+      this.logCompactionTrace('settings_synced', trace);
+      await this.rpc.request('thread/compact/start', { threadId: trace.threadId });
       // RPC 响应只表示请求已受理，可能晚于完成通知，必须关联原来的压缩记录。
       trace.requestAcceptedMs = Math.round(performance.now() - trace.startedAt);
       this.logCompactionTrace('request_accepted', trace);
-    }).catch(e => {
-      this.logCompactionTrace('request_failed', trace, { timeout: /请求超时/.test(String(e)) });
+    };
+    void dispatch().catch(e => {
+      const stage = settingsSynced ? 'request_failed' : 'settings_sync_failed';
+      this.logCompactionTrace(stage, trace, { timeout: /请求超时/.test(String(e)) });
       if (this.compactionTrace !== trace) return;
-      this.endCompactionTrace('request_failed'); this.error(e); this.finish(true);
+      this.endCompactionTrace(stage);
+      this.error(settingsSynced ? e : new Error(`无法同步会话速度配置，本次压缩未启动。请确认 Codex CLI 已更新后重试：${e instanceof Error ? e.message : String(e)}`));
+      this.finish(true);
     });
   }
   private beginCompactionTrace(trigger: 'manual' | 'auto'): NonNullable<CodexProcess['compactionTrace']> {
@@ -283,7 +297,9 @@ export class CodexProcess {
       id: ++this.compactionSequence, trigger, startedAt: performance.now(),
       startedWallMs: Date.now(), threadId: this.sessionId, turnId: trigger === 'auto' ? this.turnId : undefined,
       lastTickAt: performance.now(), maxTimerDelayMs: 0,
-      speedMode: this.lastDispatched?.speedMode ?? this.opts.speedMode ?? 'default',
+      // 手动压缩使用本次选择；自动压缩属于正在执行的轮次，不能被下轮设置覆盖。
+      speedMode: trigger === 'manual' ? this.opts.speedMode ?? 'default' :
+        this.lastDispatched?.speedMode ?? this.opts.speedMode ?? 'default',
       effort: this.lastDispatched?.effort ?? this.opts.effort ?? 'default',
       preTokens: this.contextUsage?.used, contextWindow: this.contextUsage?.total,
       usageUpdates: 0, retries: 0, errors: 0,

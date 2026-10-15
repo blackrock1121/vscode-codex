@@ -390,6 +390,23 @@ test('空白会话和正在派生的会话不创建压缩连接',async()=>{
   await provider.compactSession(ctx);
  }
 });
+test('刚切换速度立即压缩会等待设置保存，等待期间切换会话不会压缩旧会话',async()=>{
+ for(const switched of [false,true]){
+  const provider=Object.create(ChatViewProvider.prototype),calls=[];
+  let release,speed='fast';
+  const proc={isBusy:false,isExited:false,compact:()=>calls.push(speed)};
+  const ctx={sessionId:'source',proc};
+  Object.assign(provider,{forking:new Set(),restoring:new Set(),alive:()=>true,
+   output:{appendLine:()=>{}},post:()=>{},ensureProcess:async()=>proc});
+  ctx.settingsQueue=new Promise(resolve=>{release=()=>{speed='default';resolve();};});
+  const pending=provider.compactSession(ctx);
+  await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(calls,[]);
+  if(switched)ctx.sessionId='other';
+  release();await pending;
+  assert.deepEqual(calls,switched?[]:['default']);
+ }
+});
 test('并发列表刷新只渲染一次，失败后可以重试',async()=>{
  const provider=Object.create(ChatViewProvider.prototype);
  let reads=0,renders=0,release;

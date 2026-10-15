@@ -2573,6 +2573,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showErrorMessage("启动 Codex 失败，无法压缩。");
             return;
         }
+        // 刚切换速度后立即压缩，需等本会话设置保存并传入进程，再读取所选档位。
+        await this.waitSessionSettings(ctx);
         if (!this.alive(ctx)) {
             vscode.window.showInformationMessage("会话窗口已关闭，本次压缩已取消。");
             return;

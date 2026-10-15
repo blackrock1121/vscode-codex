@@ -361,6 +361,20 @@ test('快速默认关闭且不继承会话服务档位；运行中开启只影�
  p.sendUserMessage('加急');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
  assert.deepEqual((await read()).filter(m=>m.method==='turn/start').map(m=>m.params.serviceTier),['default','priority']);
 });
+test('同一会话切换速度后直接压缩，先同步所选档位且不额外生成一轮',async t=>{
+ const {p,events,read}=await fastClient(t,{speedMode:'fast',model:'test-model',effort:'high'});
+ for(const [index,mode] of ['default','fast'].entries()){
+  await p.setSpeedMode(mode);p.compact();
+  await waitUntil(()=>events.filter(e=>e.kind==='result').length===index+1);
+ }
+ const calls=(await read()).filter(m=>['thread/settings/update','thread/compact/start','turn/start'].includes(m.method));
+ assert.deepEqual(calls.map(({method,params})=>({method,params})),[
+  {method:'thread/settings/update',params:{threadId:'thread-1',serviceTier:'default'}},
+  {method:'thread/compact/start',params:{threadId:'thread-1'}},
+  {method:'thread/settings/update',params:{threadId:'thread-1',serviceTier:'priority'}},
+  {method:'thread/compact/start',params:{threadId:'thread-1'}},
+ ]);
+});
 test('不支持或未列出的模型不静默降速，也不发送收费请求',async t=>{
  for(const extra of [{env:{TEST_NO_FAST:'1'}},{model:'unlisted-model'}]) {
   const {p,events,read}=await fastClient(t,{...extra,speedMode:'fast'});
