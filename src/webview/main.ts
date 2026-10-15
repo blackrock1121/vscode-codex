@@ -148,23 +148,55 @@ speedTip.hidden = true;
 speedTip.setAttribute("role", "tooltip");
 speedTip.innerHTML = '<div class="speed-tip-heading"></div><div class="speed-tip-row"><span>普通</span><span class="speed-tip-normal"></span></div><div class="speed-tip-row"><span>快速</span><span class="speed-tip-fast"></span></div><div class="speed-tip-note"></div><div class="speed-tip-action"></div>';
 document.body.appendChild(speedTip);
+const speedFeedback = document.createElement("div");
+speedFeedback.id = "speed-feedback";
+speedFeedback.className = "speed-feedback";
+speedFeedback.hidden = true;
+speedFeedback.setAttribute("role", "status");
+speedFeedback.setAttribute("aria-live", "polite");
+speedFeedback.setAttribute("aria-atomic", "true");
+document.body.appendChild(speedFeedback);
+let speedFeedbackTimer = 0;
 speedTrigger.setAttribute("aria-describedby", speedTip.id);
+function positionSpeedPopover(popover: HTMLElement) {
+  if (popover.hidden) return;
+  const rect = speedTrigger.getBoundingClientRect();
+  const { width, height } = popover.getBoundingClientRect();
+  popover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
+  const top = rect.top - height - 8;
+  popover.style.top = Math.max(8, Math.min(top >= 8 ? top : rect.bottom + 8, window.innerHeight - height - 8)) + "px";
+}
 function hideSpeedTip() { speedTip.hidden = true; }
 function showSpeedTip() {
+  if (!speedFeedback.hidden) return; // 保存反馈与详细说明共用位置，避免相互遮挡。
   speedTip.hidden = false;
-  const rect = speedTrigger.getBoundingClientRect();
-  const width = speedTip.offsetWidth, height = speedTip.offsetHeight;
-  speedTip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
-  const top = rect.top - height - 8;
-  speedTip.style.top = Math.max(8, Math.min(top >= 8 ? top : rect.bottom + 8, window.innerHeight - height - 8)) + "px";
+  positionSpeedPopover(speedTip);
+}
+function hideSpeedFeedback() {
+  window.clearTimeout(speedFeedbackTimer);
+  speedFeedbackTimer = 0;
+  speedFeedback.hidden = true;
+  speedFeedback.textContent = "";
+}
+function showSpeedFeedback(mode: SpeedMode) {
+  hideSpeedFeedback();
+  hideSpeedTip();
+  speedFeedback.textContent = `${speedLabel(mode)}模式 · 下轮生效`;
+  speedFeedback.hidden = false;
+  positionSpeedPopover(speedFeedback);
+  speedFeedbackTimer = window.setTimeout(hideSpeedFeedback, 5000);
+}
+function repositionSpeedFeedback() {
+  hideSpeedTip();
+  positionSpeedPopover(speedFeedback);
 }
 speedTrigger.addEventListener("mouseenter", showSpeedTip);
 speedTrigger.addEventListener("mouseleave", hideSpeedTip);
 speedTrigger.addEventListener("focus", showSpeedTip);
 speedTrigger.addEventListener("blur", hideSpeedTip);
-document.addEventListener("keydown", e => { if (e.key === "Escape") hideSpeedTip(); });
-window.addEventListener("resize", hideSpeedTip);
-document.addEventListener("scroll", hideSpeedTip, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape") { hideSpeedTip(); hideSpeedFeedback(); } });
+window.addEventListener("resize", repositionSpeedFeedback);
+document.addEventListener("scroll", repositionSpeedFeedback, true);
 
 const effortTrigger = $("effort-trigger") as HTMLButtonElement;
 const effortMenu = $("effort-menu");
@@ -794,6 +826,7 @@ if (composerEl && "ResizeObserver" in window) {
     // 呼吸空间——直播时状态药丸是最后一行，贴着输入框会显得压迫。
     messagesEl.style.paddingBottom = `${composerEl.offsetHeight + 150}px`;
     jumpLatestBtn.style.bottom = `${composerEl.offsetHeight + 12}px`;
+    positionSpeedPopover(speedFeedback);
     if (wasPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
     updateJumpLatest();
   }).observe(composerEl);
@@ -1242,6 +1275,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       else if (m.planType !== undefined) currentPlanType = m.planType;
       if (!usageMenu.classList.contains("hidden")) buildUsageMenu();
       syncPickers();
+      break;
+    case "speed_mode_saved":
+      showSpeedFeedback(m.mode);
       break;
     case "models":
       speedModels = m.models;
@@ -2439,6 +2475,8 @@ const HISTORY_CHUNK = 30; // 「加载更多」每次只向上渲染 30 轮—�
 let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: string; userText?: string }[] } | null = null;
 
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
+  hideSpeedFeedback();
+  hideSpeedTip();
   questionInteractions.clear();
   waitingQuestionId = undefined;
   turnHasReply = false;
@@ -3218,6 +3256,8 @@ function handleSlashCommand(payload: QueueItem): boolean {
     }
     case "/clear": {
       if (isBusy) { appendNotice("正在回复中，请先停止本轮再清空上下文。", "error"); return true; }
+      hideSpeedFeedback();
+      hideSpeedTip();
       // 清空这个 tab 的时间线；host 会同时解绑会话、下次发送开全新上下文。
       messagesEl.innerHTML = "";
       assistantEl = null;
@@ -3557,6 +3597,7 @@ function refitComposer() {
     if (overflow()) composerTools.classList.add("compact-more");
     if (overflow()) composerTools.classList.add("compact-wrap");
   }
+  positionSpeedPopover(speedFeedback);
 }
 if (composerTools && "ResizeObserver" in window) {
   new ResizeObserver(() => refitComposer()).observe(composerTools);
@@ -3942,7 +3983,7 @@ function syncPickers() {
     ? "按 API 单独计价，不适用订阅倍率。"
     : `${speedBilling === "unknown" ? "若使用订阅，" : ""}倍率指订阅额度消耗；购买额度／企业按量为 2×。${fastCost.badge === "倍率待确认" ? "当前模型额度倍率待确认。" : ""}${gain.badge === "未公布" ? "提速幅度随任务变化。" : ""}`;
   speedTip.querySelector(".speed-tip-action")!.textContent = speedPending ? "正在保存…"
-    : !available ? speedAvailability("fast") : `点击切换为${fast ? "普通" : "快速"} · 下轮生效`;
+    : !available ? speedAvailability("fast") : `点击切换为${fast ? "普通" : "快速"} · 仅当前会话下轮生效；模型与推理强度保持不变。`;
   if (!speedTip.hidden) showSpeedTip();
   const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
   const effort = EFFORTS.find(e => e.id === selectedEffort);
@@ -4086,6 +4127,7 @@ speedTrigger.onclick = (e) => {
   e.stopPropagation();
   if (speedTrigger.disabled) return;
   closePickers();
+  hideSpeedFeedback();
   speedPending = true;
   send({ type: "setSpeedMode", mode: currentSpeedMode === "default" ? "fast" : "default" });
   syncPickers(); // 等保存回执，不提前改变开关，避免显示与实际消费不一致。

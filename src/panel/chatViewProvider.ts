@@ -1690,8 +1690,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             ctx.speedMode = mode;
             await ctx.proc?.setSpeedMode(mode);
-            this.post(ctx, { kind: "notice", message: `已选择${speedLabel(mode)}模式：仅当前会话下轮生效，模型与推理强度保持不变。` });
             this.postModelConfig(ctx);
+            this.post(ctx, { kind: "speed_mode_saved", mode });
         });
     }
     /** 默认设置只用于初始化；同一个会话的选择独立保存，不广播到其他会话。 */

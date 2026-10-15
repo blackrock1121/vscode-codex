@@ -44,6 +44,16 @@ test('各会话连续切换独立保存，重建 provider 后仍能按会话 ID 
  assert.equal(restored.provider.speedMode(restored.session),'default');
  assert.equal(restored.provider.speedMode({}),'fast');
 });
+test('速度保存成功先同步开关再通知短暂反馈，不向聊天追加成功通知',async()=>{
+ const f=fixture();
+ for(const mode of ['fast','default','fast']){
+  f.messages.length=0;
+  await f.provider.setSpeedMode(f.session,mode);
+  assert.deepEqual(f.messages.map(m=>m.kind),['config','speed_mode_saved']);
+  assert.equal(f.messages[0].speedMode,mode);
+  assert.deepEqual(f.messages[1],{kind:'speed_mode_saved',mode,target:'a'});
+ }
+});
 test('修改权限时广播配置仍保留每个会话自己的速度',async()=>{
  const f=fixture();await f.provider.setSpeedMode(f.other,'fast');
  f.provider.modeSeq=0;f.provider.updateConfig=async()=>true;
@@ -76,6 +86,8 @@ test('保存失败、能力缺失或无效档位都不能把加速设置应用�
   await f.provider.setSpeedMode(f.session,condition==='invalid'?'bogus':'fast');
   assert.deepEqual(f.applied,[]);assert.equal(f.settings.speedMode,'default');
   assert.equal(f.messages.at(-1).speedMode,'default');
+  assert.equal(f.messages.some(m=>m.kind==='speed_mode_saved'),false);
+  assert.ok(f.messages.some(m=>m.kind==='error'));
   assert.ok(f.messages.every(m=>m.target==='a'));
  }
 });

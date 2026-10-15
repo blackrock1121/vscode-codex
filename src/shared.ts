@@ -118,6 +118,8 @@ export function modelChoices(data: any[]): ModelChoice[] {
 export type ToWebview =
   | { kind: "models"; models: ModelChoice[] }
   | { kind: "speed_context"; model?: string; billing?: BillingKind; planType?: string }
+  /** 速度保存成功后的短暂反馈，仅显示在按钮附近，不进入聊天记录。 */
+  | { kind: "speed_mode_saved"; mode: SpeedMode }
   /** `permissionMode` is the mode the CLI process ACTUALLY runs in (from its
    *  init event) — the picker syncs to this, never to a local guess. */
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }

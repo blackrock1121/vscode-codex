@@ -1039,6 +1039,78 @@ test('快速能力缺失禁用开启，但始终允许从快速切回普通；�
  emit({kind:'config',model:'unsupported',effort:'medium',permissionMode:'default',speedMode:'fast'});
  assert.equal(trigger.getAttribute('aria-checked'),'true');assert.equal(trigger.disabled,false);
 });
+test('速度成功反馈不挤占聊天或改变焦点，连续切换只保留最新提示五秒',t=>{
+ const {w,emit,errors}=setup(t),advance=manualTimeouts(w);
+ const config={kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'default'};
+ emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:[],speedModes:['default','fast']}]});
+ emit(config);emit({kind:'busy',busy:true});
+ emit({kind:'tool_input',toolId:'running',name:'Bash',input:{command:'npm run build'}});
+ const {messages,scroll}=scrollFixture(w);scroll(100);
+ const working=messages.querySelector('.working-pill'),content=messages.innerHTML;
+ const trigger=w.document.getElementById('speed-trigger'),feedback=w.document.getElementById('speed-feedback');
+ const input=w.document.getElementById('input');input.focus();
+ assert.equal(feedback.hidden,true);
+ trigger.click();assert.equal(feedback.hidden,true,'保存回执前不能提前提示成功');
+ emit({...config,speedMode:'fast'});assert.equal(feedback.hidden,true,'普通配置广播不应生成成功提示');
+ emit({kind:'speed_mode_saved',mode:'fast'});
+ assert.equal(feedback.hidden,false);assert.equal(feedback.textContent,'快速模式 · 下轮生效');
+ assert.equal(feedback.getAttribute('role'),'status');assert.equal(feedback.getAttribute('aria-live'),'polite');
+ assert.equal(messages.contains(feedback),false);assert.equal(messages.innerHTML,content);
+ assert.equal(messages.scrollTop,100);assert.equal(w.document.activeElement,input);
+ assert.equal(messages.querySelector('.working-pill'),working);
+ advance(4999);assert.equal(feedback.hidden,false);
+ trigger.click();assert.equal(feedback.hidden,true,'新请求期间撤下旧成功提示，避免与保存结果混淆');
+ emit(config);emit({kind:'speed_mode_saved',mode:'default'});
+ assert.equal(feedback.textContent,'普通模式 · 下轮生效');
+ assert.equal(w.document.querySelectorAll('.speed-feedback').length,1);
+ advance(1);assert.equal(feedback.hidden,false,'上一次计时到期不能提前撤掉新提示');
+ advance(4998);assert.equal(feedback.hidden,false);
+ advance(1);assert.equal(feedback.hidden,true);assert.equal(feedback.textContent,'');
+ assert.equal(messages.querySelectorAll('.notice').length,0);assert.deepEqual(errors,[]);
+});
+test('短暂反馈与悬浮说明不重叠，离开按钮不提前消失，会话切换或 Escape 可撤下',t=>{
+ const {w,emit,errors}=setup(t),advance=manualTimeouts(w);
+ const trigger=w.document.getElementById('speed-trigger'),tip=w.document.getElementById('speed-tooltip'),feedback=w.document.getElementById('speed-feedback');
+ trigger.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false);
+ emit({kind:'speed_mode_saved',mode:'fast'});assert.equal(tip.hidden,true);assert.equal(feedback.hidden,false);
+ trigger.dispatchEvent(new w.MouseEvent('mouseleave'));assert.equal(feedback.hidden,false);
+ trigger.dispatchEvent(new w.FocusEvent('focus'));assert.equal(tip.hidden,true);
+ w.document.dispatchEvent(new w.Event('scroll'));w.dispatchEvent(new w.Event('resize'));
+ assert.equal(feedback.hidden,false);
+ w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(feedback.hidden,true);
+ trigger.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false);
+ emit({kind:'speed_mode_saved',mode:'default'});
+ emit({kind:'load_history',sessionId:'other',items:[]});
+ assert.equal(feedback.hidden,true);assert.equal(tip.hidden,true);
+ advance(5000);assert.equal(feedback.hidden,true);
+ emit({kind:'speed_mode_saved',mode:'fast'});advance(5000);
+ trigger.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false,'提示过期后详细说明仍可查看');
+ assert.deepEqual(errors,[]);
+});
+test('模式保存失败保留错误提醒，不生成成功反馈或误亮闪电',t=>{
+ const {w,emit}=setup(t);
+ const config={kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'default'};
+ emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:[],speedModes:['default','fast']}]});
+ emit(config);w.document.getElementById('speed-trigger').click();
+ emit({kind:'error',message:'无法保存此会话的速度模式，请重试。'});emit(config);
+ assert.equal(w.document.getElementById('speed-feedback').hidden,true);
+ assert.equal(w.document.getElementById('speed-trigger').getAttribute('aria-checked'),'false');
+ assert.match(w.document.querySelector('.notice.error').textContent,/无法保存此会话的速度模式/);
+});
+test('窄窗口提示按实际小数宽度留足边距，并随输入区位置变化',t=>{
+ const {w,emit,resize}=setup(t),feedback=w.document.getElementById('speed-feedback');
+ Object.defineProperties(w,{innerWidth:{value:320},innerHeight:{value:500}});
+ let top=396;
+ w.document.getElementById('speed-trigger').getBoundingClientRect=()=>({left:219.75,top,bottom:top+26});
+ feedback.getBoundingClientRect=()=>({width:128.3125,height:34});
+ Object.defineProperties(feedback,{offsetWidth:{value:128},offsetHeight:{value:34}});
+ emit({kind:'speed_mode_saved',mode:'fast'});
+ assert.ok(parseFloat(feedback.style.left)>=8);
+ assert.ok(parseFloat(feedback.style.left)+128.3125<=312,'整数尺寸不能使提示侵入窗口右侧边距');
+ assert.equal(parseFloat(feedback.style.top)+34,top-8);
+ top=300;resize(w.document.getElementById('composer'));
+ assert.equal(parseFloat(feedback.style.top)+34,top-8);
+});
 test('默认模型等待真实会话确认，API 计费不残留订阅额度倍率',t=>{
  const {w,emit}=setup(t);const trigger=w.document.getElementById('speed-trigger');
  emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:[],isDefault:true,speedModes:['default','fast']}]});
@@ -1068,6 +1140,20 @@ test('推理入口与模型和快速开关同层可见，保存失败回执不�
 });
 
 function manualFrames(w){let next=0;const frames=new Map();w.requestAnimationFrame=f=>{frames.set(++next,f);return next;};w.cancelAnimationFrame=id=>frames.delete(id);return ()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(f=>f(w.performance.now()));};}
+function manualTimeouts(w){
+ let now=0,next=0;const timers=new Map();
+ w.setTimeout=(callback,delay=0)=>{timers.set(++next,{callback,at:now+delay});return next;};
+ w.clearTimeout=id=>timers.delete(id);
+ return ms=>{
+  const end=now+ms;
+  for(;;){
+   const due=[...timers].filter(([,timer])=>timer.at<=end).sort((a,b)=>a[1].at-b[1].at)[0];
+   if(!due)break;
+   const [id,timer]=due;now=timer.at;timers.delete(id);timer.callback();
+  }
+  now=end;
+ };
+}
 function manualSeconds(w){
  let now=0,next=0;const intervals=new Map();
  Object.defineProperty(w.performance,'now',{value:()=>now});
