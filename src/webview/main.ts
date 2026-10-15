@@ -4030,17 +4030,17 @@ let modelDefaultEfforts: Record<string, string> = {};
 let MODELS: { id: string; label: string; desc: string }[] = [
   { id: "", label: "默认模型", desc: "使用 Codex 默认模型" },
 ];
-// Reasoning-effort levels — labels + wording aligned with Codex's `/effort`.
+// Keep official effort identifiers unchanged in every picker, tooltip and command.
 const EFFORTS = [
-  { id: "none", label: "关闭", desc: "不启用推理（模型支持时）" },
-  { id: "minimal", label: "最少", desc: "最少推理（模型支持时）" },
-  { id: "low", label: "低", desc: "快速、直接的实现" },
-  { id: "medium", label: "中", desc: "均衡速度与推理深度" },
-  { id: "high", label: "高", desc: "适合复杂问题的深入分析" },
-  { id: "xhigh", label: "极高", desc: "扩展推理，深入分析" },
-  { id: "max", label: "最高", desc: "更充分的推理" },
-  { id: "ultra", label: "超高", desc: "最充分的推理" },
-  { id: "", label: "默认", desc: "使用模型默认推理强度" },
+  { id: "none", label: "none", desc: "不启用推理（模型支持时）" },
+  { id: "minimal", label: "minimal", desc: "最少推理（模型支持时）" },
+  { id: "low", label: "low", desc: "快速、直接的实现" },
+  { id: "medium", label: "medium", desc: "均衡速度与推理深度" },
+  { id: "high", label: "high", desc: "适合复杂问题的深入分析" },
+  { id: "xhigh", label: "xhigh", desc: "扩展推理，深入分析" },
+  { id: "max", label: "max", desc: "更充分的推理" },
+  { id: "ultra", label: "ultra", desc: "最充分的推理" },
+  { id: "", label: "default", desc: "使用模型默认推理强度" },
 ];
 function availableEfforts() {
   const supported = modelEfforts[currentModel || actualSpeedModel];
@@ -4088,7 +4088,7 @@ function syncPickers() {
   if (!speedTip.hidden) showSpeedTip();
   const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
   const effort = EFFORTS.find(e => e.id === selectedEffort);
-  const effortLabel = effort?.label || selectedEffort || "默认";
+  const effortLabel = effort?.label || selectedEffort || "default";
   $("effort-label").textContent = effortLabel;
   effortTrigger.title = `推理强度：${effortLabel}${effort ? `；${effort.desc}` : ""}。仅当前会话下轮生效；其他会话保持各自设置。`;
   effortTrigger.setAttribute("aria-label", `推理强度：${effortLabel}；点击选择`);
@@ -4173,7 +4173,7 @@ function buildEffortMenu() {
   let html = `<div class="pick-head">推理强度 · 仅当前会话下轮生效</div>`;
   const available = availableEfforts();
   const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
-  const selected = EFFORTS.find(e => e.id === selectedEffort)?.label || selectedEffort || "默认";
+  const selected = EFFORTS.find(e => e.id === selectedEffort)?.label || selectedEffort || "default";
   const activeIndex = available.findIndex(e => e.id === selectedEffort);
   html += `<div class="pick-sep"></div><div class="pick-effort" title="仅当前会话下轮生效"><span class="effort-current">推理程度 · ${escapeHtml(selected)}</span><div class="effort-options" role="group" aria-label="推理程度">`;
   for (const [index, e] of available.entries()) {
