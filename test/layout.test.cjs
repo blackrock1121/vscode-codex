@@ -245,7 +245,7 @@ test('聊天面板诊断消息执行报告命令并回执原面板，不结束�
  vscode.commands.executeCommand=async command=>{called=command;};t.after(()=>vscode.commands.executeCommand=original);
  await provider.onPanelMessage(ctx,{type:'performanceReport',requestId:'diagnostic-1'});
  assert.equal(called,'codex-chat.performanceReport');
- assert.deepEqual(received,[{kind:'performance_report_result',requestId:'diagnostic-1',ok:true,message:'诊断报告已在编辑器中打开'}]);
+ assert.deepEqual(received,[{kind:'performance_report_result',requestId:'diagnostic-1',ok:true,message:'速度诊断中心已打开'}]);
  assert.equal(ctx.proc.isBusy,true);assert.equal(ctx.draft,'草稿');
 });
 

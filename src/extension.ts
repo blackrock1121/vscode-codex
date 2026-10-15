@@ -2,17 +2,20 @@ import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { ChatViewProvider } from "./panel/chatViewProvider";
 import { DailyLogWriter, LogIdentity } from "./logging";
 import { RemoteBridgeClient } from "./remote/bridgeClient";
-import { readPerformanceReport } from "./diagnosticsReport";
+import { DiagnosticJobs, workerRunner } from "./diagnostics/jobs";
+import { DiagnosticsPage } from "./diagnostics/page";
+import { notifyDiagnostic } from "./diagnostics/notification";
 
 /** 固定日志目录：~/.codex-chat/logs/codex-chat-YYYY-MM-DD.log（按天分文件）。
  *  VS Code 输出通道的落盘路径深埋且每次会话都变，用户/同事根本找不到——
  *  所有日志双写到这里，收日志只需要拿这个目录。 */
 const LOG_DIR = path.join(os.homedir(), ".codex-chat", "logs");
 const logWriters = new Set<DailyLogWriter>();
+const diagnosticServices = new Set<DiagnosticJobs>();
 
 /** 包一层 OutputChannel：appendLine 同时落盘到固定目录。写盘失败静默（日志不能反噬功能）。 */
 function teeOutput(channel: vscode.OutputChannel, identity: LogIdentity): vscode.OutputChannel {
@@ -40,6 +43,24 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = teeOutput(vscode.window.createOutputChannel("Codex Chat"), identity);
   output.appendLine(`[boot] Codex Copilot v${(context.extension.packageJSON as { version?: string }).version ?? "?"} 日志目录 ${LOG_DIR}`);
   const provider = new ChatViewProvider(context, output);
+  const workspacePaths = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
+  const workspaceId = createHash('sha256').update(JSON.stringify(workspacePaths.length ? workspacePaths : [vscode.workspace.workspaceFile?.toString() ?? 'empty'])).digest('hex').slice(0, 24);
+  const runner = workerRunner(path.join(context.extensionUri.fsPath, 'dist', 'diagnostics-worker.js'), LOG_DIR);
+  const diagnostics = new DiagnosticJobs(path.join(os.homedir(), '.codex-chat', 'diagnostics'), {
+    pluginVersion: identity.pluginVersion, windowId: identity.windowId, workspaceId,
+    workspaceName: vscode.workspace.name ?? vscode.workspace.workspaceFolders?.[0]?.name ?? '未命名工作区',
+  }, async (progress, signal) => {
+    progress('正在保存最新诊断日志…');
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try { await Promise.race([Promise.all([...logWriters].map(writer => writer.flush())), new Promise<void>(resolve => { timer = setTimeout(resolve, 1500); })]); }
+    finally { clearTimeout(timer); }
+    return runner(progress, signal);
+  }, record => notifyDiagnostic(record, (vscode.workspace.getConfiguration('codexChat').get<string>('notifyWebhook') ?? '').trim()));
+  diagnosticServices.add(diagnostics);
+  const diagnosticsPage = new DiagnosticsPage(context, diagnostics,
+    async id => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }); },
+    async () => { provider.showNotifyConfig(); });
+  context.subscriptions.push(diagnosticsPage, { dispose: () => { void diagnostics.dispose().finally(() => diagnosticServices.delete(diagnostics)); } });
   const registration = provider.remoteRegistration();
   if (registration && process.platform === 'darwin') {
     const remote = new RemoteBridgeClient(path.join(os.homedir(), '.codex-chat', 'remote-bridge'), registration,
@@ -81,11 +102,11 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("codex-chat.notifyConfig", () => provider.showNotifyConfig()),
     vscode.commands.registerCommand("codex-chat.resetLocalSnapshotExcludes", () => provider.resetLocalSnapshotExcludes()),
-    vscode.commands.registerCommand("codex-chat.performanceReport", async () => {
-      await Promise.all([...logWriters].map(writer => writer.flush()));
-      const content = await readPerformanceReport(LOG_DIR);
-      const doc = await vscode.workspace.openTextDocument({ content, language: "markdown" });
-      await vscode.window.showTextDocument(doc, { preview: true });
+    vscode.commands.registerCommand("codex-chat.performanceReport", () => diagnosticsPage.show(false)),
+    vscode.commands.registerCommand("codex-chat.startDiagnostics", () => diagnosticsPage.show(true)),
+    vscode.commands.registerCommand("codex-chat.openDiagnostics", () => diagnosticsPage.show(false)),
+    vscode.window.registerWebviewPanelSerializer("codex-chat.diagnostics", {
+      async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> { panel.dispose(); diagnosticsPage.show(false); },
     }),
     vscode.commands.registerCommand("codex-chat.openLogs", async () => {
       try {
@@ -117,5 +138,6 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export async function deactivate(): Promise<void> {
+  await Promise.all([...diagnosticServices].map(service => service.dispose()));
   await Promise.all([...logWriters].map(writer => writer.flush()));
 }

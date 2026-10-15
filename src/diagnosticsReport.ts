@@ -88,7 +88,7 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   return text.filter(line => line !== undefined).join('\n');
 }
 
-export async function readPerformanceReport(dir: string): Promise<string> {
+export async function readPerformanceData(dir: string): Promise<{ rows: PerformanceRow[]; sourceNote: string }> {
   const names = (await fs.readdir(dir).catch(() => [] as string[])).filter(n => /^codex-chat-\d{4}-\d{2}-\d{2}\.log$/.test(n)).sort().slice(-3);
   const rows: PerformanceRow[] = []; let truncated = false;
   // 限制一次报告读取 12 MiB；日常运行不解析历史日志。
@@ -111,5 +111,10 @@ export async function readPerformanceReport(dir: string): Promise<string> {
       }
     } finally { await handle.close(); }
   }
-  return performanceReport(rows, `读取最近 ${names.length} 个日志文件，每个最多 4 MiB。${truncated ? '部分旧记录被截断，统计只是当前采样范围。' : ''}`);
+  return { rows, sourceNote: `读取最近 ${names.length} 个日志文件，每个最多 4 MiB。${truncated ? '部分旧记录被截断，统计只是当前采样范围。' : ''}` };
+}
+
+export async function readPerformanceReport(dir: string): Promise<string> {
+  const { rows, sourceNote } = await readPerformanceData(dir);
+  return performanceReport(rows, sourceNote);
 }

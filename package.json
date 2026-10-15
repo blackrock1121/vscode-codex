@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.127",
+  "version": "0.1.128",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -107,7 +107,15 @@
       },
       {
         "command": "codex-chat.performanceReport",
-        "title": "Codex: 生成速度诊断报告"
+        "title": "Codex: 打开速度诊断中心"
+      },
+      {
+        "command": "codex-chat.startDiagnostics",
+        "title": "Codex: 开始速度诊断"
+      },
+      {
+        "command": "codex-chat.openDiagnostics",
+        "title": "Codex: 查看诊断记录"
       },
       {
         "command": "codex-chat.openLogs",

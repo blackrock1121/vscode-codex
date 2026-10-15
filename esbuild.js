@@ -51,6 +51,8 @@ async function main() {
   const ctxs = await Promise.all([
     esbuild.context(extensionConfig),
     esbuild.context(webviewConfig),
+    esbuild.context({ ...extensionConfig, entryPoints: ["src/diagnostics/worker.ts"], outfile: "dist/diagnostics-worker.js" }),
+    esbuild.context({ ...webviewConfig, entryPoints: ["src/webview/diagnostics.ts"], outfile: "media/diagnostics.js" }),
   ]);
   if (watch) {
     await Promise.all(ctxs.map((c) => c.watch()));

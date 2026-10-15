@@ -187,6 +187,7 @@ interface SessionCtx {
         text: string;
     };
     pendingPrefill?: string;
+    pendingDiagnosticRepair?: { start: () => void; cancel: () => void };
     pendingPerm?: ToWebview;
     pendingPerms?: Map<string, Extract<ToWebview, { kind: "permission_request" }>>;
     pendingQuestionAt?: number;
@@ -745,6 +746,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         void this.openSession(id);
     }
     private onPanelClosed(ctx: SessionCtx): void {
+        ctx.pendingDiagnosticRepair?.cancel();
         this.sessions.delete(ctx);
         // 关闭标签清理当前提醒，并使关闭前仍在排队的旧提醒失效。
         void this.clearSessionNotification(ctx.sessionId, "session_closed");
@@ -905,6 +907,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     async newSession(): Promise<void> {
         await this.openSession(undefined);
     }
+    async createDiagnosticRepairSession(prompt: string, title: string): Promise<string> {
+        const ctx = await this.openSession(undefined);
+        ctx.panel.title = title;
+        return new Promise<string>((resolve, reject) => {
+            let timer: NodeJS.Timeout | undefined;
+            let started = false;
+            const cancel = () => {
+                if (started) return;
+                started = true; clearTimeout(timer); ctx.pendingDiagnosticRepair = undefined;
+                reject(new Error('修复会话尚未就绪或已关闭，请重试。'));
+            };
+            const start = () => {
+                if (started) return;
+                started = true; clearTimeout(timer); ctx.pendingDiagnosticRepair = undefined;
+                void (async () => {
+                    if (!this.alive(ctx)) throw new Error('修复会话已关闭');
+                    this.post(ctx, { kind: 'remote_user', text: prompt });
+                    if (!await this.handleSend(ctx, prompt) || !ctx.sessionId) throw new Error('修复消息尚未发送，请检查新会话中的提示后重试。');
+                    void this.store.setCustomTitle(ctx.sessionId, title).then(() => this.refreshSessions()).catch(() => {});
+                    return ctx.sessionId;
+                })().then(resolve, reject);
+            };
+            ctx.pendingDiagnosticRepair = { start, cancel };
+            if (ctx.ready) start();
+            else { timer = setTimeout(cancel, 15000); timer.unref(); }
+        });
+    }
     async openInEditor(): Promise<void> {
         await this.store.refresh();
         const last = this.context.workspaceState.get<string>(LAST_SESSION_KEY);
@@ -1023,7 +1052,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "performanceReport": {
                     try {
                         await vscode.commands.executeCommand("codex-chat.performanceReport");
-                        this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: true, message: "诊断报告已在编辑器中打开" });
+                        this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: true, message: "速度诊断中心已打开" });
                     } catch (error) {
                         this.output.appendLine(`[performanceReport] ${String(error)}`);
                         this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: false, message: "诊断报告打开失败，请重试或查看插件日志。" });
@@ -1084,6 +1113,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (this.lastUsage)
                         this.post(ctx, this.lastUsage);
                     this.fetchUsage();
+                    ctx.pendingDiagnosticRepair?.start();
                     break;
                 case "checkUpdate":
                     await this.checkForUpdate(!m.fromBanner, false);
@@ -4114,7 +4144,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             clearInterval(this.watchdogTimer);
         this.watchdogTimer = undefined;
         for (const ctx of this.sessions)
-            ctx.checkpoints.flush();
+            { ctx.pendingDiagnosticRepair?.cancel(); ctx.checkpoints.flush(); }
         for (const ctx of this.detached.values())
             ctx.checkpoints.flush();
         for (const ctx of this.sessions)
@@ -4417,7 +4447,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">medium</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="speed-trigger" type="button" class="composer-pick speed-toggle" role="switch" aria-checked="false" aria-label="快速模式"><span class="speed-bolt" aria-hidden="true">${ICONS.fast}</span></button>
             <button id="mode-trigger" class="composer-pick" aria-haspopup="true" aria-label="选择权限模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
-            <button id="diagnostics-trigger" type="button" class="composer-pick" title="速度诊断报告" aria-label="打开速度诊断报告"><span class="pick-emoji" aria-hidden="true">${ICONS.debug}</span></button>
+            <button id="diagnostics-trigger" type="button" class="composer-pick" title="速度诊断中心" aria-label="打开速度诊断中心"><span class="pick-emoji" aria-hidden="true">${ICONS.debug}</span></button>
 
             <span class="composer-state">
               <button id="ctx-gauge" type="button" class="ctx-gauge hidden" aria-label="上下文使用量，点击压缩" aria-describedby="ctx-tooltip"><span class="cg-ring"><span class="cg-pct"></span></span><span id="ctx-tooltip" class="ctx-tooltip" role="tooltip"></span></button>
