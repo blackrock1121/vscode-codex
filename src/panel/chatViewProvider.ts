@@ -2056,7 +2056,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.checkpoints.pruneFrom(cutLine);
         return { restoredFiles: 0, skipped: [] as string[], userText: t.userText, truncateLine: cutLine };
     }
-    private async forkRewind(ctx: SessionCtx, checkpointId: string, cutLine: number, prepareBranch?: (id: string) => void): Promise<{
+    private async forkRewind(ctx: SessionCtx, checkpointId: string, cutLine: number, prepareBranch?: (id: string) => void, preparation?: ForkPreparation): Promise<{
         result: NonNullable<ReturnType<CheckpointManager["restore"]>>;
         rewoundToStart: boolean;
     }> {
@@ -2088,7 +2088,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
             return { result, rewoundToStart: true };
         }
-        const newId = await this.store.fork(oldId, leaf);
+        const newId = await this.store.fork(oldId, leaf, preparation);
         this.assertForkDestination(oldId, newId);
         const copied = CheckpointManager.forkFor(this.storageDir(), oldId, newId, cutLine, this.store.userTurnLines(newId));
         if (ctx.checkpoints.hasAny() && !copied) {
@@ -2222,6 +2222,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择还原位置。" });
             return;
         }
+        // 仅准备连接，不创建分支或修改文件；与历史读取、旧进程退出并行。
+        const preparation = this.cpMeta(ctx, checkpointId)?.truncateLine
+            ? this.store.prepareFork() : undefined;
+        const startedAt = performance.now();
+        try {
+            await this.restoreCheckpointPrepared(ctx, checkpointId, reanswer, sourceId, preparation, startedAt);
+        } finally {
+            await preparation?.dispose();
+            this.output.appendLine(`[restore] 流程结束 elapsedMs=${Math.round(performance.now() - startedAt)}`);
+        }
+    }
+    private async restoreCheckpointPrepared(ctx: SessionCtx, checkpointId: string, reanswer: boolean,
+        sourceId: string, preparation: ForkPreparation | undefined, startedAt: number): Promise<void> {
+        const progress = (label: string) => {
+            this.post(ctx, { kind: "status", label });
+            this.output.appendLine(`[restore] ${label} +${Math.round(performance.now() - startedAt)}ms`);
+        };
+        progress("正在读取还原位置的对话…");
         await this.store.hydrate(sourceId);
         if (ctx.sessionId !== sourceId) return;
         this.checkpointsForView(ctx, sourceId);
@@ -2250,6 +2268,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const wasLive = !!ctx.proc?.isBusy;
         if (reanswer) this.post(ctx, { kind: "busy", busy: true });
         this.post(ctx, { kind: "restoring" });
+        progress("正在停止原会话…");
         while (ctx.proc) {
             const dying = ctx.proc;
             ctx.proc = undefined;
@@ -2263,6 +2282,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         let restoredQuestion: PermissionRequest | undefined;
         try {
+            progress("正在收齐文件快照…");
             await this.captureFinalSnapshot(ctx);
             if (reanswer) {
                 // 停止进行中的工具并收齐最后一批文件变更后，再做一次完整性检查。
@@ -2272,12 +2292,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 if (this.store.userTurnLines(sourceId).some(turn => turn.line - 1 >= meta.truncateLine && !cuts.has(turn.line - 1)))
                     throw new Error("后续轮次缺少文件还原点，未回退对话");
             }
+            progress("正在创建分支并还原文件…");
             rewind = await this.forkRewind(ctx, checkpointId, meta.truncateLine, question ? newId => {
                 const turnId = this.store.rewindLeafFor(newId, this.store.countLines(newId));
                 if (!turnId) throw new Error("新分支缺少提问轮次，无法重新回答");
                 restoredQuestion = { requestId: randomUUID(), toolName: "AskUserQuestion", ...question, suggestions: [] };
                 saveQuestionState(this.storageDir(), newId, turnId, restoredQuestion);
-            } : undefined);
+            } : undefined, preparation);
         }
         catch (err) {
             this.output.appendLine(`[restore] 派生失败: ${String(err)}`);

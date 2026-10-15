@@ -26,6 +26,7 @@ async function fixture(t){
  const first={id:'ask-turn',status:'interrupted',items:[user('完成安装'),{id:'ask',type:'dynamicToolCall',tool:'AskUserQuestion',arguments:{questions:[{id:'source',question:'安装来源',options:[{label:'A'},{label:'B'}]}]}}]};
  const turns=[first,{id:'answer-turn',status:'completed',items:[user(reply('A')),{type:'agentMessage',text:'旧答案的后续回复'}]}];
  const store=new SessionStore(workspace,()=>'/unused');store.threads.set('source',{id:'source',turns});store.hydrate=async()=>{};
+ store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
  const checkpoints=new CheckpointManager(dir);checkpoints.setSession('source');
  checkpoints.beginTurn('完成安装',0);checkpoints.recordSnapshot(file,'任务开始前');
  const id=checkpoints.beginTurn(reply('A'),1,true);checkpoints.recordSnapshot(file,'提问前已完成的修改');checkpoints.completeSnapshot();checkpoints.flush();

@@ -15,6 +15,7 @@ async function fixture(t){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-empty-restore-'));
  t.after(()=>fs.rm(dir,{recursive:true,force:true}));
  const store=new SessionStore(dir,()=>'/unused');
+ store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
  const turns=[{id:'first',status:'completed',items:[user('第一轮')]},{id:'empty',status:'interrupted',items:[]}];
  store.threads.set('source',{id:'source',turns});
  store.hydrate=async()=>{};
@@ -91,4 +92,40 @@ test('宿主拒绝答案时只返回可重试错误，不发送结束事件放�
  f.ctx.proc.prepareQuestionAnswer=()=>{throw Error('磁盘写入失败');};
  await f.provider.onPanelMessage(f.ctx,{type:'answerQuestion',requestId:'missing',answers:{q:'A'}});
  assert.equal(f.messages.at(-1).message,'磁盘写入失败');
+});
+
+test('还原连接与历史读取并行，停止和快照完成前不执行回滚',async t=>{
+ const f=await fixture(t),steps=[];let releaseHistory;
+ f.turns[1].items=[user('再仔细检查一遍有没有问题')];
+ const preparation={ready:Promise.resolve(),dispose:async()=>steps.push('dispose')};
+ f.store.prepareFork=()=>{steps.push('prepare');return preparation;};
+ f.store.hydrate=()=>new Promise(resolve=>{steps.push('hydrate');releaseHistory=resolve;});
+ f.ctx.proc={isBusy:false,disposeAndWait:async()=>steps.push('stop')};
+ f.provider.captureFinalSnapshot=async()=>steps.push('snapshot');
+ const rewind=f.provider.forkRewind;
+ f.provider.forkRewind=async(ctx,id,cut,branch,prepared)=>{
+  assert.equal(prepared,preparation);steps.push('rewind');return rewind(ctx,id,cut);
+ };
+ const task=f.provider.restoreCheckpointInner(f.ctx,f.id);
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(steps,['prepare','hydrate']);
+ releaseHistory();await task;
+ assert.deepEqual(steps,['prepare','hydrate','stop','snapshot','rewind','dispose']);
+});
+test('还原读取失败或会话切换时释放预备连接，不回滚',async t=>{
+ for(const fail of [true,false]){
+  const f=await fixture(t);let disposed=0;
+  f.store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>disposed++});
+  f.store.hydrate=async()=>{if(fail)throw Error('读取失败');f.ctx.sessionId='other';};
+  const task=f.provider.restoreCheckpointInner(f.ctx,f.id);
+  if(fail)await assert.rejects(task,/读取失败/);else await task;
+  assert.equal(disposed,1);assert.equal(f.forks.length,0);
+ }
+});
+test('回到开头不提前创建不需要的派生连接',async t=>{
+ const f=await fixture(t);
+ f.store.prepareFork=()=>{throw Error('不应启动');};
+ const id=f.checkpoints.list()[0].id;
+ await f.provider.restoreCheckpointInner(f.ctx,id);
+ assert.equal(f.forks.length,1);
 });
