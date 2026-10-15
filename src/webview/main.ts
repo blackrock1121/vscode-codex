@@ -137,6 +137,7 @@ let waitingQuestionId: string | undefined;
 let stopPending = false;
 let turnFinalizing = false;
 const questionInteractions = new Map<string, { resolve: (behavior: "allow" | "deny") => void; retry: (message: string) => void }>();
+const childQuestionIds = new Set<string>();
 const statusLine = $("status-line");
 const modeTrigger = $("mode-trigger");
 const modeIcon = $("mode-icon");
@@ -1054,6 +1055,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       m.kind === "thinking_delta" ||
       m.kind === "tool_input" ||
       m.kind === "tool_input_partial" ||
+      m.kind === "activity" ||
       m.kind === "status" ||
       m.kind === "tokens" ||
       m.kind === "thinking_tokens")
@@ -1130,6 +1132,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       statusLine.textContent = m.label;
       if (isBusy && m.label) showWorking(m.label);
       break;
+    case "activity":
+      recordWorkingProgress(m.label);
+      break;
     case "response_wait":
       assistantEl?.querySelector(".wk-wait")?.remove();
       if (m.idleMs >= 30000 && isBusy && !compacting && !stoppingView && !waitingQuestionId && glowState !== "waiting") {
@@ -1195,6 +1200,11 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       // app-server 可直接发完整工具输入，没有单独的 block_start。
       if (isBusy && !toolCards.has(m.toolId)) onBlockStart("tool_use", m.toolId, m.name);
       updateToolInput(m.toolId, m.name, m.input);
+      if (m.agentLabel) {
+        const card = toolCards.get(m.toolId);
+        const title = card?.querySelector(".tool-name");
+        if (title) title.textContent = `${m.displayName || m.name} · ${m.agentLabel}`;
+      }
       break;
     case "tool_input_partial":
       if (m.name === "AskUserQuestion") updatePreparingQuestions(m.json);
@@ -1208,8 +1218,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       assistantEl?.querySelector(".wk-wait")?.remove();
       setGlow("waiting"); // parked on the user — the rim pulses faster
       if (m.toolName === "AskUserQuestion") {
+        if (m.agentLabel) childQuestionIds.add(m.requestId);
         waitingQuestionId = m.requestId;
-        statusLine.textContent = "已暂停 · 等待提交问题答案";
+        statusLine.textContent = m.agentLabel ? `${m.agentLabel}等待回答` : "已暂停 · 等待提交问题答案";
         removeWorking();
         if (assistantEl) assistantEl.classList.remove("streaming-turn");
         refreshComposerHint();
@@ -1220,12 +1231,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       if (waitingQuestionId === m.requestId) {
         // 答案提交成功会启动新的回答轮次；重新回答可能一直保持 busy，
         // 不能依赖 busy 的切换重置计时，否则会沿用回退前的旧起点。
-        if (m.behavior === "allow") turnStartedAt = performance.now();
+        if (m.behavior === "allow" && !childQuestionIds.has(m.requestId)) turnStartedAt = performance.now();
         waitingQuestionId = undefined;
         statusLine.textContent = "";
       }
       if (isBusy) setGlow("running"); // answered — back to work
       resolvePermission(m.requestId, m.behavior);
+      if (childQuestionIds.delete(m.requestId) && isBusy && !waitingQuestionId) showModelOrToolWorking();
       refreshComposerHint();
       break;
     case "question_answer_rejected":
@@ -2178,7 +2190,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 
   const sel = questions.map(() => new Set<string>()); // chosen built-in labels per question
   const custom = questions.map(() => ""); // custom answer text per question
-  const pictures: AnswerImage[][] = questions.map(q => q.isSecret ? [] : [...(m.initialImages?.[q.id || q.question] ?? [])]);
+  const pictures: AnswerImage[][] = questions.map(q => q.isSecret || m.agentLabel ? [] : [...(m.initialImages?.[q.id || q.question] ?? [])]);
   questions.forEach((q, i) => {
     if (q.isSecret) return; // 秘密答案必须重新填写，不回填遮蔽占位文字。
     const value = m.initialAnswers?.[q.id || q.question];
@@ -2222,7 +2234,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const answered = (qi: number) => sel[qi].size > 0 || custom[qi].trim().length > 0 || pictures[qi].length > 0;
   const imagePayload = (): QuestionImages => Object.fromEntries(questions.flatMap((q, qi) => pictures[qi].length ? [[q.id || q.question, pictures[qi]]] : []));
   async function addPictures(files: File[], qi: number) {
-    if (done || submitting || questions[qi].isSecret || !files.length) return;
+    if (done || submitting || questions[qi].isSecret || m.agentLabel || !files.length) return;
     readingImages++;
     updateFoot();
     submitError.classList.add("hidden");
@@ -2259,7 +2271,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     const files = Array.from(e.clipboardData?.items ?? []).filter(item => item.type.startsWith("image/")).flatMap(item => {
       const file = item.getAsFile(); return file ? [file] : [];
     });
-    if (!files.length || questions[cur].isSecret) return;
+    if (!files.length || questions[cur].isSecret || m.agentLabel) return;
     e.preventDefault(); e.stopPropagation();
     void addPictures(files, cur);
   });
@@ -2315,7 +2327,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 
   function paint() {
     const q = questions[cur];
-    qText.textContent = q.question || "";
+    qText.textContent = `${m.agentLabel ? `${m.agentLabel} · ` : ""}${q.question || ""}`;
     optsBox.innerHTML = "";
     const opts = q.options || [];
     const rows: HTMLElement[] = [];
@@ -2368,7 +2380,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     const customInput = el(q.isSecret ? "input" : "textarea", "askp-input") as HTMLInputElement | HTMLTextAreaElement;
     if (customInput instanceof HTMLTextAreaElement) customInput.rows = 1;
     else customInput.type = "password";
-    customInput.placeholder = q.isSecret ? "输入私密答案" : "自定义回答，也可粘贴图片（⇧↵ 换行）";
+    customInput.placeholder = q.isSecret ? "输入私密答案" : m.agentLabel ? "自定义回答（⇧↵ 换行）" : "自定义回答，也可粘贴图片（⇧↵ 换行）";
     customInput.value = custom[cur];
     const growCustom = () => {
       // 没进文档时 scrollHeight 恒为 0，量出来会把输入框压成 0 高——首次 paint()
@@ -2401,7 +2413,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     };
     customRow.append(customInput);
     if (q.isOther !== false || !opts.length) optsBox.append(customRow);
-    if (!q.isSecret) {
+    if (!q.isSecret && !m.agentLabel) {
       const tools = el("div", "askp-image-tools");
       const add = el("button", "askp-add-image", "添加图片") as HTMLButtonElement;
       add.title = "为这道题添加图片，也可粘贴或拖入；最多 10 张，单张 10 MB，总量 20 MB";
@@ -2440,6 +2452,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
         })
         .filter(([, a]) => a);
       const answered = askQuestionNode(pairs);
+      if (m.agentLabel) answered.querySelector(".tool-name")!.textContent = `AskUserQuestion · ${m.agentLabel}`;
       const attachments = pictures.flat();
       if (attachments.length) {
         const grid = el("div", "msg-images");
@@ -2548,6 +2561,7 @@ function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: s
   hideSpeedFeedback();
   hideSpeedTip();
   questionInteractions.clear();
+  childQuestionIds.clear();
   waitingQuestionId = undefined;
   turnHasReply = false;
   historyState = { items, checkpoints: checkpoints || [] };
@@ -4725,7 +4739,7 @@ function setBusy(busy: boolean) {
   isBusy = busy;
   stopPending = false;
   turnFinalizing = false;
-  if (!busy) waitingQuestionId = undefined;
+  if (!busy) { waitingQuestionId = undefined; childQuestionIds.clear(); }
   // Only light UP here. Turning the glow off is the job of whoever ends the turn
   // (`result` / `error` / Stop), which knows WHY it ended — `setBusy(false)`
   // fires on all of them and would otherwise erase the red/green rim instantly.

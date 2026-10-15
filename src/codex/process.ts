@@ -6,6 +6,9 @@ import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, validateQuestionImages } from '../questionImages';
 import { TransportDiagnostic } from './telemetry';
+import { ChildThreadRegistry, childToolId } from './childThreads';
+import { executionConfig, executionInstructions } from './executionPolicy';
+export { ChildThreadRegistry, childToolId } from './childThreads';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
 const ASK_USER_QUESTION_TOOL = {
@@ -27,9 +30,11 @@ export interface CodexProcessOptions {
   codexPath: string; cwd: string; model?: string; effort?: string; speedMode?: SpeedMode; permissionMode: string;
   questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
   transportDiagnostics?: boolean;
+  executionMode?: 'parallel' | 'tools' | 'standard';
 }
 export interface PermissionRequest {
   requestId: string; toolUseId?: string; toolName: string; displayName?: string;
+  agentLabel?: string;
   input: Record<string, unknown>; description?: string; suggestions: PermissionSuggestionView[];
   initialAnswers?: Record<string, string | string[]>;
   initialImages?: QuestionImages;
@@ -106,6 +111,15 @@ export class CodexProcess {
   private readonly streamed = new Set<string>();
   private activeBlock?: string;
   private readonly tools = new Map<string, any>();
+  private readonly children = new ChildThreadRegistry();
+  private readonly childChecks = new Map<string, Promise<boolean>>();
+  private readonly childNotificationQueue = new Map<string, RpcMessage[]>();
+  private readonly rejectedChildren = new Set<string>();
+  private readonly childQuestions = new Map<string, any[]>();
+  private readonly childInterrupts = new Map<string, Promise<void>>();
+  private rootCompletion?: { isError: boolean };
+  private stoppingTree = false;
+  private lastActivityAt = 0;
   constructor(private readonly opts: CodexProcessOptions, private readonly hooks: CodexProcessHooks) {
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env, opts.transportDiagnostics !== false);
     this.rpc.on('diagnostic', (row: TransportDiagnostic) => {
@@ -122,6 +136,7 @@ export class CodexProcess {
     this.rpc.on('close', (code: number | null, reason: Error) => {
       this.endCompactionTrace('connection_closed');
       clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer);
+      this.clearChildState();
       if (this.busy && !this.disposed) this.error(reason);
       this.exited = true; this.busy = false; this.hooks.onClose(code);
     });
@@ -176,13 +191,15 @@ export class CodexProcess {
     try {
       await this.prepare();
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
-      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, developerInstructions: [USER_DECISION_INSTRUCTIONS, this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
+      const mode = this.opts.executionMode ?? 'parallel';
+      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, config: executionConfig(mode), developerInstructions: [USER_DECISION_INSTRUCTIONS, executionInstructions(mode), this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
       // resume 不支持 dynamicTools；旧会话沿用持久化工具，原生异步提问另行接入同一暂停流程。
       const result = await this.timedRequest(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : { ...params, dynamicTools: [ASK_USER_QUESTION_TOOL] });
       if (this.opts.resumeSessionId && result.thread?.id !== this.opts.resumeSessionId)
         throw new Error('Codex 恢复了不同的会话 ID，已中止连接，避免串到其他会话。');
       this.activeModel = result.model ?? this.opts.model ?? "";
       this.sessionId = result.thread.id;
+      this.children.setRoot(result.thread);
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
       await this.restoreQuestion(result.thread);
@@ -226,6 +243,7 @@ export class CodexProcess {
   sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[]): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
     this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
+    this.rootCompletion = undefined; this.stoppingTree = false; this.lastActivityAt = 0;
     this.emit({ kind: 'busy', busy: true });
     const model = this.opts.model || this.activeModel;
     const speed = this.opts.speedMode ?? 'default';
@@ -355,9 +373,192 @@ export class CodexProcess {
     this.emit({ kind: 'notice', message: '提问格式无效，正在停止本轮，请重新发送消息。' });
     void this.interrupt().catch(e => { this.rpc.dispose(); this.error(e); });
   }
+  private activity(label: string): void {
+    const now = Date.now();
+    if (now - this.lastActivityAt < 1000) return;
+    this.lastActivityAt = now;
+    this.emit({ kind: 'activity', label });
+  }
+  private clearChildState(): void {
+    this.children.clear(); this.childChecks.clear(); this.childNotificationQueue.clear();
+    this.rejectedChildren.clear(); this.childQuestions.clear(); this.childInterrupts.clear();
+  }
+  /** 未知线程只能经后端元数据确认父子关系；多条同时到达的审批共用一次核验。 */
+  private ensureChild(threadId: string): Promise<boolean> {
+    if (this.children.has(threadId)) return Promise.resolve(true);
+    if (!this.sessionId || this.exited || this.disposed || this.rejectedChildren.has(threadId)) return Promise.resolve(false);
+    const existing = this.childChecks.get(threadId);
+    if (existing) return existing;
+    if (this.childChecks.size >= 32) return Promise.resolve(false);
+    const root = this.sessionId;
+    const checking = (async () => {
+      try {
+        const chain: any[] = [], seen = new Set<string>();
+        let current = threadId;
+        // 独立迭代核验父链，避免同时核验 A/B 时互相等待 Promise 形成环。
+        while (current !== root && !this.children.has(current)) {
+          if (seen.has(current) || seen.size >= 16) return false;
+          seen.add(current);
+          const thread = (await this.rpc.request('thread/read', { threadId: current, includeTurns: false }, 10000)).thread;
+          if (this.exited || this.disposed || this.sessionId !== root || thread?.id !== current ||
+              typeof thread.parentThreadId !== 'string' || !thread.parentThreadId) return false;
+          chain.push(thread); current = thread.parentThreadId;
+        }
+        for (const thread of chain.reverse()) if (!this.children.register(thread)) return false;
+        return this.children.has(threadId);
+      } catch { return false; }
+      finally { this.childChecks.delete(threadId); }
+    })();
+    this.childChecks.set(threadId, checking);
+    return checking;
+  }
+  private routeChildNotification(m: RpcMessage): void {
+    const threadId = m.params?.threadId;
+    if (typeof threadId !== 'string') return;
+    if (this.children.has(threadId)) { this.childNotification(m); return; }
+    // 未确认归属时不保存正文/输出 delta；只暂存有界的生命周期消息。
+    if (!['turn/started', 'turn/completed', 'thread/closed', 'item/started', 'item/completed', 'serverRequest/resolved'].includes(m.method!)) return;
+    const queued = this.childNotificationQueue.get(threadId);
+    if (queued) { if (queued.length >= 64) queued.shift(); queued.push(m); return; }
+    if (this.childNotificationQueue.size >= 32 || this.rejectedChildren.has(threadId)) return;
+    this.childNotificationQueue.set(threadId, [m]);
+    void this.ensureChild(threadId).then(accepted => {
+      const messages = this.childNotificationQueue.get(threadId) ?? [];
+      this.childNotificationQueue.delete(threadId);
+      if (accepted && !this.disposed && !this.exited) {
+        for (const message of messages) this.childNotification(message);
+      } else {
+        this.rejectedChildren.add(threadId);
+        if (this.rejectedChildren.size > 128) this.rejectedChildren.delete(this.rejectedChildren.values().next().value!);
+      }
+      this.finishTreeIfReady();
+    }).catch(e => this.emit({ kind: 'error', message: String(e), keepBusy: true }));
+  }
+  private finishTreeIfReady(): void {
+    if (!this.rootCompletion || this.children.activeTurns().length || this.childChecks.size ||
+        this.childNotificationQueue.size || this.childInterrupts.size) return;
+    const { isError } = this.rootCompletion;
+    this.rootCompletion = undefined; this.stoppingTree = false;
+    this.finish(isError);
+  }
+  private discoverChildren(item: any): void {
+    const ids = item?.type === 'collabAgentToolCall' ? item.receiverThreadIds :
+      item?.type === 'subAgentActivity' ? [item.agentThreadId] : [];
+    for (const id of (Array.isArray(ids) ? ids : []).slice(0, 32)) {
+      if (typeof id !== 'string' || id === this.sessionId) continue;
+      void this.ensureChild(id).then(accepted => {
+        if (accepted && this.stoppingTree) return this.interruptChild(id);
+      }).finally(() => this.finishTreeIfReady()).catch(e => this.emit({ kind: 'error', message: String(e), keepBusy: true }));
+    }
+  }
+  private clearChildRequests(threadId: string, turnId?: string): void {
+    for (const [key, request] of this.pending) {
+      if (request.params.threadId !== threadId || (turnId && request.params.turnId !== turnId)) continue;
+      this.pending.delete(key); this.childQuestions.delete(key);
+      this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
+    }
+  }
+  private interruptChild(threadId: string): Promise<void> {
+    const existing = this.childInterrupts.get(threadId);
+    if (existing) return existing;
+    const child = this.children.get(threadId);
+    if (!child?.active) return Promise.resolve();
+    const turnId = child.turnId;
+    const stopping = (async () => {
+      try {
+        await this.rpc.request('turn/interrupt', { threadId, turnId: turnId ?? '' }, 10000);
+        // 非空 turn 的回执由后端在 TurnAborted 后发送；空 turn 是启动取消。
+        if (turnId || !this.children.get(threadId)?.turnId) {
+          this.children.completed(threadId, turnId);
+          this.clearChildRequests(threadId, turnId);
+        }
+      } catch (e) {
+        if (this.children.get(threadId)?.active && !this.exited && !this.disposed) {
+          this.error(`未能确认${child.label}停止，已关闭连接：${String(e)}`);
+          this.exited = true; this.rpc.dispose(); this.clearChildState(); this.finish(true);
+        }
+      } finally {
+        this.childInterrupts.delete(threadId);
+        // 启动取消回执与首个 turn/started 交叉时，继续取消新出现的真实轮次。
+        if (this.stoppingTree && this.children.get(threadId)?.active) void this.interruptChild(threadId);
+        this.finishTreeIfReady();
+      }
+    })();
+    this.childInterrupts.set(threadId, stopping);
+    return stopping;
+  }
+  private childNotification(m: RpcMessage): void {
+    const p = m.params ?? {}, threadId = p.threadId;
+    const child = this.children.get(threadId);
+    if (!child || this.exited || this.disposed) return;
+    const turnId = p.turnId ?? p.turn?.id;
+    if (m.method === 'thread/closed') {
+      this.children.completed(threadId); this.clearChildRequests(threadId);
+      this.finishTreeIfReady(); return;
+    }
+    if (m.method === 'turn/started') {
+      if (this.children.started(threadId, turnId)) {
+        this.activity(`${child.label}正在执行…`);
+        if (this.stoppingTree) void this.interruptChild(threadId);
+      }
+      return;
+    }
+    if (m.method === 'turn/completed') {
+      if (this.children.completed(threadId, turnId)) {
+        this.clearChildRequests(threadId, turnId);
+        this.activity(`${child.label}${p.turn?.status === 'failed' ? '执行失败' : p.turn?.status === 'interrupted' ? '已停止' : '已完成'}`);
+        this.finishTreeIfReady();
+      }
+      return;
+    }
+    if (!this.children.isCurrent(threadId, turnId)) return;
+    if (m.method === 'serverRequest/resolved') {
+      const key = String(p.requestId), pending = this.pending.get(key);
+      if (pending?.params.threadId === threadId) {
+        this.pending.delete(key); this.childQuestions.delete(key);
+        this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
+      }
+      return;
+    }
+    if (m.method === 'item/commandExecution/outputDelta' || m.method === 'item/fileChange/outputDelta') {
+      if (typeof p.delta === 'string' && p.delta.length) this.activity(`${child.label}的工具仍在输出…`); return;
+    }
+    if (m.method === 'item/agentMessage/delta' || m.method?.startsWith('item/reasoning/')) {
+      this.activity(`${child.label}正在处理…`); return;
+    }
+    if (m.method === 'error') {
+      if (p.willRetry) this.emit({ kind: 'diag', message: '[agent] 子任务正在重试' });
+      else this.emit({ kind: 'error', message: `${child.label}：${p.error?.message ?? p.message ?? '执行失败'}`, keepBusy: true });
+      return;
+    }
+    if (m.method !== 'item/started' && m.method !== 'item/completed') return;
+    const item = p.item; if (!item) return;
+    this.discoverChildren(item);
+    const done = m.method === 'item/completed';
+    this.children.started(threadId, turnId);
+    if (this.stoppingTree) { void this.interruptChild(threadId); return; }
+    if (done && item.type === 'agentMessage' && item.delivery === 'async' && item.questions?.length) {
+      // V2 子线程可禁止直接 turn/start。通知没有待答 RPC，不能把答案错误地续到根线程。
+      this.emit({ kind: 'error', message: `${child.label}发起了暂不支持直接恢复的异步提问，正在停止该子任务。请让主任务重新提出问题后继续。`, keepBusy: true });
+      void this.interruptChild(threadId); return;
+    }
+    if (['agentMessage', 'reasoning', 'plan', 'userMessage', 'hookPrompt', 'contextCompaction', 'subAgentActivity'].includes(item.type)) {
+      this.activity(`${child.label}正在处理…`); return;
+    }
+    const id = childToolId(threadId, item.id);
+    if (!done) this.tools.set(id, item); else this.tools.delete(id);
+    if (item.type === 'dynamicToolCall' && item.tool === 'AskUserQuestion') return;
+    const view = toolView(item);
+    if (!done) this.emit({ kind: 'tool_input', toolId: id, name: view.name, input: view.input, agentLabel: child.label });
+    else this.emit({ kind: 'tool_result', toolUseId: id, content: view.result, isError: view.isError });
+  }
   private notification(m: RpcMessage): void {
     const p = m.params ?? {};
-    if (p.threadId && this.sessionId && p.threadId !== this.sessionId) return;
+    if (m.method === 'thread/started' && this.sessionId && p.thread?.id !== this.sessionId) {
+      if (this.children.register(p.thread, true) && this.stoppingTree) void this.interruptChild(p.thread.id);
+      return;
+    }
+    if (p.threadId && this.sessionId && p.threadId !== this.sessionId) { this.routeChildNotification(m); return; }
     const eventTurnId = p.turnId ?? p.turn?.id;
     if (eventTurnId && this.endedTurns.has(eventTurnId)) return;
     // 账号通知不属于被暂停的轮次；等待期间仍需更新额度。
@@ -381,7 +582,11 @@ export class CodexProcess {
     if (m.method === 'turn/started') { this.turnId = p.turn.id; return; }
     if (m.method === 'turn/completed') {
       this.endCompactionTrace(p.turn.status === 'failed' ? 'failed' : p.turn.status === 'interrupted' ? 'interrupted' : 'turn_ended_without_compaction_completed');
-      this.rememberEndedTurn(p.turn.id); if (p.turn.error) this.error(p.turn.error.message); this.finish(p.turn.status === 'failed'); return;
+      this.rememberEndedTurn(p.turn.id); if (p.turn.error) this.emit({ kind: 'error', message: p.turn.error.message, keepBusy: true });
+      this.turnId = undefined; this.rootCompletion = { isError: p.turn.status === 'failed' }; this.finishTreeIfReady(); return;
+    }
+    if (m.method === 'item/commandExecution/outputDelta' || m.method === 'item/fileChange/outputDelta') {
+      if (typeof p.delta === 'string' && p.delta.length) this.activity('工具仍在输出…'); return;
     }
     if (m.method === 'item/agentMessage/delta' || m.method === 'item/plan/delta') {
       this.block(p.itemId, 'text'); this.streamed.add(p.itemId); this.emit({ kind: 'text_delta', text: p.delta }); return;
@@ -417,13 +622,16 @@ export class CodexProcess {
         if (p.willRetry) this.compactionTrace.retries++; else this.compactionTrace.errors++;
         this.logCompactionTrace(p.willRetry ? 'retry' : 'error', this.compactionTrace, safeCompactionError(p.error));
       }
-      if (p.willRetry) this.emit({kind:'status',label:'Codex 正在重试请求…'}); else this.error(p.error?.message ?? p.message ?? 'Codex 请求失败'); return;
+      if (p.willRetry) this.emit({kind:'status',label:'Codex 正在重试请求…'});
+      else this.emit({ kind: 'error', message: p.error?.message ?? p.message ?? 'Codex 请求失败', keepBusy: true }); return;
     }
     if (m.method === 'serverRequest/resolved') {
-      const key = String(p.requestId); if (!this.pending.delete(key)) return; this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true }); return;
+      const key = String(p.requestId); if (!this.pending.delete(key)) return; this.childQuestions.delete(key);
+      this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true }); return;
     }
     if (m.method !== 'item/started' && m.method !== 'item/completed') return;
     const item = p.item; if (!item) return;
+    this.discoverChildren(item);
     const done = m.method === 'item/completed';
     const questions = asyncQuestions(item);
     if (questions) {
@@ -483,7 +691,14 @@ export class CodexProcess {
   }
   private async request(m: RpcMessage): Promise<void> {
     const p = m.params ?? {}, key = String(m.id);
-    if (p.threadId && p.threadId !== this.sessionId) { this.rpc.reject(m.id!, '会话不匹配'); return; }
+    if (p.threadId && p.threadId !== this.sessionId) {
+      if (await this.ensureChild(p.threadId)) {
+        if (this.stoppingTree) void this.interruptChild(p.threadId);
+        await this.childRequest(m);
+      }
+      else this.rpc.reject(m.id!, '会话不匹配');
+      this.finishTreeIfReady(); return;
+    }
     if (p.turnId && this.endedTurns.has(p.turnId)) { this.rpc.reject(m.id!, '该轮次已经结束'); return; }
     if (this.pausedQuestion || this.stopTimer) { this.rpc.reject(m.id!, '正在停止或等待用户回答'); return; }
     const method = m.method!;
@@ -501,6 +716,66 @@ export class CodexProcess {
     const request: PermissionRequest = { requestId: key, toolUseId: p.itemId, toolName: name, input, description: p.reason ?? 'Codex 请求授权', suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] };
     if (!question) { this.hooks.onPermission(request); return; }
     await this.pauseForQuestion(request, p.turnId);
+  }
+  private async childRequest(m: RpcMessage): Promise<void> {
+    const p = m.params ?? {}, key = String(m.id), method = m.method!;
+    const child = this.children.get(p.threadId);
+    if (!child || this.stoppingTree || this.stopTimer || this.exited || this.disposed ||
+        !this.children.isCurrent(p.threadId, p.turnId)) { this.rpc.reject(m.id!, '子任务已停止或轮次已结束'); return; }
+    if (!['item/commandExecution/requestApproval', 'item/fileChange/requestApproval', 'item/tool/requestUserInput', 'tool/requestUserInput',
+      'item/tool/call', 'item/permissions/requestApproval', 'mcpServer/elicitation/request'].includes(method) ||
+        (method === 'item/tool/call' && p.tool !== 'AskUserQuestion')) { this.rpc.reject(m.id!); return; }
+    const question = method === 'item/tool/call' || method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput';
+    const questions = question ? normalizeQuestions(method === 'item/tool/call' ? p.arguments?.questions : p.questions) : undefined;
+    if (question && !questions) {
+      this.rpc.reject(m.id!, '子任务提问格式无效');
+      this.children.started(p.threadId, p.turnId); await this.interruptChild(p.threadId); return;
+    }
+    // 非阻塞原生问题可能被服务端自动解决，不能冒充一直等待用户的阻塞问题。
+    if (question && p.isBlocking === false) {
+      this.rpc.reject(m.id!, '子任务必须使用阻塞提问，或请主任务向用户提问');
+      this.children.started(p.threadId, p.turnId); await this.interruptChild(p.threadId);
+      this.emit({ kind: 'error', message: `${child.label}的非阻塞提问已停止，请让主任务重新提问。`, keepBusy: true }); return;
+    }
+    this.children.started(p.threadId, p.turnId);
+    const name = question ? 'AskUserQuestion' : method.includes('commandExecution') ? 'Bash' : method.includes('fileChange') ? 'Edit' : '权限请求';
+    const toolId = childToolId(p.threadId, p.itemId ?? p.callId ?? key);
+    const item = this.tools.get(toolId);
+    const input = question ? { questions: questions! } : item ? toolView(item).input : { command: p.command, ...p };
+    if (!question) await this.hooks.onPreTool?.(name, input);
+    // onPreTool 可能异步读快照；期间停止/完成的请求不能在界面复活。
+    if (this.exited || this.disposed || this.stoppingTree || !this.children.isCurrent(p.threadId, p.turnId)) {
+      this.rpc.reject(m.id!, '子任务已停止'); return;
+    }
+    this.pending.set(key, { id: m.id!, method, params: p });
+    if (questions) this.childQuestions.set(key, questions);
+    this.hooks.onPermission({ requestId: key, toolUseId: toolId, toolName: name, displayName: `${child.label} · ${name}`, agentLabel: child.label,
+      input, description: `${child.label}：${p.reason ?? (question ? '等待你的回答' : 'Codex 请求授权')}`,
+      suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] });
+  }
+  isChildQuestion(key: string): boolean { return this.childQuestions.has(key); }
+  /** 子任务的阻塞问题由原 RPC 恢复，不创建根会话用户轮次/还原点。 */
+  answerChildQuestion(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}): boolean {
+    const pending = this.pending.get(key), questions = this.childQuestions.get(key);
+    if (!pending || !questions || this.exited || this.disposed || this.stoppingTree ||
+        !this.children.isCurrent(pending.params.threadId, pending.params.turnId)) return false;
+    validateQuestionImages(images);
+    if (Object.values(images).some(value => Array.isArray(value) && value.length))
+      throw new Error('子任务问题暂不支持图片答案，请填写文字；问题仍在等待。');
+    const mapped: Record<string, { answers: string[] }> = {};
+    for (const [index, question] of questions.entries()) {
+      const raw = answers[question.id] ?? answers[question.question] ?? answers[String(index)];
+      const values = Array.isArray(raw) ? [...raw] : [raw];
+      if (!values.length || values.some(value => typeof value !== 'string' || !value.trim())) return false;
+      mapped[question.id] = { answers: values as string[] };
+    }
+    const response = { answers: mapped };
+    this.rpc.respond(pending.id, pending.method === 'item/tool/call' ? {
+      contentItems: [{ type: 'inputText', text: JSON.stringify(response) }], success: true,
+    } : response);
+    this.pending.delete(key); this.childQuestions.delete(key);
+    this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
+    return true;
   }
   private async pauseForQuestion(request: PermissionRequest, turnId?: string): Promise<void> {
     const paused: NonNullable<CodexProcess['pausedQuestion']> = { request, turnId: turnId ?? this.turnId, ready: false };
@@ -575,30 +850,32 @@ export class CodexProcess {
     // 原工具请求随中断失效。用真实用户消息恢复同一会话，绝不向旧 RPC 伪造成功。
     this.clearSavedQuestion();
     this.pausedQuestion = undefined;
-    this.pending.clear();
+    for (const [id, pending] of this.pending) if (!pending.params.threadId || pending.params.threadId === this.sessionId) this.pending.delete(id);
     this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
     this.busy = false;
     return this.sendUserMessage(answer.text, undefined, answer.images);
   }
   async interrupt(): Promise<void> {
-    if (this.stopTimer || !this.busy) return;
+    if (this.stoppingTree || (!this.busy && !this.children.activeTurns().length)) return;
+    this.stoppingTree = true;
     if (this.compactionTrace) this.logCompactionTrace('interrupt_requested', this.compactionTrace);
     if (this.waitingForCatalog) {
       ++this.dispatchSequence; this.waitingForCatalog = false; this.startingTurn = undefined;
-      this.finish(false); return;
     }
-    if (this.pausedQuestion?.ready) { this.finish(false); return; }
     clearTimeout(this.pausedQuestion?.timer); this.pausedQuestion = undefined;
     this.stopTimer = setTimeout(() => {
       this.exited = true; this.rpc.dispose();
+      this.clearChildState();
       this.error('未能确认本轮停止，已关闭连接。下一条消息会重新连接。'); this.finish(true);
     }, 10000);
     this.stopTimer.unref();
     await this.startingTurn;
-    if (this.turnId && this.busy) {
-      await this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId });
-    }
-    else if (this.compacting) { this.dispose(); }
+    const childStops = this.children.activeTurns().map(child => this.interruptChild(child.threadId));
+    const rootStop = this.turnId && this.busy ? this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId }) : undefined;
+    if (!rootStop) this.rootCompletion ??= { isError: false };
+    if (!rootStop && this.compacting) { this.dispose(); return; }
+    await Promise.all([...childStops, rootStop]);
+    this.finishTreeIfReady();
   }
   async setPermissionMode(mode: string) { permissions(mode, []); this.opts.permissionMode = mode; }
   async setModel(model: string) { this.opts.model = model; this.emit({ kind: "speed_context", model: this.modelForNextTurn }); }
@@ -615,10 +892,11 @@ export class CodexProcess {
     clearTimeout(this.pausedQuestion?.timer);
     clearTimeout(this.stopTimer); this.stopTimer = undefined;
     this.busy = false; this.compacting = false; this.turnId = undefined; this.pausedQuestion = undefined;
+    this.rootCompletion = undefined; this.stoppingTree = false; this.childQuestions.clear();
     for (const key of this.pending.keys()) this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
   }
-  dispose() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.rpc.dispose(); }
-  async disposeAndWait() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; await this.rpc.disposeAndWait(); }
+  dispose() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
+  async disposeAndWait() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
 }

@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.117",
+  "version": "0.1.118",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -273,6 +273,21 @@
           "type": "boolean",
           "default": true,
           "description": "将插件启动的 Codex 请求耗时与用量诊断收集到本机日志，用于排查压缩延迟；不保存提示词、工具输出或凭据。仅为该子进程覆盖 OTel 日志/指标导出地址，不修改全局配置，不开启已禁用的 analytics。已有自定义 OTel 导出需求时可关闭；下次连接生效。"
+        },
+        "codexChat.executionMode": {
+          "type": "string",
+          "enum": [
+            "parallel",
+            "tools",
+            "standard"
+          ],
+          "default": "parallel",
+          "enumDescriptions": [
+            "智能并行：独立工具批量执行，适合时主动委派最多 2 个子 Agent。子 Agent 可能增加额度消耗。",
+            "工具并行：批量执行独立检查，子 Agent 按用户或项目指令使用。",
+            "原生策略：不追加插件的执行效率指令。"
+          ],
+          "description": "所有会话的执行调度策略，下次连接会话时生效。并行模式同时提供执行前检查、按原因处理失败和避免重复验证的指令；不更换模型、推理档位或收费档位，也不绕过权限。实际调度取决于模型与工具能力。"
         },
         "codexChat.appendSystemPrompt": {
           "type": "string",

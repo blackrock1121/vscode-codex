@@ -69,7 +69,7 @@ export function toolView(item: any): { name: string; input: Record<string, unkno
     } catch { /* 保留原始结果供排错 */ }
   }
   const result = item.aggregatedOutput ?? (item.changes ? item.changes.map((c: any) => `${c.path}\n${c.diff ?? ''}`).join('\n') : JSON.stringify(item.result ?? item.contentItems ?? item.error ?? item.status ?? ''));
-  return { name, input, result, isError: item.status === 'failed' || item.status === 'declined' || !!item.error || (item.exitCode != null && item.exitCode !== 0) };
+  return { name, input, result, isError: item.status === 'failed' || item.status === 'declined' || !!item.error || item.success === false || item.result?.isError === true || (item.exitCode != null && item.exitCode !== 0) };
 }
 export function userView(content: any[]): Extract<TimelineItem, { type: 'user' }> {
   let text = maskQuestionReply(content.filter(x => x.type === 'text').map(x => x.text).join('\n'));

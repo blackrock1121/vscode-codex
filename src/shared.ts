@@ -133,13 +133,15 @@ export type ToWebview =
   | { kind: "forking"; checkpointId: string; busy: boolean; label?: string }
   | { kind: "status"; label: string }
   | { kind: "response_wait"; idleMs: number }
+  /** 实际命令输出或子 Agent 活动；不携带输出正文。 */
+  | { kind: "activity"; label: string }
   | { kind: "block_start"; blockType: "text" | "thinking" | "tool_use"; toolId?: string; toolName?: string }
   | { kind: "block_end" }
   | { kind: "text_delta"; text: string }
   /** 完整消息与 delta 累计不一致时的权威快照：整块替换当前直播文本。 */
   | { kind: "text_snap"; text: string }
   | { kind: "thinking_delta"; text: string }
-  | { kind: "tool_input"; toolId: string; name: string; displayName?: string; input: Record<string, unknown> }
+  | { kind: "tool_input"; toolId: string; name: string; displayName?: string; agentLabel?: string; input: Record<string, unknown> }
   | { kind: "tool_input_partial"; toolId: string; name: string; json: string }
   | { kind: "tool_result"; toolUseId: string; content: string; isError: boolean }
   | {
@@ -148,6 +150,7 @@ export type ToWebview =
       toolUseId?: string;
       toolName: string;
       displayName?: string;
+      agentLabel?: string;
       input: Record<string, unknown>;
       initialAnswers?: Record<string, string | string[]>;
       initialImages?: QuestionImages;

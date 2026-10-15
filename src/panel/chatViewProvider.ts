@@ -14,6 +14,7 @@ import { diffCounts, readDiffFile } from "../diff";
 import { randomUUID } from "node:crypto";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
+import { executionMode } from "../codex/executionPolicy";
 import { SessionStore, sessionTabTitle, ForkPreparation } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
 import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SpeedMode, configuredSpeedMode, isSpeedMode, speedLabel, supportsSpeed, billingKind, SessionSummary, ToWebview } from "../shared";
@@ -179,6 +180,7 @@ interface SessionCtx {
     };
     pendingPrefill?: string;
     pendingPerm?: ToWebview;
+    pendingPerms?: Map<string, Extract<ToWebview, { kind: "permission_request" }>>;
     pendingQuestionAt?: number;
     answeringQuestion?: boolean;
     questionAnswerSeq?: number;
@@ -847,6 +849,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (!ctx.proc && ctx.sessionId && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.toolName === "AskUserQuestion")
             deleteQuestionState(this.storageDir(), ctx.sessionId);
         ctx.pendingPerm = undefined;
+        ctx.pendingPerms?.clear();
         ctx.lastEventAt = undefined;
         ctx.lastUserActionAt = Date.now();
         ctx.stopSeq = ctx.sendSeq ?? 0;
@@ -1033,8 +1036,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         ctx.answeringQuestion = false;
                     }
                     this.output.appendLine(`[question] accepted session=${answerSessionId} elapsedMs=${Math.round(performance.now() - answerStartedAt)}`);
-                    ctx.pendingQuestionAt = undefined;
-                    ctx.pendingPerm = undefined;
+                    this.resolvePendingPermission(ctx, m.requestId);
                     ctx.lastUserActionAt = Date.now();
                     if (ctx.lastEventAt !== undefined)
                         ctx.lastEventAt = Date.now();
@@ -1260,6 +1262,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.blank = true;
         ctx.coldStart = false;
         ctx.pendingPerm = undefined;
+        ctx.pendingPerms?.clear();
         ctx.sendAt = undefined;
         ctx.lastEventAt = undefined;
         ctx.checkpoints.flush();
@@ -1546,7 +1549,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const sourceId = ctx.sessionId;
         if (ctx.pendingPerm?.kind !== "permission_request" || ctx.pendingPerm.requestId !== requestId ||
             !ctx.proc?.respondPermission(requestId, { behavior, suggestionId })) return;
-        ctx.pendingPerm = undefined;
+        this.resolvePendingPermission(ctx, requestId);
         ctx.lastUserActionAt = Date.now();
         if (ctx.lastEventAt !== undefined) ctx.lastEventAt = Date.now();
         this.clearSessionNotification(sourceId);
@@ -2235,6 +2238,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages): Promise<void> {
         const startedAt = performance.now();
+        // 子 Agent 的阻塞提问答回原请求，不能为根会话派生新轮次或重建文件快照。
+        if (ctx.proc?.isChildQuestion?.(requestId)) {
+            if (!await ctx.proc.answerChildQuestion(requestId, answers, images))
+                throw new Error("子 Agent 问题已失效，答案未提交。");
+            void this.clearSessionNotification(ctx.sessionId, "question_answer");
+            return;
+        }
         const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
         await this.waitSessionSettings(ctx);
         const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
@@ -2453,6 +2463,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             questionStateDir: this.storageDir(),
             codexPath: this.config().get<string>("codexPath", "codex"),
             transportDiagnostics: this.config().get<boolean>("transportDiagnostics", true),
+            executionMode: executionMode(this.config().get<string>("executionMode", "parallel")),
             cwd: this.cwd(),
             model: this.sessionModel(ctx) || undefined,
             effort: this.sessionEffort(ctx) || undefined,
@@ -3019,9 +3030,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             else
                 ctx.mayHaveModifiedWorkspace = true;
         }
-        if (e.kind === "permission_resolved" && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === e.requestId) {
-            ctx.pendingPerm = undefined;
-        }
+        if (e.kind === "permission_resolved") this.resolvePendingPermission(ctx, e.requestId);
         if (e.kind === "busy")
             this.broadcastRunning();
         if (e.kind === "tool_result") {
@@ -3034,6 +3043,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.sendAt = undefined;
             ctx.lastEventAt = undefined;
             ctx.pendingPerm = undefined;
+            ctx.pendingPerms?.clear();
             this.output.appendLine(`[${new Date().toISOString()}] [turn] session=${ctx.sessionId?.slice(0, 8)} 完成 ${e.durationMs}ms 轮次${e.numTurns}${e.isError ? " (出错)" : ""}`);
             if (ctx.sessionId)
                 void this.store.hydrate(ctx.sessionId).catch(e => this.output.appendLine(String(e)));
@@ -3192,6 +3202,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private resetRestoredNotifications(ctx: SessionCtx, oldId?: string): void {
         this.clearSessionNotification(oldId);
         ctx.pendingPerm = undefined;
+        ctx.pendingPerms?.clear();
         ctx.pendingQuestionAt = undefined;
         ctx.lastUserText = undefined;
         ctx.lastUserActionAt = Date.now();
@@ -3348,16 +3359,33 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             toolUseId: req.toolUseId,
             toolName: req.toolName,
             displayName: req.displayName,
+            agentLabel: req.agentLabel,
             input: req.input,
             initialAnswers: req.initialAnswers,
             initialImages: req.initialImages,
             description: req.description,
             suggestions: req.suggestions,
         };
+        const queue = ctx.pendingPerms ??= new Map();
+        // 兼容恢复的根问题；并行到达的审批按顺序展示，不能覆盖尚未处理的卡片。
+        if (ctx.pendingPerm?.kind === "permission_request" && !queue.has(ctx.pendingPerm.requestId))
+            queue.set(ctx.pendingPerm.requestId, ctx.pendingPerm);
+        queue.set(req.requestId, msg);
+        if (ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId !== req.requestId) return;
         ctx.pendingPerm = msg;
         if (this.alive(ctx))
             this.post(ctx, msg);
         this.maybeNotifyWaiting(ctx, req);
+    }
+    private resolvePendingPermission(ctx: SessionCtx, requestId: string): void {
+        ctx.pendingPerms?.delete(requestId);
+        if (ctx.pendingPerm?.kind !== "permission_request" || ctx.pendingPerm.requestId !== requestId) return;
+        ctx.pendingPerm = ctx.pendingPerms?.values().next().value;
+        ctx.pendingQuestionAt = undefined;
+        if (ctx.pendingPerm?.kind === "permission_request") {
+            if (ctx.pendingPerm.toolName === "AskUserQuestion") ctx.pendingQuestionAt = Date.now();
+            if (this.alive(ctx)) this.post(ctx, ctx.pendingPerm);
+        }
     }
     private onSessionId(ctx: SessionCtx, id: string, resumed: boolean): void {
         if (!id || (!resumed && this.store.findFile(id)) ||

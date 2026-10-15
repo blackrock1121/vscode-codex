@@ -636,6 +636,31 @@ test('已打开的额度菜单随窗口缩窄保持在可见范围内',t=>{
  assert.ok(right<=width-8&&right-menu.offsetWidth>=8);
  assert.ok(bottom-parseFloat(menu.style.getPropertyValue('--picker-available-height'))>=8);
 });
+test('子问题按来源展示且只接受文字，回答保留根任务计时',t=>{
+ const {w,emit}=setup(t);
+ let now=1000;Object.defineProperty(w.performance,'now',{value:()=>now});
+ emit({kind:'busy',busy:true});
+ const start=w.document.querySelector('.working-pill').dataset.start;
+ now=60000;
+ emit({kind:'permission_request',requestId:'child-q',toolName:'AskUserQuestion',agentLabel:'子任务 检查',input:{questions:[{id:'q',question:'继续检查？',options:[{label:'继续'}]}]},suggestions:[]});
+ assert.match(w.document.querySelector('.askp-q').textContent,/子任务 检查/);
+ assert.equal(w.document.querySelector('.askp input[type=file]'),null);
+ emit({kind:'permission_resolved',requestId:'child-q',behavior:'allow'});
+ assert.equal(w.document.querySelector('.working-pill').dataset.start,start);
+});
+test('真实命令或子 Agent 活动清除静默提示，子工具标明来源',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'busy',busy:true});
+ emit({kind:'tool_input',toolId:'child:cmd',name:'Bash',agentLabel:'子 Agent <测试>',input:{command:'echo ready'}});
+ assert.equal(w.document.querySelector('.tool-name').textContent,'Bash · 子 Agent <测试>');
+ assert.equal(w.document.querySelector('.tool-name 测试'),null);
+ emit({kind:'response_wait',idleMs:50000});
+ assert.ok(w.document.querySelector('.wk-wait'));
+ emit({kind:'activity',label:'收到命令输出'});
+ assert.equal(w.document.querySelector('.wk-wait'),null);
+ assert.match(w.document.querySelector('.wk-progress').textContent,/收到命令输出/);
+ assert.deepEqual(errors,[]);
+});
 test('压缩清除并屏蔽静默警告，完成后保持忙碌且不提前发送队列',async t=>{
  const {w,sent,emit}=setup(t);
  emit({kind:'busy',busy:true});
