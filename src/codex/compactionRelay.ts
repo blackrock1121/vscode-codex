@@ -6,7 +6,13 @@ import { getProxyForUrl } from 'proxy-from-env';
 import * as path from 'node:path';
 import { CompactionArchive, InputSavings, optimizeCompactionInput, ResponseHistory } from './compactionInput';
 
-interface RelayOptions { constrain?: (raw: Buffer) => Buffer; archiveDirectory?: string; onOptimized?: (threadId: string, savings: InputSavings) => void; }
+interface RelayOptions {
+  constrain?: (raw: Buffer) => Buffer;
+  archiveDirectory?: string;
+  /** 内部适配测试可延长预算；生产调用省略，使用 250ms。 */
+  inputPreparationMs?: number;
+  onOptimized?: (threadId: string, savings: InputSavings) => void;
+}
 
 const MAX_PAYLOAD = 128 * 1024 * 1024;
 const MAX_REWRITE = 32 * 1024 * 1024;
@@ -38,6 +44,7 @@ export function routeCompaction(raw: Buffer, legacy: boolean, select: Compaction
   let body: any;
   try { body = JSON.parse(raw.toString('utf8')); } catch { return { body: raw }; }
   if (!body || typeof body !== 'object' || typeof body.model !== 'string') return { body: raw };
+  if (body.generate === false || body.stream_id != null || body.conversation != null || body.context_management != null) return { body: raw };
   const triggered = Array.isArray(body.input) && body.input.at(-1)?.type === 'compaction_trigger';
   if (!legacy && !triggered) return { body: raw };
   // 只优化已评测的原生 v2。旧 /responses/compact 保留原样，避免误用不同模型协议。
@@ -123,7 +130,7 @@ export class CompactionRelay {
   private report(route: CompactionRoute): void {
     try { this.onRoute(route); } catch { /* 诊断失败不能中断模型请求 */ }
   }
-  private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], history?: ResponseHistory): Promise<{ body: Buffer; route?: CompactionRoute }> {
+  private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], signal: AbortSignal, history?: ResponseHistory): Promise<{ body: Buffer; route?: CompactionRoute }> {
     if (!target.pathname.endsWith('/responses') || req.headers['content-encoding']) return { body: raw };
     const result = routeCompaction(raw, false, this.select);
     const id = req.headers['thread-id'] ?? req.headers['session-id'];
@@ -132,9 +139,10 @@ export class CompactionRelay {
       try {
         const body = JSON.parse(result.body.toString());
         if (body.generate !== false && body.input?.at(-1)?.type === 'compaction_trigger') {
-          const input = history ? history.resolve(body) : !body.previous_response_id ? body.input : undefined;
+          const input = (history ?? new ResponseHistory()).resolve(body);
           if (input) {
-            const optimized = await optimizeCompactionInput(input, new CompactionArchive(path.join(this.options.archiveDirectory, threadId)));
+            const optimized = await optimizeCompactionInput(input, new CompactionArchive(path.join(this.options.archiveDirectory, threadId)),
+              { signal, maxDurationMs: this.options.inputPreparationMs });
             if (optimized.savings.optimizedBytes < optimized.savings.originalBytes) {
               body.input = optimized.input;
               // 改写的是完整历史，不能再沿用包含未精简前缀的服务端响应引用。
@@ -164,6 +172,7 @@ export class CompactionRelay {
     this.sockets.add(client); this.sockets.add(upstream);
     let queued: { body: Buffer; binary: boolean }[] = [], queuedBytes = 0;
     const history = new ResponseHistory();
+    const controller = new AbortController();
     let writes = Promise.resolve(), pendingBytes = 0;
     const responses: (CompactionRoute | undefined)[] = [];
     client.on('message', (data, binary) => {
@@ -171,15 +180,16 @@ export class CompactionRelay {
       if (pendingBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
       writes = writes.then(async () => {
         if (this.closed || client.readyState !== WebSocket.OPEN) return;
-        const routed = binary ? { body: original } : await this.rewrite(original, req, target, 'websocket', history);
+        const routed = binary ? { body: original } : await this.rewrite(original, req, target, 'websocket', controller.signal, history);
         if (this.closed || client.readyState !== WebSocket.OPEN) return;
         const body = routed.body;
         if (!binary) {
           try {
             const request = JSON.parse(body.toString()); history.request(request);
-            if (request.type === 'response.create') responses.push(routed.route);
-          } catch { /* 原样转发非 JSON 帧 */ }
-        }
+            if (!history.isReliable) responses.length = 0;
+            else if (request.type === 'response.create') responses.push(routed.route);
+          } catch { history.clear(); responses.length = 0; /* 无法识别的帧仅转发 */ }
+        } else { history.clear(); responses.length = 0; }
         if (upstream.readyState === WebSocket.CONNECTING) {
           queuedBytes += body.length;
           if (queuedBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
@@ -203,28 +213,32 @@ export class CompactionRelay {
         try {
           const event = JSON.parse(bytes(data).toString());
           history.event(event);
+          if (!history.isReliable) responses.length = 0;
           if (event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'response.incomplete' || event.type === 'error') {
             const route = responses.shift();
             const model = event.response?.model;
             if (route && typeof model === 'string' && /^[\w.-]{1,100}$/.test(model))
               this.report({ ...route, stage: 'response', servedModel: model });
           }
-        } catch { /* 上游原文只转发，不写日志 */ }
-      }
+        } catch { history.clear(); responses.length = 0; /* 上游原文只转发，不写日志 */ }
+      } else { history.clear(); responses.length = 0; }
       upstream.pause(); client.send(data, { binary }, error => { if (error) upstream.terminate(); else upstream.resume(); });
     });
     const closePeer = (peer: WebSocket, code: number, reason: Buffer) => {
       if (peer.readyState === WebSocket.CONNECTING || code === 1006) peer.terminate();
       else if (peer.readyState === WebSocket.OPEN) peer.close(code === 1005 ? 1000 : code, reason);
     };
-    client.on('close', (code, reason) => { this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
-    upstream.on('close', (code, reason) => { this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
-    client.on('error', () => upstream.terminate());
-    upstream.on('error', () => client.terminate());
+    client.on('close', (code, reason) => { controller.abort(); this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
+    upstream.on('close', (code, reason) => { controller.abort(); this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
+    client.on('error', () => { controller.abort(); upstream.terminate(); });
+    upstream.on('error', () => { controller.abort(); client.terminate(); });
   }
   private async http(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const target = this.target(req);
     if (!target || this.closed) { res.writeHead(404); res.end(); return; }
+    const controller = new AbortController();
+    req.once('aborted', () => controller.abort());
+    res.once('close', () => controller.abort());
     const chunks: Buffer[] = []; let size = 0;
     for await (const chunk of req) {
       size += chunk.length;
@@ -232,7 +246,7 @@ export class CompactionRelay {
       chunks.push(chunk);
     }
     const original = Buffer.concat(chunks);
-    const body = req.method === 'POST' ? (await this.rewrite(original, req, target, 'http')).body : original;
+    const body = req.method === 'POST' ? (await this.rewrite(original, req, target, 'http', controller.signal)).body : original;
     if (this.closed || res.destroyed || req.aborted) { res.destroy(); return; }
     const headers = forwardedHeaders(req.headers, false);
     if (body.length || req.headers['content-length']) headers['content-length'] = body.length;

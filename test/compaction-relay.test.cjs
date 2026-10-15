@@ -24,7 +24,7 @@ test('原生压缩只换模型和推理：缺省/普通/快速档位及历史工
 
 test('普通回答、其他模型、未知协议、旧接口和不支持的档位均按原字节透传',()=>{
  const cases=[make({input:[{type:'message',content:'compaction_trigger'}]}),make({model:'gpt-6-luna'}),
-  make({type:'response.append'}),make({service_tier:'unknown'}),make({input:[{type:'compaction_trigger'},{type:'message'}]})];
+  make({type:'response.append'}),make({generate:false}),make({stream_id:'parallel'}),make({conversation:'c'}),make({context_management:[]}),make({service_tier:'unknown'}),make({input:[{type:'compaction_trigger'},{type:'message'}]})];
  for(const body of cases){const b=raw(body);assert.equal(routeCompaction(b,false,select).body,b);}
  for(const legacy of [false,true]){const b=raw(make());assert.equal(routeCompaction(b,legacy,()=>undefined).body,b);}
  const b=raw(make());assert.equal(routeCompaction(b,true,select).body,b);
@@ -125,7 +125,7 @@ function longHistory(){
 async function archiveOptions(t){
  const archiveDirectory=await fs.mkdtemp(path.join(os.tmpdir(),'compact-relay-test-')),savings=[];
  t.after(()=>fs.rm(archiveDirectory,{recursive:true,force:true}));
- return {archiveDirectory,savings,onOptimized:(_threadId,s)=>savings.push(s)};
+ return {archiveDirectory,inputPreparationMs:10000,savings,onOptimized:(_threadId,s)=>savings.push(s)};
 }
 
 test('HTTP 仅精简合规压缩的旧工具输出，普通请求、预热及未知协议保持历史',async t=>{
@@ -155,7 +155,7 @@ test('WS 增量压缩还原完整历史并去掉响应引用，续轮按实际�
  wss.on('connection',ws=>ws.on('message',data=>{
   const b=JSON.parse(data);seen.push(b);
   const output={type:'message',role:'assistant',content:[{type:'output_text',text:'响应 '+seen.length}]};doneItems.push(output);
-  ws.send(JSON.stringify({type:'response.output_item.done',item:output}));
+  ws.send(JSON.stringify({type:'response.output_item.done',output_index:0,item:output}));
   ws.send(JSON.stringify({type:'response.completed',response:{id:'r'+seen.length,model:b.model,output:[]}}));
  }));
  const ws=await connect(t,base);

@@ -1,0 +1,45 @@
+{
+  "scope": "本机合成数据；不包含模型生成、网络和磁盘耗时",
+  "baseline": "0.1.130 / 6db0c9e",
+  "prefixBytes": 2097152,
+  "incrementalRequests": 80,
+  "samples": 3,
+  "historyMaintenanceMs": {
+    "baseline": [
+      1082.4037090000002,
+      1609.605833,
+      1462.509916
+    ],
+    "optimized": [
+      0.23833300000023883,
+      0.7070830000002388,
+      0.5438329999997222
+    ],
+    "baselineMedian": 1462.509916,
+    "optimizedMedian": 0.5438329999997222
+  },
+  "duplicateArchiveCalls": {
+    "baseline": 56,
+    "optimized": 1
+  },
+  "onlineRequests": 0,
+  "date": "2026-10-15",
+  "fixtureComparison": {
+    "identicalInput": true,
+    "historyItems": 157,
+    "originalBytes": 1026943,
+    "optimizedBytes": 805259,
+    "modelRequests": 0
+  },
+  "fixes": [
+    "按 output_index 还原流式顺序；无法证明完整的状态不重建前缀",
+    "取消与250毫秒准备预算，完整归档后原子发布路径",
+    "重复内容归档去重；16KiB且10%的收益门槛",
+    "缓存不可变条目字节数，减少增量路径重复序列化"
+  ],
+  "limits": [
+    "仅本机合成性能测试，不代表模型或端到端耗时同比改善",
+    "同源真实样本精简内容一致，不等于所有任务无损",
+    "原生CLI在本机模拟上游验证自动压缩续答及恢复，不调用在线模型"
+  ]
+}
