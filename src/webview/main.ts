@@ -1346,6 +1346,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       updateQuestionBar(); // 短历史不触发滚动事件，主动对一次
 
       break;
+    case "remote_user":
+      finalizeTurn();
+      appendUser(m.text);
+      turnTokens = turnEst = turnThinkTokens = msgTokenBase = lastMsgTokens = 0;
+      resetTokenTween();
+      setBusy(true);
+      break;
     case "checkpoint_marker":
       onCheckpointMarker(m.checkpointId);
       break;

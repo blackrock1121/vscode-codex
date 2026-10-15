@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { randomUUID } from 'node:crypto';
 import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
@@ -84,6 +85,7 @@ export class CodexProcess {
   private preparing?: Promise<void>;
   private starting?: Promise<void>;
   private dispatchSequence = 0;
+  private readonly remoteInstance = randomUUID();
   private waitingForCatalog = false;
   private turnId?: string;
   private readonly endedTurns = new Set<string>();
@@ -143,6 +145,10 @@ export class CodexProcess {
   }
   get modelForNextTurn() { return this.opts.model || this.activeModel; }
   get currentSessionId() { return this.sessionId; }
+  get currentTurnId() {
+    // 等待 turn/start 或根轮次结束但子任务仍运行时也能停止；跨进程/新轮次的旧操作不会命中。
+    return this.busy ? this.turnId ?? this.pausedQuestion?.turnId ?? `${this.remoteInstance}-${this.dispatchSequence}-${this.compactionSequence}` : undefined;
+  }
   get isBusy() { return this.busy; }
   get isExited() { return this.exited; }
   private emit(e: ToWebview) { if (!this.disposed) this.hooks.emit(e); }

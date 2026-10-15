@@ -11,7 +11,10 @@ import { NotificationRouter } from "../notificationRouter";
 import { WorkspaceSnapshot } from "../snapshot";
 import { QuestionImages } from "../questionImages";
 import { diffCounts, readDiffFile } from "../diff";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { parseCommand, type Command } from "../remote/command";
+import type { RemoteRegistration, RemoteReply } from "../remote/bridgeClient";
+import { transcriptPage, transcriptText } from "../remote/transcript";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
 import { executionMode } from "../codex/executionPolicy";
@@ -160,6 +163,10 @@ const ORIG_SCHEME = "codex-orig";
 const LAST_SESSION_KEY = "codexChat.lastSession";
 const LOCAL_SNAPSHOT_EXCLUDES_KEY = "codexChat.localSnapshotExcludes";
 interface SessionCtx {
+    sending?: boolean;
+    remotePrivate?: boolean;
+    remoteRead?: Promise<void>;
+    remoteReadAt?: number;
     snapshot?: WorkspaceSnapshot;
     finalizing?: Promise<void>;
     changedFilesRefresh?: Promise<void>;
@@ -243,6 +250,72 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private notificationUris = new Map<string, Promise<vscode.Uri>>();
     private notificationRouter?: NotificationRouter;
     private disposed = false;
+    private readonly remoteWindowId = randomUUID();
+    remoteRegistration(): RemoteRegistration | undefined {
+        const folders = vscode.workspace.workspaceFolders;
+        if (!vscode.workspace.isTrusted || vscode.env.remoteName || !folders?.length || folders.some(f => f.uri.scheme !== 'file')) return;
+        return { windowId: this.remoteWindowId,
+            workspaceId: 'project-' + createHash('sha256').update(JSON.stringify(folders.map(f => f.uri.fsPath))).digest('hex').slice(0, 24),
+            label: folders.map(f => f.name).join(' · ').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 120) };
+    }
+    /** 手机只能操作本窗口已打开或转入后台的原会话；不接收 Webview 任意指令。 */
+    async executeRemote(input: Command, connected: () => boolean): Promise<RemoteReply> {
+        const command = parseCommand(input, Date.now()), registration = this.remoteRegistration();
+        const denied = (error: string): RemoteReply => ({ accepted: false, error });
+        const active = () => connected() && !this.disposed && command.expiresAt > Date.now() &&
+            this.remoteRegistration()?.workspaceId === registration?.workspaceId;
+        if (!registration || !active() || command.target?.windowId !== registration.windowId || command.target.workspaceId !== registration.workspaceId)
+            return denied('TARGET_OFFLINE');
+        const contexts = () => [...new Set([...this.sessions, ...this.detached.values()])];
+        const op = command.operation;
+        if (op.kind === 'session.list') {
+            const titles = new Map(this.store.list().map(s => [s.id, s.title]));
+            const all = contexts().filter(c => c.sessionId);
+            return { accepted: true, result: { kind: 'session.list', total: all.length,
+                sessions: all.slice(0, 20).map(c => ({ id: c.sessionId, title: (titles.get(c.sessionId!) || c.lastUserText || '已打开会话').slice(0, 60),
+                    busy: !!c.proc?.isBusy || !!c.sending, waiting: c.pendingPerm?.kind === 'permission_request' })) } };
+        }
+        let ctx = contexts().find(c => c.sessionId === command.target!.sessionId);
+        if (op.kind === 'session.create') {
+            ctx = await this.openSession();
+            if (!active()) return denied('COMMAND_EXPIRED');
+        }
+        if (!ctx || !ctx.sessionId && op.kind !== 'session.create') return denied('SESSION_NOT_OPEN');
+        const selected = ctx, sourceId = ctx.sessionId, checkpoints = ctx.checkpoints;
+        const selectedActive = () => active() && contexts().includes(selected) && selected.checkpoints === checkpoints &&
+            (selected.sessionId === sourceId || op.kind === 'session.create');
+        // 此标记随会话持久保存；以后即便桥接断线，也不能把该会话正文回退到飞书等 Webhook。
+        ctx.remotePrivate = true;
+        if (sourceId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + sourceId))
+            await this.context.workspaceState.update('codexChat.remotePrivate.' + sourceId, true);
+        if (!selectedActive()) return denied('TARGET_CHANGED');
+        if (op.kind === 'session.snapshot') {
+            if (!ctx.remoteRead && Date.now() - (ctx.remoteReadAt ?? 0) >= 4000) {
+                ctx.remoteRead = this.store.hydrate(sourceId!).then(() => { selected.remoteReadAt = Date.now(); }).finally(() => { selected.remoteRead = undefined; });
+            }
+            await ctx.remoteRead;
+            if (!selectedActive()) return denied('TARGET_CHANGED');
+            const text = transcriptText(this.store.load(sourceId!));
+            const state = { kind: 'session.snapshot', sessionId: sourceId, busy: !!ctx.proc?.isBusy || !!ctx.sending,
+                turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
+                model: this.sessionModel(ctx).slice(0, 120) };
+            return { accepted: true, result: transcriptPage(text, state, op) };
+        }
+        if (op.kind === 'message.send' || op.kind === 'session.create') {
+            if (op.kind === 'message.send' && op.attachmentIds.length) return denied('ATTACHMENTS_NOT_READY');
+            if (ctx.sending || ctx.proc?.isBusy || ctx.pendingPerm?.kind === 'permission_request' ||
+                this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion || ctx.compactionPreparing) return denied('SESSION_BUSY');
+            const accepted = await this.handleSend(ctx, op.text, undefined, undefined, undefined, selectedActive);
+            if (!accepted) return denied('MESSAGE_NOT_SENT');
+            return { accepted: true, result: { kind: 'message.accepted', sessionId: ctx.sessionId, delivery: 'handed_to_original_session' } };
+        }
+        if (op.kind === 'turn.stop') {
+            if (!ctx.proc?.isBusy || ctx.proc.currentTurnId !== op.turnId) return denied('TURN_CHANGED');
+            await this.stopContext(ctx);
+            return { accepted: true, result: { kind: 'turn.stop', sessionId: sourceId, stopping: !!ctx.proc?.isBusy } };
+        }
+        return denied('OPERATION_NOT_READY');
+    }
     constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
         this.workdayCalendar = new WorkdayCalendar(path.join(context.globalStorageUri.fsPath, "holiday-cn"),
             message => this.output.appendLine(message), () => this.postNotifyCalendar());
@@ -584,7 +657,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")],
         });
     }
-    async openSession(sessionId?: string, initialHistoryCached = false): Promise<void> {
+    async openSession(sessionId?: string, initialHistoryCached = false): Promise<SessionCtx> {
         this.output.appendLine(`[${new Date().toISOString()}] [open] ${sessionId ? sessionId.slice(0, 8) : "新会话"}`);
         if (sessionId) {
             for (const ctx of this.sessions) {
@@ -592,14 +665,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     ctx.panel.reveal(ctx.panel.viewColumn, false);
                     this.activeCtx = ctx;
                     await this.lockChatGroup(ctx.panel);
-                    return;
+                    return ctx;
                 }
             }
             const det = this.detached.get(sessionId);
             if (det) {
                 this.detached.delete(sessionId);
                 await this.reopenDetached(det);
-                return;
+                return det;
             }
         }
         const panel = this.createSessionPanel();
@@ -621,6 +694,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.sessions.add(ctx);
         this.activeCtx = ctx;
         await this.lockChatGroup(panel);
+        return ctx;
     }
     private async reopenDetached(det: SessionCtx): Promise<void> {
         const panel = this.createSessionPanel();
@@ -1345,14 +1419,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         vscode.window.showInformationMessage("已清除当前工作区的本机快照排除记录，下一轮恢复扫描。settings.json 中已有的手动规则保持不变。");
     }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
+        mediaType: string; data: string;
+    }[], files?: string[], allowed?: () => boolean): Promise<boolean> {
+        if (ctx.sending) { this.post(ctx, { kind: 'notice', message: '上一条消息正在准备，请稍后再发送。' }); return false; }
+        ctx.sending = true;
+        const priorSnapshot = ctx.snapshot;
+        let accepted = false;
+        try { accepted = await this.handleSendInner(ctx, text, context, images, files, allowed); return accepted; }
+        finally {
+            if (!accepted && !ctx.proc?.isBusy && ctx.snapshot !== priorSnapshot) ctx.snapshot = undefined;
+            ctx.sending = false;
+        }
+    }
+    private async handleSendInner(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
         data: string;
-    }[], files?: string[]): Promise<void> {
+    }[], files?: string[], allowed?: () => boolean): Promise<boolean> {
         const prepareAt = Date.now();
         await ctx.finalizing;
+        if (allowed && !allowed()) return false;
         if (ctx.proc?.isBusy || ctx.pendingPerm?.kind === "permission_request") {
             this.post(ctx, { kind: "error", message: "上一轮尚未结束，请先完成问题或审批。", keepBusy: true });
-            return;
+            return false;
         }
         let attached = context;
         const mySeq = (ctx.sendSeq = (ctx.sendSeq ?? 0) + 1);
@@ -1388,9 +1476,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.reportSnapshotSkips(ctx, snapshot);
         })();
         await Promise.all([historyReady, snapshotReady]);
-        if ((ctx.stopSeq ?? -1) >= mySeq) {
+        if ((ctx.stopSeq ?? -1) >= mySeq || (allowed && !allowed())) {
             this.post(ctx, { kind: "busy", busy: false });
-            return;
+            return false;
         }
         // A new thread is only durable after its first turn starts. Do not create
         // it during the (potentially slow) snapshot: Stop may cancel the send.
@@ -1401,13 +1489,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.draftImages = images;
             this.post(ctx, { kind: "draft", text, images });
             this.post(ctx, { kind: "busy", busy: false });
-            return;
+            return false;
         }
         await this.waitSessionSettings(ctx);
         await proc.setModel(this.sessionModel(ctx));
         await proc.setSpeedMode(this.speedMode(ctx));
         await proc.setEffort(this.sessionEffort(ctx));
-        if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
+        if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc || (allowed && !allowed())) {
             if (!hadSession && ctx.proc === proc) {
                 ctx.proc = undefined;
                 ctx.sessionId = undefined;
@@ -1417,7 +1505,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await proc.disposeAndWait();
             }
             this.post(ctx, { kind: "busy", busy: false });
-            return;
+            return false;
         }
         if (proc.isBusy) {
             // 初始化可能刚恢复出待答问题，不能把“等待输入”误判为进程退出。
@@ -1425,8 +1513,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.draftImages = images;
             this.post(ctx, { kind: "draft", text, images });
             this.post(ctx, { kind: "notice", message: "已恢复等待中的问题，请先提交答案；新消息已保留为草稿。" });
-            return;
+            return false;
         }
+        if (ctx.remotePrivate && ctx.sessionId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + ctx.sessionId))
+            await this.context.workspaceState.update('codexChat.remotePrivate.' + ctx.sessionId, true);
+        if (allowed && (!allowed() || ctx.proc !== proc || proc.isBusy)) return false;
         const lineBefore = ctx.sessionId ? this.store.countLines(ctx.sessionId) : 0;
         if (!proc.sendUserMessage(text, attached, images)) {
             this.output.appendLine("[codex] send dropped: process not writable (exited mid-send)");
@@ -1437,8 +1528,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.draftImages = images;
             this.post(ctx, { kind: "draft", text, images });
             this.post(ctx, { kind: "busy", busy: false });
-            return;
+            return false;
         }
+        if (allowed) this.post(ctx, { kind: 'remote_user', text });
         if (!hadSession && ctx.sessionId) {
             this.store.notePending(ctx.sessionId, text || "(图片)");
             this.renderSessions();
@@ -1453,6 +1545,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[${new Date().toISOString()}] [send] session=${ctx.sessionId?.slice(0, 8)} 准备${Date.now() - prepareAt}ms 正文${text.length}字 附加${attached?.length ?? 0}字 图片${images?.length ?? 0}`);
         const checkpointId = ctx.checkpoints.beginTurn(text || "(图片)", lineBefore, !!ctx.snapshot);
         this.post(ctx, { kind: "checkpoint_marker", checkpointId, userText: text });
+        return true;
     }
     private async editMessage(ctx: SessionCtx, checkpointId: string, text: string, images?: {
         mediaType: string;
@@ -3125,7 +3218,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const sessionId = ctx.sessionId;
         const epoch = this.notificationVersion(sessionId);
         const cfg = vscode.workspace.getConfiguration("codexChat");
-        const url = (cfg.get<string>("notifyWebhook") || "").trim();
+        const privateSession = ctx.remotePrivate || (sessionId && this.context.workspaceState?.get<boolean>('codexChat.remotePrivate.' + sessionId));
+        const url = privateSession ? '' : (cfg.get<string>("notifyWebhook") || "").trim();
         const event = extra.waiting === true ? "waiting" : extra.isError === true ? "error" : "complete";
         const localEnabled = cfg.get<boolean>("notifyLocal") === true;
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));

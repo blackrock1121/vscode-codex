@@ -4,6 +4,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { ChatViewProvider } from "./panel/chatViewProvider";
 import { DailyLogWriter } from "./logging";
+import { RemoteBridgeClient } from "./remote/bridgeClient";
 
 /** 固定日志目录：~/.codex-chat/logs/codex-chat-YYYY-MM-DD.log（按天分文件）。
  *  VS Code 输出通道的落盘路径深埋且每次会话都变，用户/同事根本找不到——
@@ -35,6 +36,12 @@ export function activate(context: vscode.ExtensionContext): void {
   const output = teeOutput(vscode.window.createOutputChannel("Codex Chat"));
   output.appendLine(`[boot] Codex Copilot v${(context.extension.packageJSON as { version?: string }).version ?? "?"} 日志目录 ${LOG_DIR}`);
   const provider = new ChatViewProvider(context, output);
+  const registration = provider.remoteRegistration();
+  if (registration && process.platform === 'darwin') {
+    const remote = new RemoteBridgeClient(path.join(os.homedir(), '.codex-chat', 'remote-bridge'), registration,
+      (command, active) => provider.executeRemote(command, active));
+    remote.start(); context.subscriptions.push(remote);
+  }
 
   context.subscriptions.push(
     output,

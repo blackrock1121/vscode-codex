@@ -116,6 +116,7 @@ export function modelChoices(data: any[]): ModelChoice[] {
 }
 
 export type ToWebview =
+  | { kind: "remote_user"; text: string }
   | { kind: "models"; models: ModelChoice[] }
   | { kind: "speed_context"; model?: string; billing?: BillingKind; planType?: string }
   /** 速度保存成功后的短暂反馈，仅显示在按钮附近，不进入聊天记录。 */
