@@ -4150,7 +4150,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="btn-attach-file" class="composer-btn" title="附加文件/目录到会话">${ICONS.attach}</button>
             <span class="composer-sep"></span>
             <button id="model-trigger" class="composer-pick" title="选择模型"><span class="pick-emoji">${ICONS.model}</span><span id="model-label" class="pick-label">默认模型</span><span class="pick-caret">${ICONS.chevron}</span></button>
-            <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">推理：中</span><span class="pick-caret">${ICONS.chevron}</span></button>
+            <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">中</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="speed-trigger" type="button" class="composer-pick speed-toggle" role="switch" aria-checked="false" aria-label="快速模式"><span class="speed-bolt" aria-hidden="true">${ICONS.fast}</span></button>
             <button id="mode-trigger" class="composer-pick" title="选择模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
 

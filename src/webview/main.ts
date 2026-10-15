@@ -3947,7 +3947,7 @@ function syncPickers() {
   const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
   const effort = EFFORTS.find(e => e.id === selectedEffort);
   const effortLabel = effort?.label || selectedEffort || "默认";
-  $("effort-label").textContent = `推理：${effortLabel}`;
+  $("effort-label").textContent = effortLabel;
   effortTrigger.title = `推理强度：${effortLabel}${effort ? `；${effort.desc}` : ""}。仅当前会话下轮生效；其他会话保持各自设置。`;
   effortTrigger.setAttribute("aria-label", `推理强度：${effortLabel}；点击选择`);
   if (!effortMenu.classList.contains("hidden")) buildEffortMenu();

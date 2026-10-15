@@ -798,7 +798,7 @@ test('模型选择器每个系列仅保留最新版本，中文介绍不挤占�
  assert.match(menu.textContent,/自定义中文介绍/);
  assert.equal(w.document.getElementById('model-label').textContent,'GPT-6-SOL');
  assert.equal(menu.querySelector('[data-effort]'),null);
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：高');
+ assert.equal(w.document.getElementById('effort-label').textContent,'高');
  assert.equal(sent.filter(m=>m.type==='setModel').length,0);
  menu.querySelector('[data-model="gpt-6.1-sol"]').click();
  assert.ok(sent.some(m=>m.type==='setModel'&&m.model==='gpt-6.1-sol'));
@@ -843,7 +843,7 @@ test('推理程度单行短横条支持悬停说明，直接选中模型默认�
   assert.ok(option.querySelector('.effort-bar'));
  }
  menu.querySelector('[data-effort="ultra"]').click();
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：高');
+ assert.equal(w.document.getElementById('effort-label').textContent,'高');
  emit({kind:'config',model:'gpt-6.1-sol',effort:'ultra',permissionMode:'default'});
  assert.equal(menu.querySelector('.effort-current').textContent,'推理程度 · 超高');
  assert.equal(menu.querySelectorAll('.effort-option.filled').length,6);
@@ -1055,15 +1055,15 @@ test('推理入口与模型和快速开关同层可见，保存失败回执不�
  emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:['low','medium','high'],defaultEffort:'medium',speedModes:['default','fast']}]});
  emit({kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'default'});
  const trigger=w.document.getElementById('effort-trigger');
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：中');
+ assert.equal(w.document.getElementById('effort-label').textContent,'中');
  assert.equal(trigger.parentElement,w.document.getElementById('model-trigger').parentElement);
  assert.equal(trigger.parentElement,w.document.getElementById('speed-trigger').parentElement);
  w.document.getElementById('model-trigger').click();assert.equal(w.document.querySelector('#model-menu [data-effort]'),null);
  trigger.click();const high=w.document.querySelector('#effort-menu [data-effort="high"]');high.click();
- assert.equal(sent.at(-1).effort,'high');assert.equal(w.document.getElementById('effort-label').textContent,'推理：中');
+ assert.equal(sent.at(-1).effort,'high');assert.equal(w.document.getElementById('effort-label').textContent,'中');
  assert.ok([...w.document.querySelectorAll('#effort-menu [data-effort]')].every(e=>e.disabled));
  emit({kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'default'});
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：中');
+ assert.equal(w.document.getElementById('effort-label').textContent,'中');
  assert.equal(w.document.querySelector('#effort-menu [data-effort="high"]').disabled,false);
 });
 
@@ -1245,7 +1245,7 @@ test('命令和菜单等待保存回执，重复选择不提交，失败保留�
  const command=text=>{const input=w.document.getElementById('input');input.value=text;input.dispatchEvent(new w.Event('input'));w.document.getElementById('btn-send').click();};
  command('/effort low');command('/effort medium');
  assert.deepEqual(sent.filter(m=>m.type==='setEffort').map(m=>m.effort),['low']);
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：高');
+ assert.equal(w.document.getElementById('effort-label').textContent,'高');
  emit(config); // 模拟保存失败后的真实配置回执
  command('/effort high');
  assert.equal(sent.filter(m=>m.type==='setEffort').length,1);
@@ -1254,7 +1254,7 @@ test('命令和菜单等待保存回执，重复选择不提交，失败保留�
  command('/model model-b');
  assert.equal(sent.filter(m=>m.type==='setModel').length,1);
  assert.equal(w.document.getElementById('model-label').textContent,'模型甲');
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：高');
+ assert.equal(w.document.getElementById('effort-label').textContent,'高');
  w.document.getElementById('model-trigger').click();
  assert.ok([...w.document.querySelectorAll('[data-model]')].every(e=>e.disabled));
  emit(config);
@@ -1262,7 +1262,7 @@ test('命令和菜单等待保存回执，重复选择不提交，失败保留�
  command('/model model-b');
  emit({...config,model:'model-b',effort:'low'});
  assert.equal(w.document.getElementById('model-label').textContent,'模型乙');
- assert.equal(w.document.getElementById('effort-label').textContent,'推理：低');
+ assert.equal(w.document.getElementById('effort-label').textContent,'低');
  assert.doesNotMatch(w.document.getElementById('messages').textContent,/已切换模型|已切换思考强度/);
  assert.deepEqual(errors,[]);
 });
