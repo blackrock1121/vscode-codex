@@ -351,7 +351,7 @@ test('派生还原写盘失败时清理临时分支，原会话与备份保持�
   rewindLeafFor:()=> 'turn-1',fork:async()=> 'temporary-branch',
   delete:async id=>deleted.push(id),
  };
- const ctx={sessionId:'test',checkpoints};
+ const ctx={sessionId:'test',model:'',checkpoints};
  await assert.rejects(provider.forkRewind(ctx,id,1),/blocked\.txt/);
  assert.deepEqual(deleted,['temporary-branch']);
  assert.equal(ctx.sessionId,'test');

@@ -4036,7 +4036,7 @@ function syncPickers() {
   if (!modeTip.hidden) positionSpeedPopover(modeTip, modeTrigger);
   const model = MODELS.find((x) => x.id === currentModel);
   modelLabel.textContent = model?.label || speedModels.find(x => x.id === currentModel)?.name || currentModel || MODELS[0].label;
-  modelTrigger.title = `当前模型：${modelLabel.textContent}（点击切换）`;
+  modelTrigger.title = `当前模型：${modelLabel.textContent}（点击切换）。仅当前会话下轮生效；其他会话保持各自设置。`;
   refitComposer();
 }
 

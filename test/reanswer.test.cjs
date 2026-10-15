@@ -47,6 +47,18 @@ async function fixture(t){
  t.after(async()=>{ctx.checkpoints.flush();checkpoints.flush();await fs.rm(dir,{recursive:true,force:true});});
  return {dir,workspace,file,first,turns,store,checkpoints,ctx,provider,messages,forks,id};
 }
+test('还原派生和回到开头均保留本会话模型，原会话保存值不变',async t=>{
+ for(const toStart of [false,true]){
+  const f=await fixture(t),state=new Map([['codexChat.sessionModel.source','chosen-model']]);
+  f.provider.context.workspaceState={get:key=>state.get(key),update:async(key,value)=>state.set(key,value)};
+  const id=toStart?f.checkpoints.list()[0].id:f.id;
+  await f.provider.restoreCheckpoint(f.ctx,id);
+  assert.equal(f.ctx.sessionId,toStart?undefined:'branch');
+  assert.equal(f.provider.sessionModel(f.ctx),'chosen-model');
+  assert.equal(state.get('codexChat.sessionModel.source'),'chosen-model');
+  if(!toStart)assert.equal(state.get('codexChat.sessionModel.branch'),'chosen-model');
+ }
+});
 test('带图回答还原后按问题回填图片，落盘和宿主消息都保留附件',async t=>{
  const f=await fixture(t);const picture={mediaType:'image/png',data:'aGVsbG8='};
  const text=QUESTION_REPLY_PREFIX+JSON.stringify([{question:'安装来源',answers:['（见附图）'],imageCount:1,imageNumbers:[1]}]);

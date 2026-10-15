@@ -198,24 +198,22 @@ test('旧超高速设置回到普通，新界面与设置不再允许启用超�
  assert.deepEqual(pkg.contributes.configuration.properties['codexChat.speedMode'].enum,['default','fast']);
 });
 
-test('切换模型只重置不兼容的会话档位，默认强度及兼容会话保持不变',async()=>{
+test('切换模型只重置当前会话的不兼容档位，其他会话及公共默认值保持不变',async()=>{
  const f=fixture();await f.provider.setEffort(f.other,'low');f.applied.length=0;
  f.provider.modelCatalog.push({id:'low-only',efforts:['low'],speedModes:['default']});
- f.provider.updateConfig=async(key,value)=>{f.settings[key]=value;return true;};
  for(const session of [f.session,f.other,f.hidden])session.proc.setModel=async()=>{};
  await f.provider.setModel(f.session,'low-only');
  assert.equal(f.settings.effort,'high');assert.equal(f.provider.sessionEffort(f.session),'');
- assert.equal(f.provider.sessionEffort(f.other),'low');assert.equal(f.provider.sessionEffort(f.hidden),'');
- assert.deepEqual(f.applied,[['effort','a',''],['effort','hidden','']]);
+ assert.equal(f.provider.sessionEffort(f.other),'low');assert.equal(f.provider.sessionEffort(f.hidden),'high');
+ assert.deepEqual(f.applied,[['effort','a','']]);
 });
-test('模型切换途中保存失败会撤回已保存的重置，不改变任一会话的运行设置',async()=>{
+test('模型切换途中推理强度保存失败会撤回模型选择，不改变任一会话的运行设置',async()=>{
  const f=fixture();f.state.set('codexChat.sessionEffort.a','high');
  f.provider.modelCatalog.push({id:'low-only',efforts:['low']});
- f.provider.updateConfig=async(key,value)=>{f.settings[key]=value;return true;};
  for(const session of [f.session,f.other,f.hidden])session.proc.setModel=async()=>assert.fail('不能切换模型');
- const save=f.provider.saveSessionEffort.bind(f.provider);
- f.provider.saveSessionEffort=async(ctx,value)=>{if(ctx.sessionId==='b')throw Error('保存失败');await save(ctx,value);};
+ f.provider.saveSessionEffort=async()=>{throw Error('保存失败');};
  await f.provider.setModel(f.session,'low-only');
  assert.equal(f.settings.model,'test-model');assert.equal(f.provider.sessionEffort(f.session),'high');
+ assert.equal(f.state.get('codexChat.sessionModel.a'),'test-model');
  assert.equal(f.state.get('codexChat.sessionEffort.a'),'high');assert.deepEqual(f.applied,[]);
 });

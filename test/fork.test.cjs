@@ -23,13 +23,25 @@ async function fixture(t,cut=1){
  const id=checkpoints.beginTurn('第二轮',cut);
  const ctx={sessionId:'source',checkpoints,proc:{isBusy:true}};
  const provider=Object.create(ChatViewProvider.prototype);
- const messages=[],forks=[],opened=[];let reads=0;
+ const messages=[],forks=[],opened=[],state=new Map();let reads=0;
+ Object.assign(provider,{context:{workspaceState:{get:key=>state.get(key),update:async(key,value)=>state.set(key,value)}},
+  config:()=>({get:(_key,fallback)=>fallback}),modelSelectionQueue:Promise.resolve(),modelCatalog:[]});
  Object.assign(provider,{store,forking:new Set(),restoring:new Set(),sessions:new Set([ctx]),detached:new Map(),storageDir:()=>dir,output:{appendLine:()=>{}},post:(_,m)=>messages.push(m),speedMode:()=> 'default',saveSessionSpeed:async()=>{},sessionEffort:()=> 'medium',saveSessionEffort:async()=>{},openSession:async id=>opened.push(id)});
  store.hydrate=async id=>{assert.equal(id,'source');reads++;store.threads.set(id,{id,turns:[first,current]});};
  store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
  store.fork=async(source,leaf)=>{forks.push({source,leaf});store.threads.set('branch',{id:'branch',turns:[first]});return 'branch';};
- return {provider,store,ctx,checkpoints,id,first,current,messages,forks,opened,dir,reads:()=>reads};
+ return {provider,store,ctx,checkpoints,id,first,current,messages,forks,opened,dir,state,reads:()=>reads};
 }
+test('派生新标签继承原会话模型，之后修改不影响原会话',async t=>{
+ const f=await fixture(t);f.state.set('codexChat.sessionModel.source','source-model');
+ await f.provider.forkCheckpoint(f.ctx,f.id);
+ assert.equal(f.state.get('codexChat.sessionModel.branch'),'source-model');
+ const branch={sessionId:'branch'};
+ await f.provider.setModel(branch,'branch-model');
+ assert.equal(f.provider.sessionModel(f.ctx),'source-model');
+ assert.equal(f.provider.sessionModel(branch),'branch-model');
+ assert.equal(f.state.get('codexChat.sessionModel.source'),'source-model');
+});
 test('派生即时反馈、分阶段更新、重复点击不重复创建，收尾恢复界面',async t=>{
  const f=await fixture(t);let release;
  f.ctx.finalizing=new Promise(resolve=>{release=resolve;});

@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.108",
+  "version": "0.1.109",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -199,7 +199,7 @@
         "codexChat.model": {
           "type": "string",
           "default": "",
-          "description": "模型 ID；留空使用 Codex 默认值。选择器通过 model/list 获取账号可用模型。"
+          "description": "新会话的默认模型 ID；留空使用 Codex 默认值。会话内选择独立保存，仅影响该会话下一轮。选择器通过 model/list 获取账号可用模型。"
         },
         "codexChat.permissionMode": {
           "type": "string",

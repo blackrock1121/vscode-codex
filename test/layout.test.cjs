@@ -55,7 +55,8 @@ async function fixture(t){
  const provider=Object.create(ChatViewProvider.prototype);
  Object.assign(provider,{
   sessions:new Set(),detached:new Map(),
-  context:{extensionUri:dir},output:{appendLine:()=>{}},
+  context:{extensionUri:dir,workspaceState:{get:()=>undefined}},output:{appendLine:()=>{}},
+  config:()=>({get:(_key,fallback)=>fallback}),
   store:{hydrate:async()=>{},findFile:id=>id},
   storageDir:()=>dir,speedMode:()=> 'default',html:()=> '<html>会话</html>',postActiveFile:()=>{},
  });

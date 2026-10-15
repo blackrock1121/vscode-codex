@@ -163,6 +163,7 @@ interface SessionCtx {
     panel: vscode.WebviewPanel;
     webview: vscode.Webview;
     sessionId?: string;
+    model?: string;
     speedMode?: SpeedMode;
     effort?: string;
     proc?: CodexProcess;
@@ -599,6 +600,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         if (sessionId)
             ctx.checkpoints.setSession(sessionId);
+        this.sessionModel(ctx);
         this.speedMode(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
@@ -713,6 +715,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         if (sid)
             ctx.checkpoints.setSession(sid);
+        this.sessionModel(ctx);
         this.speedMode(ctx);
         this.adoptPanel(ctx);
         this.sessions.add(ctx);
@@ -955,7 +958,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.post(ctx, {
                         kind: "config",
                         permissionMode: this.config().get<string>("permissionMode", "default"),
-                        model: this.config().get<string>("model", ""),
+                        model: this.sessionModel(ctx),
                         effort: this.sessionEffort(ctx),
                         speedMode: this.speedMode(ctx),
                         modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
@@ -1167,6 +1170,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (sid && this.store.findFile(sid)) {
             ctx.sessionId = sid;
+            ctx.model = undefined;
             ctx.speedMode = undefined;
             ctx.effort = undefined;
             this.speedMode(ctx);
@@ -1179,6 +1183,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
     private loadSessionInto(ctx: SessionCtx, sid: string): void {
+        this.rememberSessionModel(ctx);
         this.rememberSessionSpeed(ctx);
         this.rememberSessionEffort(ctx);
         if (ctx.initialHistoryCached && ctx.sessionId === sid) {
@@ -1224,6 +1229,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.proc = undefined;
         ctx.starting = undefined;
         ctx.sessionId = undefined;
+        ctx.model = undefined;
         ctx.speedMode = undefined;
         ctx.effort = undefined;
         this.postModelConfig(ctx);
@@ -1371,6 +1377,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         await this.modelSelectionQueue;
+        await proc.setModel(this.sessionModel(ctx));
         await proc.setSpeedMode(this.speedMode(ctx));
         await proc.setEffort(this.sessionEffort(ctx));
         if ((ctx.stopSeq ?? -1) >= mySeq || ctx.proc !== proc) {
@@ -1549,7 +1556,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const cfg: ToWebview = {
             kind: "config",
             permissionMode: this.config().get<string>("permissionMode", "default"),
-            model: this.config().get<string>("model", ""),
+            model: this.sessionModel(ctx),
             effort: this.sessionEffort(ctx),
             speedMode: this.speedMode(ctx),
         };
@@ -1573,7 +1580,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 const cfg: ToWebview = {
                     kind: "config",
                     permissionMode: m,
-                    model: this.config().get<string>("model", ""),
+                    model: this.sessionModel(ctx),
                     effort: this.sessionEffort(ctx),
                     speedMode: this.speedMode(ctx),
                     modEnterToSend: this.config().get<boolean>("modEnterToSend", false),
@@ -1600,42 +1607,51 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.post(_ctx, { kind: "error", message: `有 ${rejected.length} 个会话未能切换到「${MODE_NAMES[mode] ?? mode}」：${why}。` });
     }
+    /** 公共配置仅作为初始值；空字符串也是会话独立保存的“默认模型”选择。 */
+    private sessionModel(ctx: SessionCtx): string {
+        if (ctx.model !== undefined) return ctx.model;
+        const saved = ctx.sessionId
+            ? this.context.workspaceState.get<string>(`codexChat.sessionModel.${ctx.sessionId}`) : undefined;
+        ctx.model = typeof saved === "string" ? saved : this.config().get<string>("model", "");
+        return ctx.model;
+    }
+    private async saveSessionModel(ctx: Pick<SessionCtx, "sessionId">, model: string): Promise<void> {
+        if (ctx.sessionId)
+            await this.context.workspaceState.update(`codexChat.sessionModel.${ctx.sessionId}`, model);
+    }
+    private rememberSessionModel(ctx: SessionCtx): void {
+        void this.saveSessionModel(ctx, this.sessionModel(ctx)).catch(err => {
+            this.output.appendLine(`[sessionModel] ${String(err)}`);
+            this.post(ctx, { kind: "error", message: "无法保存此会话的模型，重新打开后可能丢失，请重新选择。" });
+        });
+    }
     private setModel(ctx: SessionCtx, model: string): Promise<void> {
         return this.queueModelSelection(async () => {
-            const previousModel = this.config().get<string>("model", "");
-            if (!await this.updateConfig("model", model)) {
-                this.broadcastModelConfig();
-                return;
-            }
+            const previousModel = this.sessionModel(ctx);
+            const effort = this.sessionEffort(ctx);
             const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
-            const resets = [...this.sessions, ...this.detached.values()].map(session => ({ session, effort: this.sessionEffort(session) }))
-                .filter(x => x.effort && details?.efforts.length && !details.efforts.includes(x.effort));
-            const saved: typeof resets = [];
+            const resetEffort = !!(effort && details?.efforts.length && !details.efforts.includes(effort));
+            let modelSaved = false;
             try {
-                for (const reset of resets) {
-                    await this.saveSessionEffort(reset.session, "");
-                    saved.push(reset);
-                }
+                await this.saveSessionModel(ctx, model);
+                modelSaved = true;
+                if (resetEffort) await this.saveSessionEffort(ctx, "");
             } catch (err) {
-                for (const reset of saved) {
-                    await this.saveSessionEffort(reset.session, reset.effort).catch(e => this.output.appendLine(`[sessionEffort] ${String(e)}`));
-                }
-                await this.updateConfig("model", previousModel);
-                this.post(ctx, { kind: "error", message: "无法保存会话推理强度，模型切换已取消。" });
-                this.broadcastModelConfig();
+                this.output.appendLine(`[sessionModel] ${String(err)}`);
+                if (modelSaved)
+                    await this.saveSessionModel(ctx, previousModel).catch(e => this.output.appendLine(`[sessionModel] ${String(e)}`));
+                this.post(ctx, { kind: "error", message: "无法保存此会话的模型设置，模型切换已取消。" });
+                this.postModelConfig(ctx);
                 return;
             }
-            for (const { session } of resets) {
-                session.effort = "";
-                await session.proc?.setEffort("");
-                this.post(session, { kind: "notice", message: "新模型不支持此会话原推理强度，已改用模型默认值。" });
+            ctx.model = model;
+            if (resetEffort) {
+                ctx.effort = "";
+                await ctx.proc?.setEffort("");
+                this.post(ctx, { kind: "notice", message: "新模型不支持此会话原推理强度，已改用模型默认值。" });
             }
-            const results = await Promise.allSettled(this.allProcs().map((p) => p.setModel(model)));
-            this.broadcastModelConfig();
-            const failed = results.filter((r) => r.status === "rejected").length;
-            if (failed) {
-                this.post(ctx, { kind: "error", message: `有 ${failed} 个会话未能切换模型，请重试或新建会话。` });
-            }
+            await ctx.proc?.setModel(model);
+            this.postModelConfig(ctx);
         });
     }
     private speedMode(ctx: SessionCtx): SpeedMode {
@@ -1670,7 +1686,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.postModelConfig(ctx);
                 return;
             }
-            const model = this.config().get<string>("model", "") || ctx.proc?.modelForNextTurn || "";
+            const model = this.sessionModel(ctx) || ctx.proc?.modelForNextTurn || "";
             const details = this.modelCatalog.find(m => m.id === model);
             if (!supportsSpeed(details, mode)) {
                 this.post(ctx, { kind: "error", message: model
@@ -1714,7 +1730,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private setEffort(ctx: SessionCtx, effort: string): Promise<void> {
         return this.queueModelSelection(async () => {
-            const model = this.config().get<string>("model", "") || ctx.proc?.modelForNextTurn || "";
+            const model = this.sessionModel(ctx) || ctx.proc?.modelForNextTurn || "";
             const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
             const supported = details?.efforts.length ? details.efforts : ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
             if (typeof effort !== "string" || (effort && !supported.includes(effort))) {
@@ -1968,11 +1984,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         try {
+            await this.saveSessionModel({ sessionId: newId }, this.sessionModel(ctx));
             await this.saveSessionSpeed({ sessionId: newId }, this.speedMode(ctx));
             await this.saveSessionEffort({ sessionId: newId }, this.sessionEffort(ctx));
         } catch (err) {
-            this.output.appendLine(`[sessionSpeed] ${String(err)}`);
-            this.post(ctx, { kind: "error", message: "派生会话已创建，但速度或推理强度未能保存，请在新会话中重新选择。" });
+            this.output.appendLine(`[sessionSettings] ${String(err)}`);
+            this.post(ctx, { kind: "error", message: "派生会话已创建，但模型、速度或推理强度未能保存，请在新会话中重新选择。" });
         }
         try {
             progress("正在打开新会话…");
@@ -2078,6 +2095,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         rewoundToStart: boolean;
     }> {
         const oldId = ctx.sessionId;
+        this.sessionModel(ctx);
         this.speedMode(ctx);
         // 回退文件时 CheckpointManager 会重写当前会话的快照。先保存原文件，
         // 让保留在历史列表里的原会话仍能使用自己的还原点。
@@ -2143,6 +2161,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.checkpoints.setSession(newId);
         this.resetRestoredNotifications(ctx, oldId);
         ctx.sessionId = newId;
+        this.rememberSessionModel(ctx);
         this.rememberSessionSpeed(ctx);
         this.rememberSessionEffort(ctx);
         this.store.notePending(newId, this.store.userTurnLines(newId)[0]?.text || this.store.list().find(s => s.id === oldId)?.title || "派生会话");
@@ -2377,7 +2396,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             codexPath: this.config().get<string>("codexPath", "codex"),
             transportDiagnostics: this.config().get<boolean>("transportDiagnostics", true),
             cwd: this.cwd(),
-            model: this.config().get<string>("model", "") || undefined,
+            model: this.sessionModel(ctx) || undefined,
             effort: this.sessionEffort(ctx) || undefined,
             speedMode: this.speedMode(ctx),
             permissionMode: this.config().get<string>("permissionMode", "default"),
@@ -3277,10 +3296,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             [...this.sessions, ...this.detached.values()].some(other => other !== ctx && other.sessionId === id))
             throw new Error("会话 ID 已被其他标签页占用，已中止连接，避免覆盖会话及通知。");
         const isNew = ctx.sessionId !== id;
+        this.sessionModel(ctx);
         this.speedMode(ctx);
         this.sessionEffort(ctx);
         ctx.blank = false;
         ctx.sessionId = id;
+        this.rememberSessionModel(ctx);
         this.rememberSessionSpeed(ctx);
         this.rememberSessionEffort(ctx);
         ctx.checkpoints.setSession(id);
