@@ -6,7 +6,8 @@ const {WebSocketServer}=require('ws');
 const {CodexRpc,resolveCodex}=require('../dist/test/codex/rpc.js');
 const {CompactionRelay}=require('../dist/test/codex/compactionRelay.js');
 (async()=>{
- let count=0,tools=0,compacted=0,fail,finish,timer;const seen=[],routes=[];
+ let count=0,tools=0,compacted=0,fail,finish,timer;const seen=[],routes=[],savings=[];
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'codex-auto-fixture-')),executable=path.join(dir,'codex-fixture');
  const server=http.createServer((_req,res)=>res.writeHead(501).end());const wss=new WebSocketServer({server});
  wss.on('connection',ws=>ws.on('message',data=>{
   const b=JSON.parse(data);const compact=b.input?.at(-1)?.type==='compaction_trigger';
@@ -22,8 +23,9 @@ const {CompactionRelay}=require('../dist/test/codex/compactionRelay.js');
   ws.send(JSON.stringify({type:'response.completed',response:{id,model:b.model,status:'completed',output,usage:{input_tokens:!compact&&tools===0?80000:100,output_tokens:10,total_tokens:!compact&&tools===0?80010:110,input_tokens_details:{cached_tokens:0},output_tokens_details:{reasoning_tokens:0}}}}));
  }));
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>true,r=>routes.push(r));
- const dir=fs.mkdtempSync(path.join(os.tmpdir(),'codex-auto-fixture-')),executable=path.join(dir,'codex-fixture');
+ const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>true,r=>routes.push(r),{
+  archiveDirectory:path.join(dir,'archive'),onOptimized:(_id,s)=>savings.push(s),
+ });
  const quote=s=>"'"+s.replaceAll("'","'\"'\"'")+"'";
  const upstream=`http://127.0.0.1:${server.address().port}/v1`;
  fs.writeFileSync(executable,'#!/bin/sh\nexec '+quote(resolveCodex('codex'))+' -c '+quote('openai_base_url="'+upstream+'"')+' "$@"\n',{mode:0o700});
@@ -39,12 +41,20 @@ const {CompactionRelay}=require('../dist/test/codex/compactionRelay.js');
   await rpc.start();
   const t=await rpc.request('thread/start',{model:'gpt-6-astra',serviceTier:'default',approvalPolicy:'never',sandbox:'read-only',config:{openai_base_url:relay.baseUrl,model_auto_compact_token_limit:50000},dynamicTools:[{name:'fixture',description:'测试 fixture',inputSchema:{type:'object',properties:{}}}]});
   threadId=t.thread.id;
+  // 旧工具结果只注入历史，不实际执行；最近两轮和工具配对必须仍完整。
+  const user=text=>({type:'message',role:'user',content:[{type:'input_text',text}]});
+  await rpc.request('thread/inject_items',{threadId,items:[user('fixture 历史'),...Array.from({length:12},(_,i)=>[
+   {type:'function_call',name:'fixture',arguments:'{}',call_id:'history-'+i},
+   {type:'function_call_output',call_id:'history-'+i,output:`历史工具 ${i}\n`+'x'.repeat(14000)+`\nTests: ${100+i} passed`},
+  ]).flat(),user('fixture 最近一轮')]});
   const done=new Promise((r,j)=>{finish=r;fail=j;timer=setTimeout(()=>j(Error('timeout')),30000);});
   await rpc.request('turn/start',{threadId:t.thread.id,model:'gpt-6-astra',effort:'medium',serviceTier:'default',input:[{type:'text',text:'local fixture',text_elements:[]}],environments:[]});
   await done;
   assert.equal(tools,1);assert.equal(compacted,1);
   const compact=seen.find(x=>x.compact);assert.equal(compact.model,'gpt-6.1-sol');assert.equal(compact.effort,'xhigh');assert.equal(compact.tier,null);
   assert.ok(compact.inputTypes.includes('function_call_output'));
+  assert.ok(savings.length>0);assert.ok(savings[0].optimizedBytes<savings[0].originalBytes);
+  assert.ok(fs.readdirSync(path.join(dir,'archive',threadId)).length>0);
   assert.equal(seen.at(-1).model,'gpt-6-astra');assert.equal(seen.at(-1).effort,'medium');
   assert.ok(seen.at(-1).inputTypes.includes('compaction'));
   assert.equal(routes.find(x=>x.stage==='response').servedModel,'gpt-6.1-sol');
@@ -60,6 +70,6 @@ const {CompactionRelay}=require('../dist/test/codex/compactionRelay.js');
   await resumed.request('turn/start',{threadId:r.thread.id,model:'gpt-6-astra',effort:'medium',serviceTier:'default',input:[{type:'text',text:'resume fixture',text_elements:[]}],environments:[]});
   await next;clearTimeout(timer);
   await resumed.request('thread/archive',{threadId});
-  console.log(JSON.stringify({success:true,tools,compacted,manualCompactCalls:0,resumedWithoutRelay:true,seen,routes}));
+  console.log(JSON.stringify({success:true,tools,compacted,manualCompactCalls:0,resumedWithoutRelay:true,seen,routes,savings}));
  }finally{clearTimeout(timer);if(resumed)await resumed.disposeAndWait();await rpc.disposeAndWait();relay.close();for(const ws of wss.clients)ws.terminate();wss.close();server.closeAllConnections();server.close();fs.rmSync(dir,{recursive:true,force:true});}
 })().catch(e=>{console.error(e.message);process.exitCode=1;});

@@ -3,6 +3,10 @@ import * as https from 'node:https';
 import { randomBytes } from 'node:crypto';
 import { WebSocket, WebSocketServer, RawData } from 'ws';
 import { getProxyForUrl } from 'proxy-from-env';
+import * as path from 'node:path';
+import { CompactionArchive, InputSavings, optimizeCompactionInput, ResponseHistory } from './compactionInput';
+
+interface RelayOptions { archiveDirectory?: string; onOptimized?: (threadId: string, savings: InputSavings) => void; }
 
 const MAX_PAYLOAD = 128 * 1024 * 1024;
 const MAX_REWRITE = 32 * 1024 * 1024;
@@ -59,7 +63,8 @@ function bytes(data: RawData): Buffer { return Buffer.isBuffer(data) ? data : Ar
 
 /**
  * 每个 CLI 连接独占的回环转发器。凭据由 CLI 正常提供，仅转发到固定官方地址；
- * 不读凭据文件、不持久化正文、不更改全局配置。WebSocket 与 SSE 均保留原传输方式。
+ * 不读凭据文件；精简的旧工具原文仅归档到本机，不写入诊断日志。
+ * 不更改全局配置。WebSocket 与 SSE 均保留原传输方式。
  */
 export class CompactionRelay {
   private readonly server = http.createServer((req, res) => { void this.http(req, res).catch(() => {
@@ -72,7 +77,7 @@ export class CompactionRelay {
   private agent?: http.Agent;
   private closed = false;
   private constructor(private readonly upstream: string, private readonly canRoute: (tier: string | null) => boolean,
-    private readonly onRoute: (route: CompactionRoute) => void) {
+    private readonly onRoute: (route: CompactionRoute) => void, private readonly options: RelayOptions) {
     const target = new URL(upstream);
     if (!(target.protocol === 'https:' && ['chatgpt.com', 'api.openai.com'].includes(target.hostname)) &&
       !(target.protocol === 'http:' && target.hostname === '127.0.0.1')) throw new Error('不支持的压缩转发目标');
@@ -85,8 +90,8 @@ export class CompactionRelay {
     this.server.on('clientError', (_error, socket) => socket.destroy());
   }
   static async start(upstream: string, canRoute: (tier: string | null) => boolean,
-    onRoute: (route: CompactionRoute) => void): Promise<CompactionRelay> {
-    const relay = new CompactionRelay(upstream.replace(/\/$/, ''), canRoute, onRoute);
+    onRoute: (route: CompactionRoute) => void, options: RelayOptions = {}): Promise<CompactionRelay> {
+    const relay = new CompactionRelay(upstream.replace(/\/$/, ''), canRoute, onRoute, options);
     try {
       const proxy = getProxyForUrl(upstream);
       if (proxy) {
@@ -116,12 +121,30 @@ export class CompactionRelay {
   private report(route: CompactionRoute): void {
     try { this.onRoute(route); } catch { /* 诊断失败不能中断模型请求 */ }
   }
-  private rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport']): { body: Buffer; route?: CompactionRoute } {
+  private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], history?: ResponseHistory): Promise<{ body: Buffer; route?: CompactionRoute }> {
     if (!target.pathname.endsWith('/responses') || req.headers['content-encoding']) return { body: raw };
     const result = routeCompaction(raw, false, this.canRoute);
+    const id = req.headers['thread-id'] ?? req.headers['session-id'];
+    const threadId = typeof id === 'string' && /^[\w-]{1,100}$/.test(id) ? id : undefined;
+    if (result.route && this.options.archiveDirectory && threadId && raw.length <= MAX_REWRITE) {
+      try {
+        const body = JSON.parse(result.body.toString());
+        if (body.generate !== false && body.input?.at(-1)?.type === 'compaction_trigger') {
+          const input = history ? history.resolve(body) : !body.previous_response_id ? body.input : undefined;
+          if (input) {
+            const optimized = await optimizeCompactionInput(input, new CompactionArchive(path.join(this.options.archiveDirectory, threadId)));
+            if (optimized.savings.optimizedBytes < optimized.savings.originalBytes) {
+              body.input = optimized.input;
+              // 改写的是完整历史，不能再沿用包含未精简前缀的服务端响应引用。
+              delete body.previous_response_id;
+              result.body = Buffer.from(JSON.stringify(body));
+              try { this.options.onOptimized?.(threadId, optimized.savings); } catch { /* 诊断不可影响请求 */ }
+            }
+          }
+        }
+      } catch { /* 历史不完整、未知协议或归档失败时沿用原生输入 */ }
+    }
     if (result.route) {
-      const id = req.headers['thread-id'] ?? req.headers['session-id'];
-      const threadId = typeof id === 'string' && /^[\w-]{1,100}$/.test(id) ? id : undefined;
       const route: CompactionRoute = { ...result.route, threadId, transport, stage: 'request' };
       this.report(route);
       return { body: result.body, route };
@@ -137,20 +160,34 @@ export class CompactionRelay {
       perMessageDeflate: { concurrencyLimit: 2, zlibDeflateOptions: { level: 3 } } });
     this.sockets.add(client); this.sockets.add(upstream);
     let queued: { body: Buffer; binary: boolean }[] = [], queuedBytes = 0;
+    const history = new ResponseHistory();
+    let writes = Promise.resolve(), pendingBytes = 0;
     const responses: (CompactionRoute | undefined)[] = [];
     client.on('message', (data, binary) => {
-      const routed = binary ? { body: bytes(data) } : this.rewrite(bytes(data), req, target, 'websocket');
-      const body = routed.body;
-      if (!binary) {
-        try { if (JSON.parse(body.toString()).type === 'response.create') responses.push(routed.route); } catch { /* 原样转发非 JSON 帧 */ }
-      }
-      if (upstream.readyState === WebSocket.CONNECTING) {
-        queuedBytes += body.length;
-        if (queuedBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
-        queued.push({ body, binary });
-      } else if (upstream.readyState === WebSocket.OPEN) {
-        client.pause(); upstream.send(body, { binary }, error => { if (error) client.terminate(); else client.resume(); });
-      }
+      const original = bytes(data); pendingBytes += original.length; client.pause();
+      if (pendingBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
+      writes = writes.then(async () => {
+        if (this.closed || client.readyState !== WebSocket.OPEN) return;
+        const routed = binary ? { body: original } : await this.rewrite(original, req, target, 'websocket', history);
+        if (this.closed || client.readyState !== WebSocket.OPEN) return;
+        const body = routed.body;
+        if (!binary) {
+          try {
+            const request = JSON.parse(body.toString()); history.request(request);
+            if (request.type === 'response.create') responses.push(routed.route);
+          } catch { /* 原样转发非 JSON 帧 */ }
+        }
+        if (upstream.readyState === WebSocket.CONNECTING) {
+          queuedBytes += body.length;
+          if (queuedBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
+          queued.push({ body, binary });
+        } else if (upstream.readyState === WebSocket.OPEN) {
+          await new Promise<void>((resolve, reject) => upstream.send(body, { binary }, error => error ? reject(error) : resolve()));
+        }
+      }).catch(() => { client.terminate(); upstream.terminate(); }).finally(() => {
+        pendingBytes -= original.length;
+        if (pendingBytes === 0 && client.readyState === WebSocket.OPEN) client.resume();
+      });
     });
     upstream.on('open', () => {
       if (client.readyState !== WebSocket.OPEN) { upstream.close(); return; }
@@ -162,7 +199,8 @@ export class CompactionRelay {
       if (!binary) {
         try {
           const event = JSON.parse(bytes(data).toString());
-          if (event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'error') {
+          history.event(event);
+          if (event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'response.incomplete' || event.type === 'error') {
             const route = responses.shift();
             const model = event.response?.model;
             if (route && typeof model === 'string' && /^[\w.-]{1,100}$/.test(model))
@@ -176,8 +214,8 @@ export class CompactionRelay {
       if (peer.readyState === WebSocket.CONNECTING || code === 1006) peer.terminate();
       else if (peer.readyState === WebSocket.OPEN) peer.close(code === 1005 ? 1000 : code, reason);
     };
-    client.on('close', (code, reason) => { this.sockets.delete(client); queued = []; closePeer(upstream, code, reason); });
-    upstream.on('close', (code, reason) => { this.sockets.delete(upstream); queued = []; closePeer(client, code, reason); });
+    client.on('close', (code, reason) => { this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
+    upstream.on('close', (code, reason) => { this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
     client.on('error', () => upstream.terminate());
     upstream.on('error', () => client.terminate());
   }
@@ -191,7 +229,8 @@ export class CompactionRelay {
       chunks.push(chunk);
     }
     const original = Buffer.concat(chunks);
-    const body = req.method === 'POST' ? this.rewrite(original, req, target, 'http').body : original;
+    const body = req.method === 'POST' ? (await this.rewrite(original, req, target, 'http')).body : original;
+    if (this.closed || res.destroyed || req.aborted) { res.destroy(); return; }
     const headers = forwardedHeaders(req.headers, false);
     if (body.length || req.headers['content-length']) headers['content-length'] = body.length;
     const upstream = (target.protocol === 'https:' ? https : http).request(target, {

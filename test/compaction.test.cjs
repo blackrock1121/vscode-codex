@@ -370,3 +370,26 @@ test('关闭、启动失败与销毁会释放自动压缩连接，不留后台�
   assert.equal(closed,1);assert.equal(p.compactionRelay,undefined);
  }
 });
+
+test('连续三次自动压缩没有新回复或工具结果，第四次触发时停止循环',async t=>{
+ const {p,note,item,events}=fixture(t);p.busy=true;let stopped=0;p.interrupt=async()=>{stopped++;};
+ for(let i=0;i<3;i++){note('item/started',{item:{...item,id:'c'+i}});note('item/completed',{item:{...item,id:'c'+i}});}
+ note('item/started',{item:{...item,id:'c3'}});await flush();
+ assert.equal(stopped,1);assert.ok(events.some(e=>e.kind==='notice'&&e.message.includes('连续三次自动压缩')));
+});
+
+test('正常回复、工具结果或新用户轮次会重置计数；手动压缩和原生模式不受拦截',async t=>{
+ for(const progress of ['text','tool','manual','new-turn','session']){
+  const {p,note,item}=fixture(t);p.busy=true;let stopped=0;p.interrupt=async()=>{stopped++;};
+  for(let i=0;i<3;i++){note('item/started',{item});note('item/completed',{item});}
+  if(progress==='text')note('item/agentMessage/delta',{itemId:'new',delta:'有新进展'});
+  if(progress==='tool')note('item/completed',{item:{type:'commandExecution',id:'tool',command:'test',aggregatedOutput:'新结果',status:'completed',exitCode:0}});
+  if(progress==='manual')p.compacting=true;
+  if(progress==='session')p.opts.compactionMode='session';
+  if(progress==='new-turn'){
+   p.busy=false;p.rpc.request=async()=>({turn:{id:'next'}});
+   assert.equal(p.sendUserMessage('新任务'),true);await flush();
+  }
+  note('item/started',{item});assert.equal(stopped,0);
+ }
+});

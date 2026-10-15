@@ -210,9 +210,17 @@ npm run smoke:question
 
 当前已验证的 Codex CLI `0.162.1` 中，`thread/compact/start` 只有 `threadId`，没有独立的 `model` / `effort` / `serviceTier` 参数。手动压缩会先等待本会话速度设置保存，再通过 `thread/settings/update` 同步所选档位：普通明确传 `default`，快速传 `priority`，成功后记录 `settings_synced` 并开始压缩；同步失败则取消压缩，不沿用可能过期的收费档位。自动压缩沿用正在执行的轮次档位，运行中切换只影响后续操作。插件不会为压缩额外开启快速模式。诊断依据：[官方 App Server](https://learn.chatgpt.com/docs/app-server)、[官方 OTel 事件与指标说明](https://learn.chatgpt.com/docs/config-file/config-advanced)。
 
-`codexChat.compactionMode` 默认 `balanced`：Astra 会话的**原生自动及手动压缩**使用 **GPT-6.1-Sol + xhigh**，回答仍使用原会话模型和推理设置，收费档位严格跟随该次原生请求。覆盖轮次开始前、工具执行后等 CLI 自动触发的位置，不额外调用手动压缩接口，不裁剪历史，不修改自动阈值，不增加后台摘要请求。选 `session` 可关闭优化；设置在下次连接生效。
+`codexChat.compactionMode` 默认 `balanced`：Astra 会话的**原生自动及手动压缩**使用 **GPT-6.1-Sol + xhigh**，回答仍使用原会话模型和推理设置，收费档位严格跟随该次原生请求。覆盖轮次开始前、工具执行后等 CLI 自动触发的位置，不额外调用手动压缩接口，不修改自动阈值，不增加后台摘要请求。只在压缩请求中精简较旧的长工具输出，原会话文件不改写。选 `session` 可关闭优化；设置在下次连接生效。
 
-实现使用官方 `openai_base_url` 配置，为每个 CLI 连接创建固定上游的本机回环转发器，只识别 `/responses` 请求末尾的 `compaction_trigger`。普通回答按原字节转发，WebSocket、HTTP/SSE 继续使用原传输方式；转发器不自行重试模型或工具请求，重试仍由 CLI 管理。端口只监听 `127.0.0.1`，使用随机路径校验，不读取凭据文件、不记录正文、不更改全局配置。`[compaction_route]` 记录发送模型、档位和服务端返回模型；CLI 的 OTel `model` 仍可能是逻辑会话模型，不能独自作为压缩实际模型的依据。配置依据：[OpenAI 官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
+实现使用官方 `openai_base_url` 配置，为每个 CLI 连接创建固定上游的本机回环转发器，只识别 `/responses` 请求末尾的 `compaction_trigger`。普通回答按原字节转发，WebSocket、HTTP/SSE 继续使用原传输方式；转发器不自行重试模型或工具请求，重试仍由 CLI 管理。端口只监听 `127.0.0.1`，使用随机路径校验，不读取凭据文件、不将正文写入诊断日志、不更改全局配置。`[compaction_route]` 记录发送模型、档位和服务端返回模型；CLI 的 OTel `model` 仍可能是逻辑会话模型，不能独自作为压缩实际模型的依据。配置依据：[OpenAI 官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
+
+压缩输入减量（自动和手动共用）：
+
+- 对早于最近两个用户轮次、且不属于最近八个工具结果的纯文本长输出，保留开头、结尾和部分状态／错误行；完全相同的大段改为较新调用的引用。用户指令、回答、工具调用、调用 ID、图片和未知结构不做前置精简。最近范围只是本步骤的保护区，后续原生摘要仍可能压缩这些内容。
+- 先将待精简的完整工具原文按内容哈希保存到 `~/.codex-chat/compaction-archive/<threadId>/`，摘录附带文件路径；目录权限 `0700`，文件 `0600`。每会话归档上限 64 MiB，不自动删除仍可能被摘要引用的文件。归档失败、校验不符或容量不足时保留对应原文。归档保存的是工具输出，独立于不含正文的诊断日志；手动删除归档将失去这些恢复入口。
+- WebSocket 的 `previous_response_id` 只有在本机确认完整前缀时才还原并精简，改写后不再沿用旧响应引用；无法确认时保留原请求。普通回答不改写，取消或关闭连接后不继续转发待处理请求。
+- 同一轮连续三次自动压缩都没有新回复或工具结果，第四次开始时中断本轮并说明原因，避免无进展循环；正常输出或新一轮用户输入会重置计数。`session` 模式关闭这项保护及输入精简。
+- `[compaction_input]` 只记录输入前后字节数、归档及重复片段计数和保护区起点，不记录原文或路径。字节减量不等于 token 或耗时同比例下降；精简可能使部分前缀缓存失效。
 
 仅接管已确认的官方默认提供方。自定义网关、未知账号、无法兼容的代理或账号缺少 Sol xhigh / 同收费档位时不改原生自动压缩。转发器遵循现有 HTTP(S) 代理环境；子进程具有不同代理设置时不接管。未接入转发时，手动压缩保留旧版临时切换模型、结束后恢复的兼容路径。连接关闭即释放转发器；恢复会话重新建立地址，关闭此优化后不沿用旧端口。
 
@@ -220,13 +228,15 @@ npm run smoke:question
 
 自动路径回归（2026-10-15）：用同源长历史，经插件真实 `CodexProcess` 发送普通消息，由 CLI 自行触发压缩，`thread/compact/start` 调用次数为 0；约 22.8 万 token，服务端确认压缩模型为 Sol，耗时 156.204 秒，随后 Astra medium 的 11 项事实和 5 项操作判断均通过。试验只在隔离线程降低阈值以触发自动压缩，生产阈值不变。该样本比前述手动基准多了短消息和插件指令，不能直接作为严格的自动提速 A/B。详情见 [自动压缩验证](benchmarks/auto-compaction-20261015.json)。`node scripts/build-test.cjs && node scripts/smoke-auto-compaction.cjs` 可运行本机模拟上游的原生 CLI 集成检查：工具返回 → 自动压缩 → 原模型继续，以及关闭转发后恢复；无需在线模型生成。
 
+输入精简实测（2026-10-15）：同源历史、普通档位、原生自动压缩，实际压缩输入由约 22.9 万 token 降到 13.8 万，减少约 40%；两个优化样本耗时 119.420 / 110.611 秒，均通过 11 项事实和 5 项判断。同期关闭精简的对照为 104.014 秒、10/11 事实和 5/5 判断，前轮无精简样本为 156.204 秒。输入减量已证实，尚无稳定的墙钟提速证据，也不能据小样本声称质量全面提高。详见 [输入优化验证](benchmarks/context-optimization-20261015.json)。
+
 参考 Claude 的上下文管理：
 
 - [Claude Code 官方机制](https://code.claude.com/docs/en/how-claude-code-works)先清理旧工具输出，必要时再摘要，并防止压缩后立即撑满造成无限循环。这能减少需要处理的历史量，但选择性清理也会失去旧细节。
 - [Claude API 保留最近轮次](https://platform.claude.com/docs/en/build-with-claude/compaction-keep-recent-turns)让较旧轮次参与摘要、最近轮次原文保留，切点不能拆开工具调用与结果。
 - [Claude API 后台压缩](https://platform.claude.com/docs/en/build-with-claude/compaction-background)在继续工作时压缩固定前缀，完成后保留期间新增的后缀；同时只运行一个压缩请求，失败保留原历史。它减少阻塞等待，但仍消耗请求与额度。
 
-后两项是 API 编排方案，不能据此断言 Claude Code CLI 默认采用。当前 Codex App Server 没有已验证的“压缩固定前缀并原子替换、保留新增后缀”接口，本插件未照搬后台合并或自行删除工具结果；本次先把经过质量验证的模型优化接到原生自动路径。
+后两项是 API 编排方案，不能据此断言 Claude Code CLI 默认采用。本插件已借鉴旧工具输出精简、最近输入保护和无进展循环中止。后台压缩及压缩后保留原始最近轮次尚未实现：当前 [Codex CLI 0.162.1 源码](https://github.com/openai/codex/blob/rust-v0.162.1/codex-rs/core/src/compact_remote_v2.rs) 的 `collect_compaction_output` 只接收单个压缩项，`build_v2_compacted_history` 自行重建历史；没有固定前缀与期间新增后缀的原子合并接口，不能通过附加响应条目可靠保留新内容。
 
 ## 发布
 

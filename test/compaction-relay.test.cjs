@@ -2,6 +2,7 @@ const {test}=require('node:test');
 const assert=require('node:assert/strict');
 const http=require('node:http');
 const {once}=require('node:events');
+const fs=require('node:fs/promises'),os=require('node:os'),path=require('node:path');
 const {WebSocket,WebSocketServer}=require('ws');
 const {CompactionRelay,routeCompaction,compactionUpstream}=require('../dist/test/codex/compactionRelay.js');
 const make=(extra={})=>({type:'response.create',model:'gpt-6-astra',reasoning:{effort:'medium',context:'all_turns'},
@@ -35,10 +36,10 @@ test('仅识别官方账号与默认提供方，自定义网关及未知账号�
  assert.equal(compactionUpstream({},{}),undefined);
 });
 
-async function fixture(t,handler=()=>{},onRoute){
+async function fixture(t,handler=()=>{},onRoute,options){
  const server=http.createServer(handler),wss=new WebSocketServer({server}),routes=[];
  await new Promise(r=>server.listen(0,'127.0.0.1',r));
- const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>true,onRoute??(r=>routes.push(r)));
+ const relay=await CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>true,onRoute??(r=>routes.push(r)),options);
  const base=relay.baseUrl;
  t.after(()=>{relay.close();for(const ws of wss.clients)ws.terminate();wss.close();server.closeAllConnections();server.close();});
  return {server,wss,relay,base,routes};
@@ -109,4 +110,73 @@ test('回环路径密钥、Origin 和路径穿越校验阻止请求到达上游'
 test('诊断回调失败不阻断请求',async t=>{
  const {base}=await fixture(t,(_req,res)=>res.end('ok'),()=>{throw Error('仅诊断失败');});
  assert.equal((await request(base+'/responses',raw(make()))).body.toString(),'ok');
+});
+
+function longHistory(){
+ const user=text=>({type:'message',role:'user',content:[{type:'input_text',text}]});
+ return [user('历史约束'),...Array.from({length:12},(_,i)=>[
+  {type:'function_call',name:'fixture',arguments:'{}',call_id:'history-'+i},
+  {type:'function_call_output',call_id:'history-'+i,output:`日志 ${i}\n`+'x'.repeat(14000)+`\nTests: ${i+100} passed`},
+ ]).flat(),user('最近任务一'),user('最近任务二')];
+}
+async function archiveOptions(t){
+ const archiveDirectory=await fs.mkdtemp(path.join(os.tmpdir(),'compact-relay-test-')),savings=[];
+ t.after(()=>fs.rm(archiveDirectory,{recursive:true,force:true}));
+ return {archiveDirectory,savings,onOptimized:(_threadId,s)=>savings.push(s)};
+}
+
+test('HTTP 仅精简合规压缩的旧工具输出，普通请求、预热及未知协议保持历史',async t=>{
+ const options=await archiveOptions(t),seen=[];
+ const {base}=await fixture(t,async(req,res)=>{
+  const chunks=[];for await(const c of req)chunks.push(c);seen.push(Buffer.concat(chunks));res.end('ok');
+ },undefined,options);
+ const original=make({input:[...longHistory(),{type:'compaction_trigger'}],service_tier:'default'});
+ const headers={'thread-id':'thread-test'};
+ await request(base+'/responses',raw(original),headers);
+ const next=JSON.parse(seen[0]),s=options.savings[0];
+ assert.ok(s.archivedOutputs>0);assert.ok(s.optimizedBytes<s.originalBytes);
+ assert.equal(next.service_tier,'default');assert.equal(next.model,'gpt-6.1-sol');
+ assert.deepEqual(next.input.slice(s.protectedFrom),original.input.slice(s.protectedFrom));
+ assert.equal(next.input.length,original.input.length);
+ for(const body of [make({input:longHistory()}),{...original,generate:false},{...original,type:'response.append'},
+  {...original,previous_response_id:'unknown'},{...original,service_tier:'unknown'},{...original,model:'gpt-6-luna'}]){
+  await request(base+'/responses',raw(body),headers);assert.deepEqual(JSON.parse(seen.at(-1)).input,body.input);
+ }
+ await request(base+'/responses',raw(original));assert.deepEqual(JSON.parse(seen.at(-1)).input,original.input);
+ assert.equal(options.savings.length,1);
+});
+
+test('WS 增量压缩还原完整历史并去掉响应引用，续轮按实际转发的历史继续',async t=>{
+ const options=await archiveOptions(t),seen=[],doneItems=[];
+ const {base,wss}=await fixture(t,undefined,undefined,options);
+ wss.on('connection',ws=>ws.on('message',data=>{
+  const b=JSON.parse(data);seen.push(b);
+  const output={type:'message',role:'assistant',content:[{type:'output_text',text:'响应 '+seen.length}]};doneItems.push(output);
+  ws.send(JSON.stringify({type:'response.output_item.done',item:output}));
+  ws.send(JSON.stringify({type:'response.completed',response:{id:'r'+seen.length,model:b.model,output:[]}}));
+ }));
+ const ws=await connect(t,base);
+ const send=body=>new Promise((resolve,reject)=>{
+  const onMessage=data=>{if(JSON.parse(data).type==='response.completed'){ws.off('message',onMessage);ws.off('error',reject);resolve();}};
+  ws.on('message',onMessage);ws.once('error',reject);ws.send(raw(body),{binary:false});
+ });
+ const first=make({input:longHistory(),service_tier:'priority'});await send(first);
+ const delta={type:'function_call_output',call_id:'last',output:'最近工具原文'};
+ const compact=make({previous_response_id:'r1',input:[delta,{type:'compaction_trigger'}],service_tier:'priority'});await send(compact);
+ const next=seen[1],s=options.savings[0],full=[...first.input,doneItems[0],...compact.input];
+ assert.equal(next.previous_response_id,undefined);assert.equal(next.service_tier,'priority');
+ assert.equal(next.input.length,full.length);assert.deepEqual(next.input.slice(s.protectedFrom),full.slice(s.protectedFrom));
+ assert.equal(next.input.at(-3).content[0].text,'响应 1');
+ // 已改写的前缀也必须进入本机跟踪，不能在后续引用中错误复活旧大段。
+ await send(make({previous_response_id:'r2',input:[{type:'compaction_trigger'}]}));
+ assert.equal(seen[2].previous_response_id,'r2');assert.equal(options.savings.length,1);
+ await send(make({previous_response_id:'missing',input:[{type:'compaction_trigger'}]}));
+ assert.equal(seen[3].previous_response_id,'missing');assert.equal(seen[3].input.length,1);
+});
+
+test('归档期间关闭转发器，不再把已取消的 HTTP 请求发送给上游',async t=>{
+ let requests=0,relay;const options=await archiveOptions(t);
+ const f=await fixture(t,(_req,res)=>{requests++;res.end();},undefined,{...options,onOptimized:()=>relay.close()});relay=f.relay;
+ await assert.rejects(request(f.base+'/responses',raw(make({input:[...longHistory(),{type:'compaction_trigger'}]})),{'thread-id':'cancelled'}));
+ assert.equal(requests,0);
 });

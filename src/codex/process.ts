@@ -1,5 +1,6 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
 import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
@@ -86,6 +87,7 @@ export class CodexProcess {
   private compactionRestore?: { model: string; effort: string; pending: boolean; isError: boolean };
   private compactionRelay?: CompactionRelay;
   private compactionConfig?: Promise<any>;
+  private autoCompactionsWithoutProgress = 0;
   private lastDispatched?: { model: string; effort: string; speedMode: SpeedMode };
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
@@ -164,6 +166,7 @@ export class CodexProcess {
   get isBusy() { return this.busy; }
   get isExited() { return this.exited; }
   private emit(e: ToWebview) {
+    if (!this.compactionTrace && (e.kind === 'text_delta' || e.kind === 'tool_result')) this.autoCompactionsWithoutProgress = 0;
     if (e.kind === 'permission_resolved') this.latency.resolved(e.requestId, e.auto ? 'cancelled' : e.behavior);
     if (!this.disposed) this.hooks.emit(e);
   }
@@ -260,7 +263,10 @@ export class CodexProcess {
         if (!model?.efforts.includes('xhigh')) return false;
         if (tier === null || tier === 'default') return true;
         return (tier === 'priority' || tier === 'fast') && supportsSpeed(model, 'fast');
-      }, route => this.compactionRouted(route));
+      }, route => this.compactionRouted(route), {
+        archiveDirectory: path.join(os.homedir(), '.codex-chat', 'compaction-archive'),
+        onOptimized: (threadId, savings) => this.emit({ kind: 'diag', message: `[compaction_input] ${JSON.stringify({ threadId, ...savings })}` }),
+      });
       if (this.exited || this.disposed) { relay.close(); return; }
       this.compactionRelay = relay;
       this.emit({ kind: 'diag', message: '[compaction_route] {"stage":"ready","scope":"manual_and_auto"}' });
@@ -313,6 +319,7 @@ export class CodexProcess {
   }
   sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[], traceContext?: PerformanceContext): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
+    this.autoCompactionsWithoutProgress = 0;
     if (this.opts.transportDiagnostics !== false) this.latency.begin(this.sessionId, { model: this.modelForNextTurn, effort: this.opts.effort || 'default', speedMode: this.opts.speedMode ?? 'default', trigger: 'message' }, traceContext);
     this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
     this.rootCompletion = undefined; this.stoppingTree = false; this.lastActivityAt = 0;
@@ -767,6 +774,11 @@ export class CodexProcess {
     }
     if (item.type === 'contextCompaction') {
       if (!done) {
+        if (!this.compacting && this.opts.compactionMode !== 'session' && this.autoCompactionsWithoutProgress >= 3) {
+          this.emit({ kind: 'notice', message: '连续三次自动压缩后仍未产生新回复或工具结果，已停止本轮，避免反复等待和消耗额度。请减少本轮输入或开启新会话后继续。' });
+          void this.interrupt().catch(e => { this.rpc.dispose(); this.error(e); });
+          return;
+        }
         const trace = this.beginCompactionTrace(this.compacting ? 'manual' : 'auto');
         trace.itemId = item.id;
         trace.turnId = p.turnId ?? this.turnId;
@@ -777,6 +789,7 @@ export class CodexProcess {
         this.emit({ kind: 'compacting' });
       }
       else {
+        if (this.compactionTrace?.trigger === 'auto') this.autoCompactionsWithoutProgress++;
         this.endCompactionTrace('completed');
         this.emit({ kind: 'compacted', trigger: this.compacting ? 'manual' : 'auto', preTokens: 0, postTokens: 0 });
         // 自动压缩只是轮次中的一个阶段，后面还要继续回复。

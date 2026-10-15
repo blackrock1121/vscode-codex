@@ -1,0 +1,97 @@
+{
+  "date": "2026-10-15",
+  "cli": "0.162.1",
+  "historySha256": "ea919fcfef3e195c819a05c8c5e32c377671384fab49d36e497fefd4903fa620",
+  "sessionModel": "gpt-6-astra",
+  "sessionEffort": "medium",
+  "compactionModel": "gpt-6.1-sol",
+  "compactionEffort": "xhigh",
+  "serviceTier": "default",
+  "wireServiceTier": null,
+  "fastEnabled": false,
+  "runs": [
+    {
+      "case": "optimized-first",
+      "compactionSeconds": 119.42,
+      "preTokens": 228824,
+      "compactionInputTokens": 138345,
+      "compactionOutputTokens": 5331,
+      "inputSavings": [
+        {
+          "originalBytes": 1131383,
+          "optimizedBytes": 796439,
+          "archivedOutputs": 16,
+          "duplicateOutputs": 0,
+          "protectedFrom": 131
+        }
+      ],
+      "factsCorrect": 11,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "manualCompactCalls": 0,
+      "serverConfirmedModel": "gpt-6.1-sol",
+      "retries": 0,
+      "errors": 0
+    },
+    {
+      "case": "unpruned-control",
+      "compactionSeconds": 104.014,
+      "preTokens": 228824,
+      "compactionInputTokens": 228845,
+      "compactionOutputTokens": 5308,
+      "inputSavings": [],
+      "factsCorrect": 10,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "manualCompactCalls": 0,
+      "serverConfirmedModel": "gpt-6.1-sol",
+      "retries": 0,
+      "errors": 0
+    },
+    {
+      "case": "optimized-repeat",
+      "compactionSeconds": 110.611,
+      "preTokens": 228753,
+      "compactionInputTokens": 138242,
+      "compactionOutputTokens": 5156,
+      "inputSavings": [
+        {
+          "originalBytes": 1131440,
+          "optimizedBytes": 796496,
+          "archivedOutputs": 16,
+          "duplicateOutputs": 0,
+          "protectedFrom": 131
+        }
+      ],
+      "factsCorrect": 11,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "manualCompactCalls": 0,
+      "serverConfirmedModel": "gpt-6.1-sol",
+      "retries": 0,
+      "errors": 0
+    }
+  ],
+  "priorUnprunedAutoSeconds": 156.204,
+  "method": "同源157项历史，通过真实 CodexProcess 注入隔离线程。先正常短回复建立用量，再由CLI自动触发压缩；压缩结束后统一用Astra medium回答冻结题目。对照仅关闭输入精简，模型、推理和普通收费档位相同。测试线程阈值180000，生产阈值不变。五项判断按事先标准人工核对。",
+  "conclusion": "压缩实际输入从约228845 token降到138242–138345，减少约40%。两次优化的11项事实及5项判断均通过。耗时110.611–119.420秒，同期不精简对照104.014秒，前轮对照156.204秒；尚无稳定的墙钟提速证据。",
+  "limits": [
+    "单一历史小样本，不能外推所有任务的速度或无损质量。",
+    "第2次优化使用相同源历史，但上下文封装存在少量变化（preTokens相差71），不是逐token一致A/B。",
+    "前缀改写可能损失缓存收益；服务负载及生成长度也影响耗时。",
+    "旧输出摘录为有损选择；完整原文留本机但不保证最终摘要保留全部归档引用。",
+    "后台压缩与压缩完成后保留原始最近轮次尚未实现。",
+    "仓库只保存统计，不保存源对话、完整工具原文或凭据。"
+  ],
+  "localChecks": {
+    "nativeToolAutoContinueResume": true,
+    "httpAndWebsocketDelta": true,
+    "archivesVerified": true,
+    "failureKeepsOriginal": true,
+    "cancelStopsForwarding": true,
+    "loopGuard": true
+  }
+}
