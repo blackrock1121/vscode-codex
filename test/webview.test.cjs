@@ -814,12 +814,15 @@ test('模型命令支持默认别名和完整目录中的旧模型，菜单保�
   w.document.getElementById('btn-send').click();
  };
  command('/model gpt-5.6-sol');
+ assert.equal(w.document.getElementById('model-label').textContent,'默认模型');
+ emit({kind:'config',model:'gpt-5.6-sol',effort:'medium',permissionMode:'default'});
  assert.equal(w.document.getElementById('model-label').textContent,'GPT-5.6 Sol');
  command('/model gpt-5.6 sol');
  assert.equal(w.document.getElementById('model-label').textContent,'GPT-5.6 Sol');
  command('/model 默认');
+ emit({kind:'config',model:'',effort:'medium',permissionMode:'default'});
  assert.equal(w.document.getElementById('model-label').textContent,'默认模型');
- assert.deepEqual(sent.filter(m=>m.type==='setModel').map(m=>m.model),['gpt-5.6-sol','gpt-5.6-sol','']);
+ assert.deepEqual(sent.filter(m=>m.type==='setModel').map(m=>m.model),['gpt-5.6-sol','']);
  assert.doesNotMatch(w.document.getElementById('messages').textContent,/未知模型/);
  w.document.getElementById('model-trigger').click();
  assert.deepEqual([...w.document.querySelectorAll('#model-menu [data-model]')].map(e=>e.dataset.model),['','gpt-6.1-sol']);
@@ -1232,4 +1235,34 @@ test('待渲染时收到完整文本更正或切换块，不会被旧帧回调�
  emit({kind:'text_snap',text:'更正后的 **全文**'});flush();assert.doesNotMatch(w.document.querySelector('.text-seg').textContent,/旧/);
  emit({kind:'text_delta',text:'段尾'});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'第二块'});flush();
  const blocks=w.document.querySelectorAll('.text-seg');assert.match(blocks[0].textContent,/全文.*段尾/);assert.equal(blocks[1].textContent,'第二块');assert.deepEqual(errors,[]);
+});
+
+test('命令和菜单等待保存回执，重复选择不提交，失败保留模型和推理强度',t=>{
+ const {w,emit,sent,errors}=setup(t);
+ emit({kind:'models',models:[{id:'model-a',name:'模型甲',efforts:['low','medium','high']},{id:'model-b',name:'模型乙',efforts:['low']}]});
+ const config={kind:'config',model:'model-a',effort:'high',permissionMode:'default'};
+ emit(config);
+ const command=text=>{const input=w.document.getElementById('input');input.value=text;input.dispatchEvent(new w.Event('input'));w.document.getElementById('btn-send').click();};
+ command('/effort low');command('/effort medium');
+ assert.deepEqual(sent.filter(m=>m.type==='setEffort').map(m=>m.effort),['low']);
+ assert.equal(w.document.getElementById('effort-label').textContent,'推理：高');
+ emit(config); // 模拟保存失败后的真实配置回执
+ command('/effort high');
+ assert.equal(sent.filter(m=>m.type==='setEffort').length,1);
+ w.document.getElementById('model-trigger').click();
+ w.document.querySelector('[data-model="model-b"]').click();
+ command('/model model-b');
+ assert.equal(sent.filter(m=>m.type==='setModel').length,1);
+ assert.equal(w.document.getElementById('model-label').textContent,'模型甲');
+ assert.equal(w.document.getElementById('effort-label').textContent,'推理：高');
+ w.document.getElementById('model-trigger').click();
+ assert.ok([...w.document.querySelectorAll('[data-model]')].every(e=>e.disabled));
+ emit(config);
+ assert.ok([...w.document.querySelectorAll('[data-model]')].every(e=>!e.disabled));
+ command('/model model-b');
+ emit({...config,model:'model-b',effort:'low'});
+ assert.equal(w.document.getElementById('model-label').textContent,'模型乙');
+ assert.equal(w.document.getElementById('effort-label').textContent,'推理：低');
+ assert.doesNotMatch(w.document.getElementById('messages').textContent,/已切换模型|已切换思考强度/);
+ assert.deepEqual(errors,[]);
 });

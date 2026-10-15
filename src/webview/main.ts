@@ -1237,6 +1237,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
         const keys = document.querySelector(".foot-keys");
         if (keys) keys.innerHTML = modEnterToSend ? "<kbd>⌘/Ctrl ↵</kbd>发送<kbd>Enter</kbd>换行" : "<kbd>Enter</kbd>发送<kbd>⇧↵</kbd>换行";
       }
+      modelPending = false;
       effortPending = false;
       speedPending = false;
       currentMode = m.permissionMode || "default";
@@ -3169,11 +3170,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
         appendNotice(`未知模型「${arg}」。可选：${MODELS.map((m) => m.id || "默认").join(" / ")}`, "error");
         return true;
       }
-      currentModel = hit.id;
-      if (currentEffort && modelEfforts[currentModel]?.length && !modelEfforts[currentModel].includes(currentEffort)) currentEffort = "";
-      send({ type: "setModel", model: currentModel });
-      syncPickers();
-      appendNotice(`已切换模型：${hit.label}`, "info");
+      requestModelChange(hit.id);
       return true;
     }
     case "/effort": {
@@ -3191,10 +3188,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
         appendNotice(`当前模型不支持「${hit.label}」，请选择菜单中列出的强度。`, "error");
         return true;
       }
-      currentEffort = hit.id;
-      send({ type: "setEffort", effort: currentEffort });
-      syncPickers();
-      appendNotice(`已切换思考强度：${hit.label}（下一轮生效）`, "info");
+      requestEffortChange(hit.id);
       return true;
     }
     case "/clear": {
@@ -3890,6 +3884,7 @@ function availableEfforts() {
 let currentMode = "default";
 let currentModel = "";
 let currentEffort = "medium";
+let modelPending = false;
 let effortPending = false;
 let speedPending = false;
 let currentSpeedMode: SpeedMode = "default";
@@ -3965,6 +3960,22 @@ function buildModeMenu() {
   modeMenu.innerHTML = html;
 }
 
+// 菜单与命令共用提交路径；由 host 的 config 回执确认，失败保持原设置。
+function requestModelChange(model: string) {
+  if (modelPending) { appendNotice("模型设置正在保存，请稍候。", "info"); return; }
+  if (model === currentModel) return;
+  modelPending = true;
+  send({ type: "setModel", model });
+  buildModelMenu();
+}
+function requestEffortChange(effort: string) {
+  if (effortPending) { appendNotice("推理强度正在保存，请稍候。", "info"); return; }
+  if (effort === currentEffort) return;
+  effortPending = true;
+  send({ type: "setEffort", effort });
+  buildEffortMenu();
+}
+
 function buildModelMenu() {
   let html = `<div class="pick-head">模型</div>`;
   for (const m of MODELS) {
@@ -3974,6 +3985,7 @@ function buildModelMenu() {
       `<span class="pick-check">${on ? ICON.check : ""}</span></button>`;
   }
   modelMenu.innerHTML = html;
+  for (const option of Array.from(modelMenu.querySelectorAll<HTMLButtonElement>("[data-model]"))) option.disabled = modelPending;
 }
 
 function buildEffortMenu() {
@@ -4058,9 +4070,7 @@ effortTrigger.onclick = (e) => {
 effortMenu.addEventListener("click", e => {
   const option = (e.target as HTMLElement).closest<HTMLButtonElement>("[data-effort]");
   if (!option || option.disabled || effortPending) return;
-  effortPending = true;
-  send({ type: "setEffort", effort: option.dataset.effort || "" });
-  buildEffortMenu(); // 保存失败后由 config 恢复；选择成功前不伪造已选状态。
+  requestEffortChange(option.dataset.effort || "");
 });
 
 modeMenu.addEventListener("click", (e) => {
@@ -4075,11 +4085,8 @@ modeMenu.addEventListener("click", (e) => {
 modelMenu.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   const row = t.closest("[data-model]") as HTMLElement | null;
-  if (!row) return;
-  currentModel = row.dataset.model || "";
-  if (currentEffort && modelEfforts[currentModel]?.length && !modelEfforts[currentModel].includes(currentEffort)) currentEffort = "";
-  send({ type: "setModel", model: currentModel });
-  syncPickers();
+  if (!row || modelPending) return;
+  requestModelChange(row.dataset.model || "");
   closePickers();
 });
 document.addEventListener("keydown", (e) => {

@@ -192,6 +192,7 @@ interface SessionCtx {
     lastEventAt?: number;
     responseWaitShown?: boolean;
     compacting?: boolean;
+    compactionPreparing?: boolean;
     missedPings?: number;
     rebuildAt?: number;
     lastEmitAt?: number;
@@ -505,15 +506,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 : undefined;
         }
     }
+    private sessionsRefreshing?: Promise<void>;
     private refreshSessions(): void {
-        void this.store.refresh().then(async () => {
+        if (this.sessionsRefreshing) return;
+        this.sessionsRefreshing = this.store.refresh().then(async () => {
             const last = this.context.workspaceState.get<string>(LAST_SESSION_KEY);
             // thread/list 已排除归档会话。不能凭残留的 checkpoint 文件把它重新放回列表。
             const live = last && [...this.sessions, ...this.detached.values()].some(ctx => ctx.sessionId === last && ctx.proc && !ctx.proc.isExited);
             if (last && !live && !this.store.list().some(s => s.id === last))
                 await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
             this.renderSessions();
-        }).catch(e => this.output.appendLine(`[sessions] ${String(e)}`));
+        }).catch(e => this.output.appendLine(`[sessions] ${String(e)}`))
+            .finally(() => { this.sessionsRefreshing = undefined; });
     }
     private renderSessions(): void {
         const list = this.store.list();
@@ -1432,6 +1436,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async editMessageRewind(ctx: SessionCtx, checkpointId: string): Promise<boolean> {
         const sourceId = ctx.sessionId;
+        const preparation = sourceId && this.cpMeta(ctx, checkpointId)?.truncateLine
+            ? this.store.prepareFork() : undefined;
+        const startedAt = performance.now();
+        try {
+            return await this.editMessageRewindPrepared(ctx, checkpointId, sourceId, preparation);
+        } finally {
+            await preparation?.dispose();
+            this.output.appendLine(`[rewind] 全部准备 elapsedMs=${Math.round(performance.now() - startedAt)}`);
+        }
+    }
+    private async editMessageRewindPrepared(ctx: SessionCtx, checkpointId: string, sourceId: string | undefined,
+        preparation?: ForkPreparation): Promise<boolean> {
         await ctx.finalizing;
         if (sourceId) await this.store.hydrate(sourceId);
         if (ctx.sessionId !== sourceId) return false;
@@ -1459,10 +1475,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.proc = undefined;
             ctx.starting = undefined;
             await dying.disposeAndWait();
-            await this.captureFinalSnapshot(ctx);
         }
         try {
-            await this.forkRewind(ctx, checkpointId, meta.truncateLine);
+            // 连接已关闭时仍可能保留待整理快照，必须统一收齐。
+            await this.captureFinalSnapshot(ctx);
+            await this.forkRewind(ctx, checkpointId, meta.truncateLine, undefined, preparation);
         }
         catch (err) {
             this.output.appendLine(`[restore] 派生失败: ${String(err)}`);
@@ -2443,6 +2460,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         void this.ensureProcess(ctx);
     }
     private async compactSession(ctx: SessionCtx): Promise<void> {
+        if (ctx.compactionPreparing) return;
+        if (this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion) {
+            this.post(ctx, { kind: "notice", message: "会话操作尚未完成，请稍后压缩。" });
+            return;
+        }
+        ctx.compactionPreparing = true;
+        try { await this.compactSessionPrepared(ctx); }
+        finally { ctx.compactionPreparing = false; }
+    }
+    private async compactSessionPrepared(ctx: SessionCtx): Promise<void> {
+        const sourceId = ctx.sessionId;
+        if (!sourceId) {
+            this.post(ctx, { kind: "notice", message: "当前没有可压缩的会话。" });
+            return;
+        }
         if (!this.alive(ctx)) {
             vscode.window.showInformationMessage("该会话的窗口已关闭，请重新打开会话后再压缩。");
             return;
@@ -2468,7 +2500,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             vscode.window.showInformationMessage("会话窗口已关闭，本次压缩已取消。");
             return;
         }
-        if (proc.isBusy || proc.isExited) return;
+        if (ctx.sessionId !== sourceId || ctx.proc !== proc ||
+            this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion ||
+            proc.isBusy || proc.isExited) return;
         proc.compact();
         ctx.lastEventAt = Date.now();
     }
@@ -2777,7 +2811,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         ctx.lastEventAt = undefined;
         ctx.sendAt = undefined;
-        this.output.appendLine(`[${new Date().toISOString()}] [stall] session=${ctx.sessionId?.slice(0, 8)} CLI 静默 ${Math.round(idle / 1000)}s，判定卡死，丢弃进程`);
+        this.output.appendLine(`[${new Date().toISOString()}] [stall] session=${ctx.sessionId?.slice(0, 8)} CLI 静默 ${Math.round(idle / 1000)}s，达到静默超时设置，重置连接`);
         try {
             ctx.proc?.dispose();
         }
@@ -2791,7 +2825,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.post(ctx, {
             kind: "error",
-            message: `Codex 已 ${Math.round(idle / 60000)} 分钟没有任何响应，判定为卡死并已重置连接。请重新发送这条消息（上下文不会丢失）。`,
+            message: `Codex 已 ${Math.round(idle / 60000)} 分钟未收到任务进展，达到配置的静默超时，已重置连接。这不一定代表任务卡死；可调整 codexChat.turnStallTimeoutSec 后重试。已有会话记录保留，请先确认执行结果，避免重复操作。`,
         });
         this.post(ctx, { kind: "busy", busy: false });
         this.broadcastRunning();

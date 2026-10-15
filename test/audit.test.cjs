@@ -20,11 +20,12 @@ test('手动压缩准备日志覆盖连接复用和失败，准备期间关闭�
   const proc={isExited:false,isBusy:false,compact:()=>{calls++;}};
   const ctx={sessionId:'test-session',proc:mode==='reuse'?proc:undefined};
   Object.assign(provider,{
-   output:{appendLine:x=>logs.push(x)},alive:()=>alive,post:()=>{},
+   forking:new Set(),restoring:new Set(),output:{appendLine:x=>logs.push(x)},alive:()=>alive,post:()=>{},
    ensureProcess:async()=>{
     if(mode==='closed')alive=false;
     if(mode==='busy')proc.isBusy=true;
-    return mode==='failed'?undefined:proc;
+    ctx.proc=mode==='failed'?undefined:proc;
+    return ctx.proc;
    },
   });
   const previous=vscode.window.showErrorMessage;
@@ -173,7 +174,7 @@ test('额度定时刷新不会掩盖超过十二分钟无进展的任务',()=>{
  assert.equal(ctx.lastEventAt,last);
  provider.checkTurnStall(ctx);
  assert.equal(disposed,true);
- assert.ok(messages.some(event=>event.kind==='error'&&event.message.includes('卡死')));
+ assert.ok(messages.some(event=>event.kind==='error'&&event.message.includes('达到配置的静默超时')&&event.message.includes('不一定代表任务卡死')));
 });
 
 test('真实输出延长超时，等待用户审批不触发超时',()=>{
@@ -356,4 +357,50 @@ test('派生还原写盘失败时清理临时分支，原会话与备份保持�
  assert.equal(ctx.sessionId,'test');
  assert.equal(await fs.readFile(originalFile,'utf8'),before);
  await assert.rejects(fs.access(path.join(dir,'checkpoints-temporary-branch.json')));
+});
+
+test('压缩准备合并重复点击，切换会话或进程后取消旧请求',async()=>{
+ for(const mode of ['same','switch','replace','restore','reject']){
+  const provider=Object.create(ChatViewProvider.prototype);let calls=0,connections=0,release;
+  const proc={isBusy:false,isExited:false,compact:()=>calls++};
+  const ctx={sessionId:'source',proc};
+  Object.assign(provider,{forking:new Set(),restoring:new Set(),alive:()=>true,
+   output:{appendLine:()=>{}},post:()=>{},
+   ensureProcess:()=>{connections++;return new Promise((resolve,reject)=>{
+    release=()=>mode==='reject'?reject(Error('连接失败')):resolve(proc);
+   });}});
+  const work=provider.compactSession(ctx);
+  await provider.compactSession(ctx);
+  assert.equal(connections,1);
+  if(mode==='switch')ctx.sessionId='other';
+  if(mode==='replace')ctx.proc={...proc};
+  if(mode==='restore')provider.restoring.add(ctx);
+  release();
+  if(mode==='reject')await assert.rejects(work,/连接失败/);else await work;
+  assert.equal(calls,mode==='same'?1:0);
+  assert.equal(ctx.compactionPreparing,false);
+ }
+});
+test('空白会话和正在派生的会话不创建压缩连接',async()=>{
+ for(const mode of ['empty','fork']){
+  const provider=Object.create(ChatViewProvider.prototype);
+  const ctx=mode==='empty'?{}:{sessionId:'source'};
+  Object.assign(provider,{forking:new Set(mode==='fork'?[ctx]:[]),restoring:new Set(),
+   post:()=>{},ensureProcess:()=>{throw Error('不应连接');}});
+  await provider.compactSession(ctx);
+ }
+});
+test('并发列表刷新只渲染一次，失败后可以重试',async()=>{
+ const provider=Object.create(ChatViewProvider.prototype);
+ let reads=0,renders=0,release;
+ Object.assign(provider,{sessions:new Set(),detached:new Map(),
+  context:{workspaceState:{get:()=>undefined}},
+  output:{appendLine:()=>{}},renderSessions:()=>renders++,
+  store:{refresh:()=>{reads++;return new Promise((resolve,reject)=>{release={resolve,reject};});}}});
+ for(let i=0;i<6;i++)provider.refreshSessions();
+ assert.equal(reads,1);release.resolve();await provider.sessionsRefreshing;
+ assert.equal(renders,1);
+ provider.refreshSessions();release.reject(Error('断线'));await provider.sessionsRefreshing;
+ provider.refreshSessions();release.resolve();await provider.sessionsRefreshing;
+ assert.equal(reads,3);assert.equal(renders,2);
 });
