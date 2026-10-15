@@ -299,6 +299,16 @@ body.vscode-dark .question-bar, body.vscode-high-contrast .question-bar { color:
 .msgnav-item.on .mn-text { color: var(--vscode-foreground); }
 
 /* Empty/new-session placeholder */
+.history-status {
+  margin: auto; padding: 24px; display: flex; flex-direction: column;
+  align-items: center; gap: 12px; text-align: center;
+  color: var(--vscode-descriptionForeground); overflow-wrap: anywhere;
+}
+.history-retry {
+  padding: 6px 12px; border: 0; border-radius: 4px; cursor: pointer;
+  color: var(--vscode-button-foreground); background: var(--vscode-button-background);
+}
+.history-retry:hover { background: var(--vscode-button-hoverBackground); }
 .empty-state {
   margin: auto;
   display: flex; flex-direction: column; align-items: center; gap: 12px;

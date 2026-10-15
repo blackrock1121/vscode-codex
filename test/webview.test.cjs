@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {JSDOM}=require('jsdom');
 const source=fs.readFileSync('src/panel/chatViewProvider.ts','utf8');
-function setup(t){
+function setup(t,sessionId){
  const section=source.slice(source.indexOf('  private html('));
  const raw=section.match(/return (?:\/\* html \*\/ )?`([\s\S]*?)`;\s*\n\s+}/)[1];
  const html=raw.replace(/\$\{[^}]+\}/g,'').replace(/<script[^>]*><\/script>/g,'');
@@ -11,6 +11,7 @@ function setup(t){
  const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true,url:'https://webview.test/'});
  t.after(()=>dom.window.close());
  const w=dom.window; w.acquireVsCodeApi=()=>({postMessage:m=>sent.push(m),getState:()=>states.at(-1)??{},setState:s=>states.push(JSON.parse(JSON.stringify(s)))});
+ if(sessionId)w.document.body.dataset.sessionId=sessionId;
  w.ResizeObserver=class{constructor(callback){this.callback=callback;this.targets=[];resizeObservers.push(this);}observe(target){this.targets.push(target);}disconnect(){this.targets=[];}};
  w.IntersectionObserver=class{observe(){}disconnect(){}};
  w.HTMLElement.prototype.scrollIntoView=function(){};
@@ -36,6 +37,69 @@ async function imageReady(predicate){
  for(let n=0;n<100;n++){if(predicate())return;await new Promise(r=>setTimeout(r,10));}
  assert.fail('图片读取未完成');
 }
+test('重载历史首屏直接显示恢复状态，失败可重试且草稿不丢失',t=>{
+ const {w,sent,emit,states,errors}=setup(t,'restored');
+ const input=w.document.getElementById('input'),send=w.document.getElementById('btn-send');
+ assert.match(w.document.querySelector('.history-status').textContent,/正在恢复历史/);
+ assert.equal(w.document.querySelector('.empty-state'),null);
+ assert.deepEqual(states.at(-1),{sessionId:'restored'});
+ input.value='等加载时先写草稿';input.dispatchEvent(new w.Event('input'));
+ input.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+ assert.equal(send.disabled,true);assert.equal(sent.some(m=>m.type==='send'),false);
+ assert.equal(input.value,'等加载时先写草稿');
+ emit({kind:'history_status',sessionId:'restored',error:'暂时连接失败 <script>'});
+ assert.equal(w.document.querySelector('.history-status').getAttribute('role'),'alert');
+ assert.match(w.document.querySelector('.history-status').textContent,/<script>/);
+ assert.equal(w.document.querySelector('.history-status script'),null);
+ w.document.querySelector('.history-retry').click();
+ assert.equal(sent.filter(m=>m.type==='reloadHistory').length,1);
+ emit({kind:'load_history',sessionId:'restored',items:[{type:'user',text:'旧问题'},{type:'assistant_text',text:'旧回答'}],checkpoints:[]});
+ assert.equal(w.document.querySelector('.history-status'),null);assert.equal(send.disabled,false);
+ assert.equal(input.value,'等加载时先写草稿');
+ send.click();assert.equal(sent.find(m=>m.type==='send').text,'等加载时先写草稿');
+ assert.deepEqual(errors,[]);
+});
+test('新会话保留欢迎页，清空正在加载的历史也解除旧绑定',t=>{
+ const {w,emit,states}=setup(t);
+ assert.ok(w.document.querySelector('.empty-state'));
+ emit({kind:'history_status',sessionId:'old'});
+ assert.equal(w.document.querySelector('.empty-state'),null);
+ emit({kind:'load_history',items:[],checkpoints:[]});
+ assert.ok(w.document.querySelector('.empty-state'));assert.equal(w.document.querySelector('.history-status'),null);
+ assert.deepEqual(states.at(-1),{});assert.equal(w.document.getElementById('btn-send').disabled,false);
+});
+test('工具密集历史按完整轮次限制首屏，逐批展开后消息和还原点完整且无重复',async t=>{
+ const {w,emit,errors}=setup(t),items=[],checkpoints=[];
+ for(let turn=0;turn<4;turn++){
+  items.push({type:'user',text:`问题${turn}`});checkpoints.push({id:`cp${turn}`,label:`问题${turn}`,userText:`问题${turn}`});
+  for(let n=0;n<65;n++)items.push({type:'tool',toolId:`tool${turn}-${n}`,name:'Bash',input:{command:'echo ok'},result:'ok'});
+  items.push({type:'assistant_text',text:`回答${turn}`});
+ }
+ emit({kind:'load_history',sessionId:'dense',items,checkpoints});
+ assert.equal(w.document.querySelectorAll('.msg.user').length,1);
+ assert.equal(w.document.querySelectorAll('.tool-card').length,65);
+ assert.equal(w.document.querySelector('.msg.user').dataset.checkpointId,'cp3');
+ const latest=w.document.querySelector('.msg.user');
+ for(let count=2;count<=4;count++){
+  w.document.querySelector('.history-expand').click();
+  await imageReady(()=>w.document.querySelectorAll('.msg.user').length===count);
+  assert.equal(w.document.querySelectorAll('.tool-card').length,count*65);
+ }
+ assert.equal(w.document.querySelector('.history-expand'),null);
+ assert.deepEqual([...w.document.querySelectorAll('.msg.user')].map(n=>n.dataset.checkpointId),['cp0','cp1','cp2','cp3']);
+ assert.equal(w.document.querySelectorAll('.msg.user')[3],latest,'展开旧历史不重绘最近消息');
+ assert.deepEqual(errors,[]);
+});
+test('超长单轮保持完整，轻量历史仍显示最近二十轮',t=>{
+ const {w,emit}=setup(t),items=[{type:'user',text:'完整一轮'}];
+ for(let i=0;i<130;i++)items.push({type:'assistant_text',text:`片段${i}`});
+ emit({kind:'load_history',sessionId:'one',items,checkpoints:[]});
+ assert.equal(w.document.querySelectorAll('.text-seg').length,130);
+ assert.equal(w.document.querySelector('.history-expand'),null);
+ emit({kind:'load_history',sessionId:'many',items:Array.from({length:25},(_,i)=>[{type:'user',text:`问题${i}`},{type:'assistant_text',text:`回答${i}`}]).flat(),checkpoints:[]});
+ assert.equal(w.document.querySelectorAll('.msg.user').length,20);
+ assert.ok(w.document.querySelector('.history-expand'));
+});
 test('问题卡粘贴图片可单独回答，提交失败保留图片，成功后显示可查看附件',async t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'permission_request',requestId:'image-q',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'请发截图',options:[]}]},suggestions:[]});

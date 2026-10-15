@@ -129,6 +129,8 @@ const messagesEl = $("messages");
 const inputEl = $<HTMLTextAreaElement>("input");
 const sendBtn = $<HTMLButtonElement>("btn-send");
 const stopBtn = $<HTMLButtonElement>("btn-stop");
+const initialSessionId = document.body.dataset.sessionId;
+let historyPending = !!initialSessionId;
 
 const queueHint = $("queue-hint");
 const PLACEHOLDER_IDLE = inputEl.placeholder;
@@ -1408,9 +1410,15 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       inputEl.focus();
       inputEl.dispatchEvent(new Event("input"));
       break;
+    case "history_status":
+      vscode.setState({ sessionId: m.sessionId });
+      showHistoryStatus(m.error);
+      break;
     case "load_history":
+      historyPending = false;
       hideForking();
       loadHistory(m.items, m.checkpoints, m.sessionId);
+      refreshComposerHint();
       updateQuestionBar(); // 短历史不触发滚动事件，主动对一次
 
       break;
@@ -2633,6 +2641,7 @@ function resolvePermission(requestId: string, behavior: "allow" | "deny") {
 // ---------------------------------------------------------------------------
 const HISTORY_TURN_LIMIT = 20; // 打开会话默认只渲染最近 20 轮，更早的折进「加载更多」
 const HISTORY_CHUNK = 30; // 「加载更多」每次只向上渲染 30 轮——一次全展开几百轮会把主线程卡死
+const HISTORY_ITEM_LIMIT = 120; // 工具密集的几轮也可能有上千条记录，按实际渲染量再设上限
 let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: string; userText?: string }[] } | null = null;
 
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
@@ -2713,26 +2722,26 @@ function renderHistory(showAll: boolean) {
   // items render lazily when the banner is clicked. Rendering everything up
   // front (markdown + highlight on thousands of hidden nodes) made big sessions
   // take seconds to open with the UI frozen.
-  let cutoff = 0;
-  if (!showAll && userTotal > HISTORY_TURN_LIMIT) {
-    const target = userTotal - HISTORY_TURN_LIMIT; // fold this many user turns
-    let seen = 0;
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].type === "user") {
-        if (seen === target) {
-          cutoff = i;
-          break;
-        }
-        seen++;
-      }
-    }
-    messagesEl.appendChild(makeExpandBanner(cutoff, cpByOrdinal));
-  }
+  const cutoff = showAll ? 0 : historyChunkStart(items, items.length, HISTORY_TURN_LIMIT);
+  if (cutoff > 0) messagesEl.appendChild(makeExpandBanner(cutoff, cpByOrdinal));
 
   renderItemRange(items, cutoff, items.length, cpByOrdinal);
   finalizeTurn();
   updateEmptyState();
   scrollToBottom();
+}
+
+/** 在完整用户轮次边界分页；至少保留最新一轮，绝不截断其回答或工具记录。 */
+function historyChunkStart(items: TimelineItem[], end: number, turnLimit: number): number {
+  let start = end, turns = 0, cost = 0;
+  for (let i = end - 1; i >= 0; i--) {
+    if (items[i].type !== "thinking") cost++;
+    if (items[i].type !== "user") continue;
+    if (turns && (turns >= turnLimit || cost > HISTORY_ITEM_LIMIT)) return start;
+    start = i;
+    turns++;
+  }
+  return 0;
 }
 
 /** 折叠横幅：不显示总数，点击每次只加载 HISTORY_CHUNK 轮。cutoff 是当前已渲染
@@ -2765,12 +2774,7 @@ function expandHistory(banner: HTMLElement, cutoff: number, cpByOrdinal: Map<num
   if (!historyState) return;
   const items = historyState.items;
   // 本次只渲染 [from, cutoff)：cutoff 之前最近的 HISTORY_CHUNK 条 user 轮。
-  let from = 0;
-  {
-    const userIdx: number[] = [];
-    for (let i = 0; i < cutoff; i++) if (items[i].type === "user") userIdx.push(i);
-    if (userIdx.length > HISTORY_CHUNK) from = userIdx[userIdx.length - HISTORY_CHUNK];
-  }
+  const from = historyChunkStart(items, cutoff, HISTORY_CHUNK);
   // The viewport must not MOVE: whatever the user was looking at stays put and
   // the older turns materialize above it. Capture the anchor's on-screen Y
   // BEFORE any DOM change, then correct scrollTop by the drift — and repeat on
@@ -2874,6 +2878,7 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
 
 /** Show a branded placeholder when the conversation is empty (new session). */
 function updateEmptyState() {
+  if (historyPending) return;
   if (messagesEl.querySelector(".msg")) {
     messagesEl.querySelector(".empty-state")?.remove();
     return;
@@ -2885,6 +2890,23 @@ function updateEmptyState() {
     `<div class="es-title">Codex Copilot</div>` +
     `<div class="es-sub">问我任何关于这个项目的问题。<br>在根目录放一个 <code>AGENTS.md</code>，作为 Codex 的项目说明。</div>`;
   messagesEl.appendChild(es);
+}
+
+function showHistoryStatus(error?: string) {
+  historyPending = true;
+  messagesEl.querySelector(".empty-state")?.remove();
+  messagesEl.querySelector(".history-status")?.remove();
+  const status = el("div", "history-status");
+  status.setAttribute("role", error ? "alert" : "status");
+  if (!error) status.appendChild(el("span", "hx-spin"));
+  status.appendChild(el("div", "", error || "正在恢复历史对话…"));
+  if (error) {
+    const retry = el("button", "history-retry", "重新加载");
+    retry.onclick = () => { showHistoryStatus(); send({ type: "reloadHistory" }); };
+    status.appendChild(retry);
+  }
+  messagesEl.prepend(status);
+  refreshComposerHint();
 }
 
 // -- Clickable code references in assistant text ------------------------------
@@ -3521,6 +3543,7 @@ function doSend() {
   const payload = readComposer();
   if (!payload) return;
   if (handleSlashCommand(payload)) return;
+  if (historyPending) return; // 保留草稿，避免迟到的历史覆盖刚发出的消息
   // Quota spent — bail BEFORE clearComposer() so the user doesn't lose what
   // they typed. The banner already explains why nothing happened.
   if (rateLimited) {
@@ -3585,7 +3608,7 @@ function flushQueue() {
   // a plain "I want it to stop" Stop looks like.)
   // 用量耗尽时按兵不动：不拦的话队列会绕过 doSend 的锁逐条穿墙，每条都变成
   // 失败轮次白白丢掉。额度恢复（clearRateLimit）后会重新放行。
-  if (rateLimited || restoreInProgress || queuePausedAfterRestore) return;
+  if (rateLimited || restoreInProgress || queuePausedAfterRestore || historyPending) return;
   if (isBusy || !taskQueue.length) return;
   const next = taskQueue.shift()!;
   renderQueue();
@@ -3787,6 +3810,13 @@ function refreshComposerHint() {
   // A permanently-filled send button next to an empty box is a call to action
   // with nothing behind it — keep it quiet until there is content.
   sendBtn.classList.toggle("ready", hasContent);
+  sendBtn.disabled = historyPending;
+  if (historyPending) {
+    stopBtn.classList.add("hidden");
+    queueHint.classList.add("hidden");
+    inputEl.placeholder = "正在恢复历史对话，可先输入草稿…";
+    return;
+  }
   if (rateLimited) {
     // Blocked: no send, no queue. Keep the text — the quota will come back.
     sendBtn.classList.add("hidden");
@@ -5111,6 +5141,10 @@ window.addEventListener("keydown", (e) => {
 }, true);
 
 // ---------------------------------------------------------------------------
+if (initialSessionId) {
+  vscode.setState({ sessionId: initialSessionId });
+  showHistoryStatus();
+}
 send({ type: "ready" });
 autoResize();
 updateEmptyState();

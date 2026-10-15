@@ -206,6 +206,9 @@ interface SessionCtx {
     lastUserText?: string;
     lastUserActionAt?: number;
     initialHistoryCached?: boolean;
+    initialHistoryRead?: Promise<void>;
+    historyLoadSeq?: number;
+    historyPending?: boolean;
     lastEventAt?: number;
     responseWaitShown?: boolean;
     compacting?: boolean;
@@ -391,7 +394,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 面板 ${ctx.sessionId?.slice(0, 8) ?? "新会话"} 通道无响应 30s，重建 webview`);
                 ctx.ready = false;
                 try {
-                    ctx.panel.webview.html = this.html(ctx.panel.webview);
+                    ctx.panel.webview.html = this.html(ctx.panel.webview, ctx.sessionId);
                 }
                 catch (err) {
                     this.output.appendLine(`[watchdog] 重建失败: ${String(err)}`);
@@ -718,7 +721,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         panel.title = "Codex Copilot";
         panel.iconPath = { light: vscode.Uri.joinPath(this.context.extensionUri, "media", "icon-light.svg"), dark: vscode.Uri.joinPath(this.context.extensionUri, "media", "icon.svg") };
-        panel.webview.html = this.html(panel.webview);
+        panel.webview.html = this.html(panel.webview, ctx.sessionId);
         ctx.webview = panel.webview;
         panel.webview.onDidReceiveMessage((m: FromWebview) => {
             // 心跳、历史读取和其他后台消息不能改变命令的目标会话。
@@ -789,9 +792,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
     async revivePanel(panel: vscode.WebviewPanel, sessionId?: string): Promise<void> {
-        if (sessionId)
-            await this.store.hydrate(sessionId).catch(e => this.output.appendLine(String(e)));
-        let sid = sessionId && this.store.findFile(sessionId) ? sessionId : undefined;
+        let sid = sessionId;
         if (sid) {
             for (const other of this.sessions) {
                 if (other.sessionId === sid) {
@@ -808,6 +809,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             blank: !sid,
             ready: false,
         };
+        if (sid) {
+            // 与 Webview 启动并行读取；ready 后复用此结果，避免完整历史读两遍。
+            // 临时读取失败也保留标签绑定，不能悄悄变成新对话。
+            ctx.historyPending = true;
+            ctx.initialHistoryRead = this.store.hydrate(sid);
+            void ctx.initialHistoryRead.catch(() => {}); // ready 后统一展示失败与重试入口
+        }
         if (sid)
             ctx.checkpoints.setSession(sid);
         this.sessionModel(ctx);
@@ -1122,6 +1130,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.fetchUsage();
                     ctx.pendingDiagnosticRepair?.start();
                     break;
+                case "reloadHistory":
+                    if (ctx.sessionId) this.loadSessionInto(ctx, ctx.sessionId);
+                    break;
                 case "checkUpdate":
                     await this.checkForUpdate(!m.fromBanner, false);
                     break;
@@ -1342,8 +1353,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.renderSessionInto(ctx, sid);
             return;
         }
-        void this.store.hydrate(sid).then(() => { if (ctx.sessionId === sid)
-            this.renderSessionInto(ctx, sid); }).catch(e => this.post(ctx, { kind: "error", message: `读取历史失败：${String(e)}` }));
+        const seq = ctx.historyLoadSeq = (ctx.historyLoadSeq ?? 0) + 1;
+        const current = () => ctx.sessionId === sid && ctx.historyLoadSeq === seq && this.alive(ctx);
+        ctx.historyPending = true;
+        this.post(ctx, { kind: "history_status", sessionId: sid });
+        const read = ctx.initialHistoryRead ?? this.store.hydrate(sid);
+        ctx.initialHistoryRead = undefined;
+        void read.then(() => {
+            if (current()) this.renderSessionInto(ctx, sid);
+        }).catch(e => {
+            if (!current()) return;
+            this.output.appendLine(`[history] 读取 ${sid.slice(0, 8)} 失败：${String(e)}`);
+            this.post(ctx, { kind: "history_status", sessionId: sid, error: `读取历史失败：${String(e)}` });
+        });
     }
     private renderSessionInto(ctx: SessionCtx, sid: string): void {
         const items = this.store.load(sid);
@@ -1355,6 +1377,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             items.push({ type: "user", text: latest.userText });
             checkpoints.push(latest);
         }
+        ctx.historyPending = false;
         this.post(ctx, { kind: "load_history", items, sessionId: sid, checkpoints });
         this.maybePrespawn(ctx);
         if (ctx.proc?.isBusy) {
@@ -1381,6 +1404,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.proc = undefined;
         ctx.starting = undefined;
         ctx.sessionId = undefined;
+        ctx.historyPending = false;
+        ctx.initialHistoryRead = undefined;
         ctx.model = undefined;
         ctx.speedMode = undefined;
         ctx.effort = undefined;
@@ -1473,6 +1498,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string; data: string;
     }[], files?: string[], allowed?: () => boolean, queueMs?: number, sendId?: string): Promise<boolean> {
+        if (ctx.historyPending) {
+            this.post(ctx, { kind: "error", message: "历史尚未加载完成，请重试加载后再发送。" });
+            return false;
+        }
         if (ctx.sending) { this.post(ctx, { kind: 'notice', message: '上一条消息正在准备，请稍后再发送。' }); return false; }
         ctx.sending = true;
         const mySeq = (ctx.sendSeq = (ctx.sendSeq ?? 0) + 1);
@@ -4408,7 +4437,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </body>
 </html>`;
     }
-    private html(webview: vscode.Webview): string {
+    private html(webview: vscode.Webview, sessionId?: string): string {
+        const initialSessionId = (sessionId ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!));
         const nonce = randomUUID().replace(/-/g, "");
         const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, "media", "webview.js")).toString() +
             `?v=${nonce}`;
@@ -4430,7 +4460,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <link href="${styleUri}" rel="stylesheet" />
   <title>Codex Copilot</title>
 </head>
-<body>
+<body data-session-id="${initialSessionId}">
   <div id="app">
     <div id="lightbox" class="lightbox hidden">
       <div class="lightbox-actions">

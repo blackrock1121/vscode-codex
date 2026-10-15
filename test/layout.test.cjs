@@ -55,7 +55,7 @@ async function fixture(t){
  const provider=Object.create(ChatViewProvider.prototype);
  Object.assign(provider,{
   sessions:new Set(),detached:new Map(),
-  context:{extensionUri:dir,workspaceState:{get:()=>undefined}},output:{appendLine:()=>{}},
+  context:{extensionUri:dir,workspaceState:{get:()=>undefined,update:async()=>{}}},output:{appendLine:()=>{}},
   config:()=>({get:(_key,fallback)=>fallback}),
   store:{hydrate:async()=>{},findFile:id=>id},
   storageDir:()=>dir,speedMode:()=> 'default',html:()=> '<html>会话</html>',postActiveFile:()=>{},
@@ -92,6 +92,46 @@ test('并发恢复分屏会话时不移动标签、不重设分组、不抢焦�
  assert.deepEqual([...provider.sessions].map(ctx=>ctx.sessionId).sort(),['left','right']);
  assert.equal(left.webview.html,'<html>会话</html>');
  assert.equal(right.webview.html,'<html>会话</html>');
+});
+
+test('慢历史读取不阻塞标签页恢复，ready 复用预读结果而不再读一次',async t=>{
+ const provider=await fixture(t),messages=[];let finish,reads=0;
+ provider.store.hydrate=()=>{reads++;return new Promise(resolve=>{finish=resolve;});};
+ provider.store.load=()=>[{type:'user',text:'原来的问题'}];
+ provider.post=(_,m)=>messages.push(m);
+ provider.checkpointsForView=()=>[];provider.refreshChangedFiles=()=>{};
+ provider.refreshSessions=()=>{};provider.maybePrespawn=()=>{};
+ const tab=panel(1,true);
+ await provider.revivePanel(tab,'old');
+ assert.equal(tab.webview.html,'<html>会话</html>');assert.equal(reads,1);
+ const ctx=provider.activeCtx;
+ provider.loadCtxSession(ctx);
+ assert.equal(messages[0].kind,'history_status');assert.equal(reads,1);
+ assert.equal(messages.some(m=>m.kind==='load_history'),false);
+ finish();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(reads,1);assert.equal(ctx.historyPending,false);
+ assert.deepEqual(messages.find(m=>m.kind==='load_history').items,[{type:'user',text:'原来的问题'}]);
+});
+
+test('历史预读失败保留原会话，可重试；旧读取不会覆盖清空或已关闭的面板',async t=>{
+ const provider=await fixture(t),messages=[];let reads=0;
+ provider.store.hydrate=async()=>{if(++reads===1)throw Error('暂时断开');};
+ provider.post=(_,m)=>messages.push(m);
+ const rendered=[];provider.renderSessionInto=(_,sid)=>rendered.push(sid);
+ await provider.revivePanel(panel(1,true),'old');
+ const ctx=provider.activeCtx;await new Promise(resolve=>setImmediate(resolve));
+ provider.loadCtxSession(ctx);await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(ctx.sessionId,'old');assert.equal(ctx.blank,false);
+ assert.match(messages.at(-1).error,/暂时断开/);assert.deepEqual(rendered,[]);
+ await provider.onPanelMessage(ctx,{type:'reloadHistory'});await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(reads,2);assert.deepEqual(rendered,['old']);
+ for(const action of ['clear','close']){
+  let finish;provider.store.hydrate=()=>new Promise(resolve=>{finish=resolve;});
+  ctx.sessionId='old';provider.sessions.add(ctx);provider.loadCtxSession(ctx);
+  if(action==='clear')ctx.sessionId=undefined;else provider.sessions.delete(ctx);
+  finish();await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(rendered,['old']);
+ }
 });
 
 test('隐藏标签和未确定列号的空白会话恢复时保持原有布局与焦点',async t=>{

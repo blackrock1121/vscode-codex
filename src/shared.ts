@@ -199,6 +199,7 @@ export type ToWebview =
   | { kind: "snapshot_skips"; files: { path: string; rel: string; reason: string }[]; total: number }
   | { kind: "snapshot_exclude_result"; ok: boolean; message: string; paths: string[] }
   // Full conversation replacement (switching/restoring sessions)
+  | { kind: "history_status"; sessionId: string; error?: string }
   | { kind: "load_history"; items: TimelineItem[]; sessionId?: string; checkpoints?: CheckpointSummary[] }
   | { kind: "sessions"; list: SessionSummary[]; activeId?: string; runningIds?: string[] }
   | { kind: "running"; sessionIds: string[] }
@@ -283,6 +284,7 @@ export type TimelineItem =
 
 export type FromWebview =
   | { type: "ready" }
+  | { type: "reloadHistory" }
   /** fromBanner：点侧边栏「发现新版本」横幅触发，此时才弹安装确认；
    *  否则（手动「检查更新」/自动轮询）只点亮横幅，不打断。 */
   | { type: "checkUpdate"; fromBanner?: boolean }
