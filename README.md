@@ -182,7 +182,11 @@ npm run smoke:question
 - `processRunId` 区分子进程；`sourceTimeMs` / `sourceTimeBasis` 保留事件发生时间及来源，`receivedAtMs` 是批量导出到达时间，两者差不能当作模型延迟。存在匹配的线程和源时间时，`compactionId` 可关联最近一次压缩；不确定时为 `null`，不会把迟到的导出归给新轮次。
 - 后端可能提供 `responses_api_inference_time.duration_ms`、`responses_api_overhead.duration_ms` 与首 token／token 间隔指标。这些直方图明确标为 `process_aggregate`，保留统计起止时间、`count` / `sum` / `min` / `max` 和 `aggregationTemporality`，不能把多个请求的累计值当成单次压缩耗时。原生指标可能延迟导出；缺少上报不代表耗时为零。`serverQueueMs`、`networkTransitMs`、`inferenceMs` 在压缩摘要中保持 `null`，除非未来协议能给出可准确关联的证据；不做减法猜测归因。
 
-当前已验证的 Codex CLI `0.162.1` 中，`thread/compact/start` 只有 `threadId`，没有独立的 `model` / `effort` / `serviceTier` 参数。手动压缩会先等待本会话速度设置保存，再通过 `thread/settings/update` 同步所选档位：普通明确传 `default`，快速传 `priority`，成功后记录 `settings_synced` 并开始压缩；同步失败则取消压缩，不沿用可能过期的收费档位。自动压缩沿用正在执行的轮次档位，运行中切换只影响后续操作。插件不会为压缩额外开启快速模式，也不为压缩切换模型或降低推理强度。诊断依据：[官方 App Server](https://learn.chatgpt.com/docs/app-server)、[官方 OTel 事件与指标说明](https://learn.chatgpt.com/docs/config-file/config-advanced)。
+当前已验证的 Codex CLI `0.162.1` 中，`thread/compact/start` 只有 `threadId`，没有独立的 `model` / `effort` / `serviceTier` 参数。手动压缩会先等待本会话速度设置保存，再通过 `thread/settings/update` 同步所选档位：普通明确传 `default`，快速传 `priority`，成功后记录 `settings_synced` 并开始压缩；同步失败则取消压缩，不沿用可能过期的收费档位。自动压缩沿用正在执行的轮次档位，运行中切换只影响后续操作。插件不会为压缩额外开启快速模式。诊断依据：[官方 App Server](https://learn.chatgpt.com/docs/app-server)、[官方 OTel 事件与指标说明](https://learn.chatgpt.com/docs/config-file/config-advanced)。
+
+`codexChat.compactionMode` 默认 `balanced`：Astra 会话手动压缩临时使用 **GPT-6.1-Sol + xhigh**，保持会话所选收费档位。压缩轮次结束并恢复原模型、原推理设置后才接受下一条消息；恢复失败会关闭连接，避免后续回答误用压缩模型。账号目录缺少所需模型、推理或速度档位，或原推理配置未知时，沿用会话模型。选 `session` 可关闭此优化；设置在下次连接生效。其他模型以及轮次中的自动压缩保持原行为，压缩阈值也不变。
+
+2026-10-15 使用同一份约 22.8 万 token 历史，在普通模式下复测：Sol xhigh 两次为 125 / 143 秒，压缩后统一由 Astra medium 回答预先固定问题，两次均通过 11 项事实和 5 项操作判断；同组 Astra xhigh 为 217 秒、11/11，Luna xhigh 为 30 / 38 秒、7/11 和 9/11。Sol medium 没有更快，Luna max 未稳定改善事实保留，因此默认选 Sol xhigh。连同此前相同历史的两次计时，Astra 三次平均为 198 秒，Sol xhigh 平均为 134 秒，观察到约 33% 的时间缩短。数据见 [基准摘要](benchmarks/compaction-20261015.json)。这是单一历史的小样本，检查通过不代表无损压缩或所有任务质量相同；耗时会受服务负载和缓存影响。
 
 ## 发布
 

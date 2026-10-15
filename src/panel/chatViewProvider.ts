@@ -2558,6 +2558,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             questionStateDir: this.storageDir(),
             codexPath: this.config().get<string>("codexPath", "codex"),
             transportDiagnostics: this.config().get<boolean>("transportDiagnostics", true),
+            compactionMode: this.config().get<string>("compactionMode", "balanced") === "session" ? "session" : "balanced",
             executionMode: executionMode(this.config().get<string>("executionMode", "parallel")),
             cwd: this.cwd(),
             model: this.sessionModel(ctx) || undefined,

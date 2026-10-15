@@ -1,0 +1,292 @@
+{
+  "date": "2026-10-15",
+  "cli": "0.162.1",
+  "serviceTier": "default",
+  "historyItems": 157,
+  "historySha256": "ea919fcfef3e195c819a05c8c5e32c377671384fab49d36e497fefd4903fa620",
+  "reader": {
+    "model": "gpt-6-astra",
+    "effort": "medium",
+    "toolsAllowed": false
+  },
+  "method": "临时线程注入同一历史，原生远端压缩；统一切回 Astra medium 作答。11 项事实答案与 5 项操作判断标准在测试前冻结，不注入待压缩历史。记录的耗时仅含压缩，不含质量问答。",
+  "limits": [
+    "单一工程会话、小样本；Astra 扩展质量检查仅一次，不能代表整体回答准确率。",
+    "压缩内容为不透明结果，读回遗漏无法区分压缩丢失与读取模型未能回忆。",
+    "历史条目哈希相同，CLI 注入的运行环境略有变化，完整请求 token 数可能相差约 71。",
+    "请求顺序、缓存命中和服务负载未完全控制；不能把观察差异当作固定提速承诺。",
+    "所有样本的 5 项操作判断均符合预设标准。",
+    "原始历史和答案留在本机，本文件不保存原文或凭据。"
+  ],
+  "groups": [
+    {
+      "model": "gpt-6-luna",
+      "effort": "xhigh",
+      "runs": 2,
+      "meanSeconds": 33.671,
+      "factsCorrect": [
+        7,
+        9
+      ],
+      "decisionsCorrect": [
+        5,
+        5
+      ]
+    },
+    {
+      "model": "gpt-6-luna",
+      "effort": "max",
+      "runs": 2,
+      "meanSeconds": 32.953,
+      "factsCorrect": [
+        5,
+        6
+      ],
+      "decisionsCorrect": [
+        5,
+        5
+      ]
+    },
+    {
+      "model": "gpt-6-astra",
+      "effort": "xhigh",
+      "runs": 1,
+      "meanSeconds": 217.238,
+      "factsCorrect": [
+        11
+      ],
+      "decisionsCorrect": [
+        5
+      ]
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "runs": 2,
+      "meanSeconds": 133.813,
+      "factsCorrect": [
+        11,
+        11
+      ],
+      "decisionsCorrect": [
+        5,
+        5
+      ]
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "runs": 2,
+      "meanSeconds": 134.878,
+      "factsCorrect": [
+        10,
+        11
+      ],
+      "decisionsCorrect": [
+        5,
+        5
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "model": "gpt-6-luna",
+      "effort": "xhigh",
+      "seconds": 29.608,
+      "factsCorrect": 7,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [
+        "passedTests",
+        "cliAlpha",
+        "latestMedianSeconds",
+        "settingsRpc"
+      ],
+      "inputTokens": 227744,
+      "outputTokens": 2129,
+      "cachedTokens": 6912,
+      "retries": 0,
+      "readerInputTokens": 33323
+    },
+    {
+      "model": "gpt-6-luna",
+      "effort": "max",
+      "seconds": 26.297,
+      "factsCorrect": 5,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [
+        "passedTests",
+        "cliAlpha",
+        "latestCompactionSamples",
+        "latestMedianSeconds",
+        "timerDelayRangeMs",
+        "settingsRpc"
+      ],
+      "inputTokens": 227744,
+      "outputTokens": 1901,
+      "cachedTokens": 8960,
+      "retries": 0,
+      "readerInputTokens": 33095
+    },
+    {
+      "model": "gpt-6-luna",
+      "effort": "max",
+      "seconds": 39.61,
+      "factsCorrect": 6,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [
+        "passedTests",
+        "cliAlpha",
+        "latestCompactionSamples",
+        "latestMedianSeconds",
+        "timerDelayRangeMs"
+      ],
+      "inputTokens": 227744,
+      "outputTokens": 3012,
+      "cachedTokens": 8960,
+      "retries": 0,
+      "readerInputTokens": 34206
+    },
+    {
+      "model": "gpt-6-luna",
+      "effort": "xhigh",
+      "seconds": 37.734,
+      "factsCorrect": 9,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [
+        "cliAlpha",
+        "latestMedianSeconds"
+      ],
+      "inputTokens": 227815,
+      "outputTokens": 2461,
+      "cachedTokens": 8960,
+      "retries": 0,
+      "readerInputTokens": 33655
+    },
+    {
+      "model": "gpt-6-astra",
+      "effort": "xhigh",
+      "seconds": 217.238,
+      "factsCorrect": 11,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [],
+      "inputTokens": 227743,
+      "outputTokens": 5908,
+      "cachedTokens": 13184,
+      "retries": 0,
+      "readerInputTokens": 29189
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "seconds": 124.703,
+      "factsCorrect": 11,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [],
+      "inputTokens": 227744,
+      "outputTokens": 5142,
+      "cachedTokens": 13184,
+      "retries": 0,
+      "readerInputTokens": 44629
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "xhigh",
+      "seconds": 142.923,
+      "factsCorrect": 11,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [],
+      "inputTokens": 227744,
+      "outputTokens": 6161,
+      "cachedTokens": 8960,
+      "retries": 0,
+      "readerInputTokens": 46435
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "seconds": 134.974,
+      "factsCorrect": 10,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [
+        "latestMedianSeconds"
+      ],
+      "inputTokens": 227815,
+      "outputTokens": 5220,
+      "cachedTokens": 8960,
+      "retries": 0,
+      "readerInputTokens": 45494
+    },
+    {
+      "model": "gpt-6.1-sol",
+      "effort": "medium",
+      "seconds": 134.783,
+      "factsCorrect": 11,
+      "factsTotal": 11,
+      "decisionsCorrect": 5,
+      "decisionsTotal": 5,
+      "decisionGrading": "人工按测试前固定标准逐项核对",
+      "missingOrIncorrectFactKeys": [],
+      "inputTokens": 227815,
+      "outputTokens": 5367,
+      "cachedTokens": 8064,
+      "retries": 0,
+      "readerInputTokens": 45640
+    }
+  ],
+  "selected": {
+    "model": "gpt-6.1-sol",
+    "effort": "xhigh",
+    "scope": "仅 Astra 会话手动压缩；完成后恢复会话配置，服务档位跟随会话。"
+  },
+  "earlierTimingRuns": {
+    "note": "此前同历史、同普通档的计时。质量问题只有 6 项，不与本轮 11 项成绩混算。",
+    "runs": [
+      {
+        "model": "gpt-6-astra",
+        "effort": "xhigh",
+        "seconds": 172.432
+      },
+      {
+        "model": "gpt-6-luna",
+        "effort": "xhigh",
+        "seconds": 27.042
+      },
+      {
+        "model": "gpt-6-luna",
+        "effort": "xhigh",
+        "seconds": 32.065
+      },
+      {
+        "model": "gpt-6-astra",
+        "effort": "xhigh",
+        "seconds": 205.752
+      }
+    ]
+  },
+  "pooledAstraMeanSeconds": 198.474,
+  "solXhighTimeReductionVsPooledAstraPercent": 32.6
+}

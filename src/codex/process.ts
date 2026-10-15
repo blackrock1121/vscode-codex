@@ -31,6 +31,7 @@ export interface CodexProcessOptions {
   codexPath: string; cwd: string; model?: string; effort?: string; speedMode?: SpeedMode; permissionMode: string;
   questionStateDir?: string; resumeSessionId?: string; addDirs?: string[]; appendSystemPrompt?: string; env?: NodeJS.ProcessEnv;
   transportDiagnostics?: boolean;
+  compactionMode?: 'balanced' | 'session';
   executionMode?: 'parallel' | 'tools' | 'standard';
 }
 export interface PermissionRequest {
@@ -78,6 +79,8 @@ export class CodexProcess {
   private readonly rpc: CodexRpc;
   private sessionId?: string;
   private activeModel = "";
+  private activeEffort?: string;
+  private compactionRestore?: { model: string; effort: string; pending: boolean; isError: boolean };
   private lastDispatched?: { model: string; effort: string; speedMode: SpeedMode };
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
@@ -103,7 +106,7 @@ export class CodexProcess {
     requestAcceptedMs?: number; firstUsageMs?: number; lastTickAt: number; maxTimerDelayMs: number;
     speedMode: SpeedMode; effort: string; usage?: Record<string, number>;
     preTokens?: number; contextWindow?: number; latestTokens?: number; usageUpdates: number;
-    retries: number; errors: number; model: string;
+    retries: number; errors: number; model: string; modelSource: 'active_thread' | 'manual_override';
   };
   private readonly recentCompactions: NonNullable<CodexProcess['compactionTrace']>[] = [];
   private compactionTimer?: NodeJS.Timeout;
@@ -204,6 +207,7 @@ export class CodexProcess {
       if (this.opts.resumeSessionId && result.thread?.id !== this.opts.resumeSessionId)
         throw new Error('Codex 恢复了不同的会话 ID，已中止连接，避免串到其他会话。');
       this.activeModel = result.model ?? this.opts.model ?? "";
+      this.activeEffort = result.reasoningEffort ?? undefined;
       this.sessionId = result.thread.id;
       this.children.setRoot(result.thread);
       this.hooks.onSessionId(this.sessionId!, !!this.opts.resumeSessionId);
@@ -278,7 +282,8 @@ export class CodexProcess {
     };
     this.startingTurn = dispatch().then(r => {
       if (!r || sequence !== this.dispatchSequence) return;
-      this.activeModel = model; this.emit({ kind: "speed_context", model });
+      this.activeModel = model; this.activeEffort = params.effort ?? this.activeEffort;
+      this.emit({ kind: "speed_context", model });
       if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id;
     }).catch(e => {
       if (sequence === this.dispatchSequence && !this.exited) { this.error(e); this.finish(true); }
@@ -293,10 +298,27 @@ export class CodexProcess {
     this.busy = true; this.compacting = true; this.beganAt = Date.now(); this.emit({ kind: 'busy', busy: true }); this.emit({ kind: 'compacting' });
     let settingsSynced = false;
     const dispatch = async () => {
+      let override: { model: string; effort: string } | undefined;
+      if (this.opts.compactionMode !== 'session' && trace.model === 'gpt-6-astra') {
+        await this.modelsReady;
+        if (this.compactionTrace !== trace || this.exited || this.stopTimer) return;
+        const candidate = this.models.find(m => m.id === 'gpt-6.1-sol');
+        const restoreEffort = trace.effort === 'default' ? this.activeEffort : trace.effort;
+        // 只使用实测过的组合；无法确认账号能力或原推理设置时沿用会话模型。
+        if (candidate?.efforts.includes('xhigh') && supportsSpeed(candidate, trace.speedMode) && restoreEffort) {
+          this.compactionRestore = { model: trace.model, effort: restoreEffort, pending: false, isError: false };
+          override = { model: candidate.id, effort: 'xhigh' };
+          trace.model = candidate.id; trace.effort = 'xhigh'; trace.modelSource = 'manual_override';
+          this.logCompactionTrace('model_selected', trace);
+          this.emit({ kind: 'status', label: '正在使用 GPT-6.1-Sol 压缩上下文…' });
+        } else {
+          this.emit({ kind: 'notice', message: '无法确认压缩模型所需配置，继续使用当前会话模型压缩。' });
+        }
+      }
       // 速度切换平时在下一次 turn/start 才传给 CLI；直接压缩也必须应用本会话的选择。
-      // 普通档位显式传 default，不能省略后沿用上一轮的 priority；不改模型或推理强度。
+      // 普通档位显式传 default，不能省略后沿用上一轮的 priority。
       await this.rpc.request('thread/settings/update', {
-        threadId: trace.threadId, serviceTier: speedServiceTier(trace.speedMode),
+        threadId: trace.threadId, serviceTier: speedServiceTier(trace.speedMode), ...override,
       });
       if (this.compactionTrace !== trace || this.exited || this.stopTimer) return;
       settingsSynced = true;
@@ -327,7 +349,7 @@ export class CodexProcess {
       effort: this.lastDispatched?.effort ?? this.opts.effort ?? 'default',
       preTokens: this.contextUsage?.used, contextWindow: this.contextUsage?.total,
       usageUpdates: 0, retries: 0, errors: 0,
-      model: this.lastDispatched?.model ?? this.activeModel,
+      model: this.lastDispatched?.model ?? this.activeModel, modelSource: 'active_thread' as const,
     };
     this.logCompactionTrace('start', trace);
     this.compactionTimer = setInterval(() => {
@@ -342,7 +364,7 @@ export class CodexProcess {
   private logCompactionTrace(stage: string, trace: NonNullable<CodexProcess['compactionTrace']>, extra = {}) {
     const now = performance.now();
     this.emit({ kind: 'diag', message: `[compaction] ${JSON.stringify({
-      id: trace.id, trigger: trace.trigger, stage, model: trace.model, modelSource: 'active_thread',
+      id: trace.id, trigger: trace.trigger, stage, model: trace.model, modelSource: trace.modelSource,
       threadId: trace.threadId ?? null, turnId: trace.turnId ?? null, itemId: trace.itemId ?? null,
       startedAt: new Date(trace.startedWallMs).toISOString(), speedMode: trace.speedMode, effort: trace.effort,
       elapsedMs: Math.round(now - trace.startedAt),
@@ -684,7 +706,8 @@ export class CodexProcess {
         this.endCompactionTrace('completed');
         this.emit({ kind: 'compacted', trigger: this.compacting ? 'manual' : 'auto', preTokens: 0, postTokens: 0 });
         // 自动压缩只是轮次中的一个阶段，后面还要继续回复。
-        if (this.compacting) this.finish(false);
+        // 换过压缩模型时须等待轮次真正结束，再恢复设置，不能提前放行下一条消息。
+        if (this.compacting && !this.compactionRestore) this.finish(false);
       }
       return;
     }
@@ -892,6 +915,27 @@ export class CodexProcess {
   }
   private finish(isError: boolean) {
     if (!this.busy) return;
+    const restore = this.compactionRestore;
+    if (restore) {
+      restore.isError ||= isError;
+      if (restore.pending) return;
+      restore.pending = true;
+      this.emit({ kind: 'status', label: '正在恢复会话模型设置…' });
+      void this.rpc.request('thread/settings/update', {
+        threadId: this.sessionId, model: restore.model, effort: restore.effort,
+        serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'),
+      }).then(() => {
+        if (this.disposed || this.compactionRestore !== restore) return;
+        this.compactionRestore = undefined;
+        this.finish(restore.isError);
+      }).catch(() => {
+        if (this.disposed || this.compactionRestore !== restore) return;
+        this.compactionRestore = undefined;
+        this.error('压缩后的会话设置恢复失败，已关闭连接；下一条消息会按会话配置重新连接。');
+        this.exited = true; this.finish(true); this.rpc.dispose();
+      });
+      return;
+    }
     this.endCompactionTrace(isError ? 'failed' : 'turn_ended_without_compaction_completed');
     this.rememberEndedTurn(this.turnId);
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }

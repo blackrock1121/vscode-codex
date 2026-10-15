@@ -17,6 +17,116 @@ function fixture(t){
  return {p,events,note,item,logs,usage};
 }
 
+function astraFixture(t){
+ const f=fixture(t),p=f.p;
+ p.activeModel='gpt-6-astra';p.activeEffort='medium';
+ p.lastDispatched={model:'gpt-6-astra',effort:'high',speedMode:'default'};
+ p.models=[{id:'gpt-6.1-sol',efforts:['medium','xhigh'],speedModes:['default','fast']}];
+ return f;
+}
+
+test('Astra 手动压缩用 Sol xhigh，保持收费档位；原模型恢复前不放行消息',async t=>{
+ for(const speed of ['default','fast']){
+  const {p,note,item,logs,events}=astraFixture(t),calls=[];let release;
+  await p.setSpeedMode(speed);
+  p.rpc.request=async(method,params)=>{
+   calls.push({method,params});
+   if(method==='thread/settings/update'&&params.model==='gpt-6-astra')await new Promise(r=>{release=r;});
+   return {};
+  };
+  p.compact();await flush();
+  assert.equal(calls[0].params.model,'gpt-6.1-sol');assert.equal(calls[0].params.effort,'xhigh');
+  assert.equal(calls[0].params.serviceTier,speed==='fast'?'priority':'default');
+  assert.equal(logs().find(x=>x.stage==='model_selected').modelSource,'manual_override');
+  note('item/completed',{item});
+  assert.equal(p.isBusy,true);assert.equal(calls.length,2);
+  note('turn/completed',{turn:{id:'compact-'+speed,status:'completed'}});await flush();
+  assert.equal(p.sendUserMessage('不能提前发送'),false);
+  assert.deepEqual(calls[2],{method:'thread/settings/update',params:{threadId:'test-session',model:'gpt-6-astra',effort:'high',serviceTier:speed==='fast'?'priority':'default'}});
+  release({});await flush();
+  assert.equal(p.isBusy,false);assert.equal(p.modelForNextTurn,'gpt-6-astra');
+  assert.equal(events.filter(e=>e.kind==='result').length,1);
+ }
+});
+
+test('压缩中切换会话配置，压缩档位保持不变，恢复不覆盖下一轮选择',async t=>{
+ const {p,note,item}=astraFixture(t),calls=[];
+ await p.setSpeedMode('fast');
+ p.rpc.request=async(method,params)=>{calls.push({method,params});return {turn:{id:'next'}};};
+ p.compact();await flush();
+ await p.setSpeedMode('default');await p.setModel('gpt-6-luna');await p.setEffort('max');
+ note('item/completed',{item});note('turn/completed',{turn:{id:'compact',status:'completed'}});await flush();
+ assert.equal(calls[0].params.serviceTier,'priority');
+ assert.equal(calls[2].params.serviceTier,'default');
+ assert.equal(p.sendUserMessage('继续'),true);await flush();
+ const next=calls.find(x=>x.method==='turn/start').params;
+ assert.equal(next.model,'gpt-6-luna');assert.equal(next.effort,'max');assert.equal(next.serviceTier,'default');
+});
+
+test('压缩模型切换或启动失败也恢复原设置；恢复失败则关闭连接避免污染后续回答',async t=>{
+ for(const failure of ['select','compact','restore']){
+  const {p,note,item,events}=astraFixture(t),calls=[];
+  p.rpc.request=async(method,params)=>{
+   calls.push({method,params});
+   if((failure==='select'&&params.model==='gpt-6.1-sol')||
+      (failure==='compact'&&method==='thread/compact/start')||
+      (failure==='restore'&&params.model==='gpt-6-astra'))throw Error('测试失败');
+   return {};
+  };
+  p.compact();await flush();
+  if(failure==='restore'){
+   note('item/completed',{item});note('turn/completed',{turn:{id:'compact',status:'completed'}});
+  }
+  await flush();
+  assert.ok(calls.some(x=>x.method==='thread/settings/update'&&x.params.model==='gpt-6-astra'));
+  assert.equal(p.isBusy,false);assert.equal(p.isExited,failure==='restore');
+  assert.equal(events.filter(e=>e.kind==='result').length,1);
+  assert.equal(events.find(e=>e.kind==='result').isError,true);
+  if(failure==='select')assert.equal(calls.some(x=>x.method==='thread/compact/start'),false);
+  if(failure==='restore')assert.equal(p.sendUserMessage('不得继续使用临时模型'),false);
+ }
+});
+
+test('沿用会话选项、未知原档位、缺失模型或不支持同一速度时不切换压缩模型',async t=>{
+ for(const mode of ['session','unknown-effort','no-model','unsupported-speed','unsupported-effort']){
+  const {p}=astraFixture(t),calls=[];
+  if(mode==='session')p.opts.compactionMode='session';
+  if(mode==='unknown-effort'){p.activeEffort=undefined;p.lastDispatched.effort='default';}
+  if(mode==='no-model')p.models=[];
+  if(mode==='unsupported-speed'){await p.setSpeedMode('fast');p.models[0].speedModes=['default'];}
+  if(mode==='unsupported-effort')p.models[0].efforts=['medium'];
+  p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+  p.compact();await flush();
+  assert.equal(calls.length,2);assert.equal(calls[0].params.model,undefined);
+  assert.equal(calls[0].params.serviceTier,mode==='unsupported-speed'?'priority':'default');
+ }
+});
+
+test('从 CLI 返回值恢复未显式选择的推理档位，不把默认推理永久变成 xhigh',async t=>{
+ const {p,note,item}=astraFixture(t),calls=[];
+ p.lastDispatched.effort='default';p.activeEffort='low';
+ p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+ p.compact();await flush();note('item/completed',{item});
+ note('turn/completed',{turn:{id:'compact',status:'completed'}});await flush();
+ assert.equal(calls[2].params.effort,'low');
+});
+
+test('等待模型目录时停止，不会在停止后切模型或发起压缩',async t=>{
+ const {p}=astraFixture(t);let release;const calls=[];
+ p.modelsReady=new Promise(r=>{release=r;});
+ p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+ p.compact();await p.interrupt();release();await flush();
+ assert.deepEqual(calls,[]);assert.equal(p.isExited,true);
+});
+
+test('Astra 自动压缩仍使用当前轮设置，不触发手动模型优化',t=>{
+ const {p,note,item,logs}=astraFixture(t);p.busy=true;
+ p.rpc.request=()=>{throw Error('自动压缩不应额外调用 RPC');};
+ note('item/started',{item});note('item/completed',{item});
+ assert.equal(logs().at(-1).model,'gpt-6-astra');assert.equal(p.compactionRestore,undefined);
+ assert.equal(p.isBusy,true);
+});
+
 test('手动压缩分别记录受理、开始、重试、用量和完成，完成前不释放会话',async t=>{
  const {p,events,note,item,logs,usage}=fixture(t);
  usage(80000);p.compact();await flush();

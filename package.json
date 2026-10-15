@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.120",
+  "version": "0.1.122",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -273,6 +273,19 @@
           "type": "boolean",
           "default": true,
           "description": "将插件启动的 Codex 请求耗时与用量诊断收集到本机日志，用于排查压缩延迟；不保存提示词、工具输出或凭据。仅为该子进程覆盖 OTel 日志/指标导出地址，不修改全局配置，不开启已禁用的 analytics。已有自定义 OTel 导出需求时可关闭；下次连接生效。"
+        },
+        "codexChat.compactionMode": {
+          "type": "string",
+          "enum": [
+            "balanced",
+            "session"
+          ],
+          "default": "balanced",
+          "enumDescriptions": [
+            "Astra 会话手动压缩时使用 GPT-6.1-Sol xhigh，完成后恢复原模型和推理设置。",
+            "手动压缩也沿用会话模型与推理设置。"
+          ],
+          "description": "平衡模式在本机长会话样本中比 Astra 压缩更快，事实保留检查通过；压缩仍可能丢失细节。普通/快速档位始终跟随会话，其他模型和轮次中的自动压缩保持原行为。账号不支持所需模型或档位时沿用会话模型。下次连接生效。"
         },
         "codexChat.executionMode": {
           "type": "string",
