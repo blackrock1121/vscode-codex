@@ -2,20 +2,26 @@ import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
 import { DiagnosticJobs } from './jobs';
 import { DiagnosticOptions, DEFAULT_DIAGNOSTIC_OPTIONS, diagnosticOptions } from './options';
-import type { ModelChoice } from '../shared';
-export interface DiagnosticConfiguration { models: ModelChoice[]; options: DiagnosticOptions }
+import type { DiagnosticConfiguration } from './configuration';
 
 export class DiagnosticsPage {
   private panel?: vscode.WebviewPanel;
   private selected?: string;
   private refreshSequence = 0;
-  private readonly changed = () => { if (this.panel) void this.refresh(); };
+  private selectionSequence = 0;
+  private refreshTimer?: NodeJS.Timeout;
+  private readonly changed = () => {
+    if (!this.panel || this.refreshTimer) return;
+    this.refreshTimer = setTimeout(() => { this.refreshTimer = undefined; void this.refresh(); }, 75);
+    this.refreshTimer.unref();
+  };
   constructor(private readonly context: vscode.ExtensionContext, private readonly jobs: DiagnosticJobs,
     private readonly repair: (id: string) => Promise<void>, private readonly settings: () => Promise<void>,
-    private readonly configuration?: { load: () => Promise<DiagnosticConfiguration>; save: (options: DiagnosticOptions) => Promise<void> }) {
+    private readonly configuration?: { load: (forceModels?: boolean) => Promise<DiagnosticConfiguration>; save: (options: DiagnosticOptions) => Promise<void> }) {
     jobs.on('changed', this.changed);
   }
   show(start = true): void {
+    const existed = !!this.panel;
     if (this.panel) this.panel.reveal(this.panel.viewColumn);
     else {
       const panel = vscode.window.createWebviewPanel('codex-chat.diagnostics', '插件诊断中心', vscode.ViewColumn.Active,
@@ -23,11 +29,11 @@ export class DiagnosticsPage {
       this.panel = panel;
       const nonce = randomUUID().replace(/-/g, '');
       panel.webview.html = diagnosticsHtml(nonce, panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diagnostics.js')).toString());
-      panel.onDidDispose(() => { if (this.panel === panel) this.panel = undefined; });
+      panel.onDidDispose(() => { if (this.panel === panel) { this.panel = undefined; this.selectionSequence++; clearTimeout(this.refreshTimer); this.refreshTimer = undefined; } });
       panel.webview.onDidReceiveMessage(message => { void this.message(message).catch(error => this.error(error)); });
     }
     if (start) void this.begin().catch(error => this.error(error));
-    else void this.refresh();
+    else if (existed) void this.refresh();
   }
   private async begin(settings?: unknown): Promise<void> {
     const options = diagnosticOptions(settings ?? (this.configuration ? (await this.configuration.load()).options : DEFAULT_DIAGNOSTIC_OPTIONS));
@@ -38,20 +44,32 @@ export class DiagnosticsPage {
   }
   private async message(message: { type?: string; id?: string; options?: unknown }): Promise<void> {
     switch (message?.type) {
-      case 'ready':
+      case 'ready': {
+        const panel = this.panel;
         await this.refresh();
-        if (this.configuration) void this.configuration.load().then(config => this.panel?.webview.postMessage({ type: 'configuration', ...config })).catch(error => this.error(error));
+        if (this.configuration) void this.configuration.load().then(config => { if (this.panel === panel) panel?.webview.postMessage({ type: 'configuration', ...config }); }).catch(error => { if (this.panel === panel) this.error(error); });
         break;
+      }
       case 'refresh': await this.refresh(); break;
       case 'start': await this.begin(message.options); break;
       case 'configure': await this.configuration?.save(diagnosticOptions(message.options)); break;
-      case 'reloadModels': if (this.configuration) this.panel?.webview.postMessage({ type: 'configuration', ...await this.configuration.load() }); break;
+      case 'reloadModels': {
+        const panel = this.panel;
+        if (this.configuration) {
+          const config = await this.configuration.load(true);
+          if (panel === this.panel) panel?.webview.postMessage({ type: 'configuration', ...config });
+        }
+        break;
+      }
       case 'cancel': await this.jobs.cancel(message.id!); break;
       case 'select': {
-        const record = await this.jobs.get(message.id!); this.selected = record.id;
+        const selection = ++this.selectionSequence, panel = this.panel;
+        const record = await this.jobs.get(message.id!);
+        if (selection !== this.selectionSequence || panel !== this.panel) break;
+        this.selected = record.id;
         if (record.status !== 'completed') { await this.refresh(); break; }
         const report = await this.jobs.report(record.id);
-        this.panel?.webview.postMessage({ type: 'detail', id: record.id, report }); break;
+        if (selection === this.selectionSequence && panel === this.panel) panel?.webview.postMessage({ type: 'detail', id: record.id, report }); break;
       }
       case 'repair': await this.repair(message.id!); await this.refresh(); break;
       case 'notify': await this.jobs.retryNotification(message.id!); await this.refresh(); break;
@@ -59,18 +77,19 @@ export class DiagnosticsPage {
     }
   }
   private async refresh(): Promise<void> {
+    const panel = this.panel; if (!panel) return;
     const sequence = ++this.refreshSequence;
     try {
       const records = await this.jobs.list();
-      if (sequence !== this.refreshSequence) return;
+      if (sequence !== this.refreshSequence || panel !== this.panel) return;
       if (!records.some(r => r.id === this.selected)) this.selected = records[0]?.id;
-      this.panel?.webview.postMessage({ type: 'state', records, selectedId: this.selected, workspaceId: this.jobs.scope.workspaceId });
+      panel.webview.postMessage({ type: 'state', records, selectedId: this.selected, workspaceId: this.jobs.scope.workspaceId });
     } catch (error) { this.error(error); }
   }
   private error(error: unknown): void {
     this.panel?.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : '操作未完成，请重试。' });
   }
-  dispose(): void { this.jobs.off('changed', this.changed); this.panel?.dispose(); }
+  dispose(): void { this.jobs.off('changed', this.changed); clearTimeout(this.refreshTimer); this.refreshTimer = undefined; this.panel?.dispose(); }
 }
 
 export function diagnosticsHtml(nonce: string, script: string): string {

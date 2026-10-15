@@ -13,8 +13,8 @@ export interface DiagnosticCoverage {
   windows: number; sessions: number; fromMs?: number; toMs?: number; firstDay?: string; lastDay?: string; sources: DiagnosticSource[];
   requestedFromMs?: number; requestedToMs?: number; includedLines?: number; outsideRangeLines?: number; unknownTimeLines?: number;
 }
-export interface DiagnosticModelAnalysis { status: 'completed' | 'failed'; model: string; effort: string; message?: string; durationMs: number }
-export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[]; summary: DiagnosticSummary; sourceNote: string; coverage?: DiagnosticCoverage; general?: GeneralSummary; modelAnalysis?: DiagnosticModelAnalysis }
+export interface DiagnosticModelAnalysis { status: 'completed' | 'failed'; model: string; effort: string; message?: string; durationMs: number; evidenceSent?: number; evidenceOmitted?: number }
+export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[]; summary: DiagnosticSummary; sourceNote: string; coverage?: DiagnosticCoverage; general?: GeneralSummary; modelAnalysis?: DiagnosticModelAnalysis; compactionEvidence?: Record<string, string | number>[] }
 const n = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
 const failureCategories = new Set(['command_not_found', 'missing_dependency', 'architecture_mismatch', 'permission', 'timeout',

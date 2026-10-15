@@ -101,3 +101,31 @@ test('模型目录失败仍可切换本地规则，模型失败记录显示本�
  emit({type:'state',records:[{...record,options:{kind:'general',hours:24,engine:'model',model:'model-a',effort:'high'},general:{errors:3,warnings:2,compactionErrors:1,retries:2,recoveries:1},modelAnalysis:{status:'failed',model:'model-a',effort:'high',durationMs:2000,message:'后端拒绝'}}],selectedId:record.id,workspaceId:'project-a'});
  const text=w.document.getElementById('detail').textContent;assert.match(text,/错误 3 条/);assert.match(text,/压缩错误 1 条/);assert.match(text,/失败，本地检查结果已保留/);assert.match(text,/model-a \/ high/);assert.deepEqual(errors,[]);
 });
+
+test('迟到模型目录不覆盖用户刚选的规则和时间范围，离线状态也能恢复已保存设置',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ const engine=w.document.getElementById('diagnostic-engine'),hours=w.document.getElementById('diagnostic-hours');
+ engine.value='rules';engine.dispatchEvent(new w.Event('change'));hours.value='168';hours.dispatchEvent(new w.Event('change'));
+ emit({type:'configuration',models:[{id:'model-a',name:'Model A',efforts:['medium'],defaultEffort:'medium'}],options:{kind:'general',hours:24,engine:'model',model:'model-a',effort:'medium'}});
+ assert.equal(engine.value,'rules');assert.equal(hours.value,'168');assert.equal(w.document.getElementById('start').disabled,false);
+ w.document.getElementById('start').click();assert.equal(sent.find(m=>m.type==='start').options.engine,'rules');assert.equal(sent.find(m=>m.type==='start').options.hours,168);assert.deepEqual(errors,[]);
+ const fresh=setup(t);fresh.emit({type:'configuration',models:[],options:{kind:'general',hours:168,engine:'rules'},error:'模型目录离线'});
+ assert.equal(fresh.w.document.getElementById('diagnostic-engine').value,'rules');assert.equal(fresh.w.document.getElementById('start').disabled,false);assert.match(fresh.w.document.getElementById('banner').textContent,/离线/);
+});
+
+test('报告展开后后台状态更新不会自动折叠，展示模型实际输入证据数量',async t=>{
+ const {w,emit}=setup(t);const completed={...record,modelAnalysis:{status:'completed',model:'model-a',effort:'high',durationMs:300,evidenceSent:60,evidenceOmitted:20}};
+ emit({type:'state',records:[completed],selectedId:record.id,workspaceId:'project-a'});const details=w.document.querySelector('#detail details');details.open=true;
+ emit({type:'state',records:[completed],selectedId:record.id,workspaceId:'project-a'});assert.equal(w.document.querySelector('#detail details').open,true);assert.match(w.document.getElementById('detail').textContent,/60 组分类证据/);assert.match(w.document.getElementById('detail').textContent,/20 组仅保留在本地/);
+});
+
+test('短时间多次诊断更新合并一次刷新，旧选择迟到不切回已离开的记录',async t=>{
+ const b={...record,id:'22222222-2222-4222-8222-222222222222'},c={...record,id:'33333333-3333-4333-8333-333333333333'};
+ const jobs=new EventEmitter();let lists=0,resolveB,resolveC;
+ Object.assign(jobs,{scope:{workspaceId:'project-a'},list:async()=>{lists++;return [record,b,c];},get:id=>new Promise(resolve=>{if(id===b.id)resolveB=()=>resolve(b);else resolveC=()=>resolve(c);}),report:async()=> '# 报告'});
+ const page=new DiagnosticsPage({extensionUri:'/extension'},jobs,async()=>{},async()=>{});t.after(()=>page.dispose());page.show(false);await new Promise(r=>setImmediate(r));const initial=lists;
+ for(let i=0;i<30;i++)jobs.emit('changed',record.id);
+ await new Promise(r=>setTimeout(r,125));assert.equal(lists,initial+1);
+ const first=page.message({type:'select',id:b.id}),second=page.message({type:'select',id:c.id});resolveC();await second;resolveB();await first;
+ await page.message({type:'refresh'});assert.equal(currentPanel.messages.at(-1).selectedId,c.id);
+});

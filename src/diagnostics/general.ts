@@ -6,7 +6,7 @@ import { redactDiagnosticText } from './redact';
 export interface GeneralSummary { errors: number; warnings: number; retries: number; recoveries: number; compactionErrors: number; groups: number; overflow: number }
 export interface LogLocation { file: string; line: number; atMs?: number; pluginVersion?: string; windowId?: string; traceId?: string }
 interface Incident { category: string; severity: 'warning' | 'error'; title: string; message: string }
-const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|\b(?:ok|success)\s*[:=]\s*false\b|\bisError\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应/i;
+const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|(?:\b(?:ok|success)|"(?:ok|success)")\s*[:=]\s*false\b|(?:\bisError|"isError")\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应/i;
 const warning = /\b(?:warn(?:ing)?|retry|fallback|reconnect(?:ing)?)\b|重试|降级|警告|重连/i;
 const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '压缩' : /webview|脚本|渲染|布局/i.test(line) ? '页面脚本' :
   /snapshot|checkpoint|快照|还原点/i.test(line) ? '快照与还原点' : /restore|resume|恢复/i.test(line) ? '会话恢复' :
@@ -15,19 +15,24 @@ const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '�
 
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
   if (row) {
-    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route';
+    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' || /compact/i.test(String(row.method ?? ''));
     const stage = String(row.stage ?? row.event ?? ''), outcome = String(row.outcome ?? row.status ?? '');
     const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
       row.success === false || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
     const retry = stage === 'retry' || row.event === 'retry';
     const fallback = /fallback|restore_pending|unavailable/.test(stage) || /unavailable/.test(outcome) || row.type === 'runtime_error' && row.severity === 'warning';
     if (!failed && !retry && !fallback) return;
-    const category = compaction ? '压缩' : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' || row.type === 'runtime_error' ? '连接与进程' : '插件运行';
-    const detail = [row.diagnosticType, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.httpStatusCode, row.message].filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
+    const category = compaction ? '压缩' : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
+    const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
+    const detail = [row.diagnosticType, row.method, stage, outcome, row.errorCategory ?? row.failureCategory,
+      httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
+      row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`), row.message]
+      .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
     return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };
   }
-  const signal = line.replace(/\b(?:failed|failures?|errors?|errorCount|failedCount)\s*[:=]\s*(?:0|false|null)\b/gi, '')
-    .replace(/"(?:isError|error|errors|failures|failed)"\s*:\s*(?:0|false|null)\b/gi, '').replace(/\b0\s+(?:errors?|warnings?|failures?)\b/gi, '');
+  const signal = line.replace(/\b(?:failed|failures?|errors?|warnings?|errorCount|failedCount)\s*[:=]\s*(?:0|false|null)\b/gi, '')
+    .replace(/"(?:isError|error|errors|warnings?|failures|failed)"\s*:\s*(?:(?:0|false|null)\b|\[\s*\])/gi, '').replace(/\b0\s+(?:errors?|warnings?|failures?)\b/gi, '');
   if (!bad.test(signal) && !warning.test(signal)) return;
   // 用户主动取消不是内部错误；原有错误仍通过其它记录呈现。
   if (/用户.*(?:取消|停止)|user.*(?:cancel|interrupt)|outcome[=:]cancelled/i.test(line)) return;
@@ -45,11 +50,24 @@ export class GeneralAccumulator {
     if (incident.severity === 'error') this.counts.errors++; else this.counts.warnings++;
     if (/retry|重试/i.test(String(row?.stage ?? row?.event ?? line))) this.counts.retries++;
     if (incident.category === '压缩' && incident.severity === 'error') this.counts.compactionErrors++;
-    const signature = incident.message.replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>').replace(/\b\d+(?:\.\d+)?(?:ms|s|秒)?\b/g, '<n>');
+    const signature = incident.message.replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>')
+      .replace(/\b(?:attempt|elapsedMs|durationMs|requestId|request_id|retry)\s*[:=]?\s*\d+(?:\.\d+)?/gi, match => match.replace(/\d+(?:\.\d+)?$/, '<n>'))
+      .replace(/\b\d+(?:\.\d+)?(?:ms|秒)\b/g, '<duration>');
     const id = createHash('sha256').update(incident.category + incident.severity + signature).digest('hex').slice(0, 12);
     let group = this.groups.get(id);
     if (!group) {
-      if (this.groups.size >= 160) { this.counts.overflow++; return; }
+      if (this.groups.size >= 160) {
+        const entries = [...this.groups];
+        let replace = incident.severity === 'error' ? entries.filter(([, g]) => g.incident.severity === 'warning').sort(([, a], [, b]) => a.count - b.count)[0] : undefined;
+        if (!replace && !entries.some(([, g]) => g.incident.category === incident.category)) {
+          const categories = new Map<string, number>();
+          for (const [, g] of entries) categories.set(g.incident.category, (categories.get(g.incident.category) ?? 0) + 1);
+          replace = entries.filter(([, g]) => (categories.get(g.incident.category) ?? 0) > 1 && (incident.severity === 'error' || g.incident.severity === 'warning'))
+            .sort(([, a], [, b]) => categories.get(b.incident.category)! - categories.get(a.incident.category)! || a.count - b.count)[0];
+        }
+        if (!replace) { this.counts.overflow++; return; }
+        this.groups.delete(replace[0]); this.counts.overflow += replace[1].count;
+      }
       group = { incident, count: 0, examples: [], traces: new Set() }; this.groups.set(id, group);
     }
     group.count++;

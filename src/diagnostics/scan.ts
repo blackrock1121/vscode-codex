@@ -21,7 +21,7 @@ class ReportSamples {
   add(row: PerformanceRow): void {
     if (row.event === 'turn_summary') this.buckets.set('heartbeat', (this.buckets.get('heartbeat') ?? []).filter(r => r.traceId !== row.traceId));
     const event = String(row.event);
-    const key = row.diagnosticType === 'compaction' ? 'compaction' : row.type === 'rpc' && row.stage === 'end' ? 'rpc' :
+    const key = ['compaction', 'compaction_route'].includes(String(row.diagnosticType)) ? 'compaction' : row.type === 'rpc' && row.stage === 'end' ? 'rpc' :
       event === 'span_end' ? `span-${row.kind}` : event;
     const limit = Object.hasOwn(SAMPLE_LIMITS, key) ? SAMPLE_LIMITS[key] : 0; if (!limit) return;
     const bucket = this.buckets.get(key) ?? []; bucket.push(row);
@@ -37,6 +37,21 @@ class ReportSamples {
     this.buckets.set(key, bucket);
   }
   rows(): PerformanceRow[] { return [...this.buckets.values()].flat(); }
+}
+
+/** 只识别行首时间；优先毫秒级本地观测，不能把错误正文中的旧日期当成日志时间。 */
+export function diagnosticLogTime(line: string, file: string, row?: PerformanceRow): number | undefined {
+  const prefix = /^(?:\[(\d\d):(\d\d):(\d\d)\]\s*)?(?:\[pluginVersion=[^\]]+\]\s*)?(?:\[(\d{4}-\d\d-\d\dT[^\]]+)\]\s*)?/.exec(line)!;
+  const valid = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= 8640000000000000;
+  const iso = prefix[4] ? Date.parse(prefix[4]) : undefined;
+  if (valid(iso)) return iso;
+  for (const value of [row?.receivedAtMs, row?.atMs]) if (valid(value)) return value;
+  if (prefix[1] && Number(prefix[1]) < 24 && Number(prefix[2]) < 60 && Number(prefix[3]) < 60) {
+    const [y, m, d] = file.match(LOG_NAME)![1].split('-').map(Number);
+    const clock = new Date(y, m - 1, d, Number(prefix[1]), Number(prefix[2]), Number(prefix[3])).getTime();
+    if (valid(clock)) return clock;
+  }
+  return valid(row?.sourceTimeMs) ? row.sourceTimeMs : undefined;
 }
 
 /** 扫描开始时存在的全部日文件及各自长度快照，避免追随持续追加而永不结束。 */
@@ -68,16 +83,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
         row = { ...parsed, diagnosticType: match[1], ...meta };
       } catch { invalid = true; }
     } else if (/\[(perf|transport|compaction|compaction_route)\] /.test(line)) invalid = true;
-    const clock = line.match(/^\[(\d\d):(\d\d):(\d\d)\]/), day = file.match(LOG_NAME)?.[1];
-    const iso = line.slice(0, 600).match(/\[(\d{4}-\d\d-\d\dT[^\]]+)\]/);
-    let loggedAt = iso ? Date.parse(iso[1]) : undefined;
-    if (!Number.isFinite(loggedAt) && clock && day) {
-      const [y, m, d] = day.split('-').map(Number);
-      loggedAt = new Date(y, m - 1, d, Number(clock[1]), Number(clock[2]), Number(clock[3])).getTime();
-    }
-    if (!Number.isFinite(loggedAt)) loggedAt = undefined;
-    const candidate = loggedAt ?? row?.receivedAtMs ?? row?.atMs ?? row?.sourceTimeMs;
-    const at = typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0 && candidate <= 8640000000000000 ? candidate : undefined;
+    const day = file.match(LOG_NAME)![1], at = diagnosticLogTime(line, file, row);
     if (request?.fromMs !== undefined && at === undefined) {
       const [y, m, d] = day!.split('-').map(Number), start = new Date(y, m - 1, d).getTime(), end = new Date(y, m - 1, d + 1).getTime();
       if (end <= request.fromMs || start > request.toMs) coverage.outsideRangeLines!++;
@@ -153,5 +159,8 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     '## 全量版本与窗口统计', '', '| 插件版本 | 窗口 | 宿主 | 日志行 | 结构化记录 | 轮次 | 工具 | 失败 |', '| --- | --- | --- | --- | --- | --- | --- | --- |',
     ...coverage.sources.map(s => `| ${cell(s.pluginVersion)} | ${cell(s.windowId)} | ${cell(s.hostId)} | ${s.logLines ?? s.records} | ${s.records} | ${s.turns} | ${s.tools} | ${s.failures} |`), '',
     '## 代表性明细', '', '上述统计和问题检测处理了全部有效记录；以下仅展示有限的最慢项与近期示例，以控制报告大小，不代表只分析了这些示例。', ''];
-  return { ...analyzed, coverage, sourceNote, general: generic?.summary, report: overview.join('\n') + '\n' + (generic ? generic.report + '\n\n' : '') + performanceReport(samples.rows(), '明细展示经过筛选；全量统计以上方全局汇总为准。') };
+  const compactionEvidence = samples.rows().filter(row => ['compaction', 'compaction_route'].includes(String(row.diagnosticType))).slice(-20)
+    .map(row => Object.fromEntries(['stage', 'model', 'fromModel', 'toModel', 'effort', 'trigger', 'speedMode', 'serviceTier', 'outcome', 'errorCategory', 'httpStatusCode', 'elapsedMs']
+      .filter(key => typeof row[key] === 'string' || typeof row[key] === 'number').map(key => [key, row[key] as string | number])));
+  return { ...analyzed, coverage, sourceNote, general: generic?.summary, compactionEvidence, report: overview.join('\n') + '\n' + (generic ? generic.report + '\n\n' : '') + performanceReport(samples.rows(), '明细展示经过筛选；全量统计以上方全局汇总为准。') };
 }

@@ -49,11 +49,11 @@ test('空日志明确没有证据，不扫描别的文件', async t => {
 });
 
 test('全局诊断可从其他源码工作区创建修复会话，结果持久化并通知覆盖范围', async t => {
- const root = await dir(t);
+ const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-full-scan-'));
  const coverage = { mode: 'local-plugin-full', windows: 3, sessions: 8, files: 7, readFiles: 7, records: 100, sources: [] };
  const output = { report: '# 全局证据', sourceNote: '全部日志', coverage, findings: [{ id: 'slow', title: '慢', severity: 'warning', evidence: '证据', recommendation: '检查', traceIds: [] }], summary: { turns: 50, tools: 100, failures: 1, longestTurnMs: 50000, versions: ['0.1.128'] } };
  const make = workspaceId => new DiagnosticJobs(root, { workspaceId, workspaceName: workspaceId, windowId: workspaceId, pluginVersion: '0.1.129' }, async () => output, async () => ({ status: 'sent' }));
- const origin = make('business'), source = make('plugin-source'); t.after(async () => { await origin.dispose(); await source.dispose(); });
+ const origin = make('business'), source = make('plugin-source'); t.after(async () => { await origin.dispose(); await source.dispose(); await fs.rm(root, { recursive: true, force: true }); });
  const running = await origin.start();
  const record = await new Promise((resolve, reject) => {
   const timer = setTimeout(() => { origin.off('changed', check); reject(new Error('诊断未完成')); }, 5000);
