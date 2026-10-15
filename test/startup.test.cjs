@@ -121,6 +121,55 @@ test('关闭提前连接设置时不启动；主动发送仍可正常建立会�
   assert.equal(f.ctx.sessionId, 'thread-1');
 });
 
+test('首次发送后立即结束创建提示，首个输出前显示等待响应；续轮同样切换', async t => {
+  const f = await fixture(t);
+  await f.provider.handleSend(f.ctx, 'wait');
+  const p = f.ctx.proc;
+  await until(() => !!p.turnId);
+  const labels = f.events.filter(e => e.kind === 'status').map(e => e.label);
+  assert.ok(labels.includes('正在创建 Codex 会话…'));
+  assert.equal(labels.at(-1), '等待 Codex 响应…');
+  assert.equal(f.events.some(e => ['text_delta', 'thinking_delta', 'result'].includes(e.kind)), false);
+  assert.equal(p.isBusy, true);
+  await p.interrupt(); await until(() => !p.isBusy);
+  f.events.length = 0;
+  assert.equal(p.sendUserMessage('wait'), true);
+  await until(() => !!p.turnId);
+  assert.equal(f.events.filter(e => e.kind === 'status').at(-1).label, '等待 Codex 响应…');
+});
+
+test('快速模式目录校验期间不冒充已发送，校验完成后才切换到等待响应', async t => {
+  const f = await fixture(t, { TEST_DEFER_MODELS: '1' }), p = f.create({ speedMode: 'fast' });
+  await p.start();
+  assert.equal(p.sendUserMessage('wait'), true);
+  assert.equal(f.events.filter(e => e.kind === 'status').at(-1).label, '正在确认模型速度档位…');
+  assert.equal((await f.read()).some(m => m.method === 'turn/start'), false);
+  await p.rpc.request('release-models'); await until(() => !!p.turnId);
+  assert.equal(f.events.filter(e => e.kind === 'status').at(-1).label, '等待 Codex 响应…');
+});
+
+test('目录校验期间停止后，迟到的目录不得补发等待响应状态或请求', async t => {
+  const f = await fixture(t, { TEST_DEFER_MODELS: '1' }), p = f.create({ speedMode: 'fast' });
+  await p.start(); p.sendUserMessage('wait'); await p.interrupt();
+  const statuses = f.events.filter(e => e.kind === 'status');
+  await p.rpc.request('release-models'); await until(() => f.events.some(e => e.kind === 'models'));
+  assert.deepEqual(f.events.filter(e => e.kind === 'status'), statuses);
+  assert.equal((await f.read()).some(m => m.method === 'turn/start'), false);
+  assert.equal(p.isBusy, false);
+});
+
+test('发送提示早于输出，快速完成后的回执不会再补发等待提示', async t => {
+  const f = await fixture(t), p = f.create();
+  await p.start(); p.sendUserMessage('1');
+  await until(() => f.events.some(e => e.kind === 'result'));
+  await p.startingTurn;
+  const waiting = f.events.findIndex(e => e.kind === 'status' && e.label === '等待 Codex 响应…');
+  const firstOutput = f.events.findIndex(e => e.kind === 'text_delta');
+  assert.ok(waiting >= 0 && waiting < firstOutput);
+  assert.equal(f.events.slice(firstOutput).some(e => e.kind === 'status'), false);
+  assert.equal(p.isBusy, false);
+});
+
 test('文件保存期间停止首轮，不创建会话、不发起生成；连接可用于下次发送', async t => {
   const f = await fixture(t, {}, { autosave: true });
   let release;

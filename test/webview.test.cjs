@@ -1160,6 +1160,24 @@ function manualSeconds(w){
  w.setInterval=f=>{intervals.set(++next,f);return next;};w.clearInterval=id=>intervals.delete(id);
  return seconds=>{now+=seconds*1000;[...intervals.values()].forEach(f=>f());};
 }
+test('创建完成后等待首个输出显示响应等待，累计耗时和真实进展计时不中断',t=>{
+ const {w,emit,errors}=setup(t);const advance=manualSeconds(w);
+ emit({kind:'busy',busy:true});
+ emit({kind:'status',label:'正在创建 Codex 会话…'});advance(1);
+ emit({kind:'session',sessionId:'ready',cwd:'/tmp',model:'test-model',tools:[],resumed:false});
+ emit({kind:'busy',busy:true});emit({kind:'status',label:'等待 Codex 响应…'});advance(5);
+ assert.equal(w.document.querySelector('.wk-label').textContent,'等待 Codex 响应…');
+ assert.equal(w.document.querySelector('.wk-time').textContent,'本轮总耗时 6秒');
+ assert.equal(w.document.querySelector('.wk-progress').textContent,'尚未收到任务进展 · 已等待 6秒');
+ assert.match(w.document.querySelector('.wk-tokens').textContent,/待回传/);
+ emit({kind:'block_start',blockType:'thinking'});emit({kind:'thinking_delta',text:'思考进展'});advance(2);
+ assert.equal(w.document.querySelector('.wk-label').textContent,'模型思考中…');
+ assert.equal(w.document.querySelector('.wk-progress').textContent,'距最近进展 2秒 · 收到思考进展');
+ emit({kind:'tool_input',toolId:'ready-tool',name:'Read',input:{file_path:'/tmp/example'}});
+ assert.equal(w.document.querySelector('.wk-label').textContent,'正在执行工具…');
+ emit({kind:'busy',busy:false});advance(5);
+ assert.equal(w.document.querySelector('.working-pill'),null);assert.deepEqual(errors,[]);
+});
 test('九十六分钟长任务分开展示总耗时与最近思考进展，不靠动画虚构状态',t=>{
  const {w,emit,errors}=setup(t);const advance=manualSeconds(w);
  emit({kind:'busy',busy:true});advance(96*60);

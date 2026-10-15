@@ -238,6 +238,7 @@ export class CodexProcess {
     // 固定本轮参数，等待目录期间的模式切换只影响下一轮。
     const params = { threadId: this.sessionId, input, serviceTier: speedServiceTier(speed), model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy };
     this.waitingForCatalog = speed !== 'default' && !this.modelsLoaded;
+    if (this.waitingForCatalog) this.emit({ kind: 'status', label: '正在确认模型速度档位…' });
     const dispatch = async () => {
       if (speed !== 'default') await this.modelsReady;
       if (sequence !== this.dispatchSequence || !this.busy || this.exited) return;
@@ -246,6 +247,9 @@ export class CodexProcess {
         throw new Error(`无法确认当前账号的模型「${model}」支持${speedLabel(speed)}模式。请改用普通模式、选择提供该档位的模型，或更新 Codex CLI 后重试。`);
       this.emit({ kind: 'diag', message: `[dispatch] model=${model} speed=${speed} effort=${params.effort ?? 'default'} 目录等待${Date.now() - this.beganAt}ms` });
       this.lastDispatched = { model, speedMode: speed, effort: params.effort ?? 'default' };
+      // busy:true 会保留已有阶段；必须在实际发送时结束“创建/连接会话”提示。
+      // 不在异步回执中更新，避免覆盖先到达的思考、工具或完成状态。
+      this.emit({ kind: 'status', label: '等待 Codex 响应…' });
       return this.timedRequest('turn/start', params);
     };
     this.startingTurn = dispatch().then(r => {
