@@ -1592,3 +1592,15 @@ test('权限图标即时显示当前模式说明，切换更新且打开菜单�
  assert.doesNotMatch(tip.textContent,/绕过权限/);
  assert.deepEqual(errors,[]);
 });
+
+test('权限按钮旁的诊断入口在任务执行期间仍可打开报告，保留输入草稿',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ const button=w.document.getElementById('diagnostics-trigger');
+ assert.equal(w.document.getElementById('mode-trigger').nextElementSibling,button);
+ assert.equal(button.getAttribute('type'),'button');assert.equal(button.getAttribute('aria-label'),'打开速度诊断报告');
+ const input=w.document.getElementById('input');input.value='尚未发送的草稿';
+ emit({kind:'busy',busy:true});button.click();
+ assert.equal(sent.filter(m=>m.type==='performanceReport').length,1);
+ assert.equal(sent.some(m=>m.type==='send'),false);assert.equal(input.value,'尚未发送的草稿');
+ assert.equal(button.disabled,false);assert.deepEqual(errors,[]);
+});

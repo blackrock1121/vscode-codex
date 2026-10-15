@@ -2,8 +2,9 @@ import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
+import { randomUUID } from "node:crypto";
 import { ChatViewProvider } from "./panel/chatViewProvider";
-import { DailyLogWriter } from "./logging";
+import { DailyLogWriter, LogIdentity } from "./logging";
 import { RemoteBridgeClient } from "./remote/bridgeClient";
 import { readPerformanceReport } from "./diagnosticsReport";
 
@@ -14,18 +15,15 @@ const LOG_DIR = path.join(os.homedir(), ".codex-chat", "logs");
 const logWriters = new Set<DailyLogWriter>();
 
 /** 包一层 OutputChannel：appendLine 同时落盘到固定目录。写盘失败静默（日志不能反噬功能）。 */
-function teeOutput(channel: vscode.OutputChannel): vscode.OutputChannel {
-  const writer = new DailyLogWriter(LOG_DIR);
+function teeOutput(channel: vscode.OutputChannel, identity: LogIdentity): vscode.OutputChannel {
+  const writer = new DailyLogWriter(LOG_DIR, identity, text => channel.append(text));
   logWriters.add(writer);
   // 窗口长期不重启、甚至没有新日志时，也要持续清理过期文件。
-  const pruneTimer = setInterval(() => writer.prune(), 60 * 60 * 1000);
+  const pruneTimer = setInterval(() => void writer.prune(), 60 * 60 * 1000);
   return {
     name: channel.name,
     append: (v) => channel.append(v),
-    appendLine: (v) => {
-      channel.appendLine(v);
-      writer.write(v);
-    },
+    appendLine: (v) => writer.write(v),
     replace: (v) => channel.replace(v),
     clear: () => channel.clear(),
     show: ((...args: unknown[]) => (channel.show as (...a: unknown[]) => void)(...args)) as vscode.OutputChannel["show"],
@@ -36,7 +34,10 @@ function teeOutput(channel: vscode.OutputChannel): vscode.OutputChannel {
 
 export function activate(context: vscode.ExtensionContext): void {
   if (!vscode.workspace.isTrusted) return;
-  const output = teeOutput(vscode.window.createOutputChannel("Codex Chat"));
+  // 捕获正在运行的扩展版本；其他窗口安装新版本不会改写此窗口的日志归属。
+  const identity: LogIdentity = { pluginVersion: String(context.extension.packageJSON.version ?? 'unknown'),
+    windowId: randomUUID(), hostId: String(process.pid) };
+  const output = teeOutput(vscode.window.createOutputChannel("Codex Chat"), identity);
   output.appendLine(`[boot] Codex Copilot v${(context.extension.packageJSON as { version?: string }).version ?? "?"} 日志目录 ${LOG_DIR}`);
   const provider = new ChatViewProvider(context, output);
   const registration = provider.remoteRegistration();
@@ -86,9 +87,9 @@ export function activate(context: vscode.ExtensionContext): void {
       const doc = await vscode.workspace.openTextDocument({ content, language: "markdown" });
       await vscode.window.showTextDocument(doc, { preview: true });
     }),
-    vscode.commands.registerCommand("codex-chat.openLogs", () => {
+    vscode.commands.registerCommand("codex-chat.openLogs", async () => {
       try {
-        fs.mkdirSync(LOG_DIR, { recursive: true });
+        await fs.promises.mkdir(LOG_DIR, { recursive: true });
       } catch { /* ignore */ }
       void vscode.env.openExternal(vscode.Uri.file(LOG_DIR));
     }),

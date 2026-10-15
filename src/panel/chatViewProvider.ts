@@ -989,6 +989,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "refreshUsage":
                     this.fetchUsage(true);
                     break;
+                case "performanceReport":
+                    await vscode.commands.executeCommand("codex-chat.performanceReport");
+                    break;
                 case "openSession":
                     await this.openSession(m.sessionId);
                     break;
@@ -4404,6 +4407,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">medium</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="speed-trigger" type="button" class="composer-pick speed-toggle" role="switch" aria-checked="false" aria-label="快速模式"><span class="speed-bolt" aria-hidden="true">${ICONS.fast}</span></button>
             <button id="mode-trigger" class="composer-pick" aria-haspopup="true" aria-label="选择权限模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
+            <button id="diagnostics-trigger" type="button" class="composer-pick" title="速度诊断报告" aria-label="打开速度诊断报告"><span class="pick-emoji" aria-hidden="true">${ICONS.debug}</span></button>
 
             <span class="composer-state">
               <button id="ctx-gauge" type="button" class="ctx-gauge hidden" aria-label="上下文使用量，点击压缩" aria-describedby="ctx-tooltip"><span class="cg-ring"><span class="cg-pct"></span></span><span id="ctx-tooltip" class="ctx-tooltip" role="tooltip"></span></button>

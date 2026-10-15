@@ -36,6 +36,7 @@ export const ICONS: Record<string, string> = {
   fork: _s('<circle cx="4.5" cy="3.9" r="1.7"/><circle cx="11.5" cy="3.9" r="1.7"/><circle cx="8" cy="12.1" r="1.7"/><path d="M4.5 5.6v.3a2.7 2.7 0 0 0 2.7 2.7h1.6a2.7 2.7 0 0 0 2.7-2.7v-.3"/><path d="M8 8.6v1.8"/>'),
   // four-point sparkle — the model picker's glyph
   fast: _s('<path d="M9 1.8 3.5 9H7l-.6 5.2L12.5 7H9z"/>'),
+  debug: _s('<path d="M6 3.5 4.5 2M10 3.5 11.5 2M5 6H2.5M11 6h2.5M5 9H2.5M11 9h2.5M5.5 12 3.5 14M10.5 12l2 2"/><rect x="5" y="3.5" width="6" height="9" rx="3"/><path d="M5 7h6M8 7v5.5"/>'),
   model: _s('<path d="M8 2.2 9.5 6.5 13.8 8 9.5 9.5 8 13.8 6.5 9.5 2.2 8 6.5 6.5z"/>'),
 
 };
@@ -280,6 +281,7 @@ export type FromWebview =
    *  否则（手动「检查更新」/自动轮询）只点亮横幅，不打断。 */
   | { type: "checkUpdate"; fromBanner?: boolean }
   | { type: "refreshUsage" }
+  | { type: "performanceReport" }
   | { type: "send"; text: string; queueMs?: number; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "excludeSnapshotPaths"; paths?: string[]; all?: boolean }
   /** 从 OS（Finder 等）拖入工作区外的文件/目录：webview 拿不到绝对路径，只能读出

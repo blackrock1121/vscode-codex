@@ -21,15 +21,25 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   }
   const toolEvents = rows.filter(r => r.event === 'codex.tool_result');
   const transport = rows.filter(r => ['codex.api_request', 'codex.websocket_request', 'codex.responses_api_timing'].includes(String(r.event)));
+  const sources = new Map<string, { version: unknown; window: unknown; host: unknown; traces: Set<unknown> }>();
+  for (const r of rows) {
+    const version = r.pluginVersion ?? '旧日志未标注', window = r.windowId ?? '未知', host = r.hostId ?? '未知';
+    const key = JSON.stringify([version, window, host]);
+    const source = sources.get(key) ?? { version, window, host, traces: new Set() };
+    if (r.traceId) source.traces.add(r.traceId);
+    sources.set(key, source);
+  }
+  const sourceLines = ['## 版本与窗口来源', '', '| 插件版本 | 窗口加载实例 | 扩展宿主进程 | 任务数 |', '| --- | --- | --- | --- |',
+    ...[...sources.values()].map(s => `| ${cell(s.version)} | ${cell(s.window)} | ${cell(s.host)} | ${s.traces.size} |`)];
   const text = ['# Codex 速度诊断', '', `生成时间：${new Date().toISOString()}`, sourceNote, '',
     '时长以插件观测为准。工具累计耗时可重叠，不能直接相加当作任务耗时；审批等待单独列出。模型输出阶段不等于纯推理耗时，“未归因等待”也不能直接认定为模型慢或调度慢。', '',
     `当前样本：${summaries.length} 轮完整汇总，${slowTools.length} 条工具结束记录，${toolEvents.length} 条 CLI 工具结果。`, '',
-    '## 每轮耗时（最近 40 轮，按耗时排序）', '',
-    '| 任务标识 | 模型 / effort | 总耗时 | 排队 | 首个活动事件 | 首个正文 | 工具数 / 失败 | 最大并行工具 / 子任务 | 子任务尾部等待 |',
-    '| --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
+    ...sourceLines, '', '## 每轮耗时（最近 40 轮，按耗时排序）', '',
+    '| 任务标识 | 插件版本 / 窗口 | 模型 / effort | 总耗时 | 排队 | 首个活动事件 | 首个正文 | 工具数 / 失败 | 最大并行工具 / 子任务 | 子任务尾部等待 |',
+    '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
   for (const r of [...summaries].sort((a, b) => Number(b.elapsedMs) - Number(a.elapsedMs))) {
     const s = starts.get(r.traceId);
-    text.push(`| ${cell(r.traceId)} | ${cell(s?.model)} / ${cell(s?.effort)} | ${seconds(r.elapsedMs)} | ${seconds(r.queueMs)} | ${seconds(r.firstEventMs)} | ${seconds(r.firstTextMs)} | ${r.toolCount} / ${r.failures} | ${r.maxParallelTools} / ${r.maxParallelAgents} | ${seconds(r.childTailMs)} |`);
+    text.push(`| ${cell(r.traceId)} | ${cell(r.pluginVersion ?? '未标注')} / ${cell(typeof r.windowId === 'string' ? r.windowId.slice(0, 8) : undefined)} | ${cell(s?.model)} / ${cell(s?.effort)} | ${seconds(r.elapsedMs)} | ${seconds(r.queueMs)} | ${seconds(r.firstEventMs)} | ${seconds(r.firstTextMs)} | ${r.toolCount} / ${r.failures} | ${r.maxParallelTools} / ${r.maxParallelAgents} | ${seconds(r.childTailMs)} |`);
   }
   if (!summaries.length) text.push('', '尚无完整任务样本。重载后运行任务即可自动采集；仍在运行的任务可查看下方心跳。');
   for (const r of [...summaries].sort((a, b) => Number(b.elapsedMs) - Number(a.elapsedMs)).slice(0, 5)) {
@@ -92,7 +102,12 @@ export async function readPerformanceReport(dir: string): Promise<string> {
       if (size > limit) { truncated = true; content = content.slice(content.indexOf('\n') + 1); }
       for (const line of content.split('\n')) {
         const match = line.match(/\[(perf|transport|compaction)\] (\{.*\})$/); if (!match) continue;
-        try { const row = JSON.parse(match[2]); if (row && typeof row === 'object' && !Array.isArray(row)) rows.push({ ...row, diagnosticType: match[1] }); } catch { /* 中断写入或旧日志 */ }
+        try {
+          const row = JSON.parse(match[2]);
+          const identity = line.slice(0, match.index).match(/\[pluginVersion=([\w.-]+) windowId=([\w.-]+) hostId=([\w.-]+)\]/);
+          if (row && typeof row === 'object' && !Array.isArray(row)) rows.push({ ...row, diagnosticType: match[1],
+            ...(identity ? { pluginVersion: identity[1], windowId: identity[2], hostId: identity[3] } : {}) });
+        } catch { /* 中断写入或旧日志 */ }
       }
     } finally { await handle.close(); }
   }

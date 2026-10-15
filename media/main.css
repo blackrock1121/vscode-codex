@@ -2096,10 +2096,12 @@ body.vscode-high-contrast-light #speed-trigger[aria-checked="true"] {
 .speed-tip-action { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--vscode-editorHoverWidget-border, rgba(128,128,128,.2)); color: var(--vscode-descriptionForeground); }
 
 /* Permission mode stays compact; its immediate tooltip carries the label. */
-#mode-trigger, .composer-tools.compact #mode-trigger {
+#mode-trigger, .composer-tools.compact #mode-trigger,
+#diagnostics-trigger, .composer-tools.compact #diagnostics-trigger {
   width: 26px; height: 26px; flex: 0 0 26px; padding: 0; gap: 0;
   justify-content: center;
 }
 #mode-trigger #mode-label, #mode-trigger .pick-caret { display: none; }
 #mode-trigger .pick-emoji { opacity: .85; }
 #mode-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+#diagnostics-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }

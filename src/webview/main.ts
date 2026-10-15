@@ -140,6 +140,7 @@ const questionInteractions = new Map<string, { resolve: (behavior: "allow" | "de
 const childQuestionIds = new Set<string>();
 const statusLine = $("status-line");
 const modeTrigger = $("mode-trigger");
+$("diagnostics-trigger").onclick = () => send({ type: "performanceReport" });
 const modeIcon = $("mode-icon");
 const modeLabel = $("mode-label");
 const modeMenu = $("mode-menu");
