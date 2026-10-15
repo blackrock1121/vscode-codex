@@ -1039,7 +1039,7 @@ test('快速能力缺失禁用开启，但始终允许从快速切回普通；�
  emit({kind:'config',model:'unsupported',effort:'medium',permissionMode:'default',speedMode:'fast'});
  assert.equal(trigger.getAttribute('aria-checked'),'true');assert.equal(trigger.disabled,false);
 });
-test('速度成功反馈不挤占聊天或改变焦点，连续切换只保留最新提示五秒',t=>{
+test('速度成功反馈不挤占聊天或改变焦点，连续切换只保留最新提示一秒',t=>{
  const {w,emit,errors}=setup(t),advance=manualTimeouts(w);
  const config={kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'default'};
  emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:[],speedModes:['default','fast']}]});
@@ -1058,13 +1058,13 @@ test('速度成功反馈不挤占聊天或改变焦点，连续切换只保留�
  assert.equal(messages.contains(feedback),false);assert.equal(messages.innerHTML,content);
  assert.equal(messages.scrollTop,100);assert.equal(w.document.activeElement,input);
  assert.equal(messages.querySelector('.working-pill'),working);
- advance(4999);assert.equal(feedback.hidden,false);
+ advance(999);assert.equal(feedback.hidden,false);
  trigger.click();assert.equal(feedback.hidden,true,'新请求期间撤下旧成功提示，避免与保存结果混淆');
  emit(config);emit({kind:'speed_mode_saved',mode:'default'});
  assert.equal(feedback.textContent,'普通模式 · 下轮生效');
  assert.equal(w.document.querySelectorAll('.speed-feedback').length,1);
  advance(1);assert.equal(feedback.hidden,false,'上一次计时到期不能提前撤掉新提示');
- advance(4998);assert.equal(feedback.hidden,false);
+ advance(998);assert.equal(feedback.hidden,false);
  advance(1);assert.equal(feedback.hidden,true);assert.equal(feedback.textContent,'');
  assert.equal(messages.querySelectorAll('.notice').length,0);assert.deepEqual(errors,[]);
 });
@@ -1082,8 +1082,8 @@ test('短暂反馈与悬浮说明不重叠，离开按钮不提前消失，会�
  emit({kind:'speed_mode_saved',mode:'default'});
  emit({kind:'load_history',sessionId:'other',items:[]});
  assert.equal(feedback.hidden,true);assert.equal(tip.hidden,true);
- advance(5000);assert.equal(feedback.hidden,true);
- emit({kind:'speed_mode_saved',mode:'fast'});advance(5000);
+ advance(1000);assert.equal(feedback.hidden,true);
+ emit({kind:'speed_mode_saved',mode:'fast'});advance(1000);
  trigger.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false,'提示过期后详细说明仍可查看');
  assert.deepEqual(errors,[]);
 });
@@ -1362,4 +1362,20 @@ test('闪电提示立即显示，离开、Escape 和滚动立即隐藏，无原�
  w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(tip.hidden,true);
  trigger.dispatchEvent(new w.MouseEvent('mouseenter'));
  w.document.dispatchEvent(new w.Event('scroll'));assert.equal(tip.hidden,true);
+});
+
+test('权限图标即时显示当前模式说明，切换更新且打开菜单收起提示',t=>{
+ const {w,emit,errors}=setup(t);
+ const trigger=w.document.getElementById('mode-trigger'),tip=w.document.getElementById('mode-tooltip');
+ assert.equal(trigger.hasAttribute('title'),false);
+ emit({kind:'config',permissionMode:'bypassPermissions',speedMode:'default'});
+ trigger.dispatchEvent(new w.MouseEvent('mouseenter'));
+ assert.equal(tip.hidden,false);assert.match(tip.textContent,/绕过权限/);
+ assert.match(trigger.getAttribute('aria-label'),/绕过权限/);
+ trigger.dispatchEvent(new w.MouseEvent('mouseleave'));assert.equal(tip.hidden,true);
+ trigger.dispatchEvent(new w.FocusEvent('focus'));assert.equal(tip.hidden,false);
+ trigger.click();assert.equal(tip.hidden,true);
+ emit({kind:'config',permissionMode:'default',speedMode:'default'});
+ assert.doesNotMatch(tip.textContent,/绕过权限/);
+ assert.deepEqual(errors,[]);
 });

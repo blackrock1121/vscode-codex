@@ -4152,7 +4152,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="model-trigger" class="composer-pick" title="选择模型"><span class="pick-emoji">${ICONS.model}</span><span id="model-label" class="pick-label">默认模型</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">中</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="speed-trigger" type="button" class="composer-pick speed-toggle" role="switch" aria-checked="false" aria-label="快速模式"><span class="speed-bolt" aria-hidden="true">${ICONS.fast}</span></button>
-            <button id="mode-trigger" class="composer-pick" title="选择模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
+            <button id="mode-trigger" class="composer-pick" aria-haspopup="true" aria-label="选择权限模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
 
             <span class="composer-state">
               <button id="ctx-gauge" type="button" class="ctx-gauge hidden" aria-label="上下文使用量，点击压缩" aria-describedby="ctx-tooltip"><span class="cg-ring"><span class="cg-pct"></span></span><span id="ctx-tooltip" class="ctx-tooltip" role="tooltip"></span></button>

@@ -158,9 +158,9 @@ speedFeedback.setAttribute("aria-atomic", "true");
 document.body.appendChild(speedFeedback);
 let speedFeedbackTimer = 0;
 speedTrigger.setAttribute("aria-describedby", speedTip.id);
-function positionSpeedPopover(popover: HTMLElement) {
+function positionSpeedPopover(popover: HTMLElement, trigger: HTMLElement = speedTrigger) {
   if (popover.hidden) return;
-  const rect = speedTrigger.getBoundingClientRect();
+  const rect = trigger.getBoundingClientRect();
   const { width, height } = popover.getBoundingClientRect();
   popover.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
   const top = rect.top - height - 8;
@@ -168,6 +168,7 @@ function positionSpeedPopover(popover: HTMLElement) {
 }
 function hideSpeedTip() { speedTip.hidden = true; }
 function showSpeedTip() {
+  hideModeTip();
   if (!speedFeedback.hidden) return; // 保存反馈与详细说明共用位置，避免相互遮挡。
   speedTip.hidden = false;
   positionSpeedPopover(speedTip);
@@ -179,12 +180,13 @@ function hideSpeedFeedback() {
   speedFeedback.textContent = "";
 }
 function showSpeedFeedback(mode: SpeedMode) {
+  hideModeTip();
   hideSpeedFeedback();
   hideSpeedTip();
   speedFeedback.textContent = `${speedLabel(mode)}模式 · 下轮生效`;
   speedFeedback.hidden = false;
   positionSpeedPopover(speedFeedback);
-  speedFeedbackTimer = window.setTimeout(hideSpeedFeedback, 5000);
+  speedFeedbackTimer = window.setTimeout(hideSpeedFeedback, 1000);
 }
 function repositionSpeedFeedback() {
   hideSpeedTip();
@@ -197,6 +199,30 @@ speedTrigger.addEventListener("blur", hideSpeedTip);
 document.addEventListener("keydown", e => { if (e.key === "Escape") { hideSpeedTip(); hideSpeedFeedback(); } });
 window.addEventListener("resize", repositionSpeedFeedback);
 document.addEventListener("scroll", repositionSpeedFeedback, true);
+
+const modeTip = document.createElement("div");
+modeTip.id = "mode-tooltip";
+modeTip.className = "speed-tooltip";
+modeTip.hidden = true;
+modeTip.setAttribute("role", "tooltip");
+modeTip.innerHTML = '<div class="speed-tip-heading"></div><div class="mode-tip-description"></div><div class="speed-tip-action">点击切换权限模式</div>';
+document.body.appendChild(modeTip);
+modeTrigger.setAttribute("aria-describedby", modeTip.id);
+function hideModeTip() { modeTip.hidden = true; }
+function showModeTip() {
+  if (!modeMenu.classList.contains("hidden")) return;
+  hideSpeedFeedback();
+  hideSpeedTip();
+  modeTip.hidden = false;
+  positionSpeedPopover(modeTip, modeTrigger);
+}
+modeTrigger.addEventListener("mouseenter", showModeTip);
+modeTrigger.addEventListener("mouseleave", hideModeTip);
+modeTrigger.addEventListener("focus", showModeTip);
+modeTrigger.addEventListener("blur", hideModeTip);
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideModeTip(); });
+window.addEventListener("resize", hideModeTip);
+document.addEventListener("scroll", hideModeTip, true);
 
 const effortTrigger = $("effort-trigger") as HTMLButtonElement;
 const effortMenu = $("effort-menu");
@@ -4004,6 +4030,10 @@ function syncPickers() {
   };
   modeIcon.innerHTML = mode.icon;
   modeLabel.textContent = mode.title;
+  modeTrigger.setAttribute("aria-label", `权限模式：${mode.title}；点击切换`);
+  modeTip.querySelector(".speed-tip-heading")!.textContent = mode.title;
+  modeTip.querySelector(".mode-tip-description")!.textContent = mode.desc || "当前权限模式尚未识别，请点击查看。";
+  if (!modeTip.hidden) positionSpeedPopover(modeTip, modeTrigger);
   const model = MODELS.find((x) => x.id === currentModel);
   modelLabel.textContent = model?.label || speedModels.find(x => x.id === currentModel)?.name || currentModel || MODELS[0].label;
   modelTrigger.title = `当前模型：${modelLabel.textContent}（点击切换）`;
@@ -4102,6 +4132,7 @@ window.addEventListener("resize", () => {
 });
 modeTrigger.onclick = (e) => {
   e.stopPropagation();
+  hideModeTip();
   const open = !modeMenu.classList.contains("hidden");
   closePickers();
   if (!open) {
