@@ -1597,7 +1597,7 @@ test('权限按钮旁的诊断入口在任务执行期间仍可打开诊断中�
  const {w,sent,emit,errors}=setup(t);
  const button=w.document.getElementById('diagnostics-trigger');
  assert.equal(w.document.getElementById('mode-trigger').nextElementSibling,button);
- assert.equal(button.getAttribute('type'),'button');assert.equal(button.getAttribute('aria-label'),'打开速度诊断中心');
+ assert.equal(button.getAttribute('type'),'button');assert.equal(button.getAttribute('aria-label'),'打开插件诊断中心');
  const input=w.document.getElementById('input');input.value='尚未发送的草稿';
  emit({kind:'busy',busy:true});button.click();
  assert.equal(sent.filter(m=>m.type==='performanceReport').length,1);
@@ -1611,7 +1611,7 @@ test('权限按钮旁的诊断入口在任务执行期间仍可打开诊断中�
 test('诊断虫子图标悬停和键盘聚焦立即说明，移出和 Escape 收起',t=>{
  const {w,errors}=setup(t),button=w.document.getElementById('diagnostics-trigger'),tip=w.document.getElementById('diagnostics-tooltip');
  assert.equal(tip.hidden,true);assert.equal(button.hasAttribute('title'),false);
- button.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false);assert.match(tip.textContent,/速度诊断中心/);assert.match(tip.textContent,/Bash.*压缩.*子 Agent/);
+ button.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false);assert.match(tip.textContent,/插件诊断中心/);assert.match(tip.textContent,/压缩.*Bash.*子 Agent/);
  assert.equal(button.getAttribute('aria-describedby'),tip.id);
  button.dispatchEvent(new w.MouseEvent('mouseleave'));assert.equal(tip.hidden,true);
  button.dispatchEvent(new w.FocusEvent('focus'));assert.equal(tip.hidden,false);

@@ -7,6 +7,7 @@ import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
 import { LocalTelemetry, TransportDiagnostic } from './telemetry';
 import { diagnosticId, failureCategory } from './performanceTrace';
+import { redactDiagnosticText } from '../diagnostics/redact';
 
 export type RpcId = string | number;
 export interface RpcMessage { id?: RpcId; method?: string; params?: any; result?: any; error?: { code: number; message: string }; }
@@ -75,7 +76,24 @@ export class CodexRpc extends EventEmitter {
     child.on('error', e => this.fail(e));
     child.stdin.on('error', e => this.fail(e));
     child.stdout.on('error', e => this.fail(e));
-    child.stderr.on('data', () => { /* CLI stderr 可能含配置和路径，不写入聊天日志。 */ });
+    // 只留有界、脱敏后的错误/警告线索；普通输出和整份 stderr 不落盘。
+    let stderrTail = '', stderrWindow = Date.now(), stderrCount = 0;
+    const stderrLine = (line: string) => {
+      if (!this.diagnostics || !/\b(?:error|warn|panic|fatal|exception)\b|失败|异常|报错/i.test(line)) return;
+      if (Date.now() - stderrWindow >= 60000) { stderrWindow = Date.now(); stderrCount = 0; }
+      if (++stderrCount > 30) { if (stderrCount === 31) this.diagnostic({ type: 'runtime_error', source: 'cli_stderr', severity: 'warning', event: 'stderr_limit', message: 'CLI 错误/警告摘要达到每分钟 30 条上限，后续重复摘要省略', sourceTimeMs: Date.now() }); return; }
+      this.diagnostic({ type: 'runtime_error', source: 'cli_stderr', severity: /\b(?:error|panic|fatal|exception)\b/i.test(line) ? 'error' : 'warning',
+        failureCategory: failureCategory(line), message: redactDiagnosticText(line), sourceTimeMs: Date.now() });
+    };
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      const parts = chunk.split('\n');
+      for (let i = 0; i < parts.length; i++) {
+        stderrTail = (stderrTail + parts[i]).slice(0, 8192);
+        if (i < parts.length - 1) { stderrLine(stderrTail); stderrTail = ''; }
+      }
+    });
+    child.stderr.on('end', () => { if (stderrTail) stderrLine(stderrTail); stderrTail = ''; });
     child.once('close', code => {
       this.telemetry?.close(); this.telemetry = undefined;
       this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`));

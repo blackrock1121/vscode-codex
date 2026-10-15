@@ -907,6 +907,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     async newSession(): Promise<void> {
         await this.openSession(undefined);
     }
+    async diagnosticModels(): Promise<ModelChoice[]> {
+        return modelChoices((await this.store.readModelCatalog()).data);
+    }
     async createDiagnosticRepairSession(prompt: string, title: string): Promise<string> {
         const ctx = await this.openSession(undefined);
         ctx.panel.title = title;
@@ -1052,7 +1055,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "performanceReport": {
                     try {
                         await vscode.commands.executeCommand("codex-chat.performanceReport");
-                        this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: true, message: "速度诊断中心已打开" });
+                        this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: true, message: "插件诊断中心已打开" });
                     } catch (error) {
                         this.output.appendLine(`[performanceReport] ${String(error)}`);
                         this.post(ctx, { kind: "performance_report_result", requestId: m.requestId, ok: false, message: "诊断报告打开失败，请重试或查看插件日志。" });
@@ -4450,7 +4453,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">medium</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="speed-trigger" type="button" class="composer-pick speed-toggle" role="switch" aria-checked="false" aria-label="快速模式"><span class="speed-bolt" aria-hidden="true">${ICONS.fast}</span></button>
             <button id="mode-trigger" class="composer-pick" aria-haspopup="true" aria-label="选择权限模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
-            <button id="diagnostics-trigger" type="button" class="composer-pick" title="速度诊断中心" aria-label="打开速度诊断中心"><span class="pick-emoji" aria-hidden="true">${ICONS.debug}</span></button>
+            <button id="diagnostics-trigger" type="button" class="composer-pick" title="插件诊断中心" aria-label="打开插件诊断中心"><span class="pick-emoji" aria-hidden="true">${ICONS.debug}</span></button>
 
             <span class="composer-state">
               <button id="ctx-gauge" type="button" class="ctx-gauge hidden" aria-label="上下文使用量，点击压缩" aria-describedby="ctx-tooltip"><span class="cg-ring"><span class="cg-pct"></span></span><span id="ctx-tooltip" class="ctx-tooltip" role="tooltip"></span></button>

@@ -1,0 +1,73 @@
+import { createHash } from 'node:crypto';
+import type { PerformanceRow } from '../codex/performanceTrace';
+import type { DiagnosticFinding } from './analysis';
+import { redactDiagnosticText } from './redact';
+
+export interface GeneralSummary { errors: number; warnings: number; retries: number; recoveries: number; compactionErrors: number; groups: number; overflow: number }
+export interface LogLocation { file: string; line: number; atMs?: number; pluginVersion?: string; windowId?: string; traceId?: string }
+interface Incident { category: string; severity: 'warning' | 'error'; title: string; message: string }
+const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|\b(?:ok|success)\s*[:=]\s*false\b|\bisError\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应/i;
+const warning = /\b(?:warn(?:ing)?|retry|fallback|reconnect(?:ing)?)\b|重试|降级|警告|重连/i;
+const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '压缩' : /webview|脚本|渲染|布局/i.test(line) ? '页面脚本' :
+  /snapshot|checkpoint|快照|还原点/i.test(line) ? '快照与还原点' : /restore|resume|恢复/i.test(line) ? '会话恢复' :
+  /rpc|transport|connection|连接|CLI|进程|stderr/i.test(line) ? '连接与进程' : /notify|webhook|通知/i.test(line) ? '通知' :
+  /sessionSettings|config|设置|配置/i.test(line) ? '配置' : /tool|bash|command|工具|命令/i.test(line) ? '工具执行' : '插件运行';
+
+export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
+  if (row) {
+    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route';
+    const stage = String(row.stage ?? row.event ?? ''), outcome = String(row.outcome ?? row.status ?? '');
+    const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
+      row.success === false || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
+    const retry = stage === 'retry' || row.event === 'retry';
+    const fallback = /fallback|restore_pending|unavailable/.test(stage) || /unavailable/.test(outcome) || row.type === 'runtime_error' && row.severity === 'warning';
+    if (!failed && !retry && !fallback) return;
+    const category = compaction ? '压缩' : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' || row.type === 'runtime_error' ? '连接与进程' : '插件运行';
+    const detail = [row.diagnosticType, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.httpStatusCode, row.message].filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
+    return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };
+  }
+  const signal = line.replace(/\b(?:failed|failures?|errors?|errorCount|failedCount)\s*[:=]\s*(?:0|false|null)\b/gi, '')
+    .replace(/"(?:isError|error|errors|failures|failed)"\s*:\s*(?:0|false|null)\b/gi, '').replace(/\b0\s+(?:errors?|warnings?|failures?)\b/gi, '');
+  if (!bad.test(signal) && !warning.test(signal)) return;
+  // 用户主动取消不是内部错误；原有错误仍通过其它记录呈现。
+  if (/用户.*(?:取消|停止)|user.*(?:cancel|interrupt)|outcome[=:]cancelled/i.test(line)) return;
+  const category = component(line);
+  const severity = bad.test(signal) && !/\[(?:warn|warning|notice|status)\]/i.test(line) ? 'error' : 'warning';
+  return { category, severity, title: `${category}${severity === 'error' ? '异常' : '警告'}`, message: redactDiagnosticText(line.replace(/^\[\d\d:\d\d:\d\d\]\s*/, '').replace(/\[pluginVersion=[^\]]+\]\s*/, '').replace(/\[\d{4}-\d\d-\d\dT[^\]]+\]\s*/, '')) };
+}
+
+export class GeneralAccumulator {
+  private readonly counts: GeneralSummary = { errors: 0, warnings: 0, retries: 0, recoveries: 0, compactionErrors: 0, groups: 0, overflow: 0 };
+  private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string> }>();
+  add(line: string, row: PerformanceRow | undefined, where: LogLocation): void {
+    if (!row && /恢复成功|恢复完成|recovered|retry succeeded|connection restored/i.test(line) && !/失败|异常|error|failed|未能|尚未|没有/i.test(line)) { this.counts.recoveries++; return; }
+    const incident = classifyIncident(line, row); if (!incident) return;
+    if (incident.severity === 'error') this.counts.errors++; else this.counts.warnings++;
+    if (/retry|重试/i.test(String(row?.stage ?? row?.event ?? line))) this.counts.retries++;
+    if (incident.category === '压缩' && incident.severity === 'error') this.counts.compactionErrors++;
+    const signature = incident.message.replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>').replace(/\b\d+(?:\.\d+)?(?:ms|s|秒)?\b/g, '<n>');
+    const id = createHash('sha256').update(incident.category + incident.severity + signature).digest('hex').slice(0, 12);
+    let group = this.groups.get(id);
+    if (!group) {
+      if (this.groups.size >= 160) { this.counts.overflow++; return; }
+      group = { incident, count: 0, examples: [], traces: new Set() }; this.groups.set(id, group);
+    }
+    group.count++;
+    const time = where.atMs ? new Date(where.atMs).toISOString() : '时间未标注';
+    const example = `${where.file}:${where.line} · ${time} · 版本 ${where.pluginVersion ?? '未标注'} · 窗口 ${where.windowId ?? '未标注'} · ${incident.message}`;
+    if (group.examples.length < 3) group.examples.push(example); else group.examples[2] = example;
+    if (where.traceId && group.traces.size < 8) group.traces.add(where.traceId);
+  }
+  result(): { summary: GeneralSummary; findings: DiagnosticFinding[]; report: string } {
+    this.counts.groups = this.groups.size;
+    const findings: DiagnosticFinding[] = [...this.groups].sort(([, a], [, b]) => (a.incident.severity === 'error' ? 0 : 1) - (b.incident.severity === 'error' ? 0 : 1) || b.count - a.count)
+      .map(([id, group]) => ({ id: `log-${id}`, category: group.incident.category, origin: 'rule', occurrences: group.count,
+        title: group.incident.title, severity: group.incident.severity, evidence: `${group.count} 条异常/警告日志。\n${group.examples.join('\n')}`,
+        recommendation: '按文件和行号核对前后事件，确认是否恢复、是否影响用户和实际根因；区分插件故障、环境依赖、后端服务和预期取消，再实施修复。', traceIds: [...group.traces] }));
+    const report = ['# 最近日志异常检查', '', `错误 ${this.counts.errors} 条，警告 ${this.counts.warnings} 条；压缩错误 ${this.counts.compactionErrors} 条，重试 ${this.counts.retries} 条，明确恢复 ${this.counts.recoveries} 条。`,
+      '以上为日志事件数，同一次故障可能产生多条记录；恢复记录不代表所有错误都已恢复。',
+      `异常分组 ${this.counts.groups} 个；超过分组上限的事件 ${this.counts.overflow} 条仍计入错误/警告总数。`, '',
+      ...findings.flatMap(f => [`## ${f.title} · ${f.id}`, '', f.evidence, '', f.recommendation, ''])].join('\n');
+    return { summary: { ...this.counts }, findings, report };
+  }
+}

@@ -12,6 +12,12 @@ readJsonl(process.stdin,m=>{
  if(process.env.TEST_RPC_LOG)fs.appendFileSync(process.env.TEST_RPC_LOG,JSON.stringify(m)+'\n');
  if(!m.method) {answerCount++;note('item/completed',{threadId:'thread-1',item:{type:'commandExecution',id:'cmd',command:'echo test',aggregatedOutput:JSON.stringify(m.result),exitCode:0,status:'completed'}});note('turn/completed',{threadId:'thread-1',turn:{id:turnId,status:'completed'}});return;}
  if(m.method==='initialized')return;
+ if(m.method==='stderr-diagnostics'){
+  process.stderr.write('ordinary progress without diagnostic content\n');
+  process.stderr.write('ERROR compaction failed token=PRIVATE_TOKEN https://example.invalid/secret /Users/alice/private.txt\n');
+  for(let i=0;i<35;i++)process.stderr.write(`WARN reconnect attempt ${i}\n`);
+  setTimeout(()=>send({id:m.id,result:{ok:true}}),20);return;
+ }
  if(m.method==='initialize'&&process.env.TEST_BAD_INITIALIZE_ONCE){
   const marker=process.env.TEST_BAD_INITIALIZE_ONCE;
   if(!fs.existsSync(marker)){fs.writeFileSync(marker,'1');process.stdout.write('not-json\n');return;}

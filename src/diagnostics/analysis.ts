@@ -1,16 +1,20 @@
 import type { PerformanceRow } from '../codex/performanceTrace';
+import type { GeneralSummary } from './general';
 
 export interface DiagnosticFinding {
   id: string; title: string; severity: 'warning' | 'error'; evidence: string; recommendation: string; traceIds: string[];
+  category?: string; origin?: 'rule' | 'model'; occurrences?: number;
 }
 export interface DiagnosticSummary { turns: number; tools: number; failures: number; longestTurnMs: number; versions: string[] }
-export interface DiagnosticSource { pluginVersion: string; windowId: string; hostId: string; records: number; turns: number; tools: number; failures: number }
+export interface DiagnosticSource { pluginVersion: string; windowId: string; hostId: string; records: number; turns: number; tools: number; failures: number; logLines?: number }
 export interface DiagnosticCoverage {
   mode: 'local-plugin-full'; files: number; readFiles: number; unreadableFiles: number; bytes: number; lines: number;
   records: number; invalidLines: number; oversizedLines: number; droppedLines: number;
   windows: number; sessions: number; fromMs?: number; toMs?: number; firstDay?: string; lastDay?: string; sources: DiagnosticSource[];
+  requestedFromMs?: number; requestedToMs?: number; includedLines?: number; outsideRangeLines?: number; unknownTimeLines?: number;
 }
-export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[]; summary: DiagnosticSummary; sourceNote: string; coverage?: DiagnosticCoverage }
+export interface DiagnosticModelAnalysis { status: 'completed' | 'failed'; model: string; effort: string; message?: string; durationMs: number }
+export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[]; summary: DiagnosticSummary; sourceNote: string; coverage?: DiagnosticCoverage; general?: GeneralSummary; modelAnalysis?: DiagnosticModelAnalysis }
 const n = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
 const failureCategories = new Set(['command_not_found', 'missing_dependency', 'architecture_mismatch', 'permission', 'timeout',

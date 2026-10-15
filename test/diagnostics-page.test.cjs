@@ -40,7 +40,8 @@ test('诊断中显示进度，完成后可打开证据；跨工作区不启动�
  assert.equal(sent.some(m=>m.type==='select'),false);
  emit({type:'state',records:[record],selectedId:record.id,workspaceId:'other'});assert.ok(sent.some(m=>m.type==='select'&&m.id===record.id));
  const repair=[...w.document.querySelectorAll('#detail button')].find(e=>e.textContent==='创建修复会话');assert.equal(repair.disabled,true);
- w.document.getElementById('start').click();assert.ok(sent.some(m=>m.type==='start'));
+ const engine=w.document.getElementById('diagnostic-engine');engine.value='rules';engine.dispatchEvent(new w.Event('change'));
+ w.document.getElementById('start').click();assert.ok(sent.some(m=>m.type==='start'&&m.options.kind==='general'&&m.options.hours===24&&m.options.engine==='rules'));
  assert.deepEqual(errors,[]);
 });
 
@@ -60,7 +61,7 @@ test('打开诊断中心立即创建页面，开始作业独立异步，关闭�
  const jobs=new EventEmitter();let started=0,disposed=0;
  Object.assign(jobs,{scope:{workspaceId:'project-a'},list:async()=>[record],get:async()=>record,report:async()=> '# 报告',start:async()=>{started++;return record;},dispose:()=>disposed++});
  const page=new DiagnosticsPage({extensionUri:'/extension'},jobs,async()=>{},async()=>{});t.after(()=>page.dispose());
- page.show(false);const panel=currentPanel;assert.match(panel.webview.html,/速度诊断中心/);assert.equal(started,0);
+ page.show(false);const panel=currentPanel;assert.match(panel.webview.html,/插件诊断中心/);assert.equal(started,0);
  await page.message({type:'ready'});assert.equal(panel.messages.at(-1).type,'state');
  await page.message({type:'start'});await new Promise(r=>setImmediate(r));assert.equal(started,1);
  panel.dispose();jobs.emit('changed',record.id);assert.equal(disposed,0);
@@ -78,4 +79,25 @@ test('诊断修复等待新面板就绪后自动发送，保留原会话草稿�
  fresh.ready=true;fresh.pendingDiagnosticRepair.start();assert.equal(await pending,'repair-session');assert.deepEqual(sent,['修复这次诊断']);
  assert.ok(posted.some(m=>m.kind==='remote_user'&&m.text==='修复这次诊断'));assert.equal(originalCtx.draft,'原草稿');assert.equal(originalCtx.proc.isBusy,true);
  assert.equal(titles[0][1],'诊断修复 11111111');
+});
+
+test('诊断页模型和推理档位来自目录，切换模型刷新官方英文值并发送选中的设置',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ assert.equal(w.document.getElementById('start').disabled,true);
+ emit({type:'configuration',models:[{id:'model-a',name:'Model A',efforts:['medium','high'],defaultEffort:'medium'},{id:'model-b',name:'Model B',efforts:['high','xhigh'],defaultEffort:'xhigh'}],options:{kind:'general',hours:24,engine:'model',model:'model-a',effort:'medium'}});
+ const model=w.document.getElementById('diagnostic-model'),effort=w.document.getElementById('diagnostic-effort');
+ assert.equal(model.value,'model-a');assert.equal(effort.value,'medium');assert.deepEqual([...effort.options].map(x=>x.textContent),['medium','high']);
+ model.value='model-b';model.dispatchEvent(new w.Event('change'));assert.equal(effort.value,'xhigh');
+ assert.deepEqual([...effort.options].map(x=>x.textContent),['high','xhigh']);
+ effort.value='high';effort.dispatchEvent(new w.Event('change'));w.document.getElementById('start').click();w.document.getElementById('start').click();
+ const starts=sent.filter(m=>m.type==='start');assert.equal(starts.length,1);assert.equal(starts[0].options.model,'model-b');assert.equal(starts[0].options.effort,'high');assert.equal(starts[0].options.hours,24);
+ emit({type:'started'});assert.equal(w.document.getElementById('start').disabled,false);assert.deepEqual(errors,[]);
+});
+
+test('模型目录失败仍可切换本地规则，模型失败记录显示本地结果与异常计数',t=>{
+ const {w,sent,emit,errors}=setup(t);emit({type:'error',message:'模型目录暂不可用'});
+ const engine=w.document.getElementById('diagnostic-engine');engine.value='rules';engine.dispatchEvent(new w.Event('change'));
+ assert.equal(w.document.getElementById('start').disabled,false);w.document.getElementById('start').click();assert.equal(sent.find(m=>m.type==='start').options.engine,'rules');
+ emit({type:'state',records:[{...record,options:{kind:'general',hours:24,engine:'model',model:'model-a',effort:'high'},general:{errors:3,warnings:2,compactionErrors:1,retries:2,recoveries:1},modelAnalysis:{status:'failed',model:'model-a',effort:'high',durationMs:2000,message:'后端拒绝'}}],selectedId:record.id,workspaceId:'project-a'});
+ const text=w.document.getElementById('detail').textContent;assert.match(text,/错误 3 条/);assert.match(text,/压缩错误 1 条/);assert.match(text,/失败，本地检查结果已保留/);assert.match(text,/model-a \/ high/);assert.deepEqual(errors,[]);
 });

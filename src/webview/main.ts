@@ -235,7 +235,7 @@ diagnosticsTip.id = "diagnostics-tooltip";
 diagnosticsTip.className = "speed-tooltip";
 diagnosticsTip.hidden = true;
 diagnosticsTip.setAttribute("role", "tooltip");
-diagnosticsTip.innerHTML = '<div class="speed-tip-heading">速度诊断中心</div><div>查看工具、Bash、压缩和子 Agent 的耗时与失败原因。</div><div class="speed-tip-action">点击打开诊断中心，查看记录或开始后台诊断</div>';
+diagnosticsTip.innerHTML = '<div class="speed-tip-heading">插件诊断中心</div><div>检查报错、压缩、稳定性，以及工具、Bash 和子 Agent 的耗时与失败原因。</div><div class="speed-tip-action">点击打开诊断中心，查看记录或开始后台诊断</div>';
 document.body.appendChild(diagnosticsTip);
 diagnosticsTrigger.removeAttribute("title");
 diagnosticsTrigger.setAttribute("aria-describedby", diagnosticsTip.id);
@@ -280,7 +280,7 @@ diagnosticsTrigger.onclick = () => {
   const requestId = diagnosticsRequestId;
   diagnosticsTrigger.disabled = true;
   diagnosticsTrigger.setAttribute("aria-busy", "true");
-  diagnosticsFeedback.textContent = "正在打开速度诊断中心…";
+  diagnosticsFeedback.textContent = "正在打开插件诊断中心…";
   diagnosticsFeedback.hidden = false;
   positionSpeedPopover(diagnosticsFeedback, diagnosticsTrigger);
   diagnosticsTimer = window.setTimeout(() => diagnosticsResult(requestId, false, "尚未收到诊断响应，请重载当前 VS Code 窗口后重试。"), 15000);

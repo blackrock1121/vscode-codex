@@ -1,5 +1,7 @@
 import MarkdownIt from 'markdown-it';
 import type { DiagnosticRecord } from '../diagnostics/jobs';
+import { kindLabel, DiagnosticOptions } from '../diagnostics/options';
+import type { ModelChoice } from '../shared';
 
 declare const acquireVsCodeApi: () => { postMessage: (message: unknown) => void; getState: () => any; setState: (value: unknown) => void };
 const api = acquireVsCodeApi();
@@ -9,9 +11,11 @@ let records: DiagnosticRecord[] = [], selectedId = api.getState()?.selectedId as
 const reports = new Map<string, string>();
 const requested = new Set<string>();
 let pendingRepair: string | undefined;
+let models: ModelChoice[] = [], settings: DiagnosticOptions = { kind: 'general', hours: 24, engine: 'model' }, starting = false;
 const status = { running: '诊断中', completed: '已完成', failed: '失败', interrupted: '已中断' };
 const notice = { pending: '诊断结束后发送', sending: '正在发送', sent: '已发送', failed: '发送失败', not_configured: '未配置' };
 const scopeLabel = (record: DiagnosticRecord) => record.diagnosticScope === 'local-plugin-full' ? '整个插件 · 全量' : '旧版全局采样';
+const recordStatus = (record: DiagnosticRecord) => record.modelAnalysis?.status === 'failed' && record.status === 'completed' ? '部分完成' : status[record.status];
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = '') {
   const element = document.createElement(tag); element.textContent = text; element.className = className; return element;
 }
@@ -19,31 +23,58 @@ function button(text: string, action: () => void, disabled = false, secondary = 
   const element = node('button', text, secondary ? 'secondary' : ''); element.disabled = disabled; element.onclick = action; return element;
 }
 function send(type: string, id?: string) { api.postMessage({ type, id }); }
-function select(id: string) { selectedId = id; api.setState({ selectedId }); requested.add(id); send('select', id); render(); }
+function select(id: string) { selectedId = id; api.setState({ selectedId, options: settings }); requested.add(id); send('select', id); render(); }
+const control = (id: string) => $(id) as HTMLSelectElement;
+function updateControls() {
+  const isModel = settings.engine === 'model', model = models.find(m => m.id === settings.model);
+  control('diagnostic-kind').value = settings.kind; control('diagnostic-hours').value = String(settings.hours); control('diagnostic-engine').value = settings.engine;
+  const pick = control('diagnostic-model'); pick.replaceChildren();
+  if (!models.length) pick.append(new Option('模型列表尚未加载', ''));
+  for (const m of models) pick.append(new Option(m.name || m.id, m.id));
+  pick.value = settings.model ?? ''; pick.disabled = !isModel || !models.length;
+  const efforts = control('diagnostic-effort'); efforts.replaceChildren();
+  for (const effort of model?.efforts ?? []) efforts.append(new Option(effort, effort));
+  efforts.value = settings.effort ?? ''; efforts.disabled = !isModel || !model;
+  ($('start') as HTMLButtonElement).disabled = starting || isModel && (!model || !model.efforts.includes(settings.effort ?? ''));
+  $('start').textContent = starting ? '正在创建诊断…' : '开始诊断';
+  $('engine-note').textContent = isModel ? '模型诊断会使用当前 Codex 账号额度，将脱敏后的异常摘要和性能证据发送给所选模型；完整原始日志不上传。' : '仅在本机执行规则检查，不调用模型、不消耗模型额度。';
+}
+for (const id of ['diagnostic-kind', 'diagnostic-hours', 'diagnostic-engine', 'diagnostic-model', 'diagnostic-effort']) $(id).onchange = () => {
+  const model = models.find(m => m.id === control('diagnostic-model').value), currentEffort = control('diagnostic-effort').value;
+  settings = { kind: control('diagnostic-kind').value as DiagnosticOptions['kind'], hours: Number(control('diagnostic-hours').value) as DiagnosticOptions['hours'],
+    engine: control('diagnostic-engine').value as DiagnosticOptions['engine'], model: model?.id,
+    effort: model?.efforts.includes(currentEffort) ? currentEffort : model?.defaultEffort ?? model?.efforts[0] };
+  updateControls(); api.setState({ selectedId, options: settings });
+  if (settings.engine === 'rules' || settings.model && settings.effort) api.postMessage({ type: 'configure', options: settings });
+};
 function render() {
   const query = ($('search') as HTMLInputElement).value.trim().toLowerCase();
   const list = $('records'); list.replaceChildren();
   for (const record of records.filter(r => `${r.id} ${r.workspaceName} ${r.pluginVersion} ${r.summary?.versions.join(' ') ?? ''} ${scopeLabel(r)}`.toLowerCase().includes(query))) {
     const item = node('button', '', `record${record.id === selectedId ? ' selected' : ''}`);
-    item.append(node('b', `诊断 ${record.id.slice(0, 8)}`), node('span', status[record.status], 'status'),
-      node('small', new Date(record.createdAt).toLocaleString(), 'muted'), node('small', `${scopeLabel(record)} · ${record.pluginVersion}`, 'muted'),
+    item.append(node('b', `诊断 ${record.id.slice(0, 8)}`), node('span', recordStatus(record), 'status'),
+      node('small', new Date(record.createdAt).toLocaleString(), 'muted'), node('small', `${kindLabel(record.options?.kind)} · ${scopeLabel(record)} · ${record.pluginVersion}`, 'muted'),
       node('small', `发起位置：${record.workspaceName}`, 'muted'));
     item.onclick = () => select(record.id); list.append(item);
   }
   if (!list.childElementCount) list.append(node('p', records.length ? '没有匹配的记录' : '暂无诊断记录', 'muted'));
   const current = records.find(r => r.id === selectedId), detail = $('detail'); detail.replaceChildren();
-  if (!current) { detail.append(node('p', '点击“开始全局诊断”，在后台检查整个插件的耗时和重复失败共性。', 'empty')); return; }
-  detail.append(node('h2', `诊断 ${current.id.slice(0, 8)} · ${status[current.status]}`),
+  if (!current) { detail.append(node('p', '选择诊断范围、模型与 reasoning effort，再点击“开始诊断”，后台检查插件日志中的错误与异常。', 'empty')); return; }
+  detail.append(node('h2', `诊断 ${current.id.slice(0, 8)} · ${recordStatus(current)}`),
     node('p', `范围：${scopeLabel(current)} · 诊断器 ${current.pluginVersion} · ${new Date(current.createdAt).toLocaleString()}`, 'muted'),
     node('p', `发起位置：${current.workspaceName}；此位置不限制诊断范围。`, 'muted'));
+  detail.append(node('p', `${kindLabel(current.options?.kind)} · ${current.options?.hours ? `最近 ${current.options.hours} 小时` : '全部保留日志'} · ${current.options?.engine === 'model' ? `模型 ${current.options.model} / ${current.options.effort}` : '本地规则检查（未使用模型）'}`, 'muted'));
   const coverage = current.coverage;
   if (coverage) {
     detail.append(node('p', `覆盖 ${coverage.windows} 个窗口、${coverage.sessions} 个会话/子线程；完整读取 ${coverage.readFiles}/${coverage.files} 个日志文件，${coverage.records} 条结构化记录，${(coverage.bytes / 1048576).toFixed(2)} MiB。`, 'progress'),
       node('p', `日志日期：${coverage.firstDay ?? '无'} 至 ${coverage.lastDay ?? '无'}；采集时间：${coverage.fromMs ? new Date(coverage.fromMs).toLocaleString() : '未记录'} 至 ${coverage.toMs ? new Date(coverage.toMs).toLocaleString() : '未记录'}。`, 'muted'),
       node('p', `证据缺口：未完整读取文件 ${coverage.unreadableFiles}；损坏行 ${coverage.invalidLines}；超长行 ${coverage.oversizedLines}；缓冲丢弃行 ${coverage.droppedLines}。已删除、未采集和其他机器的日志无法覆盖。`, 'muted'));
   }
-  if (current.status === 'running') { detail.append(node('div', `${current.progress} 关闭页面不会中断诊断。`, 'progress')); return; }
+  if (current.status === 'running') { detail.append(node('div', `${current.progress} 关闭页面不会中断诊断。`, 'progress'), button('停止诊断', () => send('cancel', current.id), false, true)); return; }
   if (current.error) detail.append(node('p', current.error, 'progress'));
+  if (coverage?.requestedFromMs) detail.append(node('p', `检查区间：${new Date(coverage.requestedFromMs).toLocaleString()} 至 ${new Date(coverage.requestedToMs!).toLocaleString()}；时间未标注、未纳入区间统计 ${coverage.unknownTimeLines ?? 0} 行。`, 'muted'));
+  if (current.general) detail.append(node('p', `日志检查：错误 ${current.general.errors} 条，警告 ${current.general.warnings} 条；压缩错误 ${current.general.compactionErrors} 条，重试 ${current.general.retries} 条，明确恢复 ${current.general.recoveries} 条。`, 'progress'));
+  if (current.modelAnalysis) detail.append(node('p', `模型诊断：${current.modelAnalysis.status === 'completed' ? '已完成' : '失败，本地检查结果已保留'} · ${current.modelAnalysis.model} / ${current.modelAnalysis.effort} · ${(current.modelAnalysis.durationMs / 1000).toFixed(1)} 秒${current.modelAnalysis.message ? ` · ${current.modelAnalysis.message}` : ''}`, 'progress'));
   const summary = current.summary;
   if (summary) {
     const stats = node('div', '', 'stats');
@@ -52,7 +83,7 @@ function render() {
     }
     detail.append(stats);
     detail.append(node('p', `被分析的插件版本：${summary.versions.join('、') || '旧日志未标注'}`, 'muted'));
-    if (!summary.turns) detail.append(node('p', '当前日志样本不足。先使用插件完成任务，再开始一次新诊断。', 'progress'));
+    if (!summary.turns && !current.general?.groups) detail.append(node('p', '当前区间没有完整任务样本；日志异常检查不依赖完整轮次，仍会检查区间内报错。', 'progress'));
   }
   detail.append(node('p', `飞书通知：${notice[current.notification.status]}${current.notification.message ? ` · ${current.notification.message}` : ''}`, 'muted'));
   const actions = node('div', '', 'actions');
@@ -72,7 +103,7 @@ function render() {
   if (current.repair?.message) detail.append(node('p', current.repair.message, 'progress'));
   for (const finding of current.findings) {
     const item = node('section', '', `finding ${finding.severity}`);
-    item.append(node('h3', finding.title), node('p', finding.evidence), node('p', finding.recommendation, 'muted'));
+    item.append(node('h3', `${finding.origin === 'model' ? '模型结论 · ' : ''}${finding.title}`), node('p', finding.evidence), node('p', finding.recommendation, 'muted'));
     if (finding.traceIds.length) item.append(node('p', `任务：${finding.traceIds.join('、')}`, 'muted')); detail.append(item);
   }
   if (current.status === 'completed' && !current.findings.length && summary?.turns) detail.append(node('p', '已读取的日志中没有发现符合检查条件的问题。可查看完整报告。', 'progress'));
@@ -82,12 +113,15 @@ function render() {
     if (!reports.has(current.id) && !requested.has(current.id)) { requested.add(current.id); send('select', current.id); }
   }
 }
-$('start').onclick = () => send('start');
+$('start').onclick = () => { if (starting) return; starting = true; updateControls(); api.postMessage({ type: 'start', options: settings }); };
+$('reload-models').onclick = () => send('reloadModels');
 $('refresh').onclick = () => { requested.clear(); $('banner').hidden = true; send('refresh'); };
 $('search').oninput = render;
 window.addEventListener('message', event => {
   const message = event.data;
-  if (message?.type === 'state') {
+  if (message?.type === 'configuration') { models = message.models; settings = message.options; updateControls(); }
+  else if (message?.type === 'started') { starting = false; updateControls(); }
+  else if (message?.type === 'state') {
     records = message.records; workspaceId = message.workspaceId;
     for (const record of records) if (record.status === 'running') requested.delete(record.id);
     if (!records.some(r => r.id === selectedId) || message.selectedId && message.selectedId !== selectedId) selectedId = message.selectedId;
@@ -98,6 +132,7 @@ window.addEventListener('message', event => {
     if (reports.size > 8) reports.delete(reports.keys().next().value!);
     render();
   }
-  else if (message?.type === 'error') { pendingRepair = undefined; $('banner').textContent = message.message; $('banner').hidden = false; render(); }
+  else if (message?.type === 'error') { starting = false; updateControls(); pendingRepair = undefined; $('banner').textContent = message.message; $('banner').hidden = false; render(); }
 });
+updateControls();
 send('ready');

@@ -9,6 +9,10 @@ import { RemoteBridgeClient } from "./remote/bridgeClient";
 import { DiagnosticJobs, workerRunner } from "./diagnostics/jobs";
 import { DiagnosticsPage } from "./diagnostics/page";
 import { notifyDiagnostic } from "./diagnostics/notification";
+import { DiagnosticOptions, diagnosticOptions } from './diagnostics/options';
+import { analyzeWithModel } from './diagnostics/model';
+import { CodexRpc } from './codex/rpc';
+import { redactDiagnosticText } from './diagnostics/redact';
 
 /** 固定日志目录：~/.codex-chat/logs/codex-chat-YYYY-MM-DD.log（按天分文件）。
  *  VS Code 输出通道的落盘路径深埋且每次会话都变，用户/同事根本找不到——
@@ -46,20 +50,43 @@ export function activate(context: vscode.ExtensionContext): void {
   const workspacePaths = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
   const workspaceId = createHash('sha256').update(JSON.stringify(workspacePaths.length ? workspacePaths : [vscode.workspace.workspaceFile?.toString() ?? 'empty'])).digest('hex').slice(0, 24);
   const runner = workerRunner(path.join(context.extensionUri.fsPath, 'dist', 'diagnostics-worker.js'), LOG_DIR);
+  const diagnosticsDir = path.join(os.homedir(), '.codex-chat', 'diagnostics');
   const diagnostics = new DiagnosticJobs(path.join(os.homedir(), '.codex-chat', 'diagnostics'), {
     pluginVersion: identity.pluginVersion, windowId: identity.windowId, workspaceId,
     workspaceName: vscode.workspace.name ?? vscode.workspace.workspaceFolders?.[0]?.name ?? '未命名工作区',
-  }, async (progress, signal) => {
+  }, async (progress, signal, request) => {
     progress('正在保存最新诊断日志…');
     let timer: ReturnType<typeof setTimeout> | undefined;
     try { await Promise.race([Promise.all([...logWriters].map(writer => writer.flush())), new Promise<void>(resolve => { timer = setTimeout(resolve, 1500); })]); }
     finally { clearTimeout(timer); }
-    return runner(progress, signal);
+    const result = await runner(progress, signal, request);
+    if (request?.engine !== 'model') return result;
+    try {
+      const models = await provider.diagnosticModels(), model = models.find(m => m.id === request.model);
+      if (!model || !model.efforts.includes(request.effort!)) throw new Error('所选诊断模型或 reasoning effort 当前不可用，请在诊断页重新选择');
+      return await analyzeWithModel(new CodexRpc(vscode.workspace.getConfiguration('codexChat').get<string>('codexPath', 'codex'), diagnosticsDir), result, request, diagnosticsDir, progress, signal);
+    } catch (error) {
+      if (signal.aborted) throw error;
+      const message = redactDiagnosticText(String((error as Error).message), 300);
+      return { ...result, modelAnalysis: { status: 'failed' as const, model: request.model!, effort: request.effort!, durationMs: 0, message }, report: `# 模型诊断未完成\n\n${message}\n\n` + result.report };
+    }
   }, record => notifyDiagnostic(record, (vscode.workspace.getConfiguration('codexChat').get<string>('notifyWebhook') ?? '').trim()));
   diagnosticServices.add(diagnostics);
   const diagnosticsPage = new DiagnosticsPage(context, diagnostics,
     async id => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }); },
-    async () => { provider.showNotifyConfig(); });
+    async () => { provider.showNotifyConfig(); }, {
+      load: async () => {
+        const models = await provider.diagnosticModels();
+        let saved: DiagnosticOptions | undefined;
+        try { saved = diagnosticOptions(context.globalState.get('codexChat.diagnosticOptions')); } catch { /* 首次打开 */ }
+        const preferred = saved?.model || vscode.workspace.getConfiguration('codexChat').get<string>('model');
+        const model = preferred ? models.find(m => m.id === preferred) : models.find(m => m.isDefault) ?? models[0];
+        const options: DiagnosticOptions = saved ?? { kind: 'general', hours: 24, engine: 'model', model: preferred || model?.id,
+          effort: model?.efforts.includes(vscode.workspace.getConfiguration('codexChat').get<string>('effort', 'medium')) ? vscode.workspace.getConfiguration('codexChat').get<string>('effort', 'medium') : model?.defaultEffort ?? model?.efforts[0] };
+        return { models, options };
+      },
+      save: async options => { await context.globalState.update('codexChat.diagnosticOptions', diagnosticOptions(options)); },
+    });
   context.subscriptions.push(diagnosticsPage, { dispose: () => { void diagnostics.dispose().finally(() => diagnosticServices.delete(diagnostics)); } });
   const registration = provider.remoteRegistration();
   if (registration && process.platform === 'darwin') {

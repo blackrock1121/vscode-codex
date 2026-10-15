@@ -134,3 +134,14 @@ test('诊断接收方抛错时初始化和后续 RPC 仍可正常完成',async t
  rpc.on('diagnostic',()=>{throw new Error('日志写入失败');});t.after(()=>rpc.disposeAndWait());
  await rpc.start();assert.ok((await rpc.request('model/list')).data.length>0);
 });
+
+test('CLI stderr 只记录脱敏错误摘要，普通进度不入诊断，重复错误按分钟限流',async t=>{
+ for(const enabled of [true,false]){
+  const rows=[],rpc=new CodexRpc(executable,process.cwd(),undefined,enabled);t.after(()=>rpc.disposeAndWait());rpc.on('diagnostic',r=>rows.push(r));await rpc.start();
+  await rpc.request('stderr-diagnostics');
+  const errors=rows.filter(r=>r.type==='runtime_error');assert.equal(errors.length,enabled?31:0);
+  if(enabled){assert.match(errors[0].message,/compaction failed/);assert.equal(errors[0].severity,'error');assert.equal(errors.at(-1).event,'stderr_limit');
+   assert.doesNotMatch(JSON.stringify(errors),/PRIVATE_TOKEN|example.invalid|alice|ordinary progress/);}
+  await rpc.disposeAndWait();
+ }
+});
