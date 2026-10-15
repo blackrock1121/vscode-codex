@@ -3,7 +3,10 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const os = require('node:os');
 const path = require('node:path');
-const { execFileSync } = require('node:child_process');
+const { execFile, execFileSync } = require('node:child_process');
+const { promisify } = require('node:util');
+const http = require('node:http');
+const { NotificationRouter } = require('../dist/test/notificationRouter.js');
 
 test('原生清理只匹配完整会话，保留其他会话、派生分支、测试通知和身份冲突通知', { skip: process.platform !== 'darwin' }, async t => {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-notification-ownership-'));
@@ -38,6 +41,14 @@ for notice in notices {
     precondition(!notificationBelongsToSession(identifier: notice.0, url: notice.1, sessionId: ""))
 }
 let encoded = "vscode://blackrock1121.vscode-codex/notification?window%3Dold-window%26session%3D\\(a)%26windowId%3D42"
+let endpoint = "http://127.0.0.1:53210/notification/\\(a)"
+precondition(notificationClickEndpoint(endpoint)?.absoluteString == endpoint)
+for invalid in ["https://127.0.0.1:53210/notification/\\(a)", "http://localhost:53210/notification/\\(a)",
+                "http://example.com:53210/notification/\\(a)", "http://127.0.0.1:0/notification/\\(a)",
+                "http://127.0.0.1:65536/notification/\\(a)", endpoint + "?session=other", endpoint + "#fragment",
+                "http://user@127.0.0.1:53210/notification/\\(a)", "http://127.0.0.1:53210/notification/not-a-token"] {
+    precondition(notificationClickEndpoint(invalid) == nil)
+}
 precondition(notificationSession(encoded) == a, "必须识别 VS Code 编码后的完整查询串")
 precondition(notificationBelongsToSession(identifier: "codex-session:\\(a)", url: encoded, sessionId: a))
 precondition(!notificationBelongsToSession(identifier: "codex-session:\\(branch)", url: encoded, sessionId: a))
@@ -52,10 +63,35 @@ for query in ["", "&", "&&", "session", "session=", "window=hello%26session%3Dfa
     precondition(notificationSession("vscode://blackrock1121.vscode-codex/notification?" + query) == nil)
 }
 print("ownership verified")
+if CommandLine.arguments.count == 3 {
+    let client = NotificationClickClient()
+    let done = DispatchSemaphore(value: 0)
+    client.open(CommandLine.arguments[1]) { opened in
+        precondition(opened == (CommandLine.arguments[2] == "true"))
+        done.signal()
+    }
+    precondition(done.wait(timeout: .now() + 10) == .success)
+    print("click verified")
+}
 `;
   const file = path.join(dir, 'main.swift'), binary = path.join(dir, 'ownership');
   await fs.writeFile(file, 'import Foundation\n' + policy + fixture);
   execFileSync('/usr/bin/swiftc', [file, '-o', binary], { timeout: 60000 });
   assert.match(execFileSync(binary, { encoding: 'utf8', timeout: 10000 }), /ownership verified/);
+  // 直接运行生产 Swift 点击客户端，验证到 Node 来源宿主的真实 HTTP 请求，不触碰通知中心。
+  const router = new NotificationRouter();
+  t.after(() => router.dispose());
+  let opened = 0;
+  const endpoint = await router.endpoint('source-window', async () => opened++);
+  const click = async (url, expected) => assert.match((await promisify(execFile)(binary, [url, String(expected)], { timeout: 15000 })).stdout, /click verified/);
+  await click(endpoint, true);
+  assert.equal(opened, 1);
+  const redirect = http.createServer((req, res) => res.writeHead(307, { Location: endpoint }).end());
+  await new Promise(resolve => redirect.listen(0, '127.0.0.1', resolve));
+  t.after(() => { redirect.close(); redirect.closeAllConnections(); });
+  await click(endpoint.replace(new URL(endpoint).port, String(redirect.address().port)), false);
+  assert.equal(opened, 1, '原生客户端不能跟随跳转打开其他窗口');
+  router.dispose();
+  await click(endpoint, false);
   assert.doesNotMatch(source, /removeAllDeliveredNotifications|removeAllPendingNotificationRequests|func applicationDidFinishLaunching/);
 });

@@ -1,4 +1,4 @@
-const { test } = require('node:test');
+const { test, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs/promises');
 const path = require('node:path');
@@ -6,6 +6,8 @@ const Module = require('node:module');
 const { JSDOM } = require('jsdom');
 
 let config = {}, warnings = [], nativeCalls = [], resultError, beforeNativeResult;
+const providers = new Set();
+afterEach(() => { for (const p of providers) p.notificationRouter?.dispose(); providers.clear(); });
 const vscode = {
   UIKind: { Desktop: 1 },
   ConfigurationTarget: { Global: 1 },
@@ -14,6 +16,7 @@ const vscode = {
   env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => vscode.Uri.from({ ...uri, query: uri.query + '&windowId=42' }) },
   workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目' }] },
   window: { showWarningMessage: text => warnings.push(text) },
+  commands: { executeCommand: async () => {} },
 };
 const originalLoad = Module._load;
 Module._load = function(id, ...args) {
@@ -38,6 +41,7 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 
 function provider() {
   const p = Object.create(proto);
+  providers.add(p);
   const usageAlertState = new Map();
   p.context = { extension: { id: 'blackrock1121.vscode-codex' }, extensionUri: { fsPath: '/tmp/extension with spaces' },
     globalState: { get: key => usageAlertState.get(key), update: async (key, value) => { usageAlertState.set(key, value); } } };
@@ -500,6 +504,7 @@ test('通知使用 VS Code 返回的完整窗口 URI，通过文件传递中文�
   assert.equal(call.mode, 0o700);
   assert.equal(call.args[2], '/tmp/extension with spaces/dist/Codex Copilot Notifications.app');
   assert.equal(call.data.url, 'vscode://blackrock1121.vscode-codex/notification?window%3Dwindow-A%26session%3Dsession-A%26windowId%3D42');
+  assert.match(call.data.clickEndpoint, /^http:\/\/127\.0\.0\.1:\d+\/notification\/[\da-f-]{36}$/);
   assert.equal(call.data.body, '中文 `echo` "引号"\n正文');
   assert.equal(call.args.some(arg => arg.includes('touch BAD')), false);
   await assert.rejects(fs.stat(path.dirname(call.request)), { code: 'ENOENT' });
@@ -507,6 +512,58 @@ test('通知使用 VS Code 返回的完整窗口 URI，通过文件传递中文�
   await assert.rejects(provider().sendLocalNotice('失败', '正文'), /系统权限拒绝/);
   await assert.rejects(fs.stat(path.dirname(nativeCalls.at(-1).request)), { code: 'ENOENT' });
   resultError = undefined;
+});
+
+test('窗口 1 与 19 即使包含同一项目和会话，通知点击也只聚焦发送窗口', async t => {
+  const originalResolve = vscode.env.asExternalUri, originalCommand = vscode.commands.executeCommand;
+  t.after(() => { vscode.env.asExternalUri = originalResolve; vscode.commands.executeCommand = originalCommand; });
+  const a = provider(), b = provider(), actions = [];
+  a.notificationWindowKey = 'workspace-kms-ai-gateway';
+  b.notificationWindowKey = 'folder-ai-gateway';
+  // 两个窗口连会话历史也相同，不能依赖目录或会话是否存在来挑选窗口。
+  a.openSession = async id => actions.push(['open', '1', id]);
+  b.openSession = async id => actions.push(['open', '19', id]);
+  a.showNotifyConfig = () => actions.push(['settings', '1']);
+  vscode.commands.executeCommand = async command => actions.push(['focus', command]);
+  vscode.env.asExternalUri = async uri => vscode.Uri.from({ ...uri,
+    query: uri.query + '&windowId=' + (uri.query.includes('workspace-kms') ? '1' : '19') });
+  nativeCalls = []; warnings = []; resultError = undefined;
+  await a.sendLocalNotice('kms / ai-gateway', '', 'session-A');
+  await b.sendLocalNotice('ai-gateway', '', 'session-A');
+  await a.sendLocalNotice('测试通知', '');
+  const [first, second, settings] = nativeCalls.map(call => call.data);
+  // 复现当前 VS Code 前缀匹配缺陷；直连点击无需使用这个错误路由。
+  const id = /\bwindowId=(\d+)/.exec(decodeURIComponent(new URL(first.url).search.slice(1)))[1];
+  assert.equal(['window:19', 'window:1'].find(ctx => new RegExp(`window:${id}`).test(ctx)), 'window:19');
+  for (const notice of [first, second, first, settings]) {
+    const response = await fetch(notice.clickEndpoint, { method: 'POST' });
+    assert.equal(response.status, 204);
+  }
+  const focus = ['focus', 'workbench.action.focusWindow'];
+  assert.deepEqual(actions, [focus, ['open', '1', 'session-A'], focus, ['open', '19', 'session-A'],
+    focus, ['open', '1', 'session-A'], focus, ['settings', '1']]);
+  assert.deepEqual(warnings, []);
+});
+
+test('通知直连聚焦失败会返回错误，用户再次点击可重试；窗口销毁后的迟到解析不再发送', async t => {
+  const p = provider(), original = vscode.commands.executeCommand;
+  t.after(() => { vscode.commands.executeCommand = original; });
+  let opened = 0;
+  p.openSession = async () => opened++;
+  nativeCalls = []; resultError = undefined;
+  await p.sendLocalNotice('通知', '', 'session-A');
+  const endpoint = nativeCalls[0].data.clickEndpoint;
+  vscode.commands.executeCommand = async () => { throw new Error('聚焦失败'); };
+  assert.equal((await fetch(endpoint, { method: 'POST' })).status, 500);
+  assert.equal(opened, 0);
+  vscode.commands.executeCommand = original;
+  assert.equal((await fetch(endpoint, { method: 'POST' })).status, 204);
+  assert.equal(opened, 1);
+  const closed = provider();
+  closed.disposed = true;
+  assert.equal(await closed.sendLocalNotice('迟到通知', '', 'session-A'), false);
+  assert.equal(closed.notificationRouter, undefined);
+  assert.equal(nativeCalls.length, 1);
 });
 
 test('远程扩展宿主不启动 Mac 通知辅助程序', async () => {

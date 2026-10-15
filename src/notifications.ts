@@ -87,8 +87,8 @@ export function localNotificationsSupported(): boolean {
 
 /** 通过独立 macOS 应用发送系统通知；与 webhook 完全独立，不使用 shell 拼接内容。 */
 export async function sendLocalNotification(extensionPath: string, title: string, body: string, url: string,
-    sessionId?: string, createdAt = notificationTime()): Promise<void> {
-    await requestLocalNotification(extensionPath, { operation: "show", id: sessionId ? localNotificationId(sessionId) : randomUUID(), title, body, url, sessionId, createdAt });
+    sessionId?: string, createdAt = notificationTime(), clickEndpoint?: string): Promise<void> {
+    await requestLocalNotification(extensionPath, { operation: "show", id: sessionId ? localNotificationId(sessionId) : randomUUID(), title, body, url, sessionId, createdAt, clickEndpoint });
 }
 
 export async function clearLocalNotification(extensionPath: string, sessionId: string, createdAt = notificationTime()): Promise<void> {

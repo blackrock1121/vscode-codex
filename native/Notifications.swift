@@ -10,6 +10,19 @@ struct Notice: Decodable {
     let title: String?
     let body: String?
     let url: String?
+    let clickEndpoint: String?
+}
+
+// 点击只回到发送通知的本机扩展宿主，地址与随机路径由插件生成。
+func notificationClickEndpoint(_ value: String) -> URL? {
+    guard let url = URL(string: value),
+          let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+          parts.scheme == "http", parts.host == "127.0.0.1",
+          let port = parts.port, (1...65535).contains(port),
+          parts.user == nil, parts.password == nil, parts.query == nil, parts.fragment == nil,
+          url.path.hasPrefix("/notification/"),
+          UUID(uuidString: String(url.path.dropFirst("/notification/".count))) != nil else { return nil }
+    return url
 }
 
 // 只允许通知回到本扩展，不能让通知成为任意 URL/命令执行入口。
@@ -53,11 +66,36 @@ func notificationIsNewer(identifier: String, url: String, sessionId: String?,
         && (createdAt ?? deliveredAt) > requestedAt
 }
 
+final class NotificationClickClient: NSObject, URLSessionTaskDelegate {
+    lazy var session: URLSession = {
+        let config = URLSessionConfiguration.ephemeral
+        config.connectionProxyDictionary = [:]
+        config.timeoutIntervalForRequest = 30
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    func open(_ value: String, completion: @escaping (Bool) -> Void) {
+        guard let endpoint = notificationClickEndpoint(value) else { completion(false); return }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        session.dataTask(with: request) { _, response, error in
+            completion(error == nil && (response as? HTTPURLResponse)?.statusCode == 204)
+        }.resume()
+    }
+
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest,
+                    completionHandler: @escaping (URLRequest?) -> Void) {
+        completionHandler(nil)
+    }
+}
+
 final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     let center = UNUserNotificationCenter.current()
     // 所有队列状态只在主线程访问；同一会话串行，不同会话互不阻塞。
     var queues: [String: [() -> Void]] = [:]
     var latest: [String: Double] = [:]
+    let clicks = NotificationClickClient()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         center.delegate = self
@@ -127,6 +165,7 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                 content.body = notice.body ?? ""
                 content.sound = .default
                 content.userInfo = ["url": notice.url ?? "", "createdAt": requestedAt]
+                if let endpoint = notice.clickEndpoint { content.userInfo["clickEndpoint"] = endpoint }
                 content.threadIdentifier = key
                 // 相同 request identifier 会替换通知中心里已展示的旧通知并再次提醒。
                 self.center.add(UNNotificationRequest(identifier: key, content: content, trigger: nil)) { error in
@@ -156,6 +195,10 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                 finish("本机通知内容无效。")
                 continue
             }
+            if let endpoint = notice.clickEndpoint, notificationClickEndpoint(endpoint) == nil {
+                finish("本机通知跳转地址无效。")
+                continue
+            }
             enqueue(notice, finish: finish)
         }
         sender.reply(toOpenOrPrint: .success)
@@ -171,6 +214,24 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
         if response.actionIdentifier == UNNotificationDefaultActionIdentifier,
            let value = response.notification.request.content.userInfo["url"] as? String,
            let url = callbackURL(value) {
+            if let value = response.notification.request.content.userInfo["clickEndpoint"] as? String {
+                clicks.open(value) { opened in
+                    if !opened {
+                        // 原窗口已失效时不能退回系统 URI 路由，否则又可能激活无关窗口。
+                        DispatchQueue.main.async {
+                            let alert = NSAlert()
+                            alert.messageText = "未能返回通知来源窗口"
+                            alert.informativeText = "原窗口可能已关闭或重载，请在对应工作区的会话历史中打开任务。"
+                            alert.addButton(withTitle: "好")
+                            NSApp.activate(ignoringOtherApps: true)
+                            alert.runModal()
+                        }
+                    }
+                    completionHandler()
+                }
+                return
+            }
+            // 仅兼容升级前已经展示、没有直连地址的通知。
             DispatchQueue.main.async { NSWorkspace.shared.open(url) }
         }
         completionHandler()

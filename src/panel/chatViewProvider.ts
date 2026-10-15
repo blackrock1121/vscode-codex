@@ -7,6 +7,7 @@ import { performance } from "node:perf_hooks";
 import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
+import { NotificationRouter } from "../notificationRouter";
 import { WorkspaceSnapshot } from "../snapshot";
 import { QuestionImages } from "../questionImages";
 import { diffCounts, readDiffFile } from "../diff";
@@ -238,6 +239,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly notifyTimers = new Set<ReturnType<typeof setTimeout>>();
     private notificationEpochs = new Map<string, number>();
     private notificationUris = new Map<string, Promise<vscode.Uri>>();
+    private notificationRouter?: NotificationRouter;
+    private disposed = false;
     constructor(private readonly context: vscode.ExtensionContext, private readonly output: vscode.OutputChannel) {
         this.workdayCalendar = new WorkdayCalendar(path.join(context.globalStorageUri.fsPath, "holiday-cn"),
             message => this.output.appendLine(message), () => this.postNotifyCalendar());
@@ -3141,9 +3144,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const epoch = this.notificationVersion(sessionId);
         // 地址解析不占据原生操作队列，用户回复后的清理无需等旧解析完成。
         const uri = await this.notificationUri(sessionId);
+        if (this.disposed) return false;
+        const router = this.notificationRouter ??= new NotificationRouter();
+        const clickEndpoint = await router.endpoint(sessionId ?? "", () => this.handleNotificationUri(uri, true));
         return queueSessionNotification(sessionId, async () => {
             if (this.notificationVersion(sessionId) !== epoch) return false;
-            await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt);
+            await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt, clickEndpoint);
             return true;
         });
     }
@@ -3199,7 +3205,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             .then(() => this.output.appendLine(`[notify] clear_acknowledged session=${sessionId} reason=${reason} elapsedMs=${Math.round(performance.now() - startedAt)}`))
             .catch(error => this.output.appendLine(`[notify] clear_error session=${sessionId} reason=${reason} errorType=${error instanceof Error ? error.name : typeof error}`));
     }
-    async handleNotificationUri(uri: vscode.Uri): Promise<void> {
+    async handleNotificationUri(uri: vscode.Uri, focusWindow = false): Promise<void> {
         if (uri.path !== "/notification") return;
         const query = new URLSearchParams(uri.query);
         const sessionId = query.get("session");
@@ -3209,6 +3215,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         try {
+            // 在来源扩展宿主执行，直接聚焦对应原生窗口，不再经过有前缀歧义的 URI 路由。
+            if (focusWindow) await vscode.commands.executeCommand("workbench.action.focusWindow");
             if (!sessionId) {
                 this.output.appendLine("[notify] click_open_settings");
                 this.showNotifyConfig();
@@ -3222,6 +3230,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         } catch (error) {
             this.output.appendLine(`[notify] click_error session=${sessionId ?? "none"} errorType=${error instanceof Error ? error.name : typeof error}`);
+            if (focusWindow) throw error; // 原生点击由辅助程序提示失败，避免成功应答后实际未聚焦。
             void vscode.window.showWarningMessage("未能打开通知对应的会话，请从会话历史重试。");
         }
     }
@@ -3904,6 +3913,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return this.context.globalStorageUri.fsPath;
     }
     dispose(): void {
+        this.disposed = true;
+        this.notificationRouter?.dispose();
         this.workdayCalendar.dispose();
         for (const timer of this.notifyTimers) clearTimeout(timer);
         this.notifyTimers.clear();
