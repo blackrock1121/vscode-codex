@@ -119,7 +119,7 @@ test('等待模型目录时停止，不会在停止后切模型或发起压缩',
  assert.deepEqual(calls,[]);assert.equal(p.isExited,true);
 });
 
-test('Astra 自动压缩仍使用当前轮设置，不触发手动模型优化',t=>{
+test('未接入转发时，Astra 自动压缩保持原行为，不触发手动模型优化',t=>{
  const {p,note,item,logs}=astraFixture(t);p.busy=true;
  p.rpc.request=()=>{throw Error('自动压缩不应额外调用 RPC');};
  note('item/started',{item});note('item/completed',{item});
@@ -300,4 +300,73 @@ test('批量延迟送达的遥测按源时间和线程关联旧压缩，进程�
  p.rpc.emit('diagnostic',{...event,sourceTimeMs:sourceTimeMs-1});assert.equal(latest().compactionId,null);
  p.rpc.emit('diagnostic',{...event,type:'metric'});assert.equal(latest().compactionId,null);
  p.rpc.emit('diagnostic',{...event,sourceTimeMs:null});assert.equal(latest().compactionId,null);
+});
+
+test('转发中的自动压缩保持本轮档位、忙碌状态和回答模型，结束后同轮继续',async t=>{
+ for(const [running,next] of [['default','fast'],['fast','default']]){
+  const {p,note,item,logs,events}=astraFixture(t);p.busy=true;
+  p.lastDispatched.speedMode=running;
+  p.rpc.request=()=>{throw Error('原生自动压缩不得调用手动 RPC 或切换会话模型');};
+  await p.setSpeedMode(next);note('item/started',{item});
+  p.compactionRouted({stage:'request',threadId:'test-session',fromModel:'gpt-6-astra',toModel:'gpt-6.1-sol',effort:'xhigh',serviceTier:running==='fast'?'priority':null,transport:'websocket'});
+  note('item/completed',{item});
+  const end=logs().at(-1);assert.equal(end.trigger,'auto');assert.equal(end.model,'gpt-6.1-sol');assert.equal(end.effort,'xhigh');
+  assert.equal(end.modelSource,'transport_override');assert.equal(end.speedMode,running);
+  assert.equal(p.modelForNextTurn,'gpt-6-astra');assert.equal(p.isBusy,true);assert.equal(p.compactionRestore,undefined);
+  note('item/agentMessage/delta',{itemId:'continue',delta:'继续原任务'});assert.equal(events.at(-1).text,'继续原任务');
+  note('turn/completed',{turn:{id:'answer',status:'completed'}});assert.equal(p.isBusy,false);
+ }
+});
+
+test('已接入转发时手动压缩只同步收费档位，不临时切换主会话模型',async t=>{
+ const {p,note,item}=astraFixture(t),calls=[];
+ p.compactionRelay={close(){}};
+ p.rpc.request=async(method,params)=>{calls.push({method,params});return {};};
+ p.compact();await flush();
+ assert.deepEqual(calls,[{method:'thread/settings/update',params:{threadId:'test-session',serviceTier:'default'}},{method:'thread/compact/start',params:{threadId:'test-session'}}]);
+ note('item/completed',{item});note('turn/completed',{turn:{id:'manual',status:'completed'}});await flush();
+ assert.equal(calls.length,2);assert.equal(p.compactionRestore,undefined);
+});
+
+test('自动优化只覆盖本线程连接配置；模型/档位按账号能力检查；退出关闭端口',async t=>{
+ const {p}=astraFixture(t),calls=[];p.opts.env={OPENAI_BASE_URL:''};
+ p.prepare=async()=>{};
+ p.rpc.request=async(method,params)=>{
+  calls.push({method,params});
+  if(method==='config/read')return {config:{}};
+  if(method==='getAuthStatus'){assert.deepEqual(params,{includeToken:false,refreshToken:false});return {authMethod:'chatgpt'};}
+  if(method==='account/read')return {account:{type:'chatgpt'}};
+  return {thread:{id:'test-session'},model:'gpt-6-astra',reasoningEffort:'medium'};
+ };
+ await p.start();const relay=p.compactionRelay;assert.ok(relay);
+ const config=calls.find(c=>c.method==='thread/start').params.config;
+ assert.match(config.openai_base_url,/^http:\/\/127\.0\.0\.1:\d+\/[a-f0-9]{64}$/);
+ assert.equal(relay.canRoute(null),true);assert.equal(relay.canRoute('priority'),true);assert.equal(relay.canRoute('flex'),false);
+ p.models[0].speedModes=['default'];assert.equal(relay.canRoute('priority'),false);assert.equal(relay.canRoute(null),true);
+ p.models[0].efforts=['medium'];assert.equal(relay.canRoute(null),false);
+ p.dispose();assert.throws(()=>relay.baseUrl,/关闭/);
+ assert.equal(calls.some(c=>c.method==='config/value/write'),false);
+});
+
+test('沿用会话、自定义提供方/环境网关、子进程独有代理和读取失败时不覆盖网络配置',async t=>{
+ for(const mode of ['session','custom-provider','base-url','env-base','env-proxy','read-failed']){
+  const {p}=astraFixture(t);p.opts.env={OPENAI_BASE_URL:''};let config={};
+  if(mode==='session')p.opts.compactionMode='session';
+  if(mode==='custom-provider')config={model_provider:'custom'};
+  if(mode==='base-url')config={openai_base_url:'https://example.invalid'};
+  if(mode==='env-base')p.opts.env.OPENAI_BASE_URL='https://example.invalid';
+  if(mode==='env-proxy')p.opts.env.HTTPS_PROXY='http://127.0.0.1:9';
+  p.rpc.request=async method=>{if(mode==='read-failed')throw Error('失败');return method==='config/read'?{config}:{authMethod:'chatgpt'};};
+  await p.prepareCompactionRelay();assert.equal(p.compactionRelay,undefined);
+ }
+});
+
+test('关闭、启动失败与销毁会释放自动压缩连接，不留后台转发器',async t=>{
+ for(const action of ['close','start-failed','disposeAndWait']){
+  const {p}=astraFixture(t);let closed=0;p.compactionRelay={close(){closed++;}};
+  if(action==='close')p.rpc.emit('close',1,Error('断开'));
+  if(action==='start-failed'){p.prepare=async()=>{throw Error('初始化失败');};await assert.rejects(p.start());}
+  if(action==='disposeAndWait')await p.disposeAndWait();
+  assert.equal(closed,1);assert.equal(p.compactionRelay,undefined);
+ }
 });

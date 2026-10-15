@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.126",
+  "version": "0.1.127",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -286,10 +286,10 @@
           ],
           "default": "balanced",
           "enumDescriptions": [
-            "Astra 会话手动压缩时使用 GPT-6.1-Sol xhigh，完成后恢复原模型和推理设置。",
-            "手动压缩也沿用会话模型与推理设置。"
+            "Astra 会话的原生自动及手动压缩使用 GPT-6.1-Sol xhigh，回答仍用会话模型。",
+            "压缩沿用会话模型与推理设置。"
           ],
-          "description": "平衡模式在本机长会话样本中比 Astra 压缩更快，事实保留检查通过；压缩仍可能丢失细节。普通/快速档位始终跟随会话，其他模型和轮次中的自动压缩保持原行为。账号不支持所需模型或档位时沿用会话模型。下次连接生效。"
+          "description": "平衡模式优化官方提供方的原生压缩，包括工具执行后的轮次内自动压缩。仅替换压缩模型及推理设置，不裁剪历史，不改触发阈值；普通/快速档位严格沿用该次请求。账号不支持所需模型/档位或使用自定义网关时，自动压缩沿用原配置；手动压缩保留兼容优化。压缩仍可能丢失细节。下次连接生效。"
         },
         "codexChat.executionMode": {
           "type": "string",
@@ -415,13 +415,18 @@
   "devDependencies": {
     "@types/markdown-it": "^14.1.2",
     "@types/node": "^20.14.0",
+    "@types/proxy-from-env": "1.0.4",
     "@types/vscode": "^1.90.0",
+    "@types/ws": "8.18.2",
     "@vscode/vsce": "^4.0.0",
     "esbuild": "^0.28.2",
     "highlight.js": "^11.10.0",
+    "https-proxy-agent": "9.1.0",
     "jsdom": "^29.1.1",
     "markdown-it": "^14.1.0",
-    "typescript": "^5.5.0"
+    "proxy-from-env": "2.1.0",
+    "typescript": "^5.5.0",
+    "ws": "8.22.0"
   },
   "capabilities": {
     "untrustedWorkspaces": {

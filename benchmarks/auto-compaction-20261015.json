@@ -1,0 +1,40 @@
+{
+  "date": "2026-10-15",
+  "cli": "0.162.1",
+  "historySha256": "ea919fcfef3e195c819a05c8c5e32c377671384fab49d36e497fefd4903fa620",
+  "scope": "CLI 原生自动压缩，普通档位；插件 CodexProcess 实际路径",
+  "manualCompactCalls": 0,
+  "trigger": "auto",
+  "sessionModel": "gpt-6-astra",
+  "sessionEffort": "medium",
+  "compactionModel": "gpt-6.1-sol",
+  "compactionEffort": "xhigh",
+  "serverConfirmedModel": "gpt-6.1-sol",
+  "serviceTier": "default",
+  "wireServiceTier": null,
+  "fastEnabled": false,
+  "preTokens": 228824,
+  "compactionSeconds": 156.204,
+  "factsCorrect": 11,
+  "factsTotal": 11,
+  "decisionsCorrect": 5,
+  "decisionsTotal": 5,
+  "decisionGrading": "按测试前冻结的五项标准人工逐项核对",
+  "maxTimerDelayMs": 2,
+  "retriesReportedByCli": 0,
+  "continuedInSameTurn": true,
+  "method": "注入前轮157项历史，先用短回复建立token用量，再发送普通消息由CLI触发自动压缩。完成后才提供冻结质量问题，由Astra medium作答。试验线程阈值180000，生产配置不变。",
+  "limits": [
+    "单一长历史、一次自动质量回归，不等于所有任务无损。",
+    "比手动基准多了短消息和插件指令，不作为严格的自动性能A/B。",
+    "CLI OTel仍报告逻辑会话模型；模型生效证据来自回环请求和服务端 response.completed.response.model。",
+    "原文、凭据和原始答案不进入仓库。"
+  ],
+  "localProtocolChecks": {
+    "nativeCliToolThenAutoThenContinue": true,
+    "manualCompactCalls": 0,
+    "originalModelOnContinue": true,
+    "resumeAfterClosingRelay": true,
+    "onlineModelGenerationRequired": false
+  }
+}

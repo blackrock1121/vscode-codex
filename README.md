@@ -202,9 +202,23 @@ npm run smoke:question
 
 当前已验证的 Codex CLI `0.162.1` 中，`thread/compact/start` 只有 `threadId`，没有独立的 `model` / `effort` / `serviceTier` 参数。手动压缩会先等待本会话速度设置保存，再通过 `thread/settings/update` 同步所选档位：普通明确传 `default`，快速传 `priority`，成功后记录 `settings_synced` 并开始压缩；同步失败则取消压缩，不沿用可能过期的收费档位。自动压缩沿用正在执行的轮次档位，运行中切换只影响后续操作。插件不会为压缩额外开启快速模式。诊断依据：[官方 App Server](https://learn.chatgpt.com/docs/app-server)、[官方 OTel 事件与指标说明](https://learn.chatgpt.com/docs/config-file/config-advanced)。
 
-`codexChat.compactionMode` 默认 `balanced`：Astra 会话手动压缩临时使用 **GPT-6.1-Sol + xhigh**，保持会话所选收费档位。压缩轮次结束并恢复原模型、原推理设置后才接受下一条消息；恢复失败会关闭连接，避免后续回答误用压缩模型。账号目录缺少所需模型、推理或速度档位，或原推理配置未知时，沿用会话模型。选 `session` 可关闭此优化；设置在下次连接生效。其他模型以及轮次中的自动压缩保持原行为，压缩阈值也不变。
+`codexChat.compactionMode` 默认 `balanced`：Astra 会话的**原生自动及手动压缩**使用 **GPT-6.1-Sol + xhigh**，回答仍使用原会话模型和推理设置，收费档位严格跟随该次原生请求。覆盖轮次开始前、工具执行后等 CLI 自动触发的位置，不额外调用手动压缩接口，不裁剪历史，不修改自动阈值，不增加后台摘要请求。选 `session` 可关闭优化；设置在下次连接生效。
+
+实现使用官方 `openai_base_url` 配置，为每个 CLI 连接创建固定上游的本机回环转发器，只识别 `/responses` 请求末尾的 `compaction_trigger`。普通回答按原字节转发，WebSocket、HTTP/SSE 继续使用原传输方式；转发器不自行重试模型或工具请求，重试仍由 CLI 管理。端口只监听 `127.0.0.1`，使用随机路径校验，不读取凭据文件、不记录正文、不更改全局配置。`[compaction_route]` 记录发送模型、档位和服务端返回模型；CLI 的 OTel `model` 仍可能是逻辑会话模型，不能独自作为压缩实际模型的依据。配置依据：[OpenAI 官方配置参考](https://learn.chatgpt.com/docs/config-file/config-reference)。
+
+仅接管已确认的官方默认提供方。自定义网关、未知账号、无法兼容的代理或账号缺少 Sol xhigh / 同收费档位时不改原生自动压缩。转发器遵循现有 HTTP(S) 代理环境；子进程具有不同代理设置时不接管。未接入转发时，手动压缩保留旧版临时切换模型、结束后恢复的兼容路径。连接关闭即释放转发器；恢复会话重新建立地址，关闭此优化后不沿用旧端口。
 
 2026-10-15 使用同一份约 22.8 万 token 历史，在普通模式下复测：Sol xhigh 两次为 125 / 143 秒，压缩后统一由 Astra medium 回答预先固定问题，两次均通过 11 项事实和 5 项操作判断；同组 Astra xhigh 为 217 秒、11/11，Luna xhigh 为 30 / 38 秒、7/11 和 9/11。Sol medium 没有更快，Luna max 未稳定改善事实保留，因此默认选 Sol xhigh。连同此前相同历史的两次计时，Astra 三次平均为 198 秒，Sol xhigh 平均为 134 秒，观察到约 33% 的时间缩短。数据见 [基准摘要](benchmarks/compaction-20261015.json)。这是单一历史的小样本，检查通过不代表无损压缩或所有任务质量相同；耗时会受服务负载和缓存影响。
+
+自动路径回归（2026-10-15）：用同源长历史，经插件真实 `CodexProcess` 发送普通消息，由 CLI 自行触发压缩，`thread/compact/start` 调用次数为 0；约 22.8 万 token，服务端确认压缩模型为 Sol，耗时 156.204 秒，随后 Astra medium 的 11 项事实和 5 项操作判断均通过。试验只在隔离线程降低阈值以触发自动压缩，生产阈值不变。该样本比前述手动基准多了短消息和插件指令，不能直接作为严格的自动提速 A/B。详情见 [自动压缩验证](benchmarks/auto-compaction-20261015.json)。`node scripts/build-test.cjs && node scripts/smoke-auto-compaction.cjs` 可运行本机模拟上游的原生 CLI 集成检查：工具返回 → 自动压缩 → 原模型继续，以及关闭转发后恢复；无需在线模型生成。
+
+参考 Claude 的上下文管理：
+
+- [Claude Code 官方机制](https://code.claude.com/docs/en/how-claude-code-works)先清理旧工具输出，必要时再摘要，并防止压缩后立即撑满造成无限循环。这能减少需要处理的历史量，但选择性清理也会失去旧细节。
+- [Claude API 保留最近轮次](https://platform.claude.com/docs/en/build-with-claude/compaction-keep-recent-turns)让较旧轮次参与摘要、最近轮次原文保留，切点不能拆开工具调用与结果。
+- [Claude API 后台压缩](https://platform.claude.com/docs/en/build-with-claude/compaction-background)在继续工作时压缩固定前缀，完成后保留期间新增的后缀；同时只运行一个压缩请求，失败保留原历史。它减少阻塞等待，但仍消耗请求与额度。
+
+后两项是 API 编排方案，不能据此断言 Claude Code CLI 默认采用。当前 Codex App Server 没有已验证的“压缩固定前缀并原子替换、保留新增后缀”接口，本插件未照搬后台合并或自行删除工具结果；本次先把经过质量验证的模型优化接到原生自动路径。
 
 ## 发布
 

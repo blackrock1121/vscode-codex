@@ -10,6 +10,7 @@ import { TransportDiagnostic } from './telemetry';
 import { PerformanceTrace, PerformanceContext } from './performanceTrace';
 import { ChildThreadRegistry, childToolId } from './childThreads';
 import { executionConfig, executionInstructions } from './executionPolicy';
+import { CompactionRelay, CompactionRoute, compactionUpstream } from './compactionRelay';
 export { ChildThreadRegistry, childToolId } from './childThreads';
 
 const USER_DECISION_INSTRUCTIONS = '当任务需要用户选择、确认业务事实、付款或其他明确决定时，必须调用 AskUserQuestion 向用户提问；恢复的旧会话若没有此工具，调用原生 request_user_input_async 或 request_user_input，客户端同样会展示问题卡片并暂停等待答案。不要只在普通消息里列出问题或选项。等待由客户端处理，禁止调用 sleep、执行休眠命令或轮询来等待用户。不要替用户选择选项，也不要在提出问题后自行继续依赖该答案的步骤。用户未提交答案时不得因为等待时间较长而继续任务或给出最终答复。';
@@ -83,6 +84,8 @@ export class CodexProcess {
   private activeModel = "";
   private activeEffort?: string;
   private compactionRestore?: { model: string; effort: string; pending: boolean; isError: boolean };
+  private compactionRelay?: CompactionRelay;
+  private compactionConfig?: Promise<any>;
   private lastDispatched?: { model: string; effort: string; speedMode: SpeedMode };
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
@@ -108,7 +111,7 @@ export class CodexProcess {
     requestAcceptedMs?: number; firstUsageMs?: number; lastTickAt: number; maxTimerDelayMs: number;
     speedMode: SpeedMode; effort: string; usage?: Record<string, number>;
     preTokens?: number; contextWindow?: number; latestTokens?: number; usageUpdates: number;
-    retries: number; errors: number; model: string; modelSource: 'active_thread' | 'manual_override';
+    retries: number; errors: number; model: string; modelSource: 'active_thread' | 'manual_override' | 'transport_override';
   };
   private readonly recentCompactions: NonNullable<CodexProcess['compactionTrace']>[] = [];
   private compactionTimer?: NodeJS.Timeout;
@@ -144,6 +147,7 @@ export class CodexProcess {
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
       this.latency.finish('connection_closed');
+      this.compactionRelay?.close(); this.compactionRelay = undefined;
       this.endCompactionTrace('connection_closed');
       clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer);
       this.clearChildState();
@@ -200,6 +204,8 @@ export class CodexProcess {
     return this.preparing ??= (async () => {
       await this.rpc.start();
       this.modelsReady = this.loadModels();
+      if (this.opts.compactionMode !== 'session')
+        this.compactionConfig = this.rpc.request('config/read', { includeLayers: false }, 200).catch(() => undefined);
     })();
   }
   start(): Promise<void> {
@@ -218,9 +224,10 @@ export class CodexProcess {
   private async startSession(): Promise<void> {
     try {
       await this.prepare();
+      await this.prepareCompactionRelay();
       const p = permissions(this.opts.permissionMode, this.opts.addDirs ?? [this.opts.cwd]);
       const mode = this.opts.executionMode ?? 'parallel';
-      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, config: executionConfig(mode), developerInstructions: [USER_DECISION_INSTRUCTIONS, executionInstructions(mode), this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
+      const params = { serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'), cwd: this.opts.cwd, model: this.opts.model || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandbox: p.sandbox, config: { ...executionConfig(mode), ...(this.compactionRelay ? { openai_base_url: this.compactionRelay.baseUrl } : {}) }, developerInstructions: [USER_DECISION_INSTRUCTIONS, executionInstructions(mode), this.opts.appendSystemPrompt].filter(Boolean).join('\n\n') };
       // resume 不支持 dynamicTools；旧会话沿用持久化工具，原生异步提问另行接入同一暂停流程。
       const result = await this.timedRequest(this.opts.resumeSessionId ? 'thread/resume' : 'thread/start', this.opts.resumeSessionId ? { ...params, threadId: this.opts.resumeSessionId } : { ...params, dynamicTools: [ASK_USER_QUESTION_TOOL] });
       if (this.opts.resumeSessionId && result.thread?.id !== this.opts.resumeSessionId)
@@ -233,7 +240,42 @@ export class CodexProcess {
       this.emit({ kind: 'session', sessionId: this.sessionId!, cwd: this.opts.cwd, model: result.model ?? '', tools: [], resumed: !!this.opts.resumeSessionId, permissionMode: this.opts.permissionMode });
       await this.restoreQuestion(result.thread);
       void this.readAccount();
-    } catch (e) { this.exited = true; this.rpc.dispose(); throw e; }
+    } catch (e) { this.compactionRelay?.close(); this.compactionRelay = undefined; this.exited = true; this.rpc.dispose(); throw e; }
+  }
+  private async prepareCompactionRelay(): Promise<void> {
+    if (this.opts.compactionMode === 'session') return;
+    const env = { ...process.env, ...this.opts.env };
+    // 不覆盖环境指定的网关，也不让子进程专属代理设置在转发时丢失。
+    if (env.OPENAI_BASE_URL || Object.entries(this.opts.env ?? {}).some(([key, value]) =>
+      /^(https?_proxy|all_proxy|no_proxy|ssl_cert_file|ssl_cert_dir|node_extra_ca_certs)$/i.test(key) && value !== process.env[key])) return;
+    try {
+      const settings = await (this.compactionConfig ?? this.rpc.request('config/read', { includeLayers: false }, 200));
+      if (!compactionUpstream(settings?.config, { type: 'chatgpt' }) || this.exited || this.disposed) return;
+      // 只读本机鉴权模式，不请求令牌。account/read 可能联网发现工作区，继续留在聊天启动后的后台。
+      const identity = await this.rpc.request('getAuthStatus', { includeToken: false, refreshToken: false }, 200);
+      const upstream = compactionUpstream(settings.config, { type: identity.authMethod === 'apikey' ? 'apiKey' : identity.authMethod });
+      if (!upstream || this.exited || this.disposed) return;
+      const relay = await CompactionRelay.start(upstream, tier => {
+        const model = this.models.find(m => m.id === 'gpt-6.1-sol');
+        if (!model?.efforts.includes('xhigh')) return false;
+        if (tier === null || tier === 'default') return true;
+        return (tier === 'priority' || tier === 'fast') && supportsSpeed(model, 'fast');
+      }, route => this.compactionRouted(route));
+      if (this.exited || this.disposed) { relay.close(); return; }
+      this.compactionRelay = relay;
+      this.emit({ kind: 'diag', message: '[compaction_route] {"stage":"ready","scope":"manual_and_auto"}' });
+    } catch {
+      this.emit({ kind: 'notice', message: '自动压缩优化连接未启用，当前连接继续使用 CLI 原生压缩。' });
+    }
+  }
+  private compactionRouted(route: CompactionRoute): void {
+    this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify(route)}` });
+    const trace = this.compactionTrace;
+    if (route.stage === 'request' && trace && route.threadId === trace.threadId) {
+      trace.model = route.toModel; trace.effort = route.effort; trace.modelSource = 'transport_override';
+      this.logCompactionTrace('model_routed', trace);
+      this.emit({ kind: 'status', label: '正在使用 GPT-6.1-Sol 压缩上下文…' });
+    }
   }
   private saveQuestion(): void {
     const paused = this.pausedQuestion;
@@ -321,7 +363,7 @@ export class CodexProcess {
     let settingsSynced = false;
     const dispatch = async () => {
       let override: { model: string; effort: string } | undefined;
-      if (this.opts.compactionMode !== 'session' && trace.model === 'gpt-6-astra') {
+      if (!this.compactionRelay && this.opts.compactionMode !== 'session' && trace.model === 'gpt-6-astra') {
         await this.modelsReady;
         if (this.compactionTrace !== trace || this.exited || this.stopTimer) return;
         const candidate = this.models.find(m => m.id === 'gpt-6.1-sol');
@@ -984,6 +1026,6 @@ export class CodexProcess {
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
   }
-  dispose() { this.latency.finish('disposed'); this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
-  async disposeAndWait() { this.latency.finish('disposed'); this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
+  dispose() { this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
+  async disposeAndWait() { this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
 }
