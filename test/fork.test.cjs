@@ -166,3 +166,22 @@ test('编辑重新生成先刷新历史和还原点位置，避免用直播中�
  assert.equal(await f.provider.editMessageRewind(f.ctx,f.id),true);
  assert.equal(f.reads(),1);assert.deepEqual(steps,[1]);
 });
+
+test('重新生成提前连接且在无进程时仍收齐快照，失败也释放连接',async t=>{
+ for(const fail of [false,true]){
+  const f=await fixture(t),steps=[];
+  f.ctx.proc=undefined;
+  const preparation={ready:Promise.resolve(),dispose:async()=>steps.push('dispose')};
+  f.store.prepareFork=()=>{steps.push('prepare');return preparation;};
+  const hydrate=f.store.hydrate;
+  f.store.hydrate=async id=>{steps.push('history');await hydrate(id);};
+  f.provider.captureFinalSnapshot=async()=>{steps.push('snapshot');if(fail)throw Error('快照失败');};
+  f.provider.forkRewind=async(_ctx,_id,_cut,_branch,prepared)=>{
+   assert.equal(prepared,preparation);steps.push('rewind');
+  };
+  f.provider.refreshChangedFiles=()=>{};
+  f.provider.loadCtxSession=()=>{};
+  assert.equal(await f.provider.editMessageRewind(f.ctx,f.id),!fail);
+  assert.deepEqual(steps,fail?['prepare','history','snapshot','dispose']:['prepare','history','snapshot','rewind','dispose']);
+ }
+});
