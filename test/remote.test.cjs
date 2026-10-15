@@ -38,12 +38,20 @@ function fixture() {
 
 test('手机指定 B 时只调用 B 原进程，桌面焦点 A 不改变；同一发送路径显示用户消息', async () => {
   const f = fixture();
+  f.b.draft = '电脑未发送草稿'; f.b.draftImages = [{ mediaType: 'image/png', data: 'test' }];
   const reply = await f.provider.executeRemote(command({ kind: 'message.send', text: '手机正文', attachmentIds: [] }), () => true);
   assert.equal(reply.accepted, true); assert.deepEqual(f.sends, [['session-b', '手机正文']]);
   assert.equal(f.provider.activeCtx, f.a);
   assert.ok(f.events.some(([id, e]) => id === 'session-b' && e.kind === 'remote_user' && e.text === '手机正文'));
   assert.equal(f.saved.get('codexChat.remotePrivate.session-b'), true);
+  assert.equal(f.b.draft, '电脑未发送草稿'); assert.equal(f.b.draftImages[0].data, 'test');
+  assert.ok(f.events.every(([, e]) => e.kind !== 'draft'));
   assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '重复点击', attachmentIds: [] }), () => true)).error, 'SESSION_BUSY');
+});
+test('手机发送失败不把手机文字写入电脑草稿，保留桌面原输入', async () => {
+  const f = fixture(); f.b.draft = '电脑自己的草稿'; f.provider.ensureProcess = async () => undefined;
+  assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '手机文字', attachmentIds: [] }), () => true)).error, 'MESSAGE_NOT_SENT');
+  assert.equal(f.b.draft, '电脑自己的草稿'); assert.ok(f.events.every(([, e]) => e.kind !== 'draft'));
 });
 test('查询只能读本窗口打开/后台会话，复用权威历史；不允许路径或任意 Webview 操作', async () => {
   const f = fixture();

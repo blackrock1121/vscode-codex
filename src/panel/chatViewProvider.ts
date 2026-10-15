@@ -1485,9 +1485,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.post(ctx, { kind: "status", label: hadSession ? "正在连接 Codex 会话…" : "正在创建 Codex 会话…" });
         const proc = processReady ? await processReady : await this.ensureProcess(ctx);
         if (!proc) {
-            ctx.draft = text;
-            ctx.draftImages = images;
-            this.post(ctx, { kind: "draft", text, images });
+            if (!allowed) {
+                ctx.draft = text; ctx.draftImages = images;
+                this.post(ctx, { kind: "draft", text, images });
+            }
             this.post(ctx, { kind: "busy", busy: false });
             return false;
         }
@@ -1509,10 +1510,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (proc.isBusy) {
             // 初始化可能刚恢复出待答问题，不能把“等待输入”误判为进程退出。
-            ctx.draft = text;
-            ctx.draftImages = images;
-            this.post(ctx, { kind: "draft", text, images });
-            this.post(ctx, { kind: "notice", message: "已恢复等待中的问题，请先提交答案；新消息已保留为草稿。" });
+            if (!allowed) {
+                ctx.draft = text; ctx.draftImages = images;
+                this.post(ctx, { kind: "draft", text, images });
+            }
+            this.post(ctx, { kind: "notice", message: allowed ? "已恢复等待中的问题，请先提交答案；手机消息未发送。" : "已恢复等待中的问题，请先提交答案；新消息已保留为草稿。" });
             return false;
         }
         if (ctx.remotePrivate && ctx.sessionId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + ctx.sessionId))
@@ -1524,9 +1526,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (ctx.proc === proc)
                 ctx.proc = undefined;
             this.post(ctx, { kind: "error", message: "codex 进程已退出，本条消息未送出——请重新发送（会自动重启进程）。" });
-            ctx.draft = text;
-            ctx.draftImages = images;
-            this.post(ctx, { kind: "draft", text, images });
+            if (!allowed) {
+                ctx.draft = text; ctx.draftImages = images;
+                this.post(ctx, { kind: "draft", text, images });
+            }
             this.post(ctx, { kind: "busy", busy: false });
             return false;
         }
@@ -1535,8 +1538,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.store.notePending(ctx.sessionId, text || "(图片)");
             this.renderSessions();
         }
-        ctx.draft = undefined;
-        ctx.draftImages = undefined;
+        if (!allowed) { ctx.draft = undefined; ctx.draftImages = undefined; }
         ctx.sendAt = Date.now();
         this.clearSessionNotification(ctx.sessionId);
         ctx.lastEventAt = ctx.sendAt;
