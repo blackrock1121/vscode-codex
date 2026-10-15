@@ -141,6 +141,31 @@ const modeMenu = $("mode-menu");
 const modelTrigger = $("model-trigger");
 const modelLabel = $("model-label");
 const speedTrigger = $("speed-trigger") as HTMLButtonElement;
+const speedTip = document.createElement("div");
+speedTip.id = "speed-tooltip";
+speedTip.className = "speed-tooltip";
+speedTip.hidden = true;
+speedTip.setAttribute("role", "tooltip");
+speedTip.innerHTML = '<div class="speed-tip-heading"></div><div class="speed-tip-row"><span>普通</span><span class="speed-tip-normal"></span></div><div class="speed-tip-row"><span>快速</span><span class="speed-tip-fast"></span></div><div class="speed-tip-note"></div><div class="speed-tip-action"></div>';
+document.body.appendChild(speedTip);
+speedTrigger.setAttribute("aria-describedby", speedTip.id);
+function hideSpeedTip() { speedTip.hidden = true; }
+function showSpeedTip() {
+  speedTip.hidden = false;
+  const rect = speedTrigger.getBoundingClientRect();
+  const width = speedTip.offsetWidth, height = speedTip.offsetHeight;
+  speedTip.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)) + "px";
+  const top = rect.top - height - 8;
+  speedTip.style.top = Math.max(8, Math.min(top >= 8 ? top : rect.bottom + 8, window.innerHeight - height - 8)) + "px";
+}
+speedTrigger.addEventListener("mouseenter", showSpeedTip);
+speedTrigger.addEventListener("mouseleave", hideSpeedTip);
+speedTrigger.addEventListener("focus", showSpeedTip);
+speedTrigger.addEventListener("blur", hideSpeedTip);
+document.addEventListener("keydown", e => { if (e.key === "Escape") hideSpeedTip(); });
+window.addEventListener("resize", hideSpeedTip);
+document.addEventListener("scroll", hideSpeedTip, true);
+
 const effortTrigger = $("effort-trigger") as HTMLButtonElement;
 const effortMenu = $("effort-menu");
 const modelMenu = $("model-menu");
@@ -3909,11 +3934,16 @@ function syncPickers() {
   speedTrigger.setAttribute("aria-checked", String(fast));
   speedTrigger.setAttribute("aria-label", `快速模式：${fast ? "开启" : "关闭"}；点击切换${fast ? "普通" : "快速"}`);
   speedTrigger.disabled = speedPending || !available;
-  speedTrigger.title = `当前：${fast ? "快速模式（闪电亮起）" : "普通模式（闪电灰暗）"}
-普通：标准速度；${normalCost.text}
-快速：更快生成回复；${fastCost.text}
-${gain.text}
-${speedBilling === "api" ? "" : "购买额度及企业按量计费为普通模式的 2×，以官方计费说明为准。\n"}${speedAvailability("fast")}。点击切换，仅当前会话下轮生效。`;
+  speedTrigger.removeAttribute("title");
+  speedTip.querySelector(".speed-tip-heading")!.textContent = fast ? "快速模式 · 已开启" : "普通模式";
+  speedTip.querySelector(".speed-tip-normal")!.textContent = `标准速度 · ${normalCost.badge}`;
+  speedTip.querySelector(".speed-tip-fast")!.textContent = `${gain.badge === "未公布" ? "更快响应" : "速度 " + gain.badge} · ${fastCost.badge}`;
+  speedTip.querySelector(".speed-tip-note")!.textContent = speedBilling === "api"
+    ? "按 API 单独计价，不适用订阅倍率。"
+    : `${speedBilling === "unknown" ? "若使用订阅，" : ""}倍率指订阅额度消耗；购买额度／企业按量为 2×。${fastCost.badge === "倍率待确认" ? "当前模型额度倍率待确认。" : ""}${gain.badge === "未公布" ? "提速幅度随任务变化。" : ""}`;
+  speedTip.querySelector(".speed-tip-action")!.textContent = speedPending ? "正在保存…"
+    : !available ? speedAvailability("fast") : `点击切换为${fast ? "普通" : "快速"} · 下轮生效`;
+  if (!speedTip.hidden) showSpeedTip();
   const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
   const effort = EFFORTS.find(e => e.id === selectedEffort);
   const effortLabel = effort?.label || selectedEffort || "默认";

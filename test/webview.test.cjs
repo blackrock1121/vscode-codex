@@ -1018,13 +1018,13 @@ test('普通快速闪电只发送当前会话速度，保存回执前保持真�
  const trigger=w.document.getElementById('speed-trigger');
  assert.equal(trigger.getAttribute('role'),'switch');assert.equal(trigger.getAttribute('aria-checked'),'false');
  assert.equal(w.document.getElementById('speed-menu'),null);
- assert.match(trigger.title,/1×/);assert.match(trigger.title,/2.5×/);assert.match(trigger.title,/2×/);
- assert.doesNotMatch(trigger.title,/提速.*2.5|8×|超高速/);
+ assert.match(w.document.getElementById("speed-tooltip").textContent,/1×/);assert.match(w.document.getElementById("speed-tooltip").textContent,/2.5×/);assert.match(w.document.getElementById("speed-tooltip").textContent,/2×/);
+ assert.doesNotMatch(w.document.getElementById("speed-tooltip").textContent,/提速.*2.5|8×|超高速/);
  trigger.click();trigger.click();
  assert.deepEqual(JSON.parse(JSON.stringify(sent.filter(x=>x.type==='setSpeedMode'))),[{type:'setSpeedMode',mode:'fast'}]);
  assert.equal(trigger.getAttribute('aria-checked'),'false');assert.equal(trigger.disabled,true);
  emit({kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'fast'});
- assert.equal(trigger.getAttribute('aria-checked'),'true');assert.equal(trigger.querySelector('.speed-bolt') !== null,true);assert.match(trigger.title,/当前：快速模式/);
+ assert.equal(trigger.getAttribute('aria-checked'),'true');assert.equal(trigger.querySelector('.speed-bolt') !== null,true);assert.match(w.document.getElementById("speed-tooltip").textContent,/快速模式 · 已开启/);
  trigger.click();assert.equal(sent.at(-1).mode,'default');
  assert.equal(sent.some(m=>['setModel','setEffort','stop'].includes(m.type)),false);
  assert.deepEqual(errors,[]);
@@ -1047,8 +1047,8 @@ test('默认模型等待真实会话确认，API 计费不残留订阅额度倍�
  emit({kind:'session',sessionId:'s',model:'gpt-6.1-sol',cwd:'/tmp',tools:[]});
  assert.equal(trigger.disabled,false);
  emit({kind:'speed_context',billing:'api'});
- assert.match(trigger.title,/API.*不适用/);assert.doesNotMatch(trigger.title,/2.5×|订阅内额度|2×/);
- emit({kind:'speed_context',billing:'chatgpt'});assert.match(trigger.title,/2.5×/);
+ assert.match(w.document.getElementById("speed-tooltip").textContent,/API.*不适用/);assert.doesNotMatch(w.document.getElementById("speed-tooltip").textContent,/2.5×|订阅内额度|2×/);
+ emit({kind:'speed_context',billing:'chatgpt'});assert.match(w.document.getElementById("speed-tooltip").textContent,/2.5×/);
 });
 test('推理入口与模型和快速开关同层可见，保存失败回执不改变已选档位',t=>{
  const {w,sent,emit}=setup(t);
@@ -1265,4 +1265,15 @@ test('命令和菜单等待保存回执，重复选择不提交，失败保留�
  assert.equal(w.document.getElementById('effort-label').textContent,'推理：低');
  assert.doesNotMatch(w.document.getElementById('messages').textContent,/已切换模型|已切换思考强度/);
  assert.deepEqual(errors,[]);
+});
+
+test('闪电提示立即显示，离开、Escape 和滚动立即隐藏，无原生 title',t=>{
+ const {w}=setup(t),trigger=w.document.getElementById('speed-trigger'),tip=w.document.getElementById('speed-tooltip');
+ assert.equal(trigger.hasAttribute('title'),false);assert.equal(tip.hidden,true);
+ trigger.dispatchEvent(new w.MouseEvent('mouseenter'));assert.equal(tip.hidden,false);
+ trigger.dispatchEvent(new w.MouseEvent('mouseleave'));assert.equal(tip.hidden,true);
+ trigger.dispatchEvent(new w.FocusEvent('focus'));assert.equal(tip.hidden,false);
+ w.document.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape'}));assert.equal(tip.hidden,true);
+ trigger.dispatchEvent(new w.MouseEvent('mouseenter'));
+ w.document.dispatchEvent(new w.Event('scroll'));assert.equal(tip.hidden,true);
 });

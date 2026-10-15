@@ -2065,8 +2065,27 @@ mark.find-hit.current {
 #speed-trigger[aria-checked="true"] {
   color: var(--vscode-editorWarning-foreground, #e5b454);
   background: rgba(229, 180, 84, .13);
-  border-color: currentColor;
+  border-color: transparent;
 }
 #speed-trigger[aria-checked="true"] .speed-bolt svg { fill: currentColor; }
 #speed-trigger:disabled { opacity: .6; cursor: not-allowed; }
 #speed-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
+
+/* Compact, immediate hint above the composer; never use native title delays. */
+#speed-trigger { background: transparent; border-color: transparent; border-radius: 6px; }
+#speed-trigger:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.14)); }
+.speed-tooltip {
+  position: fixed; z-index: 100; box-sizing: border-box;
+  width: 254px; max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
+  padding: 12px 14px; border-radius: 10px; pointer-events: none; overflow: hidden;
+  color: var(--vscode-editorHoverWidget-foreground, var(--vscode-foreground));
+  background: var(--vscode-editorHoverWidget-background, #252526);
+  border: 1px solid var(--vscode-editorHoverWidget-border, rgba(128,128,128,.24));
+  box-shadow: 0 5px 18px rgba(0,0,0,.22); font-size: 11px; line-height: 1.5;
+}
+.speed-tooltip[hidden] { display: none; }
+.speed-tip-heading { font-size: 12px; font-weight: 600; margin-bottom: 9px; }
+.speed-tip-row { display: flex; justify-content: space-between; gap: 12px; margin: 4px 0; }
+.speed-tip-row > :last-child { font-variant-numeric: tabular-nums; }
+.speed-tip-note { margin-top: 9px; color: var(--vscode-descriptionForeground); font-size: 10px; }
+.speed-tip-action { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--vscode-editorHoverWidget-border, rgba(128,128,128,.2)); color: var(--vscode-descriptionForeground); }
