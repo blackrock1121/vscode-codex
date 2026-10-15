@@ -44,6 +44,18 @@ test('诊断中显示进度，完成后可打开证据；跨工作区不启动�
  assert.deepEqual(errors,[]);
 });
 
+test('新版页面明确全局范围、全量覆盖及采样版本，发起位置不限制新建修复会话',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ const global={...record,diagnosticScope:'local-plugin-full',coverage:{files:7,readFiles:7,windows:3,sessions:8,records:100,bytes:10000,firstDay:'2026-10-09',lastDay:'2026-10-15',unreadableFiles:0,invalidLines:0,oversizedLines:0,droppedLines:0}};
+ emit({type:'state',records:[global],selectedId:record.id,workspaceId:'plugin-source'});
+ const detail=w.document.getElementById('detail');assert.match(detail.textContent,/整个插件 · 全量/);assert.match(detail.textContent,/3 个窗口、8 个会话/);assert.match(detail.textContent,/被分析的插件版本：0.1.127/);
+ assert.match(w.document.getElementById('records').textContent,/发起位置：项目A/);
+ const repair=[...detail.querySelectorAll('button')].find(e=>e.textContent==='创建修复会话');assert.equal(repair.disabled,false);repair.click();
+ assert.equal(sent.filter(m=>m.type==='repair').length,1);
+ emit({type:'state',records:[{...global,repair:{status:'started',sessionId:'repair',workspaceId:'plugin-source'}}],selectedId:record.id,workspaceId:'business'});
+ assert.equal([...detail.querySelectorAll('button')].find(e=>e.textContent==='查看修复会话').disabled,true);assert.deepEqual(errors,[]);
+});
+
 test('打开诊断中心立即创建页面，开始作业独立异步，关闭页面不停止后台任务',async t=>{
  const jobs=new EventEmitter();let started=0,disposed=0;
  Object.assign(jobs,{scope:{workspaceId:'project-a'},list:async()=>[record],get:async()=>record,report:async()=> '# 报告',start:async()=>{started++;return record;},dispose:()=>disposed++});

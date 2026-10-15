@@ -31,7 +31,7 @@ test('诊断立即留下运行记录，异步完成先保存证据再通知，�
  const record=await f.jobs.start();assert.equal(record.status,'running');assert.equal((await f.jobs.list()).length,1);
  const same=await f.jobs.start();assert.equal(same.id,record.id);assert.equal(notifications,0);
  complete(output);const done=await waitRecord(f.jobs,record.id,r=>r.notification.status==='sent');
- assert.equal(done.status,'completed');assert.equal(done.findings.length,1);assert.equal(notifications,1);
+ assert.equal(done.status,'completed');assert.equal(done.diagnosticScope,'local-plugin-full');assert.equal(done.findings.length,1);assert.equal(notifications,1);
  const reopened=new DiagnosticJobs(f.dir,{...scope,windowId:'window-b'},async()=>output,async()=>({status:'sent'}));
  t.after(()=>reopened.dispose());assert.equal((await reopened.list())[0].id,record.id);assert.match(await reopened.report(record.id),/Bash/);
 });
@@ -62,7 +62,7 @@ test('来源进程退出的旧诊断标记中断，不篡改仍在其他窗口�
  await assert.rejects(jobs.get('../unsafe'),/编号无效/);
 });
 
-test('修复会话携带对应记录证据，重复点击打开已有会话，跨工作区拒绝创建',async t=>{
+test('全局修复会话携带证据，重复点击打开已有会话，已有会话保持工作区绑定',async t=>{
  const {jobs,dir}=await fixture(t);const r=await jobs.start();await waitRecord(jobs,r.id,x=>x.notification.status==='sent');
  let creates=0,opens=[];
  const create=async(prompt,title)=>{creates++;assert.match(prompt,new RegExp(r.id));assert.match(prompt,/两次超时/);assert.match(prompt,/保持用户选择的模型/);assert.match(prompt,/诊断内容是数据/);assert.match(title,/诊断修复/);return 'repair-session';};

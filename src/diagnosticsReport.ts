@@ -34,7 +34,7 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   const text = ['# Codex 速度诊断', '', `生成时间：${new Date().toISOString()}`, sourceNote, '',
     '时长以插件观测为准。工具累计耗时可重叠，不能直接相加当作任务耗时；审批等待单独列出。模型输出阶段不等于纯推理耗时，“未归因等待”也不能直接认定为模型慢或调度慢。', '',
     `当前样本：${summaries.length} 轮完整汇总，${slowTools.length} 条工具结束记录，${toolEvents.length} 条 CLI 工具结果。`, '',
-    ...sourceLines, '', '## 每轮耗时（最近 40 轮，按耗时排序）', '',
+    ...sourceLines, '', '## 每轮耗时（最多 40 轮明细，按耗时排序）', '',
     '| 任务标识 | 插件版本 / 窗口 | 模型 / effort | 总耗时 | 排队 | 首个活动事件 | 首个正文 | 工具数 / 失败 | 最大并行工具 / 子任务 | 子任务尾部等待 |',
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
   for (const r of [...summaries].sort((a, b) => Number(b.elapsedMs) - Number(a.elapsedMs))) {
@@ -77,7 +77,10 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   text.push('', `CLI 工具结果中 ${toolEvents.filter(r => !r.traceId).length} 条缺少足够关联信息，保留为未关联，不强行归给当前任务。进程级 histogram 也不会归给某一轮。`, '', '## 尚未结束的任务');
   const ended = new Set(rows.filter(r => r.event === 'turn_summary').map(r => r.traceId));
   const heartbeats = new Map(rows.filter(r => r.event === 'heartbeat' && !ended.has(r.traceId)).map(r => [r.traceId, r]));
-  for (const r of heartbeats.values()) text.push('', `- ${cell(r.traceId)}：已运行 ${seconds(r.elapsedMs)}，最近事件距今（记录当时）${seconds(r.idleMs)}，活动阶段 ${r.activeCount}，记录时间 ${new Date(Number(r.atMs)).toISOString()}。`);
+  for (const r of heartbeats.values()) {
+    const date = new Date(Number(r.atMs));
+    text.push('', `- ${cell(r.traceId)}：已运行 ${seconds(r.elapsedMs)}，最近事件距今（记录当时）${seconds(r.idleMs)}，活动阶段 ${r.activeCount}，记录时间 ${Number.isFinite(date.getTime()) ? date.toISOString() : '未记录'}。`);
+  }
   if (!heartbeats.size) text.push('', '无未结束任务的心跳样本。');
   text.push('', '## 如何据此提速', '',
     '- 优先处理耗时最高、反复出现的失败分类，结合工具 ID 回到原会话核对命令。命令指纹只在同一进程中用于识别相同命令，重复不自动等于失败重试。',

@@ -6,7 +6,8 @@ export async function notifyDiagnostic(record: DiagnosticRecord, webhook: string
   if (!isFeishuWebhook(webhook) || new URL(webhook).protocol !== 'https:') return { status: 'not_configured', message: '请在通知设置中配置飞书机器人 Webhook' };
   const success = record.status === 'completed';
   const text = `${success ? '✅ Codex 速度诊断完成' : '⚠️ Codex 速度诊断未完成'}\n诊断编号：${record.id.slice(0, 8)}\n` +
-    `项目：${record.workspaceName}\n插件版本：${record.pluginVersion}\n` +
+    `范围：${record.diagnosticScope === 'local-plugin-full' ? '本机整个插件（全部保留日志）' : '旧版全局采样'}\n发起位置：${record.workspaceName}\n诊断器插件版本：${record.pluginVersion}\n` +
+    (record.coverage ? `覆盖 ${record.coverage.windows} 个窗口、${record.coverage.sessions} 个会话/子线程、${record.coverage.readFiles}/${record.coverage.files} 个日志文件。\n` : '') +
     (success ? `发现 ${record.findings.length} 项待核验问题；分析 ${record.summary?.turns ?? 0} 轮任务。` : '请在诊断中心查看失败记录并重试。') +
     '\n在 VS Code 点击输入框旁的虫子图标，按编号找到记录，点击“创建修复会话”开始修复。';
   try {
