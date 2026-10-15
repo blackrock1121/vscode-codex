@@ -1834,16 +1834,23 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
    the run, not controls you set before sending. */
 .composer-state { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; }
 .composer-state:empty { display: none; }
-/* Compact: when the row can't fit on one line (JS measures & toggles), drop the
-   pickers' text labels + carets to icon-only squares and hide the usage
-   readouts entirely — keeping just the controls you act on. */
+/* Keep the selected model readable in compact mode. Other pickers may use
+   icons; long model names truncate, and extremely narrow rows can wrap. */
 .composer-tools.compact { gap: 4px; }
-.composer-tools.compact .pick-label,
+.composer-tools.compact .pick-label:not(#model-label),
 .composer-tools.compact .composer-pick .pick-caret { display: none; }
 .composer-tools.compact .usage-pill .up-key { display: none; }
 .composer-tools.compact .composer-pick {
   width: 26px; padding: 0; justify-content: center;
 }
+.composer-tools.compact #model-trigger {
+  width: auto; max-width: min(180px, 100%); min-width: 0;
+  padding: 0 7px; justify-content: flex-start;
+}
+.composer-tools.compact #model-label {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis;
+}
+.composer-tools.compact #model-trigger .pick-emoji { flex-shrink: 0; }
 /* even narrower — the usage readouts go too */
 .composer-tools.compact-more .composer-state { display: none; }
 .composer-tools.compact .composer-sep { display: none; }

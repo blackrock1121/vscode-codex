@@ -3523,7 +3523,7 @@ const composerTools = document.querySelector(".composer-tools") as HTMLElement |
 function refitComposer() {
   if (!composerTools) return;
   // Two stages, each re-measured so we only shed what's necessary:
-  //   1) `compact`      — icon-only pickers, usage keeps numbers (no labels)
+  //   1) `compact`      — keep model text, simplify other pickers and usage
   //   2) `compact-more` — also drop the usage readouts entirely
   composerTools.classList.remove("compact", "compact-more", "compact-wrap");
   const overflow = () => composerTools.scrollWidth > composerTools.clientWidth + 1; // +1px sub-pixel slack
@@ -3931,6 +3931,7 @@ function syncPickers() {
   modeLabel.textContent = mode.title;
   const model = MODELS.find((x) => x.id === currentModel);
   modelLabel.textContent = model?.label || speedModels.find(x => x.id === currentModel)?.name || currentModel || MODELS[0].label;
+  modelTrigger.title = `当前模型：${modelLabel.textContent}（点击切换）`;
   refitComposer();
 }
 
