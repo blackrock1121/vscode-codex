@@ -274,7 +274,7 @@ test('结果已收到后在快照整理期间关闭会话不再通知，关闭�
     const result = { kind: 'result', isError: false, durationMs: 60000, numTurns: 1 };
     if (closeBeforeResult) p.onPanelClosed(ctx);
     p.handleEmit(ctx, result);
-    assert.equal(posts.length, 0, '结果应等待文件快照整理');
+    assert.deepEqual(posts, [{ kind: 'finalizing' }], '结果应等待文件快照整理，但要显示后台已结束');
     if (!closeBeforeResult) p.onPanelClosed(ctx);
     await cleared();
     release(new Map([['/tmp/modified.txt', '原始文件内容']]));
@@ -283,7 +283,7 @@ test('结果已收到后在快照整理期间关闭会话不再通知，关闭�
       ['snapshot', '/tmp/modified.txt', '原始文件内容'],
       ['unrestorable', ['/tmp/unrestorable.txt']], ['complete'], ['flush'],
     ]);
-    assert.deepEqual(posts, [{ kind: 'busy', busy: false }, result]);
+    assert.deepEqual(posts, [{ kind: 'finalizing' }, { kind: 'busy', busy: false }, result]);
     assert.deepEqual(hydrated, [ctx.sessionId]);
     assert.deepEqual(refreshed, [ctx, 'usage']);
     assert.equal(ctx.snapshot, undefined);

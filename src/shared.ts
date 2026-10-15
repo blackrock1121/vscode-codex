@@ -169,6 +169,8 @@ export type ToWebview =
   | { kind: "refs_validated"; invalid: string[] }
   | { kind: "local_image"; path: string; dataUri?: string }
   | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number }
+  /** 后台轮次已结束，等待文件还原点归档；此时仍不能发送下一轮。 */
+  | { kind: "finalizing" }
   /** weekModel*: 除 "all models" 外的按模型周限额行（CLI 输出哪个模型就显示哪个，
    *  不写死模型名，以服务端返回为准）。 */
   | { kind: "usage"; sessionPct?: number; sessionResetAt?: number; weekPct?: number; weekResetAt?: number; weekModelPct?: number; weekModelName?: string; planType?: string; resetCredits?: ResetCredits | null }
@@ -207,6 +209,7 @@ export interface ChangedFile {
   added: number;
   removed: number;
   status: "added" | "modified" | "deleted";
+  diffUnavailable?: "large" | "binary";
 }
 
 export interface PermissionSuggestionView {

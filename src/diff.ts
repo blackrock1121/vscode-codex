@@ -1,3 +1,41 @@
+import * as fs from 'node:fs/promises';
+
+const MAX_DIFF_BYTES = 2 * 1024 * 1024;
+export type DiffUnavailable = 'large' | 'binary';
+
+/** 差异预览只读取有界文本；新增的磁盘镜像仍保留在改动/回滚列表中。 */
+export async function readDiffFile(file: string): Promise<{
+  exists: boolean; text?: string; unavailable?: DiffUnavailable;
+} | undefined> {
+  try {
+    const stat = await fs.stat(file);
+    if (!stat.isFile()) return undefined;
+    if (stat.size > MAX_DIFF_BYTES) return { exists: true, unavailable: 'large' };
+    const handle = await fs.open(file, 'r');
+    try {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      // stat 后文件仍可能增长，读取本身也必须有上限，不能直接 readFile。
+      while (size <= MAX_DIFF_BYTES) {
+        const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_DIFF_BYTES + 1 - size));
+        const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
+        if (!bytesRead) break;
+        size += bytesRead;
+        if (size > MAX_DIFF_BYTES) return { exists: true, unavailable: 'large' };
+        const chunk = buffer.subarray(0, bytesRead);
+        if (chunk.includes(0)) return { exists: true, unavailable: 'binary' };
+        chunks.push(chunk);
+      }
+      try {
+        return { exists: true, text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks, size)) };
+      } catch { return { exists: true, unavailable: 'binary' }; }
+    } finally { await handle.close(); }
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return { exists: false, text: '' };
+    return undefined;
+  }
+}
+
 /** Count changed lines while keeping memory bounded for large files. */
 export function diffCounts(oldText: string, newText: string): { added: number; removed: number } {
   if (oldText === newText) return { added: 0, removed: 0 };

@@ -1010,6 +1010,36 @@ test('点击停止后保持队列，收到后台停止确认才按顺序发送',
  assert.match(w.document.getElementById('task-queue').textContent,/停止期间补充/);
 });
 
+test('停止确认后明确显示整理还原点，归档完成前不放行队列',async t=>{
+ const {w,sent,emit,errors}=setup(t);emit({kind:'busy',busy:true});
+ const input=w.document.getElementById('input'),stop=w.document.getElementById('btn-stop');
+ input.value='下一条';w.document.getElementById('btn-send').click();stop.click();
+ emit({kind:'finalizing'});
+ assert.match(input.placeholder,/已停止.*整理文件还原点/);assert.equal(stop.disabled,true);
+ assert.doesNotMatch(input.placeholder,/正在停止/);
+ await new Promise(r=>setTimeout(r,180));assert.equal(sent.some(m=>m.type==='send'),false);
+ emit({kind:'busy',busy:false});emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(r=>setTimeout(r,180));
+ assert.deepEqual(sent.filter(m=>m.type==='send').map(m=>m.text),['下一条']);
+ emit({kind:'busy',busy:true});assert.doesNotMatch(input.placeholder,/整理文件还原点|已停止/);
+ assert.equal(stop.disabled,false);assert.deepEqual(errors,[]);
+});
+
+test('大文件和二进制改动显示说明，仍提供保留和回滚入口',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'changed_files',totalAdded:0,totalRemoved:0,files:[
+  {path:'/tmp/disk.img',rel:'disk.img',status:'added',added:0,removed:0,diffUnavailable:'large'},
+  {path:'/tmp/icon.bin',rel:'icon.bin',status:'added',added:0,removed:0,diffUnavailable:'binary'},
+ ]});
+ const rows=w.document.querySelectorAll('.cf-row');assert.equal(rows.length,2);
+ assert.equal(rows[0].querySelector('.cf-rowstat').textContent,'大文件');
+ assert.equal(rows[1].querySelector('.cf-rowstat').textContent,'二进制');
+ rows[0].querySelector('.accept').click();rows[1].querySelector('.revert').click();
+ assert.ok(sent.some(m=>m.type==='acceptFile'&&m.path==='/tmp/disk.img'));
+ assert.ok(sent.some(m=>m.type==='revertFile'&&m.path==='/tmp/icon.bin'));
+ assert.deepEqual(errors,[]);
+});
+
 test('普通快速闪电只发送当前会话速度，保存回执前保持真实消费状态',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:['low','medium','high'],speedModes:['default','fast','ultrafast']}]});

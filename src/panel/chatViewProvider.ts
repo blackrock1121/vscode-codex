@@ -9,7 +9,7 @@ import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar 
 import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
 import { WorkspaceSnapshot } from "../snapshot";
 import { QuestionImages } from "../questionImages";
-import { diffCounts } from "../diff";
+import { diffCounts, readDiffFile } from "../diff";
 import { randomUUID } from "node:crypto";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
@@ -160,6 +160,8 @@ const LOCAL_SNAPSHOT_EXCLUDES_KEY = "codexChat.localSnapshotExcludes";
 interface SessionCtx {
     snapshot?: WorkspaceSnapshot;
     finalizing?: Promise<void>;
+    changedFilesRefresh?: Promise<void>;
+    changedFilesRefreshPending?: boolean;
     panel: vscode.WebviewPanel;
     webview: vscode.Webview;
     sessionId?: string;
@@ -838,6 +840,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastUserActionAt = Date.now();
         ctx.stopSeq = ctx.sendSeq ?? 0;
         const proc = ctx.proc;
+        this.output.appendLine(`[interrupt] session=${ctx.sessionId?.slice(0, 8)} requested busy=${!!proc?.isBusy}`);
         if (!proc?.isBusy) { this.post(ctx, { kind: "busy", busy: false }); return; }
         this.post(ctx, { kind: "status", label: "正在停止，确认后再处理排队消息…" });
         try { await proc.interrupt(); }
@@ -1076,16 +1079,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.revertFile(ctx, m.path);
                     this.refreshChangedFiles(ctx);
                     break;
-                case "acceptAll":
-                    for (const f of this.getChangedFiles(ctx).files)
-                        ctx.checkpoints.accept(f.path);
+                case "acceptAll": {
+                    const checkpoints = ctx.checkpoints, sessionId = ctx.sessionId;
+                    const { files } = await this.getChangedFiles(ctx);
+                    if (ctx.checkpoints !== checkpoints || ctx.sessionId !== sessionId) break;
+                    for (const f of files)
+                        checkpoints.accept(f.path);
                     this.refreshChangedFiles(ctx);
                     break;
+                }
                 case "revertAll": {
-                    const files = this.getChangedFiles(ctx).files;
+                    const checkpoints = ctx.checkpoints, sessionId = ctx.sessionId;
+                    const files = (await this.getChangedFiles(ctx)).files;
+                    if (ctx.checkpoints !== checkpoints || ctx.sessionId !== sessionId) break;
                     if (files.length) {
                         const ok = await vscode.window.showWarningMessage(`回滚全部 ${files.length} 个文件的改动？`, { modal: true, detail: "将把这些文件恢复到 Codex 改动前的状态，此操作不可撤销。" }, "回滚全部");
-                        if (ok === "回滚全部") {
+                        if (ok === "回滚全部" && ctx.checkpoints === checkpoints && ctx.sessionId === sessionId) {
                             for (const f of files)
                                 this.revertFile(ctx, f.path);
                             this.refreshChangedFiles(ctx);
@@ -1855,37 +1864,49 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private refreshChangedFiles(ctx: SessionCtx): void {
         if (!this.alive(ctx))
             return;
-        const { files, totalAdded, totalRemoved } = this.getChangedFiles(ctx);
-        for (const f of files)
-            this.origChanged.fire(vscode.Uri.from({ scheme: ORIG_SCHEME, path: f.path }));
-        this.post(ctx, { kind: "changed_files", files, totalAdded, totalRemoved });
+        ctx.changedFilesRefreshPending = true;
+        if (ctx.changedFilesRefresh) return;
+        // 工具可能连续返回：合并刷新，异步读取不能挡住停止消息和停止超时计时器。
+        ctx.changedFilesRefresh = (async () => {
+            await new Promise<void>(resolve => setImmediate(resolve));
+            while (ctx.changedFilesRefreshPending && this.alive(ctx)) {
+                ctx.changedFilesRefreshPending = false;
+                const checkpoints = ctx.checkpoints, sessionId = ctx.sessionId;
+                const changes = await this.getChangedFiles(ctx);
+                if (!this.alive(ctx) || ctx.checkpoints !== checkpoints || ctx.sessionId !== sessionId) continue;
+                if (ctx.changedFilesRefreshPending) continue;
+                for (const f of changes.files)
+                    this.origChanged.fire(vscode.Uri.from({ scheme: ORIG_SCHEME, path: f.path }));
+                this.post(ctx, { kind: "changed_files", ...changes });
+            }
+        })().catch(err => {
+            this.output.appendLine(`[changed-files] ${String(err)}`);
+        }).finally(() => { ctx.changedFilesRefresh = undefined; });
     }
-    private getChangedFiles(ctx: SessionCtx): {
+    private async getChangedFiles(ctx: SessionCtx): Promise<{
         files: ChangedFile[];
         totalAdded: number;
         totalRemoved: number;
-    } {
+    }> {
         const files: ChangedFile[] = [];
         let totalAdded = 0;
         let totalRemoved = 0;
-        for (const p of ctx.checkpoints.changedPaths()) {
-            const original = ctx.checkpoints.originalOf(p);
+        const checkpoints = ctx.checkpoints;
+        for (const p of checkpoints.changedPaths()) {
+            const original = checkpoints.originalOf(p);
             if (original === undefined)
                 continue;
-            const exists = fs.existsSync(p);
-            let current = "";
-            if (exists) {
-                try {
-                    current = fs.readFileSync(p, "utf8");
-                }
-                catch {
-                    continue;
-                }
-            }
+            const content = await readDiffFile(p);
+            if (!content || (original === null && !content.exists)) continue;
+            const { exists, text: current, unavailable } = content;
             const status: ChangedFile["status"] = original === null ? "added" : exists ? "modified" : "deleted";
-            if (original === current) continue;
-            const { added, removed } = diffCounts(original ?? "", current);
-            if (added === 0 && removed === 0)
+            if (unavailable) {
+                files.push({ path: p, rel: vscode.workspace.asRelativePath(p), added: 0, removed: 0, status, diffUnavailable: unavailable });
+                continue;
+            }
+            if (exists && original === current) continue;
+            const { added, removed } = diffCounts(original ?? "", current ?? "");
+            if (added === 0 && removed === 0 && status === "modified")
                 continue;
             files.push({ path: p, rel: vscode.workspace.asRelativePath(p), added, removed, status });
             totalAdded += added;
@@ -2895,6 +2916,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             // 结果已收到；快照整理期间关闭或回复后，不能再补发这条旧提醒。
             const sessionId = ctx.sessionId;
             const epoch = this.notificationVersion(sessionId);
+            this.output.appendLine(`[finalize] session=${sessionId?.slice(0, 8)} 后台轮次已结束，开始整理还原点`);
+            this.post(ctx, { kind: "finalizing" });
             ctx.finalizing = (async () => {
                 const finalizeAt = Date.now();
                 try {

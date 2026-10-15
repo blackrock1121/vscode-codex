@@ -4,7 +4,7 @@ import { latestModelChoices, modelDescription } from "./modelPicker";
 import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
-import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits } from "../shared";
+import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits, ChangedFile } from "../shared";
 import { ICONS as ICON, GPT_LOGO, speedLabel, speedCost, speedGain, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +132,7 @@ const PLACEHOLDER_IDLE = inputEl.placeholder;
 const PLACEHOLDER_BUSY = "任务进行中 · 回车将内容加入等待队列";
 let waitingQuestionId: string | undefined;
 let stopPending = false;
+let turnFinalizing = false;
 const questionInteractions = new Map<string, { resolve: (behavior: "allow" | "deny") => void; retry: (message: string) => void }>();
 const statusLine = $("status-line");
 const modeTrigger = $("mode-trigger");
@@ -1062,6 +1063,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "busy":
       setBusy(m.busy);
+      break;
+    case "finalizing":
+      turnFinalizing = true;
+      stopPending = false;
+      removeWorking();
+      statusLine.textContent = userStopped ? "已停止 · 正在整理文件还原点…" : "回复已结束 · 正在整理文件还原点…";
+      refreshComposerHint();
       break;
     case "restoring":
       // 还原正在自动停止本轮：进程真实退出要等 1~5s，宿主动手杀之前先发这条，
@@ -2960,7 +2968,7 @@ function unlinkRef(e: HTMLElement) {
 }
 
 function renderChangedFiles(
-  files: { path: string; rel: string; added: number; removed: number; status: "added" | "modified" | "deleted" }[],
+  files: ChangedFile[],
   totalAdded: number,
   totalRemoved: number,
 ) {
@@ -2989,7 +2997,10 @@ function renderChangedFiles(
     const name = el("span", "cf-name", slash >= 0 ? f.rel.slice(slash + 1) : f.rel);
     const dir = el("span", "cf-dir", slash >= 0 ? f.rel.slice(0, slash) : "");
     const stat = el("span", "cf-rowstat");
-    stat.innerHTML = `<span class="add">+${f.added}</span> <span class="del">−${f.removed}</span>`;
+    if (f.diffUnavailable) {
+      stat.textContent = f.diffUnavailable === "large" ? "大文件" : "二进制";
+      stat.title = "未统计文本行数；仍可保留或回滚此文件";
+    } else stat.innerHTML = `<span class="add">+${f.added}</span> <span class="del">−${f.removed}</span>`;
     const acc = el("button", "cf-act accept", "✓");
     acc.title = "同意（保留改动）";
     acc.onclick = (e) => {
@@ -3574,7 +3585,7 @@ inputEl.addEventListener("input", () => {
  *  toggle send/stop buttons accordingly. */
 function refreshComposerHint() {
   const hasContent = inputEl.value.trim().length > 0 || pendingImages.length > 0;
-  stopBtn.disabled = stopPending;
+  stopBtn.disabled = stopPending || turnFinalizing;
   // A permanently-filled send button next to an empty box is a call to action
   // with nothing behind it — keep it quiet until there is content.
   sendBtn.classList.toggle("ready", hasContent);
@@ -3590,8 +3601,8 @@ function refreshComposerHint() {
     stopBtn.classList.remove("hidden");
     sendBtn.classList.toggle("hidden", !hasContent); // clickable "add to queue" when there's content
     sendBtn.title = "加入等待队列";
-    inputEl.placeholder = stopPending ? "正在停止 · 新消息暂存队列" : waitingQuestionId ? "已暂停 · 请在问题卡片提交答案；新任务可排队" : PLACEHOLDER_BUSY;
-    queueHint.textContent = stopPending ? "正在停止 · 确认停止后处理队列" : waitingQuestionId ? "等待回答 · 提交问题答案后继续，排队任务暂不执行" : PLACEHOLDER_BUSY;
+    inputEl.placeholder = turnFinalizing ? (userStopped ? "已停止 · 正在整理文件还原点" : "回复已结束 · 正在整理文件还原点") : stopPending ? "正在停止 · 新消息暂存队列" : waitingQuestionId ? "已暂停 · 请在问题卡片提交答案；新任务可排队" : PLACEHOLDER_BUSY;
+    queueHint.textContent = turnFinalizing ? "正在整理文件还原点 · 完成后处理队列" : stopPending ? "正在停止 · 确认停止后处理队列" : waitingQuestionId ? "等待回答 · 提交问题答案后继续，排队任务暂不执行" : PLACEHOLDER_BUSY;
     queueHint.classList.toggle("hidden", !hasContent);
   } else {
     sendBtn.classList.remove("hidden");
@@ -4661,6 +4672,7 @@ function setBusy(busy: boolean) {
   if (!busy) turnStartedAt = null;
   isBusy = busy;
   stopPending = false;
+  turnFinalizing = false;
   if (!busy) waitingQuestionId = undefined;
   // Only light UP here. Turning the glow off is the job of whoever ends the turn
   // (`result` / `error` / Stop), which knows WHY it ended — `setBusy(false)`
