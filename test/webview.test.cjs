@@ -20,7 +20,7 @@ function setup(t){
  w.addEventListener('error',e=>errors.push(e.message));
  w.eval(fs.readFileSync('media/webview.js','utf8'));
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
- return {w,sent,errors,emit,states,resize:target=>resizeObservers.filter(o=>o.targets.includes(target)).forEach(o=>o.callback())};
+ return {w,sent,errors,emit,states,resizeObservers,resize:target=>resizeObservers.filter(o=>o.targets.includes(target)).forEach(o=>o.callback())};
 }
 function scrollFixture(w){
  const messages=w.document.getElementById('messages');
@@ -1222,6 +1222,15 @@ test('推理入口与模型和快速开关同层可见，保存失败回执不�
 });
 
 function manualFrames(w){let next=0;const frames=new Map();w.requestAnimationFrame=f=>{frames.set(++next,f);return next;};w.cancelAnimationFrame=id=>frames.delete(id);return ()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(f=>f(w.performance.now()));};}
+test('输入区宽度变化合并到下一帧测量，换行引起的高度变化不重复适配',t=>{
+ const {w,resize}=setup(t),flush=manualFrames(w),row=w.document.querySelector('.composer-tools');
+ let width=240,reads=0;
+ Object.defineProperties(row,{clientWidth:{get:()=>width},scrollWidth:{get:()=>{reads++;return 500;}}});
+ resize(row);resize(row);resize(row);assert.equal(reads,0,'观察器回调不能同步修改自身尺寸');
+ flush();assert.equal(reads,3);assert.equal(row.classList.contains('compact-wrap'),true);
+ resize(row);flush();assert.equal(reads,3,'宽度不变的高度通知不触发新一轮折叠测量');
+ width=600;resize(row);flush();assert.equal(reads,4);assert.equal(row.classList.contains('compact'),false);
+});
 function manualTimeouts(w){
  let now=0,next=0;const timers=new Map();
  w.setTimeout=(callback,delay=0)=>{timers.set(++next,{callback,at:now+delay});return next;};
@@ -1406,7 +1415,7 @@ test('等待用户、停止和错误后，迟到的块结束或计时器不会�
 test('突发流式片段立即显示文字，同帧只合并一次完整 Markdown 渲染',t=>{
  const {w,emit,errors}=setup(t);const flush=manualFrames(w);
  let renders=0;const desc=Object.getOwnPropertyDescriptor(w.Element.prototype,'innerHTML');
- Object.defineProperty(w.Element.prototype,'innerHTML',{...desc,set(v){if(this.classList.contains('live-committed'))renders++;desc.set.call(this,v);}});
+ Object.defineProperty(w.Element.prototype,'innerHTML',{...desc,set(v){if(typeof v==='string'&&v.startsWith('<p>开头'))renders++;desc.set.call(this,v);}});
  emit({kind:'busy',busy:true});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'开头\n'});
  for(let i=0;i<100;i++)emit({kind:'text_delta',text:`第${i}段 **重点**\n`});
  assert.match(w.document.querySelector('.text-seg').textContent,/第99段/,'未执行动画帧也能看到新文字');
@@ -1421,6 +1430,84 @@ test('待渲染时收到完整文本更正或切换块，不会被旧帧回调�
  emit({kind:'text_snap',text:'更正后的 **全文**'});flush();assert.doesNotMatch(w.document.querySelector('.text-seg').textContent,/旧/);
  emit({kind:'text_delta',text:'段尾'});emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'第二块'});flush();
  const blocks=w.document.querySelectorAll('.text-seg');assert.match(blocks[0].textContent,/全文.*段尾/);assert.equal(blocks[1].textContent,'第二块');assert.deepEqual(errors,[]);
+});
+
+test('流式代码、表格和列表的未换行尾部保留在 Markdown 容器内',t=>{
+ const {w,emit,errors}=setup(t),flush=manualFrames(w);
+ emit({kind:'busy',busy:true});
+ emit({kind:'text_delta',text:'代码示例\n\n```ts\nconst answer = '});
+ assert.match(w.document.querySelector('.live-committed pre code').textContent,/const answer = /);
+ assert.equal(w.document.querySelector('.live-line').textContent,'');
+ emit({kind:'text_delta',text:'42;'});
+ assert.match(w.document.querySelector('pre code').textContent,/const answer = 42;/,'格式化帧前也不能掉到代码框外');
+ emit({kind:'text_delta',text:'\n```\n\n| 列 | 值 |\n| --- | --- |\n| 状态 | 完'});flush();
+ assert.equal(w.document.querySelector('tbody td:last-child').textContent,'完');
+ emit({kind:'text_delta',text:'成 |\n\n- 第一项\n- **第二项**'});flush();
+ assert.equal(w.document.querySelector('tbody td:last-child').textContent,'完成');
+ assert.equal(w.document.querySelector('li:last-child strong').textContent,'第二项');
+ assert.equal(w.document.querySelector('.live-line').textContent,'');
+ assert.deepEqual(errors,[]);
+});
+
+test('长回复限频期间即时文字共用一个节点，结束和历史重载取消迟到渲染',t=>{
+ for(const ending of ['result','history']){
+  const {w,emit,errors}=setup(t),flush=manualFrames(w),advance=manualTimeouts(w);
+  emit({kind:'busy',busy:true});emit({kind:'text_delta',text:'长回复'.repeat(4000)});
+  for(let i=0;i<100;i++)emit({kind:'text_delta',text:'追加'});
+  assert.equal(w.document.querySelector('.live-line').childNodes.length,1);
+  assert.ok(w.document.querySelector('.text-seg').textContent.endsWith('追加'.repeat(100)));
+  if(ending==='result')emit({kind:'result',isError:false,durationMs:1,numTurns:1});
+  else emit({kind:'load_history',items:[{type:'assistant_text',text:'新历史'}],checkpoints:[]});
+  const content=w.document.querySelector('.text-seg').innerHTML;
+  advance(1000);flush();assert.equal(w.document.querySelector('.text-seg').innerHTML,content);assert.deepEqual(errors,[]);
+ }
+});
+
+test('追加流式段落复用已显示的图片和代码 DOM，并保留横向滚动位置',t=>{
+ const {w,emit,sent,errors}=setup(t),flush=manualFrames(w);
+ emit({kind:'busy',busy:true});
+ emit({kind:'text_delta',text:'![预览](/tmp/stream-preview.png)\n\n```text\n固定代码\n```\n\n开始'});
+ emit({kind:'local_image',path:'/tmp/stream-preview.png',dataUri:'data:image/png;base64,YQ=='});
+ const img=w.document.querySelector('.text-seg img'),pre=w.document.querySelector('.text-seg pre');
+ img.dispatchEvent(new w.Event('load'));pre.scrollLeft=90;
+ for(let i=0;i<8;i++){emit({kind:'text_delta',text:`\n\n追加第${i}段`});flush();}
+ assert.equal(w.document.querySelector('.text-seg img'),img);
+ assert.equal(w.document.querySelector('.text-seg pre'),pre);assert.equal(pre.scrollLeft,90);
+ assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,1);
+ assert.equal(w.document.querySelector('.local-image-placeholder'),null);
+ emit({kind:'text_snap',text:'更正为短内容'});flush();
+ assert.equal(w.document.querySelector('.text-seg img'),null);
+ assert.equal(w.document.querySelector('.text-seg pre'),null);
+ assert.equal(w.document.querySelector('.text-seg').textContent,'更正为短内容');assert.deepEqual(errors,[]);
+});
+
+test('重新生成和清空历史释放已删除消息的监听器及待执行布局回调',t=>{
+ const {w,emit,resize,resizeObservers,errors}=setup(t),flush=manualFrames(w);
+ emit({kind:'load_history',sessionId:'cleanup',items:[
+  {type:'user',text:'问题一'},{type:'assistant_text',text:'回答一'},
+  {type:'user',text:'问题二'},{type:'assistant_text',text:'回答二'},
+ ],checkpoints:[{id:'cp1',userText:'问题一'},{id:'cp2',userText:'问题二'}]});
+ const replies=[...w.document.querySelectorAll('.msg.assistant')];
+ const observer=resizeObservers.find(o=>o.targets.includes(replies[1]));
+ assert.ok(observer);resize(replies[1]);
+ replies[1].querySelector('.regen').click();assert.equal(replies[1].isConnected,false);
+ assert.equal(observer.targets.length,0);flush();
+ assert.ok(resizeObservers.some(o=>o.targets.includes(replies[0])),'保留的历史仍跟随尺寸变化');
+ emit({kind:'busy',busy:false});
+ const input=w.document.getElementById('input');input.value='/clear';w.document.getElementById('btn-send').click();
+ assert.equal(resizeObservers.some(o=>o.targets.some(n=>n.classList.contains('assistant'))),false);
+ flush();assert.deepEqual(errors,[]);
+});
+
+test('超大已标语言代码保留全文和复制功能，跳过昂贵的语法高亮',t=>{
+ const {w,emit,errors}=setup(t),code='const answer = "完整保留";\n'.repeat(2000);
+ emit({kind:'load_history',items:[{type:'assistant_text',text:'```javascript\n'+code+'```'}],checkpoints:[]});
+ const block=w.document.querySelector('.code-block');assert.equal(block.querySelector('code').textContent,code);
+ assert.equal(block.querySelectorAll('code span').length,0);assert.ok(block.querySelector('[data-action="copy"]'));
+ emit({kind:'tool_input',toolId:'large-command',name:'Bash',input:{command:code}});
+ const tool=w.document.querySelector('[data-tool-id="large-command"]');
+ assert.equal(tool.querySelector('code').textContent,code);assert.equal(tool.querySelectorAll('code span').length,0);
+ assert.deepEqual(errors,[]);
 });
 
 test('命令和菜单等待保存回执，重复选择不提交，失败保留模型和推理强度',t=>{

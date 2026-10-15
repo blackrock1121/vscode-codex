@@ -289,52 +289,58 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.postActiveFile(true);
         }));
         this.usageTimer = setInterval(() => this.fetchUsage(), 3 * 60000);
-        this.watchdogTimer = setInterval(() => {
-            for (const ctx of [...this.sessions, ...this.detached.values()])
-                this.checkTurnStall(ctx);
-            for (const ctx of this.sessions) {
-                if (!ctx.ready)
-                    continue;
-                ctx.missedPings = (ctx.missedPings ?? 0) + 1;
-                if ((ctx.missedPings ?? 0) > 3) {
-                    ctx.missedPings = 0;
-                    if (Date.now() - (ctx.rebuildAt ?? 0) < 5 * 60000) {
-                        this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 面板仍未响应，但 5min 内已重建过，跳过`);
-                        continue;
-                    }
-                    ctx.rebuildAt = Date.now();
-                    this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 面板 ${ctx.sessionId?.slice(0, 8) ?? "新会话"} 通道无响应 30s，重建 webview`);
-                    ctx.ready = false;
-                    try {
-                        ctx.panel.webview.html = this.html(ctx.panel.webview);
-                    }
-                    catch (err) {
-                        this.output.appendLine(`[watchdog] 重建失败: ${String(err)}`);
-                    }
-                    continue;
-                }
-                this.post(ctx, { kind: "ping", id: Date.now() });
+        this.watchdogTimer = setInterval(() => this.checkWatchdog(), 10000);
+    }
+    private checkWatchdog(): void {
+        for (const ctx of [...this.sessions, ...this.detached.values()])
+            this.checkTurnStall(ctx);
+        // 关闭时仍在运行或刚结束的会话当时不能回收，空闲后必须再次检查。
+        this.trimBackground();
+        for (const ctx of this.sessions) {
+            // 隐藏的 webview 可被 VS Code 暂停，未回心跳不代表页面损坏。
+            if (!ctx.ready || !ctx.panel.visible) {
+                ctx.missedPings = 0;
+                continue;
             }
-            if (this.view?.visible) {
-                this.sidebarMissedPings++;
-                if (this.sidebarMissedPings > 3) {
-                    this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 侧边栏通道无响应 30s，重建 webview`);
-                    this.sidebarMissedPings = 0;
-                    try {
-                        this.view.webview.html = this.sidebarHtml();
-                    }
-                    catch (err) {
-                        this.output.appendLine(`[watchdog] 侧边栏重建失败: ${String(err)}`);
-                    }
+            ctx.missedPings = (ctx.missedPings ?? 0) + 1;
+            if ((ctx.missedPings ?? 0) > 3) {
+                ctx.missedPings = 0;
+                if (Date.now() - (ctx.rebuildAt ?? 0) < 5 * 60000) {
+                    this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 面板仍未响应，但 5min 内已重建过，跳过`);
+                    continue;
                 }
-                else {
-                    this.view.webview.postMessage({ kind: "ping", id: Date.now() } satisfies ToWebview);
+                ctx.rebuildAt = Date.now();
+                this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 面板 ${ctx.sessionId?.slice(0, 8) ?? "新会话"} 通道无响应 30s，重建 webview`);
+                ctx.ready = false;
+                try {
+                    ctx.panel.webview.html = this.html(ctx.panel.webview);
+                }
+                catch (err) {
+                    this.output.appendLine(`[watchdog] 重建失败: ${String(err)}`);
+                }
+                continue;
+            }
+            this.post(ctx, { kind: "ping", id: Date.now() });
+        }
+        if (this.view?.visible) {
+            this.sidebarMissedPings++;
+            if (this.sidebarMissedPings > 3) {
+                this.output.appendLine(`[${new Date().toISOString()}] [watchdog] 侧边栏通道无响应 30s，重建 webview`);
+                this.sidebarMissedPings = 0;
+                try {
+                    this.view.webview.html = this.sidebarHtml();
+                }
+                catch (err) {
+                    this.output.appendLine(`[watchdog] 侧边栏重建失败: ${String(err)}`);
                 }
             }
             else {
-                this.sidebarMissedPings = 0;
+                this.view.webview.postMessage({ kind: "ping", id: Date.now() } satisfies ToWebview);
             }
-        }, 10000);
+        }
+        else {
+            this.sidebarMissedPings = 0;
+        }
     }
     private readonly detached = new Map<string, SessionCtx>();
     private postActiveFile(allowClear = false): void {
@@ -687,7 +693,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (overflow <= 0)
             return;
         const idle = [...this.detached.values()]
-            .filter((c) => c.proc && !c.proc.isBusy && c.sessionId && Date.now() - (c.lastEmitAt ?? 0) > 60000)
+            .filter((c) => c.proc && !c.proc.isBusy && c.sessionId && !c.starting && !c.snapshot &&
+                !c.finalizing && !this.restoring.has(c) && !this.forking.has(c) && !c.answeringQuestion && !c.pendingPerm &&
+                Date.now() - (c.lastEmitAt ?? 0) > 60000)
             .sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0));
         for (const c of idle) {
             if (overflow <= 0)

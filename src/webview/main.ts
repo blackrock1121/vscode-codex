@@ -43,13 +43,16 @@ for (const md of [mdFast, mdFull]) {
 }
 
 const COLLAPSE_THRESHOLD = 6; // code blocks longer than this collapse to a 3-line preview
+const MAX_HIGHLIGHT_CHARS = 30_000;
 
 mdFull.renderer.rules.fence = (tokens, idx) => {
   const token = tokens[idx];
   const info = (token.info || "").trim();
   const lang = info.split(/\s+/)[0] || "";
   let body: string;
-  if (lang && hljs.getLanguage(lang)) {
+  if (token.content.length > MAX_HIGHLIGHT_CHARS) {
+    body = escapeHtml(token.content);
+  } else if (lang && hljs.getLanguage(lang)) {
     try {
       body = hljs.highlight(token.content, { language: lang }).value;
     } catch {
@@ -102,7 +105,7 @@ function wrapCodeBlock(highlighted: string, lang: string, raw: string, run: bool
  *  actions — copy/run live in the tool card header instead. */
 function codeBlock(code: string, lang: string): string {
   let body: string;
-  if (lang && hljs.getLanguage(lang)) {
+  if (code.length <= MAX_HIGHLIGHT_CHARS && lang && hljs.getLanguage(lang)) {
     try {
       body = hljs.highlight(code, { language: lang }).value;
     } catch {
@@ -246,11 +249,11 @@ const fileChips = $("file-chips");
 interface LiveBlock {
   type: "text";
   raw: string; // full text received so far (target)
-  shown: number; // chars currently revealed (typewriter cursor; fractional — floor before slicing)
   el: HTMLElement; // the .text-seg wrapper
-  committedEl: HTMLElement; // rendered markdown for complete lines
-  lineEl: HTMLElement; // the current line being typed (plain text)
-  committedLen: number; // chars already committed (rendered as markdown)
+  committedEl: HTMLElement;
+  lineEl: HTMLElement; // 下一次格式化前即时显示的新文字
+  blocks: { html: string; nodes: ChildNode[] }[];
+  renderedAt: number;
 }
 let assistantEl: HTMLElement | null = null;
 let liveBlock: LiveBlock | null = null;
@@ -385,57 +388,88 @@ function endTimelineAtLastNode(msg: HTMLElement) {
   // The pixel height goes stale when content below reflows (code highlighting,
   // expanding a tool result, images loading). Recompute on any size change so
   // the line always connects every node exactly.
-  const m = msg as HTMLElement & { _lineObs?: ResizeObserver };
-  if (!m._lineObs) {
+  if (!railObservers.has(msg)) {
     let raf = 0;
-    m._lineObs = new ResizeObserver(() => {
+    const observer = new ResizeObserver(() => {
       cancelAnimationFrame(raf);
-      raf = requestAnimationFrame(compute);
+      raf = requestAnimationFrame(() => { if (msg.isConnected) compute(); });
     });
-    m._lineObs.observe(msg);
-    railObservers.push(m._lineObs); // disconnected when the transcript re-renders
+    observer.observe(msg);
+    railObservers.set(msg, () => { observer.disconnect(); cancelAnimationFrame(raf); });
   }
 }
-/** Rail observers of all finalized messages — long sessions otherwise pile up
- *  one live ResizeObserver per reply, each still firing on any resize. */
-const railObservers: ResizeObserver[] = [];
+const railObservers = new Map<HTMLElement, () => void>();
+/** 删除/重载消息时同时释放观察器和待执行帧，避免保留整棵旧消息 DOM。 */
+function pruneRailObservers() {
+  for (const [msg, dispose] of railObservers) {
+    if (msg.isConnected) continue;
+    dispose();
+    railObservers.delete(msg);
+  }
+}
 
-/** Show each received delta immediately. Complete lines are rendered as
- *  markdown, while the current line stays plain text until finalized.
- *  NOTE: each commit re-renders the whole prefix — O(n²) over a long reply.
- *  Once the text is big, batch commits into larger chunks: the tail lines just
- *  stay as plain text a moment longer, which is visually indistinguishable. */
+/** 同一帧合并流事件；长回复降低格式化频率，文字仍即时追加。 */
 let liveRenderRAF = 0;
+let liveRenderTimer = 0;
 function cancelLiveRender() {
   if (liveRenderRAF) cancelAnimationFrame(liveRenderRAF);
+  window.clearTimeout(liveRenderTimer);
   liveRenderRAF = 0;
+  liveRenderTimer = 0;
 }
 function scheduleLiveRender() {
-  if (liveRenderRAF) return;
+  if (liveRenderRAF || liveRenderTimer || !liveBlock) return;
+  const interval = liveBlock.raw.length < 8000 ? 0 : Math.min(160, liveBlock.raw.length / 200);
+  const delay = interval - (performance.now() - liveBlock.renderedAt);
+  if (delay > 0) {
+    liveRenderTimer = window.setTimeout(() => {
+      liveRenderTimer = 0;
+      liveRenderRAF = requestAnimationFrame(() => { liveRenderRAF = 0; renderLive(); });
+    }, delay);
+    return;
+  }
   liveRenderRAF = requestAnimationFrame(() => { liveRenderRAF = 0; renderLive(); });
 }
 function renderLive() {
   if (!liveBlock) return;
-  const shownText = liveBlock.raw.slice(0, Math.floor(liveBlock.shown));
-  const lastNl = shownText.lastIndexOf("\n");
-  const commitLen = lastNl >= 0 ? lastNl + 1 : 0;
-  // Commit threshold grows with size: instant at first, ~1/16 of length later.
-  const minGain = Math.min(4096, Math.max(1, liveBlock.committedLen >> 4));
-  if (commitLen - liveBlock.committedLen >= minGain) {
-    liveBlock.committedLen = commitLen;
-    liveBlock.committedEl.innerHTML = mdFast.render(liveBlock.raw.slice(0, commitLen));
-    linkifyRefs(liveBlock.committedEl, false);
-    hydrateLocalImages(liveBlock.committedEl);
+  const block = liveBlock;
+  const env = {};
+  // 按完整 Markdown 结构解析，未换行的代码/列表/表格尾部也属于原容器。
+  const tokens = mdFast.parse(block.raw, env);
+  let index = 0;
+  for (let from = 0; from < tokens.length;) {
+    let to = from, depth = 0;
+    do { depth += tokens[to++].nesting; } while (to < tokens.length && depth > 0);
+    const html = mdFast.renderer.render(tokens.slice(from, to), mdFast.options, env).trimEnd();
+    from = to;
+    if (!html) continue;
+    const previous = block.blocks[index];
+    if (previous?.html !== html) {
+      // 未变化的块不重建，保留图片、选择范围及代码块的横向滚动位置。
+      const holder = document.createElement("div");
+      holder.innerHTML = html;
+      linkifyRefs(holder, false);
+      hydrateLocalImages(holder);
+      const nodes = Array.from(holder.childNodes);
+      const anchor = previous?.nodes[0] ?? null;
+      for (const node of nodes) block.committedEl.insertBefore(node, anchor);
+      previous?.nodes.forEach(node => node.remove());
+      block.blocks[index] = { html, nodes };
+    }
+    index++;
   }
-  const tail = shownText.slice(liveBlock.committedLen);
-  // 完整的 Markdown 链接/图片一收到右括号就显示，不能等下一次换行或本轮结束。
-  if (/!?\[[^\]]+\]\([^)]*\)/.test(tail)) {
-    liveBlock.lineEl.innerHTML = mdFast.renderInline(tail);
-    linkifyRefs(liveBlock.lineEl, false);
-    hydrateLocalImages(liveBlock.lineEl);
-  } else {
-    liveBlock.lineEl.textContent = tail;
-  }
+  for (const stale of block.blocks.splice(index)) stale.nodes.forEach(node => node.remove());
+  block.lineEl.textContent = "";
+  // 下一帧之前的即时文字也跟随当前行，避免每个 delta 临时掉到代码框外/新段落。
+  const lastToken = tokens[tokens.length - 1];
+  const closedFence = lastToken?.type === "fence" &&
+    new RegExp(`(?:^|\\n) {0,3}${lastToken.markup[0]}{${lastToken.markup.length},}[ \\t]*$`).test(block.raw);
+  const tailBlock = block.blocks[index - 1]?.nodes.slice().reverse().find(node => node instanceof HTMLElement) as HTMLElement | undefined;
+  const candidates = tailBlock ? [tailBlock, ...Array.from(tailBlock.querySelectorAll<HTMLElement>("p, li, td, th, h1, h2, h3, h4, h5, h6, pre > code"))] : [];
+  const target = !block.raw.endsWith("\n") && !closedFence
+    ? candidates.reverse().find(node => node.matches("p, li, td, th, h1, h2, h3, h4, h5, h6, pre > code")) : undefined;
+  (target ?? block.el).appendChild(block.lineEl);
+  block.renderedAt = performance.now();
   scheduleLiveLayout();
 }
 
@@ -1127,9 +1161,6 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       // 完整消息与 delta 累计不一致时的权威快照：整块替换重排。
       if (!liveBlock) onBlockStart("text");
       liveBlock!.raw = m.text;
-      liveBlock!.committedLen = 0;
-      liveBlock!.committedEl.innerHTML = "";
-      liveBlock!.shown = m.text.length;
       if (m.text.trim()) turnHasReply = true;
       renderLive();
       break;
@@ -1418,7 +1449,7 @@ function onBlockStart(type: "text" | "thinking" | "tool_use", toolId?: string, t
   const lineEl = el("span", "live-line");
   seg.append(committedEl, lineEl);
   body.appendChild(seg);
-  liveBlock = { type: "text", raw: "", shown: 0, el: seg, committedEl, lineEl, committedLen: 0 };
+  liveBlock = { type: "text", raw: "", el: seg, committedEl, lineEl, blocks: [], renderedAt: 0 };
   showWorking("正在回复…");
   maybeScroll();
 }
@@ -1429,11 +1460,12 @@ function onTextDelta(text: string) {
   if (!liveBlock) onBlockStart("text");
   const first = liveBlock!.raw.length === 0;
   liveBlock!.raw += text;
-  liveBlock!.shown = liveBlock!.raw.length;
   if (first) renderLive();
   else {
     // 新文字先显示，下一帧再合并 Markdown；后台窗口暂停帧回调时也不会吞掉文字。
-    liveBlock!.lineEl.appendChild(document.createTextNode(text));
+    const tail = liveBlock!.lineEl.lastChild;
+    if (tail instanceof Text) tail.appendData(text);
+    else liveBlock!.lineEl.appendChild(document.createTextNode(text));
     scheduleLiveRender();
     scheduleLiveLayout();
   }
@@ -2546,8 +2578,8 @@ function renderHistory(showAll: boolean) {
   const { items, checkpoints } = historyState;
   messagesEl.innerHTML = "";
   toolCards.clear();
-  railObservers.forEach((o) => o.disconnect()); // per-message rail observers of removed nodes
-  railObservers.length = 0;
+  pruneRailObservers();
+  cancelLiveRender();
   assistantEl = null;
   liveBlock = null;
   lastUserEl = null;
@@ -2758,7 +2790,7 @@ function updateEmptyState() {
   es.innerHTML =
     `<div class="es-logo">${GPT_LOGO}</div>` +
     `<div class="es-title">Codex Copilot</div>` +
-    `<div class="es-sub">问我任何关于这个项目的问题。<br>在根目录放一个 <code>CLAUDE.md</code>，每次对话都会自动读取它作为项目说明。</div>`;
+    `<div class="es-sub">问我任何关于这个项目的问题。<br>在根目录放一个 <code>AGENTS.md</code>，作为 Codex 的项目说明。</div>`;
   messagesEl.appendChild(es);
 }
 
@@ -3301,6 +3333,10 @@ function handleSlashCommand(payload: QueueItem): boolean {
       hideSpeedTip();
       // 清空这个 tab 的时间线；host 会同时解绑会话、下次发送开全新上下文。
       messagesEl.innerHTML = "";
+      pruneRailObservers();
+      cancelLiveRender();
+      historyState = null;
+      lastUserEl = null;
       assistantEl = null;
       liveBlock = null;
       toolCards.clear();
@@ -3629,6 +3665,8 @@ function autoResize() {
  *  breakpoint, because label widths vary by model name / locale. Hysteresis-
  *  free: the fit test always runs in the expanded state, so it can't oscillate. */
 const composerTools = document.querySelector(".composer-tools") as HTMLElement | null;
+let fittedComposerWidth = -1;
+let composerFitRAF = 0;
 function refitComposer() {
   if (!composerTools) return;
   // Two stages, each re-measured so we only shed what's necessary:
@@ -3641,10 +3679,15 @@ function refitComposer() {
     if (overflow()) composerTools.classList.add("compact-more");
     if (overflow()) composerTools.classList.add("compact-wrap");
   }
+  fittedComposerWidth = composerTools.clientWidth;
   positionSpeedPopover(speedFeedback);
 }
 if (composerTools && "ResizeObserver" in window) {
-  new ResizeObserver(() => refitComposer()).observe(composerTools);
+  new ResizeObserver(() => {
+    // 换行改变高度会再次触发观察器；只响应宽度变化，并在下一帧修改布局。
+    if (composerFitRAF || composerTools.clientWidth === fittedComposerWidth) return;
+    composerFitRAF = requestAnimationFrame(() => { composerFitRAF = 0; refitComposer(); });
+  }).observe(composerTools);
 }
 refitComposer();
 
@@ -4429,6 +4472,8 @@ function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, reg
     node = next;
   }
   msg.remove();
+  pruneRailObservers();
+  cancelLiveRender();
   // Reset streaming state and re-append the edited message as the new turn.
   assistantEl = null;
   liveBlock = null;
