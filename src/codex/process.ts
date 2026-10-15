@@ -7,6 +7,7 @@ import { CodexRpc, RpcMessage, RpcId } from './rpc';
 import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, validateQuestionImages } from '../questionImages';
 import { TransportDiagnostic } from './telemetry';
+import { PerformanceTrace, PerformanceContext } from './performanceTrace';
 import { ChildThreadRegistry, childToolId } from './childThreads';
 import { executionConfig, executionInstructions } from './executionPolicy';
 export { ChildThreadRegistry, childToolId } from './childThreads';
@@ -77,6 +78,7 @@ function safeCompactionError(error: any): { errorCategory: string; httpStatusCod
 }
 export class CodexProcess {
   private readonly rpc: CodexRpc;
+  private readonly latency: PerformanceTrace;
   private sessionId?: string;
   private activeModel = "";
   private activeEffort?: string;
@@ -101,7 +103,7 @@ export class CodexProcess {
   private contextUsage?: { used: number; total: number };
   private compactionSequence = 0;
   private compactionTrace?: {
-    id: number; trigger: 'manual' | 'auto'; startedAt: number; serverStartedAt?: number;
+    id: number; performanceTraceId?: string; trigger: 'manual' | 'auto'; startedAt: number; serverStartedAt?: number;
     startedWallMs: number; endedWallMs?: number; threadId?: string; turnId?: string; itemId?: string;
     requestAcceptedMs?: number; firstUsageMs?: number; lastTickAt: number; maxTimerDelayMs: number;
     speedMode: SpeedMode; effort: string; usage?: Record<string, number>;
@@ -126,6 +128,8 @@ export class CodexProcess {
   private stoppingTree = false;
   private lastActivityAt = 0;
   constructor(private readonly opts: CodexProcessOptions, private readonly hooks: CodexProcessHooks) {
+    this.latency = new PerformanceTrace(row => this.emit({ kind: 'diag', message: `[perf] ${JSON.stringify(row)}` }),
+      undefined, undefined, () => this.rpc.transportSnapshot());
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env, opts.transportDiagnostics !== false);
     this.rpc.on('diagnostic', (row: TransportDiagnostic) => {
       // OTLP 会批量延迟到达：按源时间及线程关联，不能归到当前正在运行的轮次。
@@ -134,11 +138,12 @@ export class CodexProcess {
       const trace = row.type === 'event' && source !== undefined && thread ?
         [...this.recentCompactions, ...(this.compactionTrace ? [this.compactionTrace] : [])].find(t =>
           thread === t.threadId && source >= t.startedWallMs && source <= (t.endedWallMs ?? Date.now())) : undefined;
-      this.emit({ kind: 'diag', message: `[transport] ${JSON.stringify({ ...row, compactionId: trace?.id ?? null })}` });
+      this.emit({ kind: 'diag', message: `[transport] ${JSON.stringify({ ...row, traceId: this.latency.associate(row), compactionId: trace?.id ?? null })}` });
     });
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
+      this.latency.finish('connection_closed');
       this.endCompactionTrace('connection_closed');
       clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer);
       this.clearChildState();
@@ -154,7 +159,21 @@ export class CodexProcess {
   }
   get isBusy() { return this.busy; }
   get isExited() { return this.exited; }
-  private emit(e: ToWebview) { if (!this.disposed) this.hooks.emit(e); }
+  private emit(e: ToWebview) {
+    if (e.kind === 'permission_resolved') this.latency.resolved(e.requestId, e.auto ? 'cancelled' : e.behavior);
+    if (!this.disposed) this.hooks.emit(e);
+  }
+  private showPermission(request: PermissionRequest): void {
+    const p = this.pending.get(request.requestId)?.params;
+    this.latency.approval(request.requestId, request.toolName === 'AskUserQuestion', p?.threadId ?? this.sessionId,
+      p?.turnId ?? this.turnId, p?.itemId);
+    this.hooks.onPermission(request);
+  }
+  private async preTool(key: string, name: string, input: Record<string, unknown>, p: any): Promise<void> {
+    this.latency.start(`pretool:${key}`, 'pretool', { threadId: p.threadId ?? this.sessionId, turnId: p.turnId, itemId: p.itemId });
+    try { await this.hooks.onPreTool?.(name, input); }
+    finally { this.latency.end(`pretool:${key}`); }
+  }
   private error(e: unknown) { this.emit({ kind: 'error', message: String(e instanceof Error ? e.message : e) }); }
   private async timedRequest(method: string, params: unknown = {}): Promise<any> {
     const at = Date.now();
@@ -248,10 +267,11 @@ export class CodexProcess {
     this.pending.set(request.requestId, { id: request.requestId, method: 'item/tool/call', params: { arguments: request.input } });
     this.busy = true; this.beganAt = typeof saved.beganAt === 'number' ? saved.beganAt : Date.now();
     this.emit({ kind: 'busy', busy: true });
-    this.hooks.onPermission(request);
+    this.showPermission(request);
   }
-  sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[]): boolean {
+  sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[], traceContext?: PerformanceContext): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
+    if (this.opts.transportDiagnostics !== false) this.latency.begin(this.sessionId, { model: this.modelForNextTurn, effort: this.opts.effort || 'default', speedMode: this.opts.speedMode ?? 'default', trigger: 'message' }, traceContext);
     this.busy = true; this.beganAt = Date.now(); this.streamed.clear(); this.activeBlock = undefined; this.tools.clear();
     this.rootCompletion = undefined; this.stoppingTree = false; this.lastActivityAt = 0;
     this.emit({ kind: 'busy', busy: true });
@@ -266,9 +286,10 @@ export class CodexProcess {
     // 固定本轮参数，等待目录期间的模式切换只影响下一轮。
     const params = { threadId: this.sessionId, input, serviceTier: speedServiceTier(speed), model: this.opts.model || null, effort: this.opts.effort || null, approvalPolicy: p.approvalPolicy, approvalsReviewer: 'user', sandboxPolicy: p.sandboxPolicy };
     this.waitingForCatalog = speed !== 'default' && !this.modelsLoaded;
-    if (this.waitingForCatalog) this.emit({ kind: 'status', label: '正在确认模型速度档位…' });
+    if (this.waitingForCatalog) { this.latency.start('model_catalog', 'pretool'); this.emit({ kind: 'status', label: '正在确认模型速度档位…' }); }
     const dispatch = async () => {
       if (speed !== 'default') await this.modelsReady;
+      this.latency.end('model_catalog');
       if (sequence !== this.dispatchSequence || !this.busy || this.exited) return;
       this.waitingForCatalog = false;
       if (!supportsSpeed(this.models.find(m => m.id === model), speed))
@@ -294,6 +315,7 @@ export class CodexProcess {
   }
   compact(): void {
     if (!this.sessionId || this.busy || this.exited) return;
+    if (this.opts.transportDiagnostics !== false) this.latency.begin(this.sessionId, { model: this.modelForNextTurn, effort: this.opts.effort || 'default', speedMode: this.opts.speedMode ?? 'default', trigger: 'manual_compaction' });
     const trace = this.beginCompactionTrace('manual');
     this.busy = true; this.compacting = true; this.beganAt = Date.now(); this.emit({ kind: 'busy', busy: true }); this.emit({ kind: 'compacting' });
     let settingsSynced = false;
@@ -340,7 +362,7 @@ export class CodexProcess {
   private beginCompactionTrace(trigger: 'manual' | 'auto'): NonNullable<CodexProcess['compactionTrace']> {
     if (this.compactionTrace) return this.compactionTrace;
     const trace = this.compactionTrace = {
-      id: ++this.compactionSequence, trigger, startedAt: performance.now(),
+      id: ++this.compactionSequence, performanceTraceId: this.latency.currentTraceId, trigger, startedAt: performance.now(),
       startedWallMs: Date.now(), threadId: this.sessionId, turnId: trigger === 'auto' ? this.turnId : undefined,
       lastTickAt: performance.now(), maxTimerDelayMs: 0,
       // 手动压缩使用本次选择；自动压缩属于正在执行的轮次，不能被下轮设置覆盖。
@@ -364,7 +386,7 @@ export class CodexProcess {
   private logCompactionTrace(stage: string, trace: NonNullable<CodexProcess['compactionTrace']>, extra = {}) {
     const now = performance.now();
     this.emit({ kind: 'diag', message: `[compaction] ${JSON.stringify({
-      id: trace.id, trigger: trace.trigger, stage, model: trace.model, modelSource: trace.modelSource,
+      traceId: trace.performanceTraceId ?? null, id: trace.id, trigger: trace.trigger, stage, model: trace.model, modelSource: trace.modelSource,
       threadId: trace.threadId ?? null, turnId: trace.turnId ?? null, itemId: trace.itemId ?? null,
       startedAt: new Date(trace.startedWallMs).toISOString(), speedMode: trace.speedMode, effort: trace.effort,
       elapsedMs: Math.round(now - trace.startedAt),
@@ -419,6 +441,7 @@ export class CodexProcess {
     if (existing) return existing;
     if (this.childChecks.size >= 32) return Promise.resolve(false);
     const root = this.sessionId;
+    this.latency.start(`validate:${threadId}`, 'child_validation', { threadId: root, itemId: threadId });
     const checking = (async () => {
       try {
         const chain: any[] = [], seen = new Set<string>();
@@ -432,10 +455,13 @@ export class CodexProcess {
               typeof thread.parentThreadId !== 'string' || !thread.parentThreadId) return false;
           chain.push(thread); current = thread.parentThreadId;
         }
-        for (const thread of chain.reverse()) if (!this.children.register(thread)) return false;
+        for (const thread of chain.reverse()) {
+          if (!this.children.register(thread)) return false;
+          if (thread.status?.type === 'active') this.latency.registerChild(thread.id, thread.parentThreadId);
+        }
         return this.children.has(threadId);
       } catch { return false; }
-      finally { this.childChecks.delete(threadId); }
+      finally { this.latency.end(`validate:${threadId}`); this.childChecks.delete(threadId); }
     })();
     this.childChecks.set(threadId, checking);
     return checking;
@@ -466,7 +492,7 @@ export class CodexProcess {
     if (!this.rootCompletion || this.children.activeTurns().length || this.childChecks.size ||
         this.childNotificationQueue.size || this.childInterrupts.size) return;
     const { isError } = this.rootCompletion;
-    this.rootCompletion = undefined; this.stoppingTree = false;
+    this.rootCompletion = undefined;
     this.finish(isError);
   }
   private discoverChildren(item: any): void {
@@ -519,6 +545,7 @@ export class CodexProcess {
     const p = m.params ?? {}, threadId = p.threadId;
     const child = this.children.get(threadId);
     if (!child || this.exited || this.disposed) return;
+    if (this.children.isCurrent(threadId, p.turnId ?? p.turn?.id)) this.latency.observe(m, true, child.parentThreadId);
     const turnId = p.turnId ?? p.turn?.id;
     if (m.method === 'thread/closed') {
       this.children.completed(threadId); this.clearChildRequests(threadId);
@@ -581,14 +608,19 @@ export class CodexProcess {
     else this.emit({ kind: 'tool_result', toolUseId: id, content: view.result, isError: view.isError });
   }
   private notification(m: RpcMessage): void {
+    this.latency.received(m);
     const p = m.params ?? {};
     if (m.method === 'thread/started' && this.sessionId && p.thread?.id !== this.sessionId) {
-      if (this.children.register(p.thread, true) && this.stoppingTree) void this.interruptChild(p.thread.id);
+      if (this.children.register(p.thread, true)) {
+        this.latency.registerChild(p.thread.id, p.thread.parentThreadId);
+        if (this.stoppingTree) void this.interruptChild(p.thread.id);
+      }
       return;
     }
     if (p.threadId && this.sessionId && p.threadId !== this.sessionId) { this.routeChildNotification(m); return; }
     const eventTurnId = p.turnId ?? p.turn?.id;
     if (eventTurnId && this.endedTurns.has(eventTurnId)) return;
+    this.latency.observe(m);
     // 账号通知不属于被暂停的轮次；等待期间仍需更新额度。
     if (m.method === 'account/rateLimits/updated') { for (const event of quotaEvents(p.rateLimits)) this.emit(event); return; }
     // 用户问题不交给后台工具等待：先中断模型，保留本地问题，收到答案才开启续轮。
@@ -602,7 +634,7 @@ export class CodexProcess {
           clearTimeout(paused.timer); paused.ready = true; this.turnId = undefined;
           try { this.saveQuestion(); }
           catch (e) { this.error(`保存等待中的问题失败：${String(e)}`); this.finish(true); return; }
-          this.hooks.onPermission(paused.request);
+          this.showPermission(paused.request);
         }
       }
       return;
@@ -741,9 +773,9 @@ export class CodexProcess {
     const questions = question ? normalizeQuestions(rawQuestions) : undefined;
     if (question && !questions) { this.stopInvalidQuestion(); return; }
     const input = question ? { questions: questions! } : item ? toolView(item).input : { command: p.command, ...p };
-    if (!question) await this.hooks.onPreTool?.(name, input);
+    if (!question) await this.preTool(key, name, input, p);
     const request: PermissionRequest = { requestId: key, toolUseId: p.itemId, toolName: name, input, description: p.reason ?? 'Codex 请求授权', suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] };
-    if (!question) { this.hooks.onPermission(request); return; }
+    if (!question) { this.showPermission(request); return; }
     await this.pauseForQuestion(request, p.turnId);
   }
   private async childRequest(m: RpcMessage): Promise<void> {
@@ -771,14 +803,14 @@ export class CodexProcess {
     const toolId = childToolId(p.threadId, p.itemId ?? p.callId ?? key);
     const item = this.tools.get(toolId);
     const input = question ? { questions: questions! } : item ? toolView(item).input : { command: p.command, ...p };
-    if (!question) await this.hooks.onPreTool?.(name, input);
+    if (!question) await this.preTool(key, name, input, p);
     // onPreTool 可能异步读快照；期间停止/完成的请求不能在界面复活。
     if (this.exited || this.disposed || this.stoppingTree || !this.children.isCurrent(p.threadId, p.turnId)) {
       this.rpc.reject(m.id!, '子任务已停止'); return;
     }
     this.pending.set(key, { id: m.id!, method, params: p });
     if (questions) this.childQuestions.set(key, questions);
-    this.hooks.onPermission({ requestId: key, toolUseId: toolId, toolName: name, displayName: `${child.label} · ${name}`, agentLabel: child.label,
+    this.showPermission({ requestId: key, toolUseId: toolId, toolName: name, displayName: `${child.label} · ${name}`, agentLabel: child.label,
       input, description: `${child.label}：${p.reason ?? (question ? '等待你的回答' : 'Codex 请求授权')}`,
       suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] });
   }
@@ -881,6 +913,7 @@ export class CodexProcess {
     this.pausedQuestion = undefined;
     for (const [id, pending] of this.pending) if (!pending.params.threadId || pending.params.threadId === this.sessionId) this.pending.delete(id);
     this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'allow' });
+    this.latency.finish('answered');
     this.busy = false;
     return this.sendUserMessage(answer.text, undefined, answer.images);
   }
@@ -920,22 +953,26 @@ export class CodexProcess {
       restore.isError ||= isError;
       if (restore.pending) return;
       restore.pending = true;
+      this.latency.start('compaction_restore', 'pretool');
       this.emit({ kind: 'status', label: '正在恢复会话模型设置…' });
       void this.rpc.request('thread/settings/update', {
         threadId: this.sessionId, model: restore.model, effort: restore.effort,
         serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'),
       }).then(() => {
         if (this.disposed || this.compactionRestore !== restore) return;
+        this.latency.end('compaction_restore');
         this.compactionRestore = undefined;
         this.finish(restore.isError);
       }).catch(() => {
         if (this.disposed || this.compactionRestore !== restore) return;
+        this.latency.end('compaction_restore', 'failed');
         this.compactionRestore = undefined;
         this.error('压缩后的会话设置恢复失败，已关闭连接；下一条消息会按会话配置重新连接。');
         this.exited = true; this.finish(true); this.rpc.dispose();
       });
       return;
     }
+    this.latency.finish(isError ? 'failed' : this.stoppingTree ? 'interrupted' : 'completed');
     this.endCompactionTrace(isError ? 'failed' : 'turn_ended_without_compaction_completed');
     this.rememberEndedTurn(this.turnId);
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
@@ -947,6 +984,6 @@ export class CodexProcess {
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
   }
-  dispose() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
-  async disposeAndWait() { this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
+  dispose() { this.latency.finish('disposed'); this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
+  async disposeAndWait() { this.latency.finish('disposed'); this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
 }

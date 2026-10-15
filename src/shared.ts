@@ -280,7 +280,7 @@ export type FromWebview =
    *  否则（手动「检查更新」/自动轮询）只点亮横幅，不打断。 */
   | { type: "checkUpdate"; fromBanner?: boolean }
   | { type: "refreshUsage" }
-  | { type: "send"; text: string; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
+  | { type: "send"; text: string; queueMs?: number; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "excludeSnapshotPaths"; paths?: string[]; all?: boolean }
   /** 从 OS（Finder 等）拖入工作区外的文件/目录：webview 拿不到绝对路径，只能读出
    *  内容传给宿主，由宿主镜像写盘后再按普通路径附加。rel 含顶层名（如 "dir/a.ts"）。 */

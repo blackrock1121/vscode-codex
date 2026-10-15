@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.122",
+  "version": "0.1.123",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -104,6 +104,10 @@
         "command": "codex-chat.notifyConfig",
         "title": "Codex: 任务推送配置",
         "icon": "$(bell)"
+      },
+      {
+        "command": "codex-chat.performanceReport",
+        "title": "Codex: 生成速度诊断报告"
       },
       {
         "command": "codex-chat.openLogs",
@@ -272,7 +276,7 @@
         "codexChat.transportDiagnostics": {
           "type": "boolean",
           "default": true,
-          "description": "将插件启动的 Codex 请求耗时与用量诊断收集到本机日志，用于排查压缩延迟；不保存提示词、工具输出或凭据。仅为该子进程覆盖 OTel 日志/指标导出地址，不修改全局配置，不开启已禁用的 analytics。已有自定义 OTel 导出需求时可关闭；下次连接生效。"
+          "description": "采集每轮准备、模型响应、工具/Bash、压缩、子 Agent、审批等待及传输耗时到本机日志，可通过“Codex: 生成速度诊断报告”查看。不保存提示词、完整命令、工具输出、图片内容或凭据。仅为该子进程覆盖 OTel 日志/指标导出地址，不修改全局配置，不开启已禁用的 analytics。已有自定义 OTel 导出需求时可关闭；下次连接生效。"
         },
         "codexChat.compactionMode": {
           "type": "string",

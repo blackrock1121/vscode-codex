@@ -1,13 +1,16 @@
 import * as http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { failureCategory } from './performanceTrace';
 
 /** CLI 的 OTLP 只送到本机；原始属性可能含工具输出，必须先过白名单再交给日志。 */
 export type TransportDiagnostic = Record<string, string | number | boolean | null>;
 const EVENTS = new Set(['codex.api_request', 'codex.sse_event', 'codex.websocket_request',
-  'codex.websocket_event', 'codex.websocket_connect', 'codex.retry', 'codex.responses_api_timing']);
+  'codex.websocket_event', 'codex.websocket_connect', 'codex.retry', 'codex.responses_api_timing',
+  'codex.tool_result', 'codex.tool_decision']);
 const IDS = ['conversation.id', 'thread_id', 'turn.id', 'turn_id', 'response.id', 'response_id',
-  'request_id', 'auth.request_id', 'model', 'service_tier', 'model_reasoning_effort', 'app.version'];
+  'request_id', 'auth.request_id', 'model', 'service_tier', 'model_reasoning_effort', 'app.version',
+  'tool', 'tool_name', 'tool.name', 'call_id', 'tool_call_id', 'parent_thread_id'];
 const NUMBERS = ['duration_ms', 'attempt', 'http.response.status_code', 'status_code', 'ttft_ms',
   'input_token_count', 'output_token_count', 'cached_token_count', 'cache_write_token_count', 'reasoning_token_count',
   'responses_duration_excl_engine_and_client_tool_time_ms', 'engine_service_total_ms',
@@ -16,7 +19,9 @@ const NUMBERS = ['duration_ms', 'attempt', 'http.response.status_code', 'status_
 const METRICS = new Set(['api_request.duration_ms', 'websocket.request.duration_ms',
   'responses_api_overhead.duration_ms', 'responses_api_inference_time.duration_ms',
   'responses_api_engine_iapi_ttft.duration_ms', 'responses_api_engine_service_ttft.duration_ms',
-  'responses_api_engine_iapi_tbt.duration_ms', 'responses_api_engine_service_tbt.duration_ms']);
+  'responses_api_engine_iapi_tbt.duration_ms', 'responses_api_engine_service_tbt.duration_ms',
+  'tool.call.duration_ms', 'mcp.call.duration_ms', 'hooks.run.duration_ms', 'turn.e2e_duration_ms',
+  'turn.ttft.duration_ms', 'turn.ttfm.duration_ms', 'mcp.tools.list.duration_ms']);
 const MAX_BYTES = 2 * 1024 * 1024;
 function list(v: unknown): any[] { return Array.isArray(v) ? v : []; }
 function scalar(v: any): unknown { return v?.stringValue ?? v?.intValue ?? v?.doubleValue ?? v?.boolValue; }
@@ -42,6 +47,12 @@ function fields(a: Record<string, unknown>): TransportDiagnostic {
   // 错误正文不写盘；只保留是否存在，具体类别由 app-server 的结构化错误补充。
   if (typeof a['error.message'] === 'string') out.hasError = a['error.message'].length > 0;
   if (typeof a['auth.connection_reused'] === 'boolean') out.connectionReused = a['auth.connection_reused'];
+  for (const key of ['decision', 'source']) {
+    const allowed = ['approved', 'denied', 'accept', 'decline', 'abort', 'user', 'config', 'configuration', 'automatic', 'session'];
+    if (typeof a[key] === 'string' && allowed.includes(a[key])) out[key] = a[key];
+  }
+  if (Number.isInteger(a.exit_code)) out.exitCode = a.exit_code as number;
+  if (out.success === false) out.failureCategory = failureCategory(a['error.message'] ?? a.output, out.exitCode as number | undefined);
   // 只保存已知 API 路由，不保存主机、查询参数或任意 URL。
   if (typeof a.endpoint === 'string') {
     const endpoint = a.endpoint.match(/(?:^|\/)(responses(?:\/compact)?|models)(?:\?|$)/)?.[1];

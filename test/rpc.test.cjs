@@ -128,3 +128,9 @@ test('后台异常断开显示具体原因；主动关闭不会误报错误',{ti
   assert.equal(p.isBusy,false);assert.equal(p.isExited,true);
  }
 });
+
+test('诊断接收方抛错时初始化和后续 RPC 仍可正常完成',async t=>{
+ const rpc=new CodexRpc(executable,process.cwd(),undefined,true);
+ rpc.on('diagnostic',()=>{throw new Error('日志写入失败');});t.after(()=>rpc.disposeAndWait());
+ await rpc.start();assert.ok((await rpc.request('model/list')).data.length>0);
+});

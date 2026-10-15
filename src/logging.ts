@@ -23,7 +23,14 @@ export function pruneLogs(dir: string, now = new Date()): void {
 }
 
 export class DailyLogWriter {
-  private day = "";
+  private pending = new Map<string, string[]>();
+  private pendingBytes = 0;
+  private dropped = 0;
+  private timer?: NodeJS.Timeout;
+  private flushing?: Promise<void>;
+  private closed = false;
+  private latestDate = new Date();
+  private prunedDay = "";
 
   constructor(private readonly dir: string) {
     this.prune();
@@ -35,14 +42,36 @@ export class DailyLogWriter {
   }
 
   write(line: string, now = new Date()): void {
+    if (this.closed) return;
     try {
       const day = logDay(now);
-      if (day !== this.day) {
-        this.prune(now);
-        this.day = day;
-      }
       const hh = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-      fs.appendFileSync(path.join(this.dir, `codex-chat-${day}.log`), `[${hh}] ${line}\n`, "utf8");
+      const row = `[${hh}] ${line.slice(0, 32768)}${line.length > 32768 ? " [truncated]" : ""}\n`;
+      const bytes = Buffer.byteLength(row);
+      if (this.pendingBytes + bytes > 1024 * 1024) { this.dropped++; return; }
+      const rows = this.pending.get(day) ?? []; rows.push(row); this.pending.set(day, rows);
+      this.pendingBytes += bytes; this.latestDate = now;
+      if (!this.timer) { this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 200); this.timer.unref(); }
     } catch { /* 写日志失败不影响插件功能 */ }
   }
+
+  /** 有界队列 + 串行异步批量落盘，流式事件不再逐条阻塞扩展宿主。 */
+  async flush(): Promise<void> {
+    clearTimeout(this.timer); this.timer = undefined;
+    if (this.flushing) { await this.flushing; if (this.pending.size) await this.flush(); return; }
+    if (!this.pending.size) return;
+    const batches = this.pending; this.pending = new Map(); this.pendingBytes = 0;
+    const date = this.latestDate, dropped = this.dropped; this.dropped = 0;
+    this.flushing = (async () => {
+      try {
+        await fs.promises.mkdir(this.dir, { recursive: true });
+        for (const [day, rows] of batches) await fs.promises.appendFile(path.join(this.dir, `codex-chat-${day}.log`), rows.join(''), 'utf8');
+        if (dropped) await fs.promises.appendFile(path.join(this.dir, `codex-chat-${logDay(date)}.log`), `[logging] droppedLines=${dropped} reason=buffer_or_write_limit\n`, 'utf8');
+        // 先完成跨天批次再清理，避免把过期批次重新创建出来。
+        if (this.prunedDay !== logDay(date)) { this.prune(date); this.prunedDay = logDay(date); }
+      } catch { this.dropped += [...batches.values()].reduce((n, rows) => n + rows.length, 0) + dropped; }
+    })();
+    try { await this.flushing; } finally { this.flushing = undefined; }
+  }
+  async dispose(): Promise<void> { this.closed = true; await this.flush(); }
 }

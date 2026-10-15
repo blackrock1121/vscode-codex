@@ -3149,6 +3149,7 @@ function onCheckpointMarker(checkpointId: string) {
 // Composer
 // ---------------------------------------------------------------------------
 interface QueueItem {
+  queuedAt?: number;
   text: string;
   context?: string;
   contexts: { label: string; text: string }[];
@@ -3404,6 +3405,7 @@ function doSend() {
   clearComposer();
   if (isBusy || restoreInProgress) {
     // A turn is running — queue this one to auto-run after the current finishes.
+    payload.queuedAt = performance.now();
     taskQueue.push(payload);
     renderQueue();
     return;
@@ -3437,6 +3439,7 @@ function performSend(p: QueueItem, jumpToLatest: boolean) {
   send({
     type: "send",
     text: p.text,
+    queueMs: p.queuedAt === undefined ? undefined : Math.max(0, Math.round(performance.now() - p.queuedAt)),
     context: p.context,
     images: p.images.length ? p.images : undefined,
     files: p.files.length ? p.files : undefined,

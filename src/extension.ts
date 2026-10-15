@@ -5,15 +5,18 @@ import * as path from "node:path";
 import { ChatViewProvider } from "./panel/chatViewProvider";
 import { DailyLogWriter } from "./logging";
 import { RemoteBridgeClient } from "./remote/bridgeClient";
+import { readPerformanceReport } from "./diagnosticsReport";
 
 /** 固定日志目录：~/.codex-chat/logs/codex-chat-YYYY-MM-DD.log（按天分文件）。
  *  VS Code 输出通道的落盘路径深埋且每次会话都变，用户/同事根本找不到——
  *  所有日志双写到这里，收日志只需要拿这个目录。 */
 const LOG_DIR = path.join(os.homedir(), ".codex-chat", "logs");
+const logWriters = new Set<DailyLogWriter>();
 
 /** 包一层 OutputChannel：appendLine 同时落盘到固定目录。写盘失败静默（日志不能反噬功能）。 */
 function teeOutput(channel: vscode.OutputChannel): vscode.OutputChannel {
   const writer = new DailyLogWriter(LOG_DIR);
+  logWriters.add(writer);
   // 窗口长期不重启、甚至没有新日志时，也要持续清理过期文件。
   const pruneTimer = setInterval(() => writer.prune(), 60 * 60 * 1000);
   return {
@@ -27,7 +30,7 @@ function teeOutput(channel: vscode.OutputChannel): vscode.OutputChannel {
     clear: () => channel.clear(),
     show: ((...args: unknown[]) => (channel.show as (...a: unknown[]) => void)(...args)) as vscode.OutputChannel["show"],
     hide: () => channel.hide(),
-    dispose: () => { clearInterval(pruneTimer); channel.dispose(); },
+    dispose: () => { clearInterval(pruneTimer); void writer.dispose().finally(() => logWriters.delete(writer)); channel.dispose(); },
   };
 }
 
@@ -77,6 +80,12 @@ export function activate(context: vscode.ExtensionContext): void {
 
     vscode.commands.registerCommand("codex-chat.notifyConfig", () => provider.showNotifyConfig()),
     vscode.commands.registerCommand("codex-chat.resetLocalSnapshotExcludes", () => provider.resetLocalSnapshotExcludes()),
+    vscode.commands.registerCommand("codex-chat.performanceReport", async () => {
+      await Promise.all([...logWriters].map(writer => writer.flush()));
+      const content = await readPerformanceReport(LOG_DIR);
+      const doc = await vscode.workspace.openTextDocument({ content, language: "markdown" });
+      await vscode.window.showTextDocument(doc, { preview: true });
+    }),
     vscode.commands.registerCommand("codex-chat.openLogs", () => {
       try {
         fs.mkdirSync(LOG_DIR, { recursive: true });
@@ -106,6 +115,6 @@ export function activate(context: vscode.ExtensionContext): void {
 
 }
 
-export function deactivate(): void {
-  /* subscriptions handle teardown */
+export async function deactivate(): Promise<void> {
+  await Promise.all([...logWriters].map(writer => writer.flush()));
 }

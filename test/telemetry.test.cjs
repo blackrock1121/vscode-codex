@@ -19,7 +19,7 @@ test('OTLP 仅保留请求时序、关联标识和用量，不保留凭据、正
  assert.equal(rows[0]['conversation.id'],'thread-1');assert.equal(rows[0].hasError,true);
  assert.equal(rows[0].endpoint,'/responses');assert.equal(rows[0].connectionReused,true);
  assert.doesNotMatch(JSON.stringify(rows),/PRIVATE/);
- assert.deepEqual(transportDiagnostics(logs({'event.name':'codex.tool_result','duration_ms':10})),[]);
+ assert.equal(transportDiagnostics(logs({'event.name':'codex.tool_result','duration_ms':10}))[0].duration_ms,10);
  assert.deepEqual(transportDiagnostics(logs({'event.name':'codex.sse_event','event.kind':'response.output_text.delta'})),[]);
  assert.equal(transportDiagnostics(logs({'event.name':'codex.sse_event','event.kind':'response.output_text.delta','success':false})).length,1);
 });
@@ -38,7 +38,7 @@ test('无效数值与未知结构不会伪造时序，后端指标明确标为�
   histogram:{aggregationTemporality:2,dataPoints:[{startTimeUnixNano:'1791954000000000000',timeUnixNano:'1791954010000000000',
    count:'2',sum:1200,min:500,max:700,attributes:attributes({model:'test-model',prompt:'PRIVATE'})}]}},
   {name:'codex.tool.call.duration_ms',histogram:{dataPoints:[{count:'100',sum:999}]}}]}]}]};
- const points=transportDiagnostics(metrics);assert.equal(points.length,1);assert.equal(points[0].scope,'process_aggregate');
+ const points=transportDiagnostics(metrics);assert.equal(points.length,2);assert.equal(points[0].scope,'process_aggregate');
  assert.equal(points[0].count,2);assert.equal(points[0].aggregationTemporality,2);assert.equal(points[0].sum,1200);
  assert.doesNotMatch(JSON.stringify(points),/PRIVATE/);
 });
@@ -56,4 +56,15 @@ test('本机采集器接收 JSON/gzip，拒绝未知路由和损坏内容，关�
  assert.equal((await fetch(url.replace(/\/[^/]+\/v1\//,'/wrong/v1/'),{method:'POST',body:data})).status,404);
  assert.equal((await fetch(url)).status,404);
  local.close();await assert.rejects(fetch(url));
+});
+
+test('工具 OTLP 记录标识、耗时、失败分类，原始参数和输出不会落盘',()=>{
+ const row=transportDiagnostics(logs({'event.name':'codex.tool_result','tool_name':'exec_command',call_id:'call-1',
+  'conversation.id':'thread-1',duration_ms:450,success:false,exit_code:127,
+  output:'PRIVATE_OUTPUT: command not found',arguments:'PRIVATE_COMMAND',prompt:'PRIVATE_PROMPT'}))[0];
+ assert.equal(row.tool_name,'exec_command');assert.equal(row.call_id,'call-1');assert.equal(row.duration_ms,450);
+ assert.equal(row.failureCategory,'command_not_found');assert.equal(row.exitCode,127);
+ assert.doesNotMatch(JSON.stringify(row),/PRIVATE|arguments|command not found/);
+ const decision=transportDiagnostics(logs({'event.name':'codex.tool_decision',decision:'approved',source:'user',command:'PRIVATE'}))[0];
+ assert.equal(decision.decision,'approved');assert.equal(decision.source,'user');assert.doesNotMatch(JSON.stringify(decision),/PRIVATE/);
 });

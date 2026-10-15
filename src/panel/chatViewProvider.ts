@@ -17,6 +17,7 @@ import type { RemoteRegistration, RemoteReply } from "../remote/bridgeClient";
 import { transcriptPage, transcriptText } from "../remote/transcript";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
+import { performanceContext } from "../codex/performanceTrace";
 import { executionMode } from "../codex/executionPolicy";
 import { SessionStore, sessionTabTitle, ForkPreparation } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
@@ -200,6 +201,7 @@ interface SessionCtx {
     coldStart?: boolean;
     lastUsedAt?: number;
     sendAt?: number;
+    performanceTraceId?: string;
     lastUserText?: string;
     lastUserActionAt?: number;
     initialHistoryCached?: boolean;
@@ -1077,7 +1079,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.fetchUsage(true);
                     break;
                 case "send":
-                    await this.handleSend(ctx, m.text, m.context, m.images, m.files);
+                    await this.handleSend(ctx, m.text, m.context, m.images, m.files, undefined, m.queueMs);
                     break;
                 case "editMessage":
                     await this.editMessage(ctx, m.checkpointId, m.text, m.images);
@@ -1420,12 +1422,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async handleSend(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string; data: string;
-    }[], files?: string[], allowed?: () => boolean): Promise<boolean> {
+    }[], files?: string[], allowed?: () => boolean, queueMs?: number): Promise<boolean> {
         if (ctx.sending) { this.post(ctx, { kind: 'notice', message: '上一条消息正在准备，请稍后再发送。' }); return false; }
         ctx.sending = true;
         const priorSnapshot = ctx.snapshot;
         let accepted = false;
-        try { accepted = await this.handleSendInner(ctx, text, context, images, files, allowed); return accepted; }
+        try { accepted = await this.handleSendInner(ctx, text, context, images, files, allowed, queueMs); return accepted; }
         finally {
             if (!accepted && !ctx.proc?.isBusy && ctx.snapshot !== priorSnapshot) ctx.snapshot = undefined;
             ctx.sending = false;
@@ -1434,9 +1436,30 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async handleSendInner(ctx: SessionCtx, text: string, context?: string, images?: {
         mediaType: string;
         data: string;
-    }[], files?: string[], allowed?: () => boolean): Promise<boolean> {
+    }[], files?: string[], allowed?: () => boolean, queueMs?: number): Promise<boolean> {
+        const trace = performanceContext(queueMs);
+        const enabled = this.config().get<boolean>("transportDiagnostics", true);
+        const record = (event: string, fields: Record<string, unknown>) => {
+            try { if (enabled) this.output.appendLine(`[perf] ${JSON.stringify({ schema: 1, event, traceId: trace.traceId, threadId: ctx.sessionId ?? null, atMs: Date.now(), ...fields })}`); }
+            catch { /* 诊断失败不能取消发送 */ }
+        };
+        const stage = async <T>(name: string, work: () => T | Promise<T>): Promise<T> => {
+            const at = performance.now(); let outcome = "completed";
+            try { return await work(); } catch (error) { outcome = "failed"; throw error; }
+            finally { record("preparation_stage", { stage: name, durationMs: Math.round(performance.now() - at), outcome }); }
+        };
+        const syncStage = <T>(name: string, work: () => T): T => {
+            const at = performance.now(); let outcome = "completed";
+            try { return work(); } catch (error) { outcome = "failed"; throw error; }
+            finally { record("preparation_stage", { stage: name, durationMs: Math.round(performance.now() - at), outcome }); }
+        };
+        let dispatched = false;
+        record("preparation_start", { queueMs: trace.queueMs ?? 0, images: images?.length ?? 0, files: files?.length ?? 0 });
+        try {
         const prepareAt = Date.now();
+        const finalizingAt = performance.now();
         await ctx.finalizing;
+        record("preparation_stage", { stage: "previous_finalization_wait", durationMs: Math.round(performance.now() - finalizingAt), outcome: "completed" });
         if (allowed && !allowed()) return false;
         if (ctx.proc?.isBusy || ctx.pendingPerm?.kind === "permission_request") {
             this.post(ctx, { kind: "error", message: "上一轮尚未结束，请先完成问题或审批。", keepBusy: true });
@@ -1445,7 +1468,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         let attached = context;
         const mySeq = (ctx.sendSeq = (ctx.sendSeq ?? 0) + 1);
         if (files && files.length) {
-            const fileCtx = this.buildFileContext(files);
+            const fileCtx = syncStage("attachments", () => this.buildFileContext(files));
             attached = attached ? `${fileCtx}\n\n${attached}` : fileCtx;
         }
         const hadSession = !!ctx.sessionId;
@@ -1453,15 +1476,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (!hadSession) this.prepareProcess(ctx);
         ctx.mayHaveModifiedWorkspace = false;
         if (this.config().get<boolean>("autosave", true)) {
-            const saved = await Promise.all(vscode.workspace.textDocuments.filter(d => d.isDirty && !d.isUntitled && vscode.workspace.getWorkspaceFolder(d.uri)).map(d => d.save()));
+            const saved = await stage("autosave", () => Promise.all(vscode.workspace.textDocuments.filter(d => d.isDirty && !d.isUntitled && vscode.workspace.getWorkspaceFolder(d.uri)).map(d => d.save())));
             if (saved.some(ok => !ok))
                 throw new Error("部分文件未保存，已取消发送，避免覆盖编辑器改动。");
         }
         // Existing threads can reconnect while the local snapshot is captured.
         // Keep new-thread creation after the snapshot so Stop can still cancel it.
-        const processReady = hadSession ? this.ensureProcess(ctx) : undefined;
+        const processReady = hadSession ? stage("connection", () => this.ensureProcess(ctx)) : undefined;
         const historyAt = Date.now();
-        const historyReady = hadSession && ctx.sessionId ? this.store.hydrate(ctx.sessionId).finally(() => {
+        const historyReady = hadSession && ctx.sessionId ? stage("history", () => this.store.hydrate(ctx.sessionId!)).finally(() => {
             this.output.appendLine(`[${new Date().toISOString()}] [prepare] 历史读取 ${Date.now() - historyAt}ms`);
         }) : Promise.resolve();
         const snapshotReady = (async () => {
@@ -1470,7 +1493,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const excludes = new Map(roots.map(root => [root, vscode.workspace.getConfiguration("codexChat", vscode.Uri.file(root)).get<string[]>("snapshotExclude", [])]));
             const snapshot = new WorkspaceSnapshot(roots, 20000, excludes, this.localSnapshotExcludedPaths(roots));
             const snapshotAt = Date.now();
-            await snapshot.capture();
+            await stage("snapshot", () => snapshot.capture());
+            record("snapshot_size", { files: snapshot.files.size, skipped: snapshot.skipped.size });
             ctx.snapshot = snapshot;
             this.output.appendLine(`[${new Date().toISOString()}] [snapshot] 基线 ${snapshot.files.size} 文件，跳过 ${snapshot.skipped.size} 项，耗时 ${Date.now() - snapshotAt}ms`);
             this.reportSnapshotSkips(ctx, snapshot);
@@ -1483,7 +1507,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // A new thread is only durable after its first turn starts. Do not create
         // it during the (potentially slow) snapshot: Stop may cancel the send.
         this.post(ctx, { kind: "status", label: hadSession ? "正在连接 Codex 会话…" : "正在创建 Codex 会话…" });
-        const proc = processReady ? await processReady : await this.ensureProcess(ctx);
+        const proc = processReady ? await processReady : await stage("connection", () => this.ensureProcess(ctx));
         if (!proc) {
             if (!allowed) {
                 ctx.draft = text; ctx.draftImages = images;
@@ -1492,7 +1516,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "busy", busy: false });
             return false;
         }
-        await this.waitSessionSettings(ctx);
+        await stage("session_settings_wait", () => this.waitSessionSettings(ctx));
         await proc.setModel(this.sessionModel(ctx));
         await proc.setSpeedMode(this.speedMode(ctx));
         await proc.setEffort(this.sessionEffort(ctx));
@@ -1520,8 +1544,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (ctx.remotePrivate && ctx.sessionId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + ctx.sessionId))
             await this.context.workspaceState.update('codexChat.remotePrivate.' + ctx.sessionId, true);
         if (allowed && (!allowed() || ctx.proc !== proc || proc.isBusy)) return false;
-        const lineBefore = ctx.sessionId ? this.store.countLines(ctx.sessionId) : 0;
-        if (!proc.sendUserMessage(text, attached, images)) {
+        const lineBefore = ctx.sessionId ? syncStage("checkpoint_metadata", () => this.store.countLines(ctx.sessionId!)) : 0;
+        if (!proc.sendUserMessage(text, attached, images, trace)) {
             this.output.appendLine("[codex] send dropped: process not writable (exited mid-send)");
             if (ctx.proc === proc)
                 ctx.proc = undefined;
@@ -1534,6 +1558,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return false;
         }
         if (allowed) this.post(ctx, { kind: 'remote_user', text });
+        dispatched = true;
         if (!hadSession && ctx.sessionId) {
             this.store.notePending(ctx.sessionId, text || "(图片)");
             this.renderSessions();
@@ -1548,6 +1573,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const checkpointId = ctx.checkpoints.beginTurn(text || "(图片)", lineBefore, !!ctx.snapshot);
         this.post(ctx, { kind: "checkpoint_marker", checkpointId, userText: text });
         return true;
+        } finally { record("preparation_end", { durationMs: Math.round(performance.now() - trace.startedAt), outcome: dispatched ? "dispatched" : "not_dispatched" }); }
     }
     private async editMessage(ctx: SessionCtx, checkpointId: string, text: string, images?: {
         mediaType: string;
@@ -3041,6 +3067,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             // 结果已收到；快照整理期间关闭或回复后，不能再补发这条旧提醒。
             const sessionId = ctx.sessionId;
             const epoch = this.notificationVersion(sessionId);
+            const traceId = ctx.performanceTraceId;
             this.output.appendLine(`[finalize] session=${sessionId?.slice(0, 8)} 后台轮次已结束，开始整理还原点`);
             this.post(ctx, { kind: "finalizing" });
             ctx.finalizing = (async () => {
@@ -3060,6 +3087,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.post(ctx, { kind: "notice", message: `会话或文件快照刷新失败：${String(err)}` });
                 }
                 this.output.appendLine(`[${new Date().toISOString()}] [finalize] 文件差异与还原点整理 ${Date.now() - finalizeAt}ms`);
+                if (traceId) this.output.appendLine(`[perf] ${JSON.stringify({ schema: 1, event: "finalization", traceId, threadId: sessionId, atMs: Date.now(), durationMs: Date.now() - finalizeAt })}`);
                 this.handleEmitInner(ctx, { kind: "busy", busy: false });
                 this.handleEmitInner(ctx, e, ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch);
             })();
@@ -3101,6 +3129,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         }
         if (e.kind === "diag") {
+            if (e.message.startsWith('[perf] {"schema":1,"event":"turn_start"')) {
+                try { ctx.performanceTraceId = JSON.parse(e.message.slice(7)).traceId; } catch { /* 不影响消息 */ }
+            }
             this.output.appendLine(`[${new Date().toISOString()}] [diag] session=${ctx.sessionId?.slice(0, 8)} ${e.message}`);
             return;
         }
