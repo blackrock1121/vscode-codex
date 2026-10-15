@@ -2063,11 +2063,15 @@ mark.find-hit.current {
 .speed-bolt { display: inline-flex; }
 .speed-bolt svg { width: 15px; height: 15px; }
 #speed-trigger[aria-checked="true"] {
-  color: var(--vscode-editorWarning-foreground, #e5b454);
-  background: rgba(229, 180, 84, .13);
+  color: #eaf4ff;
+  background: rgba(185, 215, 245, .10);
   border-color: transparent;
 }
 #speed-trigger[aria-checked="true"] .speed-bolt svg { fill: currentColor; }
+body.vscode-light #speed-trigger[aria-checked="true"],
+body.vscode-high-contrast-light #speed-trigger[aria-checked="true"] {
+  color: #38658a; background: rgba(56, 101, 138, .10);
+}
 #speed-trigger:disabled { opacity: .6; cursor: not-allowed; }
 #speed-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
