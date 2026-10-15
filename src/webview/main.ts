@@ -5,7 +5,7 @@ import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits } from "../shared";
-import { ICONS as ICON, GPT_LOGO, speedLabel, speedCost, supportsSpeed } from "../shared";
+import { ICONS as ICON, GPT_LOGO, speedLabel, speedCost, speedGain, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
 // VS Code bridge
@@ -3904,12 +3904,16 @@ function syncPickers() {
   const available = fast || supportsSpeed(speedModel(), "fast");
   const normalCost = speedCost("default", speedModelId(), speedBilling);
   const fastCost = speedCost("fast", speedModelId(), speedBilling);
-  $("speed-label").textContent = fast ? "快速" : "普通";
+  const gain = speedGain("fast", speedModelId(), speedBilling);
   speedTrigger.dataset.accelerated = String(fast);
   speedTrigger.setAttribute("aria-checked", String(fast));
   speedTrigger.setAttribute("aria-label", `快速模式：${fast ? "开启" : "关闭"}；点击切换${fast ? "普通" : "快速"}`);
   speedTrigger.disabled = speedPending || !available;
-  speedTrigger.title = `普通：${normalCost.text} 快速：${fastCost.text} ${speedBilling === "api" ? "" : "购买额度及企业按量计费为普通模式的 2×，以官方计费说明为准。"} ${speedAvailability("fast")}。仅当前会话下轮生效。`;
+  speedTrigger.title = `当前：${fast ? "快速模式（闪电亮起）" : "普通模式（闪电灰暗）"}
+普通：标准速度；${normalCost.text}
+快速：更快生成回复；${fastCost.text}
+${gain.text}
+${speedBilling === "api" ? "" : "购买额度及企业按量计费为普通模式的 2×，以官方计费说明为准。\n"}${speedAvailability("fast")}。点击切换，仅当前会话下轮生效。`;
   const selectedEffort = currentEffort || modelDefaultEfforts[currentModel || actualSpeedModel];
   const effort = EFFORTS.find(e => e.id === selectedEffort);
   const effortLabel = effort?.label || selectedEffort || "默认";

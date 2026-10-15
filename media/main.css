@@ -2055,10 +2055,18 @@ mark.find-hit.current {
   outline: 1px solid var(--vscode-editor-findMatchBorder, #e8b93d); outline-offset: 0;
 }
 
-.speed-toggle { gap: 6px; flex-shrink: 0; }
-.speed-track { display: inline-flex; align-items: center; width: 28px; height: 16px; padding: 2px; border-radius: 9px; background: var(--vscode-descriptionForeground, #888); opacity: .7; transition: background .15s; }
-.speed-thumb { width: 12px; height: 12px; border-radius: 50%; background: var(--vscode-button-foreground, #fff); transform: translateX(0); transition: transform .15s; }
-#speed-trigger[aria-checked="true"] .speed-track { background: var(--vscode-button-background, #247899); opacity: 1; }
-#speed-trigger[aria-checked="true"] .speed-thumb { transform: translateX(12px); }
+#speed-trigger, .composer-tools.compact #speed-trigger {
+  width: 26px; height: 26px; padding: 0; gap: 0;
+  justify-content: center; flex: 0 0 26px;
+  color: var(--vscode-descriptionForeground, #888);
+}
+.speed-bolt { display: inline-flex; }
+.speed-bolt svg { width: 15px; height: 15px; }
+#speed-trigger[aria-checked="true"] {
+  color: var(--vscode-editorWarning-foreground, #e5b454);
+  background: rgba(229, 180, 84, .13);
+  border-color: currentColor;
+}
+#speed-trigger[aria-checked="true"] .speed-bolt svg { fill: currentColor; }
 #speed-trigger:disabled { opacity: .6; cursor: not-allowed; }
 #speed-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }

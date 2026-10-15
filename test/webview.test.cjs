@@ -1010,7 +1010,7 @@ test('点击停止后保持队列，收到后台停止确认才按顺序发送',
  assert.match(w.document.getElementById('task-queue').textContent,/停止期间补充/);
 });
 
-test('普通快速滑块只发送当前会话速度，保存回执前保持真实消费状态',t=>{
+test('普通快速闪电只发送当前会话速度，保存回执前保持真实消费状态',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'models',models:[{id:'gpt-6.1-sol',name:'Sol',description:'',efforts:['low','medium','high'],speedModes:['default','fast','ultrafast']}]});
  emit({kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'default'});
@@ -1024,7 +1024,7 @@ test('普通快速滑块只发送当前会话速度，保存回执前保持真�
  assert.deepEqual(JSON.parse(JSON.stringify(sent.filter(x=>x.type==='setSpeedMode'))),[{type:'setSpeedMode',mode:'fast'}]);
  assert.equal(trigger.getAttribute('aria-checked'),'false');assert.equal(trigger.disabled,true);
  emit({kind:'config',model:'gpt-6.1-sol',effort:'medium',permissionMode:'default',speedMode:'fast'});
- assert.equal(trigger.getAttribute('aria-checked'),'true');assert.equal(w.document.getElementById('speed-label').textContent,'快速');
+ assert.equal(trigger.getAttribute('aria-checked'),'true');assert.equal(trigger.querySelector('.speed-bolt') !== null,true);assert.match(trigger.title,/当前：快速模式/);
  trigger.click();assert.equal(sent.at(-1).mode,'default');
  assert.equal(sent.some(m=>['setModel','setEffort','stop'].includes(m.type)),false);
  assert.deepEqual(errors,[]);
