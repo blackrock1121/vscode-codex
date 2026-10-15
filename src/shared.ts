@@ -123,7 +123,8 @@ export type ToWebview =
   /** `permissionMode` is the mode the CLI process ACTUALLY runs in (from its
    *  init event) — the picker syncs to this, never to a local guess. */
   | { kind: "session"; sessionId: string; model: string; cwd: string; tools: string[]; resumed?: boolean; permissionMode?: string }
-  | { kind: "busy"; busy: boolean }
+  /** 空闲时同时报告宿主是否仍在还原，界面据此校正遗留的还原锁。 */
+  | { kind: "busy"; busy: boolean; restoring?: boolean }
   /** 还原点回退正在自动停止进行中的回复：界面立刻冻结直播观感并给出过渡提示，
    *  普通还原由 load_history 收尾；编辑重发和重新生成由 restored 收尾。 */
   | { kind: "restoring" }

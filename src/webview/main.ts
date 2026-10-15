@@ -1062,6 +1062,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       if (m.sessionId) vscode.setState({ sessionId: m.sessionId });
       break;
     case "busy":
+      if (!m.busy && m.restoring === false && restoreInProgress) hideRestoring();
       setBusy(m.busy);
       break;
     case "finalizing":

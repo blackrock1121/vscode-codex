@@ -3873,6 +3873,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private post(ctx: SessionCtx, e: ToWebview): void {
         if (!this.alive(ctx))
             return;
+        // 普通回复、问题续轮和停止都从这里报告空闲；不要让前端历史遗留的
+        // 还原标记继续拦住队列。真正的还原过程仍持锁到 load_history/restored。
+        if (e.kind === "busy" && !e.busy)
+            e = { ...e, restoring: this.restoring.has(ctx) };
         // 设置、链接等操作报错不代表当前轮次结束，发送队列只能由真实结束事件放行。
         ctx.webview.postMessage(e.kind === "error" && ctx.proc?.isBusy ? { ...e, keepBusy: true } : e);
     }
