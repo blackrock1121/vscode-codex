@@ -25,7 +25,12 @@ function button(text: string, action: () => void, disabled = false, secondary = 
   const element = node('button', text, secondary ? 'secondary' : ''); element.disabled = disabled; element.onclick = action; return element;
 }
 function send(type: string, id?: string) { api.postMessage({ type, id }); }
-function select(id: string) { selectedId = id; api.setState({ selectedId, options: settings }); requested.add(id); send('select', id); render(); }
+function select(id?: string) {
+  selectedId = id; api.setState({ selectedId, options: settings });
+  if (id) { requested.add(id); send('select', id); }
+  else send('collapse');
+  render();
+}
 const control = (id: string) => $(id) as HTMLSelectElement;
 function updateControls() {
   const isModel = settings.engine === 'model', model = models.find(m => m.id === settings.model);
@@ -56,18 +61,35 @@ function render() {
   const detail = $('detail'), previous = detail.dataset.recordId, oldDetails = detail.querySelector('details');
   if (previous && oldDetails) { if (oldDetails.open) expandedReports.add(previous); else expandedReports.delete(previous); }
   const query = ($('search') as HTMLInputElement).value.trim().toLowerCase();
+  // 详情随记录展开；先移出列表，避免重建列表时丢失详情容器。
+  detail.hidden = true; $('history').append(detail);
   const list = $('records'); list.replaceChildren();
-  for (const record of records.filter(r => `${r.id} ${r.workspaceName} ${r.pluginVersion} ${r.summary?.versions.join(' ') ?? ''} ${scopeLabel(r)}`.toLowerCase().includes(query))) {
-    const item = node('button', '', `record${record.id === selectedId ? ' selected' : ''}`);
-    item.append(node('b', `诊断 ${record.id.slice(0, 8)}`), node('span', recordStatus(record), 'status'),
+  const visible = records.filter(r => `${r.id} ${r.workspaceName} ${r.pluginVersion} ${r.summary?.versions.join(' ') ?? ''} ${scopeLabel(r)}`.toLowerCase().includes(query));
+  $('record-count').textContent = query ? `${visible.length} / ${records.length} 条` : `${records.length} 条`;
+  for (const record of visible) {
+    const expanded = record.id === selectedId;
+    const entry = node('section', '', `record-entry${expanded ? ' expanded' : ''}`);
+    const item = node('button', '', 'record'); item.id = `record-${record.id}`; item.dataset.recordId = record.id;
+    item.setAttribute('aria-expanded', String(expanded));
+    if (expanded) item.setAttribute('aria-controls', 'detail');
+    const heading = node('span', '', 'record-heading');
+    heading.append(node('b', `诊断 ${record.id.slice(0, 8)}`), node('span', recordStatus(record), 'status'), node('span', expanded ? '收起详情 ▴' : '展开详情 ▾', 'record-toggle'));
+    item.append(heading,
       node('small', new Date(record.createdAt).toLocaleString(), 'muted'), node('small', `${kindLabel(record.options?.kind)} · ${scopeLabel(record)} · ${record.pluginVersion}`, 'muted'),
       node('small', `发起位置：${record.workspaceName}`, 'muted'));
-    item.onclick = () => select(record.id); list.append(item);
+    item.append(node('small', record.status === 'running' ? record.progress : record.error ?? `待核验问题 ${record.findings.length} 项 · 飞书通知：${notice[record.notification.status]}`, 'record-summary'));
+    item.onclick = () => { select(expanded ? undefined : record.id); document.getElementById(item.id)?.focus({ preventScroll: true }); };
+    entry.append(item); list.append(entry);
+    if (expanded) { detail.hidden = false; detail.setAttribute('aria-labelledby', item.id); entry.append(detail); }
   }
   if (!list.childElementCount) list.append(node('p', records.length ? '没有匹配的记录' : '暂无诊断记录', 'muted'));
-  const current = records.find(r => r.id === selectedId); detail.replaceChildren(); detail.dataset.recordId = current?.id ?? '';
-  if (!current) { detail.append(node('p', '选择诊断范围、模型与 reasoning effort，再点击“开始诊断”，后台检查插件日志中的错误与异常。', 'empty')); return; }
-  detail.append(node('h2', `诊断 ${current.id.slice(0, 8)} · ${recordStatus(current)}`),
+  const current = visible.find(r => r.id === selectedId); detail.replaceChildren(); detail.dataset.recordId = current?.id ?? '';
+  if (!current) return;
+  const detailHeading = node('div', '', 'detail-heading');
+  const collapse = button('收起详情', () => { select(); document.getElementById(`record-${current.id}`)?.focus({ preventScroll: true }); }, false, true);
+  collapse.id = 'collapse-detail';
+  detailHeading.append(node('h2', `诊断 ${current.id.slice(0, 8)} · ${recordStatus(current)}`), collapse);
+  detail.append(detailHeading,
     node('p', `范围：${scopeLabel(current)} · 诊断器 ${current.pluginVersion} · ${new Date(current.createdAt).toLocaleString()}`, 'muted'),
     node('p', `发起位置：${current.workspaceName}；此位置不限制诊断范围。`, 'muted'));
   detail.append(node('p', `${kindLabel(current.options?.kind)} · ${current.options?.hours ? `最近 ${current.options.hours} 小时` : '全部保留日志'} · ${current.options?.engine === 'model' ? `模型 ${current.options.model} / ${current.options.effort}` : '本地规则检查（未使用模型）'}`, 'muted'));
@@ -134,11 +156,12 @@ window.addEventListener('message', event => {
     updateControls();
     if (message.error) { $('banner').textContent = message.error; $('banner').hidden = false; }
   }
-  else if (message?.type === 'started') { starting = false; updateControls(); }
+  else if (message?.type === 'started') { starting = false; updateControls(); if (message.id) select(message.id); }
   else if (message?.type === 'state') {
     records = message.records; workspaceId = message.workspaceId;
     for (const record of records) if (record.status === 'running') requested.delete(record.id);
-    if (!records.some(r => r.id === selectedId) || message.selectedId && message.selectedId !== selectedId) selectedId = message.selectedId;
+    // 展开状态由用户操作决定，后台刷新和迟到的消息不能重新展开已收起的记录。
+    if (selectedId && !records.some(r => r.id === selectedId)) { selectedId = undefined; api.setState({ selectedId, options: settings }); }
     if (pendingRepair && ['started', 'failed'].includes(records.find(r => r.id === pendingRepair)?.repair?.status ?? '')) pendingRepair = undefined;
     render();
   } else if (message?.type === 'detail') {

@@ -23,9 +23,61 @@ function setup(t){
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
  return {w,sent,errors,emit};
 }
+const openRecord=(w,id=record.id)=>w.document.querySelector(`.record[data-record-id="${id}"]`).click();
+
+test('历史默认展示记录列表，详情可反复展开收起，刷新及迟到报告不会重新打开',t=>{
+ const {w,sent,emit,errors}=setup(t),doc=w.document;
+ emit({type:'state',records:[record],selectedId:record.id,workspaceId:'project-a'});
+ assert.equal(doc.getElementById('detail').hidden,true);assert.equal(doc.querySelector('.record').getAttribute('aria-expanded'),'false');
+ assert.equal(sent.some(m=>m.type==='select'),false);assert.equal(doc.getElementById('record-count').textContent,'1 条');
+ openRecord(w);assert.equal(doc.getElementById('detail').hidden,false);
+ assert.equal(doc.querySelector('.record-entry.expanded #detail'),doc.getElementById('detail'));
+ assert.equal(doc.querySelector('.record').getAttribute('aria-expanded'),'true');
+ openRecord(w);assert.equal(doc.getElementById('detail').hidden,true);assert.equal(sent.at(-1).type,'collapse');
+ doc.getElementById('refresh').click();
+ emit({type:'state',records:[record],selectedId:record.id,workspaceId:'project-a'});
+ emit({type:'detail',id:record.id,report:'# 迟到的报告'});
+ assert.equal(doc.getElementById('detail').hidden,true);assert.equal(doc.querySelector('.record').getAttribute('aria-expanded'),'false');
+ openRecord(w);doc.getElementById('collapse-detail').click();assert.equal(doc.getElementById('detail').hidden,true);
+ assert.equal(doc.activeElement,doc.querySelector('.record'));assert.deepEqual(errors,[]);
+});
+
+test('连续诊断保留各次记录，仅展开当前记录，收起后进度更新不抢占列表',t=>{
+ const {w,sent,emit,errors}=setup(t),doc=w.document;
+ const second={...record,id:'22222222-2222-4222-8222-222222222222',status:'running',progress:'正在检查第二次诊断',createdAt:record.createdAt+1000};
+ emit({type:'configuration',models:[],options:{kind:'general',hours:24,engine:'rules'}});
+ emit({type:'state',records:[record],workspaceId:'project-a'});openRecord(w);
+ doc.getElementById('start').click();assert.equal(sent.at(-1).type,'start');
+ emit({type:'state',records:[second,record],selectedId:second.id,workspaceId:'project-a'});
+ emit({type:'started',id:second.id});
+ assert.equal(doc.querySelectorAll('.record').length,2);assert.equal(doc.getElementById('record-count').textContent,'2 条');
+ assert.equal(doc.querySelector('.record[aria-expanded="true"]').dataset.recordId,second.id);
+ assert.match(doc.getElementById('detail').textContent,/正在检查第二次诊断/);assert.equal(doc.getElementById('start').disabled,false);
+ openRecord(w,second.id);
+ emit({type:'state',records:[{...second,progress:'进度更新'},record],selectedId:second.id,workspaceId:'project-a'});
+ assert.equal(doc.getElementById('detail').hidden,true);assert.match(doc.getElementById('records').textContent,/进度更新/);
+ openRecord(w);assert.equal(doc.querySelector('.record[aria-expanded="true"]').dataset.recordId,record.id);
+ const search=doc.getElementById('search');search.value='22222222';search.dispatchEvent(new w.Event('input'));
+ assert.equal(doc.querySelectorAll('.record').length,1);assert.equal(doc.getElementById('detail').hidden,true);
+ assert.equal(doc.getElementById('record-count').textContent,'1 / 2 条');
+ search.value='';search.dispatchEvent(new w.Event('input'));assert.equal(doc.getElementById('detail').hidden,false);
+ assert.deepEqual(errors,[]);
+});
+
+test('后端默认不选中历史记录，收起会作废仍在读取的详情',async t=>{
+ const jobs=new EventEmitter();let resolveReport;
+ Object.assign(jobs,{scope:{workspaceId:'project-a'},list:async()=>[record],get:async()=>record,report:()=>new Promise(resolve=>{resolveReport=resolve;})});
+ const page=new DiagnosticsPage({extensionUri:'/extension'},jobs,async()=>{},async()=>{});t.after(()=>page.dispose());page.show(false);
+ await page.message({type:'ready'});assert.equal(currentPanel.messages.at(-1).selectedId,undefined);
+ const pending=page.message({type:'select',id:record.id});await new Promise(r=>setImmediate(r));
+ await page.message({type:'collapse'});resolveReport('# 迟到报告');await pending;
+ await page.message({type:'refresh'});assert.equal(currentPanel.messages.at(-1).selectedId,undefined);
+ assert.equal(currentPanel.messages.some(m=>m.type==='detail'),false);
+});
 
 test('诊断页面展示历史、通知状态与证据，点击修复发送对应记录 ID',t=>{
  const {w,sent,errors,emit}=setup(t);emit({type:'state',records:[record],selectedId:record.id,workspaceId:'project-a'});
+ openRecord(w);
  assert.match(w.document.getElementById('records').textContent,/11111111/);assert.match(w.document.getElementById('detail').textContent,/飞书通知：已发送/);
  assert.equal(w.document.querySelector('#detail img'),null);
  const repair=[...w.document.querySelectorAll('#detail button')].find(e=>e.textContent==='创建修复会话');assert.ok(repair);repair.click();repair.click();
@@ -36,8 +88,8 @@ test('诊断页面展示历史、通知状态与证据，点击修复发送对�
 
 test('诊断中显示进度，完成后可打开证据；跨工作区不启动修复',t=>{
  const {w,sent,emit,errors}=setup(t);const running={...record,status:'running',progress:'正在分析耗时'};
- emit({type:'state',records:[running],selectedId:record.id,workspaceId:'project-a'});assert.match(w.document.getElementById('detail').textContent,/正在分析耗时/);
- assert.equal(sent.some(m=>m.type==='select'),false);
+ emit({type:'state',records:[running],selectedId:record.id,workspaceId:'project-a'});openRecord(w);assert.match(w.document.getElementById('detail').textContent,/正在分析耗时/);
+ assert.equal(sent.filter(m=>m.type==='select').length,1);
  emit({type:'state',records:[record],selectedId:record.id,workspaceId:'other'});assert.ok(sent.some(m=>m.type==='select'&&m.id===record.id));
  const repair=[...w.document.querySelectorAll('#detail button')].find(e=>e.textContent==='创建修复会话');assert.equal(repair.disabled,true);
  const engine=w.document.getElementById('diagnostic-engine');engine.value='rules';engine.dispatchEvent(new w.Event('change'));
@@ -49,6 +101,7 @@ test('新版页面明确全局范围、全量覆盖及采样版本，发起位�
  const {w,sent,emit,errors}=setup(t);
  const global={...record,diagnosticScope:'local-plugin-full',coverage:{files:7,readFiles:7,windows:3,sessions:8,records:100,bytes:10000,firstDay:'2026-10-09',lastDay:'2026-10-15',unreadableFiles:0,invalidLines:0,oversizedLines:0,droppedLines:0}};
  emit({type:'state',records:[global],selectedId:record.id,workspaceId:'plugin-source'});
+ openRecord(w);
  const detail=w.document.getElementById('detail');assert.match(detail.textContent,/整个插件 · 全量/);assert.match(detail.textContent,/3 个窗口、8 个会话/);assert.match(detail.textContent,/被分析的插件版本：0.1.127/);
  assert.match(w.document.getElementById('records').textContent,/发起位置：项目A/);
  const repair=[...detail.querySelectorAll('button')].find(e=>e.textContent==='创建修复会话');assert.equal(repair.disabled,false);repair.click();
@@ -99,6 +152,7 @@ test('模型目录失败仍可切换本地规则，模型失败记录显示本�
  const engine=w.document.getElementById('diagnostic-engine');engine.value='rules';engine.dispatchEvent(new w.Event('change'));
  assert.equal(w.document.getElementById('start').disabled,false);w.document.getElementById('start').click();assert.equal(sent.find(m=>m.type==='start').options.engine,'rules');
  emit({type:'state',records:[{...record,options:{kind:'general',hours:24,engine:'model',model:'model-a',effort:'high'},general:{errors:3,warnings:2,compactionErrors:1,retries:2,recoveries:1},modelAnalysis:{status:'failed',model:'model-a',effort:'high',durationMs:2000,message:'后端拒绝'}}],selectedId:record.id,workspaceId:'project-a'});
+ openRecord(w);
  const text=w.document.getElementById('detail').textContent;assert.match(text,/错误 3 条/);assert.match(text,/压缩错误 1 条/);assert.match(text,/失败，本地检查结果已保留/);assert.match(text,/model-a \/ high/);assert.deepEqual(errors,[]);
 });
 
@@ -115,7 +169,7 @@ test('迟到模型目录不覆盖用户刚选的规则和时间范围，离线�
 
 test('报告展开后后台状态更新不会自动折叠，展示模型实际输入证据数量',async t=>{
  const {w,emit}=setup(t);const completed={...record,modelAnalysis:{status:'completed',model:'model-a',effort:'high',durationMs:300,evidenceSent:60,evidenceOmitted:20}};
- emit({type:'state',records:[completed],selectedId:record.id,workspaceId:'project-a'});const details=w.document.querySelector('#detail details');details.open=true;
+ emit({type:'state',records:[completed],selectedId:record.id,workspaceId:'project-a'});openRecord(w);const details=w.document.querySelector('#detail details');details.open=true;
  emit({type:'state',records:[completed],selectedId:record.id,workspaceId:'project-a'});assert.equal(w.document.querySelector('#detail details').open,true);assert.match(w.document.getElementById('detail').textContent,/60 组分类证据/);assert.match(w.document.getElementById('detail').textContent,/20 组仅保留在本地/);
 });
 
