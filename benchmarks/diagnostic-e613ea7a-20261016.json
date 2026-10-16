@@ -1,0 +1,337 @@
+{
+  "diagnosticId": "e613ea7a-ca3d-4998-a77d-1d524ed1d2f1",
+  "baselineCommit": "ce02ed8",
+  "baselineVersion": "0.1.138",
+  "fixedVersion": "0.1.139",
+  "date": "2026-10-16T05:53:37.452Z",
+  "scope": {
+    "files": 7,
+    "readFiles": 7,
+    "retainedRecords": 34872,
+    "windows": 12,
+    "sessions": 89,
+    "through": "2026-10-16T05:39:37.344Z",
+    "rawLogsModified": false,
+    "reported24Hours": {
+      "records": 25650,
+      "turns": 100,
+      "tools": 1447,
+      "failures": 126,
+      "longestTurnMs": 52999747,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136",
+        "0.1.137",
+        "0.1.138"
+      ]
+    }
+  },
+  "preparation": {
+    "baseline": "ce02ed8",
+    "scope": "同机同一管理连接只读真实历史；交替顺序各三次；仅等轮数样本纳入中位数；不含模型生成及连接握手",
+    "samples": [
+      {
+        "session": 1,
+        "repeat": 1,
+        "equalCount": true,
+        "measurements": [
+          {
+            "mode": "before",
+            "count": 109,
+            "elapsedMs": 4751,
+            "responseBytes": 25481497,
+            "rpcCalls": 3
+          },
+          {
+            "mode": "after",
+            "count": 109,
+            "elapsedMs": 13,
+            "responseBytes": 26144,
+            "rpcCalls": 2
+          }
+        ]
+      },
+      {
+        "session": 1,
+        "repeat": 2,
+        "equalCount": true,
+        "measurements": [
+          {
+            "mode": "after",
+            "count": 109,
+            "elapsedMs": 8,
+            "responseBytes": 26144,
+            "rpcCalls": 2
+          },
+          {
+            "mode": "before",
+            "count": 109,
+            "elapsedMs": 4134,
+            "responseBytes": 25481497,
+            "rpcCalls": 3
+          }
+        ]
+      },
+      {
+        "session": 1,
+        "repeat": 3,
+        "equalCount": true,
+        "measurements": [
+          {
+            "mode": "before",
+            "count": 109,
+            "elapsedMs": 2071,
+            "responseBytes": 25481497,
+            "rpcCalls": 3
+          },
+          {
+            "mode": "after",
+            "count": 109,
+            "elapsedMs": 10,
+            "responseBytes": 26144,
+            "rpcCalls": 2
+          }
+        ]
+      },
+      {
+        "session": 2,
+        "repeat": 1,
+        "equalCount": true,
+        "measurements": [
+          {
+            "mode": "before",
+            "count": 96,
+            "elapsedMs": 1471,
+            "responseBytes": 24613629,
+            "rpcCalls": 2
+          },
+          {
+            "mode": "after",
+            "count": 96,
+            "elapsedMs": 5,
+            "responseBytes": 22759,
+            "rpcCalls": 1
+          }
+        ]
+      },
+      {
+        "session": 2,
+        "repeat": 2,
+        "equalCount": true,
+        "measurements": [
+          {
+            "mode": "after",
+            "count": 96,
+            "elapsedMs": 5,
+            "responseBytes": 22759,
+            "rpcCalls": 1
+          },
+          {
+            "mode": "before",
+            "count": 96,
+            "elapsedMs": 3350,
+            "responseBytes": 24613629,
+            "rpcCalls": 2
+          }
+        ]
+      },
+      {
+        "session": 2,
+        "repeat": 3,
+        "equalCount": true,
+        "measurements": [
+          {
+            "mode": "before",
+            "count": 96,
+            "elapsedMs": 1617,
+            "responseBytes": 24613629,
+            "rpcCalls": 2
+          },
+          {
+            "mode": "after",
+            "count": 96,
+            "elapsedMs": 5,
+            "responseBytes": 22759,
+            "rpcCalls": 1
+          }
+        ]
+      }
+    ],
+    "validPairs": 6,
+    "before": {
+      "medianMs": 2710.5,
+      "medianBytes": 25047563
+    },
+    "after": {
+      "medianMs": 6.5,
+      "medianBytes": 24451.5
+    },
+    "modelRequests": 0
+  },
+  "fullHistory": {
+    "method": "两个真实分页会话只读对比；旧 hydrate 先 includeTurns:true 再拉完整分页，修复后先只读元数据",
+    "before": [
+      {
+        "session": 1,
+        "elapsedMs": 2317,
+        "count": 108,
+        "bytes": 25390857,
+        "calls": 3
+      },
+      {
+        "session": 2,
+        "elapsedMs": 2730,
+        "count": 96,
+        "bytes": 24613629,
+        "calls": 2
+      }
+    ],
+    "after": [
+      {
+        "session": 1,
+        "elapsedMs": 2931,
+        "count": 109,
+        "bytes": 12741582,
+        "calls": 3
+      },
+      {
+        "session": 2,
+        "elapsedMs": 1910,
+        "count": 96,
+        "bytes": 12307501,
+        "calls": 2
+      }
+    ],
+    "note": "第一会话期间新增一轮，不能直接比较其耗时；第二会话轮数相同，响应字节 24613629 → 12307501。主提速结论使用上方六组等轮数交替样本。"
+  },
+  "questionPause": {
+    "rootCause": "动态工具请求携带 callId，根任务使用 itemId 导致调用身份丢失；先前单独测试 PerformanceTrace 未覆盖协议接线。",
+    "historical": {
+      "unknownResults": 16,
+      "matchingIncompleteSpans": 16,
+      "subsequentlyAnswered": 16,
+      "currentVersionOccurrences": 3
+    },
+    "integrationReplay": {
+      "before": {
+        "missingCallId": true,
+        "falseUnknown": 1,
+        "incompleteSpans": 1
+      },
+      "after": {
+        "missingCallId": false,
+        "falseUnknown": 0,
+        "incompleteSpans": 0
+      }
+    },
+    "preservesRawSuccessFalse": true,
+    "waitsForUser": true
+  },
+  "historicalReplay": {
+    "before": {
+      "turns": 100,
+      "tools": 1447,
+      "failures": 126,
+      "longestTurnMs": 52999747,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136",
+        "0.1.137",
+        "0.1.138"
+      ]
+    },
+    "after": {
+      "turns": 100,
+      "tools": 1447,
+      "failures": 126,
+      "longestTurnMs": 52999747,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136",
+        "0.1.137",
+        "0.1.138"
+      ]
+    },
+    "errorsBefore": 155,
+    "errorsAfter": 155,
+    "telemetryGroupsAfter": 1,
+    "note": "旧记录不补写、不删除、不把历史失败伪造为成功；修复后的提问标注作用于新采集事件。"
+  },
+  "verification": {
+    "typeCheck": "通过",
+    "fullTests": 605,
+    "failed": 0,
+    "newRegressionTests": 8,
+    "readOnlyLivePairs": 6,
+    "paidModelRequests": 0,
+    "finalFocusedTests": 16
+  },
+  "findings": [
+    {
+      "area": "工具失败",
+      "evidence": "126 条失败全部按调用 ID 关联到原会话完成记录",
+      "result": "39 条原 timeout 中 33 条关联浏览器操作、2 条 SSH 退出 124、2 条 KeyboardInterrupt、其余 2 条为输出分类线索。旧规则的部分 timeout/rate_limit 命中源码或测试文本，已有 0.1.137 修正；不重跑外部任务、不修改业务代码。"
+    },
+    {
+      "area": "配置读取",
+      "evidence": "codex-chat-2026-10-15.log:18482,18493,18504,18520",
+      "result": "两个独立进程各一次旧版可选读取预算超时，随后 thread/resume 分别 2165ms、5719ms 成功；当前版本已把 200ms 等待预算与 RPC 超时分开。"
+    },
+    {
+      "area": "提问暂停",
+      "evidence": "codex-chat-2026-10-16.log:8876-8884,9152-9153",
+      "result": "已修复 callId 丢失；保留真实 failed 字段，只有同调用、同轮次且已确认暂停时标注预期中断。未知工具及未确认暂停继续报错。"
+    },
+    {
+      "area": "压缩",
+      "evidence": "0a64a4bd-276b-4d8a-9206-887a44b4c306；12e6e5b2-6633-4c86-8b15-bf99d0d99528；10c3e466-b566-4060-89f1-a67bf87a3c74",
+      "result": "328766ms、125213ms、78460ms 均有 completed 结束证据；不以耗时长推断失败，不更改模型、推理强度、服务档位和权限。"
+    },
+    {
+      "area": "过夜等待",
+      "evidence": "c59cd4ac-8f59-40bc-a9f6-aa150fdf7c8a",
+      "result": "总耗时 52999747ms，其中用户等待 52849421ms，扣除后 150326ms；不能当作模型执行 14.7 小时。其他未归因等待继续保留未知，不伪造后端细分。"
+    },
+    {
+      "area": "遥测导出",
+      "evidence": "codex-chat-2026-10-16.log:6047",
+      "result": "单独归为遥测采集错误，保留错误计数；不能据此认定主对话连接中断。"
+    },
+    {
+      "area": "其他 unknown",
+      "evidence": "3 个 js 与 1 个 act_get_app_tools 的 MCP 结果",
+      "result": "对应外部浏览器工具限制/失败或应用未开放工具，不能认定插件 Webview 脚本缺陷；保留真实失败。"
+    },
+    {
+      "area": "全部保留日志补查",
+      "evidence": "2026-10-10 至 2026-10-16 共 7 文件",
+      "result": "旧版重复用量 401、Unicode 协议分帧错误、本机通知内容无效及 APK 文本打开错误已有相关修复/回归覆盖；近期日志未提供新的相同插件根因。历史无标注事件仍保留。"
+    },
+    {
+      "area": "发送准备",
+      "evidence": "e188f3c3-ef6a-4465-b357-128f9c666504；60d69ac8-a378-483e-b7eb-25ba3029f70c；本机六组成对测量",
+      "result": "发送仅实时读取 notLoaded 轮次索引；打开完整历史不再双传正文。保留分页完整性、旧 CLI 回退、断线一次重建及停止/换会话保护。"
+    }
+  ],
+  "limitations": [
+    "测量只覆盖历史读取阶段，不代表整轮任务同比提速。",
+    "未执行真实模型生成或重放原外部浏览器、SSH、部署命令。",
+    "日志缺少的后端排队与网络细分无法事后补造。",
+    "旧 CLI 的轻量接口回退通过模拟协议测试验证；本机最近 100 个会话均为 paginated。"
+  ]
+}

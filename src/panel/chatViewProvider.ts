@@ -1569,9 +1569,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // Keep new-thread creation after the snapshot so Stop can still cancel it.
         const processReady = hadSession ? stage("connection", () => this.ensureProcess(ctx)) : undefined;
         const historyAt = Date.now();
-        const historyReady = hadSession && ctx.sessionId ? stage("history", () => this.store.hydrate(ctx.sessionId!)).finally(() => {
+        const historySessionId = ctx.sessionId;
+        const historyReady = hadSession && historySessionId ? stage("history", () => this.store.readTurnCount(historySessionId)).finally(() => {
             this.output.appendLine(`[${new Date().toISOString()}] [prepare] 历史读取 ${Date.now() - historyAt}ms`);
-        }) : Promise.resolve();
+        }) : Promise.resolve(0);
         const snapshotReady = (async () => {
             if (!this.config().get<boolean>("snapshotFilesForRestore", true)) return;
             const roots = this.workspaceDirs();
@@ -1584,7 +1585,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.output.appendLine(`[${new Date().toISOString()}] [snapshot] 基线 ${snapshot.files.size} 文件，跳过 ${snapshot.skipped.size} 项，耗时 ${Date.now() - snapshotAt}ms`);
             this.reportSnapshotSkips(ctx, snapshot);
         })();
-        await Promise.all([historyReady, snapshotReady]);
+        const [lineBefore] = await Promise.all([historyReady, snapshotReady]);
         if ((ctx.stopSeq ?? -1) >= mySeq || (allowed && !allowed())) {
             if ((ctx.stopSeq ?? -1) < mySeq) this.post(ctx, { kind: "busy", busy: false });
             return false;
@@ -1626,10 +1627,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "notice", message: allowed ? "已恢复等待中的问题，请先提交答案；手机消息未发送。" : "已恢复等待中的问题，请先提交答案；新消息已保留为草稿。" });
             return false;
         }
+        if (hadSession && ctx.sessionId !== historySessionId) return false;
         if (ctx.remotePrivate && ctx.sessionId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + ctx.sessionId))
             await this.context.workspaceState.update('codexChat.remotePrivate.' + ctx.sessionId, true);
         if (allowed && (!allowed() || ctx.proc !== proc || proc.isBusy)) return false;
-        const lineBefore = ctx.sessionId ? syncStage("checkpoint_metadata", () => this.store.countLines(ctx.sessionId!)) : 0;
         if (!proc.sendUserMessage(text, attached, images, trace)) {
             this.output.appendLine("[codex] send dropped: process not writable (exited mid-send)");
             if (ctx.proc === proc)

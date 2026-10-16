@@ -37,7 +37,7 @@ async function fixture(t,env={}){
   sessions:new Set([ctx]),detached:new Map(),restoring:new Set(),forking:new Set(),
   output:{appendLine:()=>{}},context:{globalState:{get:()=>undefined}},
   config:()=>({get:(key,fallback)=>['autosave','snapshotFilesForRestore'].includes(key)?false:fallback}),
-  store:{hydrate:async()=>{},countLines:()=>1,rewindLeafFor:()=>lastQuestionTurn},
+  store:{ readTurnCount: async () => 0,hydrate:async()=>{},countLines:()=>1,rewindLeafFor:()=>lastQuestionTurn},
   notificationVersion:()=>0,clearSessionNotification:()=>{},maybeNotifyWaiting:()=>{},maybeNotifyTurnDone:()=>{},
   refreshSessions:()=>{},refreshChangedFiles:()=>{},fetchUsage:()=>{},
  });

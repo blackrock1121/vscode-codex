@@ -19,7 +19,7 @@ test('完整派生响应省掉 thread/read；分页响应直接拉分页，无�
   const thread={id:'branch',historyMode:mode==='missing'?undefined:mode,turns:mode==='legacy'?[turn('leaf')]:undefined};
   const p=preparation(thread,{id:'branch',turns:[turn('leaf')]},[{data:[turn('earlier')],nextCursor:'page2'},{data:[turn('leaf')],nextCursor:null}]);
   assert.equal(await store.fork('source','leaf',p),'branch');
-  assert.deepEqual(p.calls.map(c=>c.method),mode==='legacy'?['thread/fork']:mode==='paginated'?['thread/fork','thread/turns/list','thread/turns/list']:['thread/fork','thread/read']);
+  assert.deepEqual(p.calls.map(c=>c.method),mode==='legacy'?['thread/fork']:mode==='paginated'?['thread/fork','thread/turns/list','thread/turns/list']:['thread/fork','thread/read','thread/read']);
   assert.equal(store.rewindLeafFor('branch',store.countLines('branch')),'leaf');
   assert.equal(p.disposed(),1);
  }

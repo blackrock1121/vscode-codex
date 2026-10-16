@@ -186,7 +186,7 @@ export class CodexProcess {
   private showPermission(request: PermissionRequest): void {
     const p = this.pending.get(request.requestId)?.params;
     this.latency.approval(request.requestId, request.toolName === 'AskUserQuestion', p?.threadId ?? this.sessionId,
-      p?.turnId ?? this.turnId, p?.itemId);
+      p?.turnId ?? this.pausedQuestion?.turnId ?? this.turnId, p?.itemId ?? p?.callId ?? request.toolUseId);
     this.hooks.onPermission(request);
   }
   private async preTool(key: string, name: string, input: Record<string, unknown>, p: any): Promise<void> {
@@ -893,13 +893,15 @@ export class CodexProcess {
     this.pending.set(key, { id: m.id!, method, params: p });
     const question = method === 'item/tool/requestUserInput' || method === 'tool/requestUserInput' || method === 'item/tool/call';
     const name = question ? 'AskUserQuestion' : method.includes('commandExecution') ? 'Bash' : method.includes('fileChange') ? 'Edit' : '权限请求';
-    const item = this.tools.get(p.itemId);
+    // 动态工具协议使用 callId；原生审批/提问使用 itemId。
+    const itemId = p.itemId ?? p.callId;
+    const item = this.tools.get(itemId);
     const rawQuestions = method === 'item/tool/call' ? p.arguments?.questions : p.questions;
     const questions = question ? normalizeQuestions(rawQuestions) : undefined;
     if (question && !questions) { this.stopInvalidQuestion(); return; }
     const input = question ? { questions: questions! } : item ? toolView(item).input : { command: p.command, ...p };
     if (!question) await this.preTool(key, name, input, p);
-    const request: PermissionRequest = { requestId: key, toolUseId: p.itemId, toolName: name, input, description: p.reason ?? 'Codex 请求授权', suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] };
+    const request: PermissionRequest = { requestId: key, toolUseId: itemId, toolName: name, input, description: p.reason ?? 'Codex 请求授权', suggestions: method.includes('commandExecution') || method.includes('fileChange') ? [{ id: 'session', label: '本会话允许' }] : [] };
     if (!question) { this.showPermission(request); return; }
     await this.pauseForQuestion(request, p.turnId);
   }

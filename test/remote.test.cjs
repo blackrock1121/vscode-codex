@@ -26,7 +26,7 @@ function fixture() {
     sessions: new Set([a, b]), detached: new Map(), activeCtx: a, forking: new Set(), restoring: new Set(),
     remoteRegistration: () => ({ windowId: 'window', workspaceId: 'project', label: '假项目' }),
     context: { workspaceState: { get: key => saved.get(key), update: async (key, value) => saved.set(key, value) } },
-    store: { list: () => [{ id: a.sessionId, title: 'A' }, { id: b.sessionId, title: 'B' }], hydrate: async () => {},
+    store: { readTurnCount: async () => 0, list: () => [{ id: a.sessionId, title: 'A' }, { id: b.sessionId, title: 'B' }], hydrate: async () => {},
       load: id => [{ type: 'user', text: id }], countLines: () => 0 },
     config: () => ({ get: (key, fallback) => ['autosave', 'snapshotFilesForRestore'].includes(key) ? false : fallback }),
     sessionModel: () => 'model-test', speedMode: () => 'default', sessionEffort: () => 'medium',
@@ -67,7 +67,7 @@ test('查询只能读本窗口打开/后台会话，复用权威历史；不允�
 });
 test('准备期间桌面和手机发送互斥，断线或目标变化后不能迟到执行', async () => {
   const f = fixture(); let finish;
-  f.provider.store.hydrate = () => new Promise(resolve => { finish = resolve; });
+  f.provider.store.readTurnCount = () => new Promise(resolve => { finish = resolve; });
   let active = true;
   const sending = f.provider.handleSend(f.b, '第一条', undefined, undefined, undefined, () => active);
   assert.equal(await f.provider.handleSend(f.b, '桌面竞争'), false);

@@ -135,7 +135,7 @@ test('直接发送消息成功后清理该会话，发送失败保留旧通知',
     p.config=()=>({get:(key,fallback)=>['autosave','snapshotFilesForRestore'].includes(key)?false:fallback});
     const proc={isBusy:false,setModel:async()=>{},setSpeedMode:async()=>{},setEffort:async()=>{},sendUserMessage:()=>accepted};
     p.ensureProcess=async()=>proc;p.speedMode=()=> 'default';p.post=()=>{};
-    p.store.hydrate=async()=>{};p.store.countLines=()=>0;
+    p.store.hydrate=async()=>{};p.store.countLines=()=>0;p.store.readTurnCount=async()=>0;
     p.clearSessionNotification=id=>cleared.push(id);
     const ctx={sessionId:'branch',proc,checkpoints:{beginTurn:()=> 'checkpoint'}};
     await p.handleSend(ctx,'直接在派生会话回复');
@@ -875,7 +875,7 @@ test('主动回复只清理来源会话，多标签与派生通知继续独立�
   p.config=()=>({get:(key,fallback)=>key==='notifyLocal'?true:['autosave','snapshotFilesForRestore'].includes(key)?false:fallback});
   const proc={isBusy:false,setModel:async()=>{},setSpeedMode:async()=>{},setEffort:async()=>{},sendUserMessage:()=>true};
   p.ensureProcess=async()=>proc; p.speedMode=()=> 'default';p.post=()=>{};
-  p.store.hydrate=async()=>{};p.store.countLines=()=>0;
+  p.store.hydrate=async()=>{};p.store.countLines=()=>0;p.store.readTurnCount=async()=>0;
   const ctx={sessionId:a,proc,checkpoints:{beginTurn:()=> 'checkpoint'}};
   await p.handleSend(ctx,'我没点通知，直接回复');
   await Promise.all([p.sendLocalNotice('新一轮完成','',a),p.sendLocalNotice('分支仍待回答','',branch)]);

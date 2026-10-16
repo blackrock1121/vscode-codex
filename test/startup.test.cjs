@@ -36,7 +36,7 @@ async function fixture(t, env = {}, options = {}) {
     config: () => ({ get: (key, fallback) => options[key] ?? (['autosave', 'snapshotFilesForRestore'].includes(key) ? false : fallback) }),
     createProcess: () => create(), speedMode: () => 'default',
     output: { appendLine: () => {} }, post: (_, event) => events.push(event),
-    store: { countLines: () => 0, notePending: () => {} }, renderSessions: () => {},
+    store: { readTurnCount: async () => 0, countLines: () => 0, notePending: () => {} }, renderSessions: () => {},
     clearSessionNotification: () => {}, activeCtx: ctx,
     context: { workspaceState: { get: () => undefined, update: async () => {} } },
     resetRestoredNotifications: () => {}, postModelConfig: () => {},

@@ -37,7 +37,7 @@ function fixture(state = new Map()) {
     config: () => ({ get: (key, fallback) => settings[key] ?? fallback, inspect: key => ({ workspaceValue: settings[key] }) }),
     updateConfig: async (key, value) => { assert.notEqual(key, 'model', '会话选择不能写入公共模型配置'); settings[key] = value; return true; },
     post: (ctx, event) => messages.push({ ...event, target: ctx.sessionId }), output: { appendLine: () => {} },
-    store: { findFile: () => undefined, hydrate: async () => {}, countLines: () => 0, notePending: () => {},
+    store: { readTurnCount: async () => 0, findFile: () => undefined, hydrate: async () => {}, countLines: () => 0, notePending: () => {},
       readAccountInfo: async () => ({}), readModelCatalog: async () => ({ data: [] }) },
     cwd: () => storage, storageDir: () => storage, workspaceDirs: () => [],
     refreshSessions: () => {}, renderSessions: () => {}, renderSessionInto: () => {}, refreshChangedFiles: () => {},

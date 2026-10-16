@@ -154,9 +154,43 @@ export class SessionStore {
     finally { if (this.hydrating.get(id) === work) this.hydrating.delete(id); }
   }
   private async hydrateWith(rpc: CodexRpc, id: string): Promise<void> {
-    const r = await rpc.request('thread/read', { threadId: id, includeTurns: true });
+    // 分页会话的 includeTurns:true 也可能返回完整正文，随后分页又传一遍。
+    // 先看历史协议；只有传统会话才走完整 thread/read。
+    let r = await rpc.request('thread/read', { threadId: id, includeTurns: false });
+    if (r.thread?.id !== id) throw new Error('Codex 返回了不同的会话 ID，已中止读取，避免覆盖其他会话。');
+    if (r.thread.historyMode !== 'paginated') r = await rpc.request('thread/read', { threadId: id, includeTurns: true });
     if (r.thread?.id !== id) throw new Error('Codex 返回了不同的会话 ID，已中止读取，避免覆盖其他会话。');
     await this.hydrateThread(rpc, r.thread);
+  }
+  /** 发送前只需还原点轮数，实时读取轻量索引，不改完整历史缓存。 */
+  async readTurnCount(id: string): Promise<number> {
+    const rpc = await this.connection();
+    try { return await this.readTurnCountWith(rpc, id); }
+    catch (error) {
+      // 仅断线重试一次，并从第一页重新计数，不能拼接两个连接的半份结果。
+      if (rpc.isClosed) return this.readTurnCountWith(await this.connection(), id);
+      const message = error instanceof Error ? error.message : '';
+      if (!/\(-32601\)$/.test(message) && !/unknown variant [`'"]notLoaded[`'"]|unknown field [`'"]itemsView[`'"]/.test(message)) throw error;
+      await this.hydrate(id);
+      return this.countLines(id);
+    }
+  }
+  private async readTurnCountWith(rpc: CodexRpc, id: string): Promise<number> {
+    let cursor: string | null = null;
+    const cursors = new Set<string>(), turns = new Set<string>();
+    do {
+      const page: any = await rpc.request('thread/turns/list', { threadId: id, cursor, limit: 100, sortDirection: 'asc', itemsView: 'notLoaded' });
+      if (!Array.isArray(page?.data) || (page.nextCursor != null && (typeof page.nextCursor !== 'string' || !page.nextCursor)))
+        throw new Error('会话历史分页数据无效，已取消发送。');
+      for (const turn of page.data) {
+        if (typeof turn?.id !== 'string' || !turn.id || turns.has(turn.id)) throw new Error('会话历史轮次无效或重复，已取消发送。');
+        turns.add(turn.id);
+      }
+      cursor = page.nextCursor ?? null;
+      if (cursor && cursors.has(cursor)) throw new Error('会话历史分页游标重复，已取消发送。');
+      if (cursor) cursors.add(cursor);
+    } while (cursor);
+    return turns.size;
   }
   private async hydrateThread(rpc: CodexRpc, thread: any): Promise<void> {
     const id = thread.id;
