@@ -7,7 +7,7 @@ export function transcriptText(items: TimelineItem[]): string {
         switch (item.type) {
             case 'user': return `你\n${item.text}${item.images?.length ? '\n（图片请在电脑端查看）' : ''}`;
             case 'assistant_text': return `Codex\n${item.text}`;
-            case 'thinking': return `思考\n${item.text}`;
+            case 'thinking': return item.text.trim()?`思考\n${item.text}`:'';
             case 'tool': return `工具 · ${item.displayName || item.name}${item.isError ? ' · 失败' : ''}\n${JSON.stringify(item.input ?? {})}\n${item.result ?? ''}`;
             case 'image': return '（图片请在电脑端查看）';
             case 'compaction': return '（上下文已压缩）';
@@ -15,7 +15,7 @@ export function transcriptText(items: TimelineItem[]): string {
         }
     }).filter(Boolean).join('\n\n');
 }
-export function transcriptPage(text: string, state: Record<string, unknown>, query: { end?: number; revision?: string }) {
+export function transcriptPage(text: string, state: Record<string, unknown>, query: { end?: number; revision?: string }, maxBytes=5000) {
     const revision = createHash('sha256').update(text).update(JSON.stringify(state)).digest('hex');
     if (query.end === undefined && query.revision === revision) return { ...state, revision, unchanged: true };
     const reset = query.end !== undefined && query.revision !== revision;
@@ -24,8 +24,37 @@ export function transcriptPage(text: string, state: Record<string, unknown>, que
     if (end > 0 && end < text.length && /[\uDC00-\uDFFF]/.test(text[end])) end--;
     let start = Math.max(0, end - 1600);
     if (start > 0 && /[\uDC00-\uDFFF]/.test(text[start])) start++;
-    while (Buffer.byteLength(JSON.stringify(text.slice(start, end))) > 5000 && start < end) {
+    while (Buffer.byteLength(JSON.stringify(text.slice(start, end))) > maxBytes && start < end) {
         start++; if (/[\uDC00-\uDFFF]/.test(text[start] ?? '')) start++;
     }
     return { ...state, revision, text: text.slice(start, end), start, end, total: text.length, reset, unchanged: false };
+}
+
+/** 分角色展示信息与旧文本共用同一页游标，避免用户正文中的角色名称被误解析。 */
+export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unknown>,query:{end?:number;revision?:string}) {
+    const blocks=items.map((item,index)=>({role:item.type==='user'?'user':item.type==='thinking'?'thinking':item.type==='tool'?'tool':'assistant',
+        text:transcriptText([item]), id:String(index),
+        ...(item.type==='tool'?{toolName:(item.displayName||item.name).slice(0,80),
+            status:item.isError?'failed':item.permission==='pending'?'waiting':item.result!==undefined?'completed':'running'}:{})})).filter(b=>b.text);
+    const text=blocks.map(b=>b.text).join('\n\n');
+    const snapshotState={...state,timelineRevision:createHash('sha256').update(JSON.stringify(blocks.map(b=>[b.id,b.toolName,b.status]))).digest('hex')};
+    // 文字、消息元数据与旧版兼容正文都算入 IPC 预算；大量短工具不能撑破 7000 B 帧。
+    let budget=2300;
+    for (;;) {
+        const page=transcriptPage(text,snapshotState,query,budget);
+        if(page.unchanged)return page;
+        const visible=page as typeof page & {start:number;end:number};let offset=0;
+        const messages: {role:string;text:string;continued:boolean;id:string;toolName?:string;status?:string}[]=[];
+        for(const block of blocks) {
+            const end=offset+block.text.length,from=Math.max(offset,visible.start),to=Math.min(end,visible.end);
+            if(to>from){let body=block.text.slice(from-offset,to-offset);const prefix=block.role==='user'?'你\n':block.role==='thinking'?'思考\n':block.role==='assistant'?'Codex\n':'';
+                if(from===offset&&prefix&&body.startsWith(prefix))body=body.slice(prefix.length);
+                if(body.trim())messages.push({role:block.role,text:body,continued:from>offset,id:block.id,
+                    ...(block.toolName?{toolName:block.toolName,status:block.status}:{})});}
+            offset=end+2;
+        }
+        const result={...page,messages};
+        if(Buffer.byteLength(JSON.stringify(result))<=6500 || budget<=64)return result;
+        budget=Math.max(64,Math.floor(budget*0.7));
+    }
 }

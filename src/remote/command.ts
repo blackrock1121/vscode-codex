@@ -4,7 +4,7 @@ export type Operation =
   | { kind: 'workspace.list' }
   | { kind: 'session.list' }
   | { kind: 'session.snapshot'; end?: number; revision?: string }
-  | { kind: 'session.create'; text: string }
+  | { kind: 'session.create'; text: string; attachmentIds?: string[] }
   | { kind: 'message.send'; text: string; attachmentIds: string[] }
   | { kind: 'turn.stop'; turnId: string }
   | { kind: 'question.answer'; turnId: string; requestId: string; requestVersion: number; answers: Record<string, string | string[]> }
@@ -51,7 +51,10 @@ export function parseCommand(input: unknown, now: number): Command {
         if ('end' in op) { integer(op.end); if (!('revision' in op)) fail(); }
         if ('revision' in op) id(op.revision);
         break;
-      case 'session.create': keys(op, ['kind', 'text']); text(op.text, 6000); if (!(op.text as string).trim()) fail(); break;
+      case 'session.create':
+        keys(op, ['kind', 'text', ...('attachmentIds' in op ? ['attachmentIds'] : [])]);text(op.text,6000);
+        if('attachmentIds' in op){if(!Array.isArray(op.attachmentIds)||op.attachmentIds.length>4)fail();op.attachmentIds.forEach(id);}
+        if(!(op.text as string).trim()&&!(op.attachmentIds as unknown[]|undefined)?.length)fail();break;
       case 'message.send':
         keys(op, ['kind', 'text', 'attachmentIds']); text(op.text, 6000);
         if (!Array.isArray(op.attachmentIds) || op.attachmentIds.length > 8) fail();

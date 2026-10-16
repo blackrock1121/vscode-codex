@@ -18,7 +18,8 @@ import { diffCounts, readDiffFile } from "../diff";
 import { createHash, randomUUID } from "node:crypto";
 import { parseCommand, type Command } from "../remote/command";
 import type { RemoteRegistration, RemoteReply } from "../remote/bridgeClient";
-import { transcriptPage, transcriptText } from "../remote/transcript";
+import { transcriptSnapshot } from "../remote/transcript";
+import { remoteImages } from "../remote/images";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
 import { performanceContext } from "../codex/performanceTrace";
@@ -238,6 +239,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private updateAvailable?: string;
     private installedPending?: string;
     private lastUsageAt = 0;
+    private lastUsageUpdatedAt = 0;
     private usageFails = 0;
     private usageInFlight = false;
     private lastUsage?: ToWebview;
@@ -305,17 +307,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             await ctx.remoteRead;
             if (!selectedActive()) return denied('TARGET_CHANGED');
-            const text = transcriptText(this.store.load(sourceId!));
+            const items = this.store.load(sourceId!);
+            this.fetchUsage();
+            const usage = this.lastUsage?.kind === 'usage' ? this.lastUsage : undefined;
             const state = { kind: 'session.snapshot', sessionId: sourceId, busy: !!ctx.proc?.isBusy || !!ctx.sending,
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
-                model: this.sessionModel(ctx).slice(0, 120) };
-            return { accepted: true, result: transcriptPage(text, state, op) };
+                model: this.sessionModel(ctx).slice(0, 120), effort: this.sessionEffort(ctx).slice(0, 40),
+                speed: this.speedMode(ctx), usage: usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
+                    weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType, updatedAt: this.lastUsageUpdatedAt } : null };
+            return { accepted: true, result: transcriptSnapshot(items, state, op) };
         }
         if (op.kind === 'message.send' || op.kind === 'session.create') {
-            if (op.kind === 'message.send' && op.attachmentIds.length) return denied('ATTACHMENTS_NOT_READY');
+            let images: {mediaType:string;data:string}[];
+            try { images=remoteImages(command,op.attachmentIds??[]); } catch { return denied('IMAGE_NOT_AVAILABLE'); }
             if (ctx.sending || ctx.proc?.isBusy || ctx.pendingPerm?.kind === 'permission_request' ||
                 this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion || ctx.compactionPreparing) return denied('SESSION_BUSY');
-            const accepted = await this.handleSend(ctx, op.text, undefined, undefined, undefined, selectedActive);
+            const accepted = await this.handleSend(ctx, op.text, undefined, images.length?images:undefined, undefined, selectedActive);
             if (!accepted) return denied('MESSAGE_NOT_SENT');
             return { accepted: true, result: { kind: 'message.accepted', sessionId: ctx.sessionId, delivery: 'handed_to_original_session' } };
         }
@@ -3564,6 +3571,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.lastUsageAt = Date.now();
         void this.store.read("account/rateLimits/read", { excludeResetCreditDetails: false }).then(r => {
             this.lastUsage = usageView(r.rateLimits, r.rateLimitResetCredits);
+            this.lastUsageUpdatedAt = Date.now();
             this.maybeNotifyUsage(this.lastUsage);
             for (const ctx of this.sessions)
                 for (const event of quotaEvents(r.rateLimits, r.rateLimitResetCredits)) this.handleEmit(ctx, event);

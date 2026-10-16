@@ -29,6 +29,7 @@ function fixture() {
     store: { readTurnCount: async () => 0, list: () => [{ id: a.sessionId, title: 'A' }, { id: b.sessionId, title: 'B' }], hydrate: async () => {},
       load: id => [{ type: 'user', text: id }], countLines: () => 0 },
     config: () => ({ get: (key, fallback) => ['autosave', 'snapshotFilesForRestore'].includes(key) ? false : fallback }),
+    fetchUsage: () => {},
     sessionModel: () => 'model-test', speedMode: () => 'default', sessionEffort: () => 'medium',
     output: { appendLine: () => {} }, post: (ctx, e) => events.push([ctx.sessionId, e]),
     clearSessionNotification: () => {}, notificationVersion: () => 0,
@@ -74,13 +75,13 @@ test('准备期间桌面和手机发送互斥，断线或目标变化后不能�
   active = false; finish();
   assert.equal(await sending, false); assert.equal(f.sends.length, 0); assert.equal(f.b.sending, false);
 });
-test('停止绑定真实轮次；已换轮次不打断，回答和附件未实现时明确拒绝', async () => {
+test('停止绑定真实轮次；已换轮次不打断，未实现的回答与不可用图片明确拒绝', async () => {
   const f = fixture(); f.b.proc.isBusy = true; const stopped = [];
   f.provider.stopContext = async ctx => { stopped.push(ctx.sessionId); ctx.proc.isBusy = false; };
   assert.equal((await f.provider.executeRemote(command({ kind: 'turn.stop', turnId: 'old' }), () => true)).error, 'TURN_CHANGED');
   assert.equal((await f.provider.executeRemote(command({ kind: 'turn.stop', turnId: 'turn-1' }), () => true)).accepted, true);
   assert.deepEqual(stopped, ['session-b']);
-  assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '', attachmentIds: ['file'] }), () => true)).error, 'ATTACHMENTS_NOT_READY');
+  assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '', attachmentIds: ['file'] }), () => true)).error, 'IMAGE_NOT_AVAILABLE');
   assert.equal((await f.provider.executeRemote(command({ kind: 'permission.resolve', turnId: 'turn', requestId: 'req', requestVersion: 1, decision: 'allow' }), () => true)).error, 'OPERATION_NOT_READY');
 });
 test('尚未取得轮次 ID 或仅子任务运行时仍提供停止标识，跨新轮次失效', () => {
@@ -110,4 +111,52 @@ test('长中文/emoji/转义文本完整分页、无变化只返回版本，旧�
   assert.equal(transcriptPage(text, state, { revision: page.revision }).unchanged, true);
   assert.equal(transcriptPage('changed', state, { end: 10, revision: page.revision }).reset, true);
   assert.doesNotMatch(transcriptText([{ type: 'image', src: 'data:secret' }, { type: 'user', text: '用户', images: ['data:secret'] }]), /data:secret/);
+});
+
+test('结构化手机消息保留角色，空思考不占位，分页总帧保持在 IPC 限额内', () => {
+  const {transcriptSnapshot}=require('../dist/test/remote/transcript.js');
+  const items=[{type:'user',text:'正文里包含\nCodex\n但仍是用户消息'},{type:'thinking',text:''},{type:'assistant_text',text:'**结果**\n'+('中文🙂'.repeat(2000))}];
+  let page=transcriptSnapshot(items,{kind:'session.snapshot'},{}),pages=[page];
+  while(page.start){page=transcriptSnapshot(items,{kind:'session.snapshot'},{end:page.start,revision:page.revision});pages.push(page);}
+  for(const p of pages){assert.ok(Buffer.byteLength(JSON.stringify(p))<6500);assert.ok(p.messages.every(m=>m.role!=='thinking'));}
+  assert.ok(pages.at(-1).messages.some(m=>m.role==='user'&&m.text.includes('Codex')));
+});
+
+test('上传图片只能被同设备同目标读取，过期、摘要篡改、路径穿越和链接均拒绝',()=>{
+ const fs=require('node:fs'),os=require('node:os'),path=require('node:path'),crypto=require('node:crypto');
+ const {remoteImages}=require('../dist/test/remote/images.js'),dir=fs.mkdtempSync(path.join(os.tmpdir(),'remote-image-'));
+ const c=command({kind:'message.send',text:'',attachmentIds:['photo']}),data=Buffer.from('89504e470d0a1a0a00000000','hex'),base=path.join(dir,'phone_photo');
+ const meta={version:1,deviceId:'phone',target:c.target,mime:'image/png',size:data.length,sha256:crypto.createHash('sha256').update(data).digest('hex'),expiresAt:Date.now()+60000};
+ const save=()=>fs.writeFileSync(base+'.json',JSON.stringify(meta),{mode:0o600});
+ try{fs.writeFileSync(base+'.image',data,{mode:0o600});save();assert.equal(remoteImages(c,['photo'],dir)[0].data,data.toString('base64'));
+ assert.throws(()=>remoteImages(c,['../photo'],dir));assert.throws(()=>remoteImages({...c,deviceId:'other'},['photo'],dir));
+ assert.throws(()=>remoteImages({...c,target:{...c.target,sessionId:'other'}},['photo'],dir));
+ meta.sha256='0'.repeat(64);save();assert.throws(()=>remoteImages(c,['photo'],dir));meta.sha256=crypto.createHash('sha256').update(data).digest('hex');meta.expiresAt=1;save();assert.throws(()=>remoteImages(c,['photo'],dir));
+ meta.expiresAt=Date.now()+60000;save();fs.unlinkSync(base+'.image');fs.symlinkSync(base+'.json',base+'.image');assert.throws(()=>remoteImages(c,['photo'],dir));
+ }finally{fs.rmSync(dir,{recursive:true,force:true});}
+});
+
+
+test('手机快照与桌面共用当前会话模型、推理与额度，额度变化触发新版本', async()=>{
+  const f=fixture();f.provider.lastUsage={kind:'usage',weekPct:83,sessionPct:21,weekResetAt:1900000000,sessionResetAt:1800000000};
+  const first=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;
+  assert.equal(first.model,'model-test');assert.equal(first.effort,'medium');assert.equal(first.usage.weekPct,83);
+  f.provider.lastUsage.weekPct=84;
+  const next=(await f.provider.executeRemote(command({kind:'session.snapshot',revision:first.revision}),()=>true)).result;
+  assert.equal(next.unchanged,false);assert.equal(next.usage.weekPct,84);
+  f.provider.lastUsage=undefined;
+  assert.equal((await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.usage,null);
+});
+
+test('密集工具分页仍有名称、状态和稳定标识，整帧不超过通道上限',()=>{
+  const {transcriptSnapshot}=require('../dist/test/remote/transcript.js');
+  const items=Array.from({length:100},(_,i)=>({type:'tool',toolId:String(i),name:i%2?'web_search':'bash',input:{},result:'',isError:i===99}));
+  let page=transcriptSnapshot(items,{model:'model',effort:'high',usage:{weekPct:93}},{}),count=0;
+  while(true){
+    assert.ok(Buffer.byteLength(JSON.stringify(page))<=6500);count+=page.messages.length;
+    for(const m of page.messages){assert.ok(m.id);assert.ok(m.toolName);assert.ok(['completed','failed'].includes(m.status));}
+    if(!page.start)break;
+    page=transcriptSnapshot(items,{model:'model',effort:'high',usage:{weekPct:93}},{end:page.start,revision:page.revision});
+  }
+  assert.ok(count>=100);
 });
