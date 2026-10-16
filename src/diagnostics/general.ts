@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { PerformanceRow } from '../codex/performanceTrace';
+import { diagnosticId, type PerformanceRow } from '../codex/performanceTrace';
 import type { DiagnosticFinding } from './analysis';
 import { redactDiagnosticText } from './redact';
 
@@ -15,6 +15,7 @@ const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '�
 
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
   if (row) {
+    if (row.event === 'codex.tool_result' && row.expectedCancellation === true && row.cancellationReason === 'question_pause' && row.outcome === 'waiting_for_user' && ['unknown', 'interrupted'].includes(String(row.failureCategory))) return;
     const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' || /compact/i.test(String(row.method ?? ''));
     const stage = String(row.stage ?? row.event ?? ''), outcome = String(row.outcome ?? row.status ?? '');
     const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
@@ -25,6 +26,8 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     const category = compaction ? '压缩' : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
     const detail = [row.diagnosticType, row.method, stage, outcome, row.errorCategory ?? row.failureCategory,
+      diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
+      diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
       ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`), row.message]
@@ -51,6 +54,7 @@ export class GeneralAccumulator {
     if (/retry|重试/i.test(String(row?.stage ?? row?.event ?? line))) this.counts.retries++;
     if (incident.category === '压缩' && incident.severity === 'error') this.counts.compactionErrors++;
     const signature = incident.message.replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>')
+      .replace(/\bcallId=[\w.:-]+/g, 'callId=<id>')
       .replace(/\b(?:attempt|elapsedMs|durationMs|requestId|request_id|retry)\s*[:=]?\s*\d+(?:\.\d+)?/gi, match => match.replace(/\d+(?:\.\d+)?$/, '<n>'))
       .replace(/\b\d+(?:\.\d+)?(?:ms|秒)\b/g, '<duration>');
     const id = createHash('sha256').update(incident.category + incident.severity + signature).digest('hex').slice(0, 12);

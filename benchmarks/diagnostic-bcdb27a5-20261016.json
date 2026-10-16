@@ -1,0 +1,150 @@
+{
+  "diagnosticId": "bcdb27a5-6345-45aa-ad90-4557e7edc9d9",
+  "baselineCommit": "5037954",
+  "baselineVersion": "0.1.136",
+  "fixedVersion": "0.1.137",
+  "date": "2026-10-16T01:22:31.504Z",
+  "scope": {
+    "files": 7,
+    "readFiles": 7,
+    "from": "2026-10-15T01:07:08.044Z",
+    "to": "2026-10-16T01:07:08.044Z",
+    "records": 20634,
+    "windows": 8,
+    "sourceGroups": 9,
+    "unchangedRawLogs": true
+  },
+  "historicalReplay": {
+    "before": {
+      "turns": 52,
+      "tools": 810,
+      "failures": 76,
+      "longestTurnMs": 1871574,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136"
+      ]
+    },
+    "after": {
+      "turns": 52,
+      "tools": 810,
+      "failures": 76,
+      "longestTurnMs": 1871574,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136"
+      ]
+    },
+    "childTailFalsePositivesBefore": 4,
+    "childTailFalsePositivesAfter": 0,
+    "waitingForUserExplicit": true,
+    "note": "仅纠正有证据的旧日志尾部统计；旧日志已丢弃工具正文，原失败分类及76次失败保留。"
+  },
+  "classificationReplay": {
+    "matched": 76,
+    "total": 76,
+    "outputAvailable": 75,
+    "baselineMatches": 75,
+    "changes": [
+      {
+        "line": 13855,
+        "type": "CommandExecution",
+        "original": "rate_limit",
+        "outputAvailable": true,
+        "before": "rate_limit",
+        "after": "build_or_test"
+      },
+      {
+        "line": 10789,
+        "type": "CommandExecution",
+        "original": "timeout",
+        "outputAvailable": true,
+        "before": "timeout",
+        "after": "interrupted"
+      },
+      {
+        "line": 11115,
+        "type": "CommandExecution",
+        "original": "timeout",
+        "outputAvailable": true,
+        "before": "timeout",
+        "after": "interrupted"
+      },
+      {
+        "line": 18660,
+        "type": "CommandExecution",
+        "original": "rate_limit",
+        "outputAvailable": true,
+        "before": "rate_limit",
+        "after": "missing_file"
+      },
+      {
+        "line": 19347,
+        "type": "CommandExecution",
+        "original": "build_or_test",
+        "outputAvailable": true,
+        "before": "build_or_test",
+        "after": "nonzero_exit"
+      }
+    ],
+    "note": "只读关联原会话的75条命令输出，旧规则75/75复现日志分类，新规则纠正5条；第76条为JS工具未知错误，证据不足，保留。原输出、命令、凭据均未写入此文件。"
+  },
+  "preparation": {
+    "method": "同机本地合成只读响应；配置与无令牌身份各120ms，不调用模型或外网",
+    "before": {
+      "elapsedMs": 246,
+      "relayReady": true,
+      "configRequests": 1,
+      "identityRequests": 1
+    },
+    "after": {
+      "elapsedMs": 124,
+      "relayReady": true,
+      "configRequests": 1,
+      "identityRequests": 1
+    },
+    "reductionPct": 49.6
+  },
+  "verified": {
+    "types": "通过",
+    "focusedTests": 18,
+    "fullTests": 594,
+    "failed": 0
+  },
+  "findings": [
+    {
+      "evidence": "codex-chat-2026-10-15.log:8977,9803",
+      "result": "两次APK被当文本打开；新增安装包/归档定位文件管理器，不执行安装。"
+    },
+    {
+      "evidence": "codex-chat-2026-10-15.log:18482,18493",
+      "result": "两个独立进程200ms配置探测超时，随后thread/resume分别2165ms/5719ms成功；修复可选等待预算与RPC期限混淆，配置和无令牌身份并行预取。"
+    },
+    {
+      "evidence": "codex-chat-2026-10-15.log:16403,20019,21072,21302",
+      "result": "4轮maxParallelAgents=0，tail实际为等待用户；不算子任务尾部。"
+    },
+    {
+      "evidence": "c59cd4ac-8f59-40bc-a9f6-aa150fdf7c8a",
+      "result": "过夜心跳唯一活动阶段question，pending RPC为0；展示等待用户，不主动中断。"
+    }
+  ],
+  "limitations": [
+    "25条原timeout关联浏览器操作，2条SSH退出124；未修改外部工具或工作区业务。",
+    "2条原timeout为凭据输入中断，源码connect_timeout造成误分类，现标interrupted且仍保留失败。",
+    "长工具的客户端与服务端时长吻合；未归因等待不直接认定模型或调度故障。",
+    "压缩长耗时存在完成证据，未调整压缩模型、推理强度、服务档位或权限。",
+    "配置提速为同机合成单次样本，不代表整轮任务或后端请求耗时同比下降。",
+    "未自动重跑真实浏览器、SSH或付费模型任务；原日志不增补虚构恢复事件。"
+  ]
+}

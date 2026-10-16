@@ -51,8 +51,14 @@ function fields(a: Record<string, unknown>): TransportDiagnostic {
     const allowed = ['approved', 'denied', 'accept', 'decline', 'abort', 'user', 'config', 'configuration', 'automatic', 'session'];
     if (typeof a[key] === 'string' && allowed.includes(a[key])) out[key] = a[key];
   }
-  if (Number.isInteger(a.exit_code)) out.exitCode = a.exit_code as number;
-  if (out.success === false) out.failureCategory = failureCategory(a['error.message'] ?? a.output, out.exitCode as number | undefined);
+  const exitCode = typeof a.exit_code === 'number' ? a.exit_code : typeof a.exit_code === 'string' && /^-?\d+$/.test(a.exit_code) ? Number(a.exit_code) : undefined;
+  if (Number.isSafeInteger(exitCode)) out.exitCode = exitCode!;
+  if (out.success === false) {
+    const error = typeof a['error.message'] === 'string' && a['error.message'].length ? a['error.message'] : undefined;
+    const output = typeof a.output === 'string' && a.output.length ? a.output : undefined;
+    out.failureCategory = failureCategory(error ?? output, out.exitCode as number | undefined);
+    out.failureEvidence = error !== undefined ? 'error_message' : output !== undefined ? 'tool_output' : out.exitCode !== undefined ? 'exit_code' : 'unavailable';
+  }
   // 只保存已知 API 路由，不保存主机、查询参数或任意 URL。
   if (typeof a.endpoint === 'string') {
     const endpoint = a.endpoint.match(/(?:^|\/)(responses(?:\/compact)?|models)(?:\?|$)/)?.[1];

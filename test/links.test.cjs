@@ -58,6 +58,16 @@ test('图片在 VS Code 预览，办公文档用系统应用，文本保留行�
   assert.equal(calls.some(c=>Array.isArray(c)&&c[0]==='error'),false);
 });
 
+test('安装包和归档文件在文件管理器定位，不按文本打开或执行安装',async()=>{
+  calls.length=0;
+  const ctx={resolveWorkspaceFile:async p=>p,codeColumn:()=>2,output:{appendLine:()=>{}}};
+  for(const file of ['/tmp/codex-remote-probe.apk','/tmp/app.AAB','/tmp/plugin.vsix','/tmp/archive.tar.gz','/tmp/package.zip','/tmp/setup.dmg','/tmp/app.exe']){
+    await proto.openFile.call(ctx,{},file);
+    assert.ok(calls.some(c=>Array.isArray(c)&&c[0]==='command'&&c[1]==='revealFileInOS'&&c[2].fsPath===file),file);
+  }
+  assert.equal(calls.some(c=>Array.isArray(c)&&['openTextDocument','external','error'].includes(c[0])),false);
+});
+
 test('本地图片读取为 data URI，只接受图片且限制体积',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-local-image-'));
   t.after(()=>fs.rm(root,{recursive:true,force:true}));

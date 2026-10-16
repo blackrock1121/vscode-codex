@@ -1,6 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import type { PerformanceRow } from './codex/performanceTrace';
+import { observedChildTailMs, type PerformanceRow } from './codex/performanceTrace';
 
 const seconds = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${(v / 1000).toFixed(2)} 秒` : '未观测';
 const cell = (v: unknown) => String(v ?? '—').replace(/[|`\r\n<>]/g, ' ').slice(0, 160);
@@ -39,7 +39,7 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
     '| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |'];
   for (const r of [...summaries].sort((a, b) => Number(b.elapsedMs) - Number(a.elapsedMs))) {
     const s = starts.get(r.traceId);
-    text.push(`| ${cell(r.traceId)} | ${cell(r.pluginVersion ?? '未标注')} / ${cell(typeof r.windowId === 'string' ? r.windowId.slice(0, 8) : undefined)} | ${cell(s?.model)} / ${cell(s?.effort)} | ${seconds(r.elapsedMs)} | ${seconds(r.queueMs)} | ${seconds(r.firstEventMs)} | ${seconds(r.firstTextMs)} | ${r.toolCount} / ${r.failures} | ${r.maxParallelTools} / ${r.maxParallelAgents} | ${seconds(r.childTailMs)} |`);
+    text.push(`| ${cell(r.traceId)} | ${cell(r.pluginVersion ?? '未标注')} / ${cell(typeof r.windowId === 'string' ? r.windowId.slice(0, 8) : undefined)} | ${cell(s?.model)} / ${cell(s?.effort)} | ${seconds(r.elapsedMs)} | ${seconds(r.queueMs)} | ${seconds(r.firstEventMs)} | ${seconds(r.firstTextMs)} | ${r.toolCount} / ${r.failures} | ${r.maxParallelTools} / ${r.maxParallelAgents} | ${seconds(observedChildTailMs(r))} |`);
   }
   if (!summaries.length) text.push('', '尚无完整任务样本。重载后运行任务即可自动采集；仍在运行的任务可查看下方心跳。');
   for (const r of [...summaries].sort((a, b) => Number(b.elapsedMs) - Number(a.elapsedMs)).slice(0, 5)) {
@@ -54,7 +54,7 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
     text.push(`| ${cell(r.traceId)} / ${cell(r.itemId)} | ${cell(r.tool)} / ${cell(r.program)} | ${seconds(r.durationMs)} | ${seconds(r.firstOutputMs)} | ${seconds(r.outputIdleMs)} | ${cell(r.exitCode)} / ${cell(r.failureCategory ?? r.outcome)} | ${r.repeated ?? 0} |`);
   text.push('', '## CLI 底层工具（辅助观测，不与上表相加）', '', '| 任务 / 调用 ID | 工具 | CLI 耗时 | 成功 / 失败分类 |', '| --- | --- | --- | --- |');
   for (const r of [...toolEvents].sort((a, b) => Number(b.duration_ms) - Number(a.duration_ms)).slice(0, 20))
-    text.push(`| ${cell(r.traceId ?? '未关联')} / ${cell(r.call_id ?? r.tool_call_id)} | ${cell(r.tool_name ?? r.tool ?? r['tool.name'])} | ${seconds(r.duration_ms)} | ${cell(r.success)} / ${cell(r.failureCategory)} |`);
+    text.push(`| ${cell(r.traceId ?? '未关联')} / ${cell(r.call_id ?? r.tool_call_id)} | ${cell(r.tool_name ?? r.tool ?? r['tool.name'])} | ${seconds(r.duration_ms)} | ${cell(r.success)} / ${r.expectedCancellation === true ? '问题暂停（预期中断）' : cell(r.failureCategory)} |`);
   text.push('', '## 子 Agent', '', '| 任务 | 子线程 / 父线程 | 活动时长 | 结果 |', '| --- | --- | --- | --- |');
   for (const r of rows.filter(r => r.event === 'span_end' && r.kind === 'agent').sort((a, b) => Number(b.durationMs) - Number(a.durationMs)).slice(0, 20))
     text.push(`| ${cell(r.traceId)} | ${cell(r.threadId)} / ${cell(r.parentThreadId)} | ${seconds(r.durationMs)} | ${cell(r.outcome)} |`);
@@ -79,7 +79,9 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   const heartbeats = new Map(rows.filter(r => r.event === 'heartbeat' && !ended.has(r.traceId)).map(r => [r.traceId, r]));
   for (const r of heartbeats.values()) {
     const date = new Date(Number(r.atMs));
-    text.push('', `- ${cell(r.traceId)}：已运行 ${seconds(r.elapsedMs)}，最近事件距今（记录当时）${seconds(r.idleMs)}，活动阶段 ${r.activeCount}，记录时间 ${Number.isFinite(date.getTime()) ? date.toISOString() : '未记录'}。`);
+    const active = Array.isArray(r.active) ? r.active : [];
+    const userWait = active.some(s => s?.kind === 'question' || s?.kind === 'approval');
+    text.push('', `- ${cell(r.traceId)}：${userWait ? '正在等待用户回答或授权；' : ''}已运行 ${seconds(r.elapsedMs)}，最近事件距今（记录当时）${seconds(r.idleMs)}，活动阶段 ${r.activeCount}，记录时间 ${Number.isFinite(date.getTime()) ? date.toISOString() : '未记录'}。`);
   }
   if (!heartbeats.size) text.push('', '无未结束任务的心跳样本。');
   text.push('', '## 如何据此提速', '',

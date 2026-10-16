@@ -89,7 +89,7 @@ export class CodexProcess {
   private activeEffort?: string;
   private compactionRestore?: { model: string; effort: string; pending: boolean; isError: boolean };
   private compactionRelay?: CompactionRelay;
-  private compactionConfig?: Promise<any>;
+  private compactionPreparation?: Promise<{ settings: any; identity: any } | undefined>;
   private autoCompactionsWithoutProgress = 0;
   private readonly compactionStore: CompactionValidationStore;
   private readonly compactionPolicy: CompactionPolicy;
@@ -148,6 +148,7 @@ export class CodexProcess {
       undefined, undefined, () => this.rpc.transportSnapshot());
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env, opts.transportDiagnostics !== false);
     this.rpc.on('diagnostic', (row: TransportDiagnostic) => {
+      row = this.latency.annotateTransport(row);
       // OTLP 会批量延迟到达：按源时间及线程关联，不能归到当前正在运行的轮次。
       const source = typeof row.sourceTimeMs === 'number' ? row.sourceTimeMs : undefined;
       const thread = row['conversation.id'] ?? row.thread_id;
@@ -218,9 +219,8 @@ export class CodexProcess {
   prepare(): Promise<void> {
     return this.preparing ??= (async () => {
       await this.rpc.start();
+      this.prefetchCompactionSettings();
       this.modelsReady = this.loadModels();
-      if (this.opts.compactionMode !== 'session')
-        this.compactionConfig = this.rpc.request('config/read', { includeLayers: false }, 200).catch(() => undefined);
     })();
   }
   start(): Promise<void> {
@@ -257,17 +257,40 @@ export class CodexProcess {
       void this.readAccount();
     } catch (e) { this.compactionRelay?.close(); this.compactionRelay = undefined; this.exited = true; this.rpc.dispose(); throw e; }
   }
-  private async prepareCompactionRelay(): Promise<void> {
-    if (this.opts.compactionMode === 'session') return;
+  private canPrepareCompactionRelay(): boolean {
+    if (this.opts.compactionMode === 'session') return false;
     const env = { ...process.env, ...this.opts.env };
     // 不覆盖环境指定的网关，也不让子进程专属代理设置在转发时丢失。
-    if (env.OPENAI_BASE_URL || Object.entries(this.opts.env ?? {}).some(([key, value]) =>
-      /^(https?_proxy|all_proxy|no_proxy|ssl_cert_file|ssl_cert_dir|node_extra_ca_certs)$/i.test(key) && value !== process.env[key])) return;
+    return !env.OPENAI_BASE_URL && !Object.entries(this.opts.env ?? {}).some(([key, value]) =>
+      /^(https?_proxy|all_proxy|no_proxy|ssl_cert_file|ssl_cert_dir|node_extra_ca_certs)$/i.test(key) && value !== process.env[key]);
+  }
+  private prefetchCompactionSettings(): void {
+    if (!this.canPrepareCompactionRelay() || this.compactionPreparation || this.exited || this.disposed) return;
+    // 200ms 是启动等待可选优化的预算，不是本机 RPC 的执行超时。
+    // 预热时并行读取并保留真实结果，避免繁忙宿主上的迟到响应被永久丢弃。
+    this.compactionPreparation = Promise.all([
+      this.rpc.request('config/read', { includeLayers: false }),
+      this.rpc.request('getAuthStatus', { includeToken: false, refreshToken: false }),
+    ]).then(([settings, identity]) => ({ settings, identity })).catch(() => undefined);
+  }
+  private async prepareCompactionRelay(): Promise<void> {
+    if (!this.canPrepareCompactionRelay() || this.exited || this.disposed) return;
+    this.prefetchCompactionSettings();
+    let timer: NodeJS.Timeout | undefined;
     try {
-      const settings = await (this.compactionConfig ?? this.rpc.request('config/read', { includeLayers: false }, 200));
-      if (!compactionUpstream(settings?.config, { type: 'chatgpt' }) || this.exited || this.disposed) return;
+      const budgetExpired = Symbol('startup_budget_expired');
+      const prepared = await Promise.race([this.compactionPreparation!, new Promise<typeof budgetExpired>(resolve => {
+        timer = setTimeout(() => resolve(budgetExpired), 200);
+      })]);
+      if (this.exited || this.disposed) return;
+      if (!prepared || prepared === budgetExpired) {
+        this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify({ stage: 'fallback',
+          reason: prepared === budgetExpired ? 'startup_budget_expired' : 'settings_unavailable', scope: 'native' })}` });
+        return;
+      }
+      const { settings, identity } = prepared;
+      if (!compactionUpstream(settings?.config, { type: 'chatgpt' })) return;
       // 只读本机鉴权模式，不请求令牌。account/read 可能联网发现工作区，继续留在聊天启动后的后台。
-      const identity = await this.rpc.request('getAuthStatus', { includeToken: false, refreshToken: false }, 200);
       const upstream = compactionUpstream(settings.config, { type: identity.authMethod === 'apikey' ? 'apiKey' : identity.authMethod });
       if (!upstream || this.exited || this.disposed) return;
       const relay = await CompactionRelay.start(upstream, (source, tier) => this.selectCompaction(source, tier), route => this.compactionRouted(route), {
@@ -279,7 +302,7 @@ export class CodexProcess {
       this.emit({ kind: 'diag', message: '[compaction_route] {"stage":"ready","scope":"manual_and_auto"}' });
     } catch {
       this.emit({ kind: 'notice', message: '自动压缩优化连接未启用，当前连接继续使用 CLI 原生压缩。' });
-    }
+    } finally { clearTimeout(timer); }
   }
   private compactionRouted(route: CompactionRoute): void {
     this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify(route)}` });
@@ -954,6 +977,7 @@ export class CodexProcess {
       if (this.pausedQuestion !== paused) return;
       paused.turnId ??= this.turnId;
       if (!paused.turnId) throw new Error('无法确定待暂停的轮次');
+      this.latency.expectQuestionPause(request.toolUseId, this.sessionId, paused.turnId);
       await this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: paused.turnId });
     } catch (e) {
       // 未能确认暂停时关闭连接，不能放任模型继续，也不展示可用的问题卡片。

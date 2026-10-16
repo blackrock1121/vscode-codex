@@ -3914,6 +3914,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const resolveMs = Date.now() - t0;
             if (abs !== p || resolveMs > 300)
                 this.output.appendLine(`[openFile] ${p} → ${abs} (解析 ${resolveMs}ms)`);
+            // 安装包/归档是可下载产物；定位文件即可，不能当成文本或直接运行安装器。
+            if (/\.(?:apk|aab|ipa|vsix|dmg|pkg|exe|msi|deb|rpm|zip|tar|gz|bz2|xz|tgz|7z|rar|jar|war)$/i.test(abs)) {
+                await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs));
+                return;
+            }
             // 图片交给 VS Code 预览；办公文档交给系统默认应用。
             if (/\.(?:png|jpe?g|gif|webp|avif|bmp|ico|tiff?|svg)$/i.test(abs)) {
                 await vscode.commands.executeCommand("vscode.open", vscode.Uri.file(abs), {

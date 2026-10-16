@@ -4,6 +4,11 @@ import type { RpcMessage } from './rpc';
 import type { TransportDiagnostic } from './telemetry';
 
 export type PerformanceRow = Record<string, unknown>;
+/** 旧版把根轮次结束后的全部时间误算为子任务尾部；没有子任务时可确定为零。 */
+export function observedChildTailMs(row: PerformanceRow): number | undefined {
+  if (row.maxParallelAgents === 0) return 0;
+  return numeric(row.childTailMs);
+}
 export interface PerformanceContext { traceId: string; startedAt: number; startedWallMs: number; queueMs?: number }
 export function performanceContext(queueMs?: number): PerformanceContext {
   return { traceId: randomUUID(), startedAt: performance.now(), startedWallMs: Date.now(),
@@ -19,17 +24,28 @@ function numeric(value: unknown): number | undefined {
 /** 只输出分类，不记录命令、参数、输出、错误正文或路径。分类是线索，不是根因断言。 */
 export function failureCategory(value: unknown, exitCode?: number | null): string {
   const text = typeof value === 'string' ? value.slice(0, 32768) : '';
+  // 搜索输出会包含被搜索源码中的错误关键词；明确的 rg/grep 诊断比命中内容优先。
+  const searchErrors = text.split(/\r?\n/).filter(line => /^(?:rg|grep):\s/.test(line));
+  if (searchErrors.length) {
+    const error = searchErrors.join('\n');
+    if (/No such file or directory|ENOENT/i.test(error)) return 'missing_file';
+    if (/permission denied|operation not permitted|EACCES|EPERM/i.test(error)) return 'permission';
+    if (/regex parse error|unrecognized flag|invalid (?:option|argument)|illegal option/i.test(error)) return 'syntax';
+  }
   if (/command not found|not recognized as an internal|executable file not found/i.test(text) || exitCode === 127) return 'command_not_found';
   if (/ModuleNotFoundError|MODULE_NOT_FOUND|Cannot find module|No module named|missing dependency/i.test(text)) return 'missing_dependency';
   if (/exec format error|no matching manifest|wrong architecture|incompatible architecture/i.test(text)) return 'architecture_mismatch';
   if (/permission denied|operation not permitted|EACCES|EPERM/i.test(text) || exitCode === 126) return 'permission';
-  if (/timed?\s*out|ETIMEDOUT|请求超时/i.test(text) || exitCode === 124) return 'timeout';
-  if (/429|rate.?limit|too many requests/i.test(text)) return 'rate_limit';
+  if (exitCode === 124) return 'timeout';
+  // KeyboardInterrupt 只说明执行被中断，仍保留失败；不推断由用户主动取消。
+  if (/\bKeyboardInterrupt\b|(?:^|\n)\s*(?:InterruptedError|AbortError):/i.test(text)) return 'interrupted';
+  if (/\btimed?\s*out\b|\bETIMEDOUT\b|\b\w*Timeout(?:Error|Exception)\b|请求超时/i.test(text)) return 'timeout';
+  if (/\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?|response code)[ :="']+429\b|\b429[ :]+Too Many Requests\b|\brate[ -]limit(?:ed|ing)?\b|\brate_limit_exceeded\b|\btoo many requests\b/i.test(text)) return 'rate_limit';
   if (/ENOTFOUND|EAI_AGAIN|could not resolve|name resolution/i.test(text)) return 'dns';
   if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|502 Bad Gateway|503 Service/i.test(text)) return 'network_or_service';
   if (/401 Unauthorized|403 Forbidden|authentication failed|unauthorized/i.test(text)) return 'authentication';
   if (/syntax error|SyntaxError|unexpected token|unterminated/i.test(text)) return 'syntax';
-  if (/error TS\d+|compilation failed|build failed|test.*failed|FAIL\s/i.test(text)) return 'build_or_test';
+  if (/\berror TS\d+\b|\b(?:compilation|build) failed\b|\btests? (?:\d+ )?failed\b|(?:^|\n)[ \t]*(?:[✗✘×❌ℹ]\uFE0F?[ \t]*)?(?:FAIL(?:ED)?(?![ \t]+(?:0|false)\b)[ \t]+|not ok \d+\b)/i.test(text)) return 'build_or_test';
   if (/No such file or directory|ENOENT/i.test(text)) return 'missing_file';
   return exitCode ? 'nonzero_exit' : 'unknown';
 }
@@ -46,7 +62,7 @@ interface Run {
   spans: Map<string, Span>; ended: Set<string>; fingerprints: Map<string, number>;
   phases: Record<string, number>; kinds: Record<string, { count: number; failed: number; totalMs: number; maxMs: number }>;
   toolCount: number; failures: number; retries: number; repeated: number; maxTools: number; maxAgents: number;
-  parallelToolMs: number; parallelAgentMs: number; incomplete: number; dropped: number;
+  parallelToolMs: number; parallelAgentMs: number; childTailMs: number; incomplete: number; dropped: number;
   firstEventMs?: number; firstTextMs?: number; firstReasoningMs?: number; firstToolMs?: number;
   maxEventLoopDelayMs: number; lastHeartbeatAt: number; cpu: NodeJS.CpuUsage;
 }
@@ -62,6 +78,7 @@ export class PerformanceTrace {
   private readonly salt = randomUUID();
   private timer?: NodeJS.Timeout;
   private readonly arrivals = new WeakMap<RpcMessage, number>();
+  private readonly questionPauses = new Map<string, { traceId: string; threadId: string; turnId?: string; itemId: string; startedWallMs: number; confirmedWallMs?: number }>();
   constructor(private readonly emit: (row: PerformanceRow) => void,
     private readonly now = () => performance.now(), private readonly wall = () => Date.now(),
     private readonly transport = (): PerformanceRow => ({})) {}
@@ -78,7 +95,7 @@ export class PerformanceTrace {
     this.run = { context: c, threadId, threads: new Set(threadId ? [threadId] : []), turns: new Set(),
       lastAt: at, lastEventAt: at, sequence: 0, spans: new Map(), ended: new Set(), fingerprints: new Map(),
       phases: { preparation: Math.max(0, at - c.startedAt) }, kinds: {}, toolCount: 0, failures: 0, retries: 0,
-      repeated: 0, maxTools: 0, maxAgents: 0, parallelToolMs: 0, parallelAgentMs: 0, incomplete: 0, dropped: 0,
+      repeated: 0, maxTools: 0, maxAgents: 0, parallelToolMs: 0, parallelAgentMs: 0, childTailMs: 0, incomplete: 0, dropped: 0,
       maxEventLoopDelayMs: 0, lastHeartbeatAt: at, cpu: process.cpuUsage() };
     this.write('turn_start', { startedAtMs: c.startedWallMs, queueMs: c.queueMs ?? 0, ...settings,
       timingScope: 'client_observed', serverQueueMs: null, networkTransitMs: null });
@@ -100,6 +117,8 @@ export class PerformanceTrace {
     r.phases[phase] = (r.phases[phase] ?? 0) + delta;
     if (tools > 1) r.parallelToolMs += delta;
     if (agents > 1) r.parallelAgentMs += delta;
+    // 尾部指标可以与子任务工具阶段重叠，但不能把问题卡片或收尾时间当作子任务执行。
+    if (r.rootEndedAt !== undefined && agents > 0 && !n.question && !n.approval) r.childTailMs += delta;
     r.maxTools = Math.max(r.maxTools, tools); r.maxAgents = Math.max(r.maxAgents, agents);
   }
   start(key: string, kind: Kind, fields: Partial<Span> = {}): void {
@@ -166,7 +185,14 @@ export class PerformanceTrace {
     }
     if (method === 'turn/completed' || method === 'thread/closed') {
       const outcome = p.turn?.status === 'failed' ? 'failed' : p.turn?.status === 'interrupted' ? 'interrupted' : 'completed';
-      for (const [key, span] of r.spans) if (span.threadId === threadId && span.kind !== 'question' && span.kind !== 'approval' && span.kind !== 'agent') this.end(key, 'incomplete');
+      if (outcome === 'interrupted') for (const paused of this.questionPauses.values()) {
+        if (paused.traceId === r.context.traceId && paused.threadId === threadId && paused.turnId === turnId) paused.confirmedWallMs = this.wall();
+      }
+      for (const [key, span] of r.spans) if (span.threadId === threadId && span.kind !== 'question' && span.kind !== 'approval' && span.kind !== 'agent') {
+        const paused = span.itemId && this.questionPauses.get(JSON.stringify([threadId, span.itemId]));
+        const expected = outcome === 'interrupted' && paused && paused.traceId === r.context.traceId && paused.turnId === turnId;
+        this.end(key, expected ? 'waiting_for_user' : 'incomplete', expected ? { expectedCancellation: true } : {});
+      }
       if (child) this.end(`agent:${threadId}`, outcome);
       else { this.settle(); r.rootEndedAt = at; }
       this.write('agent_turn_end', { threadId, turnId, role: child ? 'child' : 'root', outcome });
@@ -233,6 +259,29 @@ export class PerformanceTrace {
     this.start(`approval:${id}`, question ? 'question' : 'approval', { threadId, turnId, itemId });
   }
   resolved(id: string, outcome: string): void { this.end(`approval:${id}`, outcome); }
+  /** 仅由已通过校验的问题暂停流程调用；不根据工具名或 unknown 猜测正常取消。 */
+  expectQuestionPause(itemId: string | undefined, threadId?: string, turnId?: string): void {
+    const r = this.run, item = diagnosticId(itemId), thread = diagnosticId(threadId ?? r?.threadId);
+    if (!r || !item || !thread) return;
+    const key = JSON.stringify([thread, item]);
+    this.questionPauses.set(key, { traceId: r.context.traceId, threadId: thread, turnId: diagnosticId(turnId), itemId: item, startedWallMs: this.wall() });
+    if (this.questionPauses.size > 128) this.questionPauses.delete(this.questionPauses.keys().next().value!);
+  }
+  annotateTransport(row: TransportDiagnostic): TransportDiagnostic {
+    if (row.event !== 'codex.tool_result' || row.success !== false || !['unknown', 'interrupted'].includes(String(row.failureCategory))) return row;
+    const thread = diagnosticId(row['conversation.id'] ?? row.thread_id ?? row.threadId);
+    const item = diagnosticId(row.call_id ?? row.tool_call_id);
+    if (!thread || !item) return row;
+    const paused = this.questionPauses.get(JSON.stringify([thread, item]));
+    const turn = diagnosticId(row['turn.id'] ?? row.turn_id ?? row.turnId);
+    if (paused?.confirmedWallMs === undefined || turn && turn !== paused.turnId || this.associate(row) !== paused.traceId) return row;
+    const sourceTime = numeric(row.sourceTimeMs);
+    // CLI 的结果可比 turn/completed 晚几个毫秒；明确时间窗之外的错误不能归给本次暂停。
+    if (sourceTime !== undefined && (sourceTime < paused.startedWallMs || sourceTime > paused.confirmedWallMs + 1000)) return row;
+    if (!turn && sourceTime === undefined) return row;
+    // 保留 CLI success=false 与分类原始事实，另记本地已知原因；迟到记录也按原调用关联。
+    return { ...row, expectedCancellation: true, outcome: 'waiting_for_user', cancellationReason: 'question_pause' };
+  }
   associate(row: TransportDiagnostic): string | null {
     if (row.type === 'metric') return null;
     const threadId = row['conversation.id'] ?? row.thread_id ?? row.threadId;
@@ -264,7 +313,7 @@ export class PerformanceTrace {
       phasesMs: Object.fromEntries(Object.entries(r.phases).map(([k, v]) => [k, Math.round(v)])),
       toolCount: r.toolCount, failures: r.failures, retries: r.retries, repeatedCommands: r.repeated,
       maxParallelTools: r.maxTools, parallelToolMs: Math.round(r.parallelToolMs), maxParallelAgents: r.maxAgents,
-      parallelAgentMs: Math.round(r.parallelAgentMs), childTailMs: r.rootEndedAt === undefined ? 0 : Math.round(this.now() - r.rootEndedAt),
+      parallelAgentMs: Math.round(r.parallelAgentMs), childTailMs: Math.round(r.childTailMs), childTailBasis: 'active_children_excluding_user_wait',
       firstEventMs: r.firstEventMs ?? null, firstTextMs: r.firstTextMs ?? null, firstReasoningMs: r.firstReasoningMs ?? null,
       firstToolMs: r.firstToolMs ?? null, incompleteSpans: r.incomplete, droppedSpans: r.dropped,
       kinds: Object.fromEntries(Object.entries(r.kinds).map(([k, v]) => [k, { ...v, totalMs: Math.round(v.totalMs), maxMs: Math.round(v.maxMs) }])),
