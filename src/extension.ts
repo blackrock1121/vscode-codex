@@ -9,7 +9,6 @@ import { DailyLogWriter, LogIdentity } from "./logging";
 import { RemoteBridgeClient } from "./remote/bridgeClient";
 import { DiagnosticJobs, workerRunner } from "./diagnostics/jobs";
 import { DiagnosticsPage } from "./diagnostics/page";
-import { notifyDiagnostic } from "./diagnostics/notification";
 import { diagnosticOptions } from './diagnostics/options';
 import { analyzeWithModel } from './diagnostics/model';
 import { CodexRpc } from './codex/rpc';
@@ -76,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const message = redactDiagnosticText(String((error as Error).message), 300);
       return { ...result, modelAnalysis: { status: 'failed' as const, model: request.model!, effort: request.effort!, durationMs: 0, message }, report: `# 模型诊断未完成\n\n${message}\n\n` + result.report };
     }
-  }, record => notifyDiagnostic(record, (vscode.workspace.getConfiguration('codexChat').get<string>('notifyWebhook') ?? '').trim()));
+  }, record => provider.notifyDiagnostic(record));
   diagnosticServices.add(diagnostics);
   const diagnosticsPage = new DiagnosticsPage(context, diagnostics,
     async id => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }); },
@@ -131,7 +130,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("codex-chat.resetLocalSnapshotExcludes", () => provider.resetLocalSnapshotExcludes()),
     vscode.commands.registerCommand("codex-chat.performanceReport", () => diagnosticsPage.show(false)),
     vscode.commands.registerCommand("codex-chat.startDiagnostics", () => diagnosticsPage.show(true)),
-    vscode.commands.registerCommand("codex-chat.openDiagnostics", () => diagnosticsPage.show(false)),
+    vscode.commands.registerCommand("codex-chat.openDiagnostics", (id?: string) => diagnosticsPage.show(false, id)),
     vscode.window.registerWebviewPanelSerializer("codex-chat.diagnostics", {
       async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> { panel.dispose(); diagnosticsPage.show(false); },
     }),

@@ -6,7 +6,7 @@ const path = require('node:path');
 const os = require('node:os');
 const { scanPluginLogs } = require('../dist/test/diagnostics/scan.js');
 const { DiagnosticJobs } = require('../dist/test/diagnostics/jobs.js');
-const { notifyDiagnostic } = require('../dist/test/diagnostics/notification.js');
+const { diagnosticNotification } = require('../dist/test/diagnostics/notification.js');
 async function dir(t) {
  const root = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-full-scan-'));
  t.after(() => fs.rm(root, { recursive: true, force: true })); return root;
@@ -67,7 +67,6 @@ test('全局诊断可从其他源码工作区创建修复会话，结果持久�
  assert.equal((await source.get(record.id)).repair.workspaceId, 'plugin-source');
  await assert.rejects(origin.repair(record.id, async () => 'wrong', async () => {}), /已有修复会话所属工作区/);
  assert.equal((await source.get(record.id)).repair.sessionId, 'repair-global');
- let notification;
- await notifyDiagnostic(record, 'https://open.feishu.cn/open-apis/bot/v2/hook/test', async (_url, options) => { notification = JSON.parse(options.body).content.text; return { ok: true, json: async () => ({ code: 0 }) }; });
+ const { text: notification } = diagnosticNotification(record);
  assert.match(notification, /本机整个插件/); assert.match(notification, /3 个窗口、8 个会话/);
 });

@@ -6,7 +6,7 @@ const os=require('node:os');
 const {randomUUID}=require('node:crypto');
 const {DiagnosticJobs,workerRunner}=require('../dist/test/diagnostics/jobs.js');
 const {analyzePerformance}=require('../dist/test/diagnostics/analysis.js');
-const {notifyDiagnostic}=require('../dist/test/diagnostics/notification.js');
+const {diagnosticNotification}=require('../dist/test/diagnostics/notification.js');
 const scope={pluginVersion:'0.1.128',windowId:'window-a',workspaceId:'project-a',workspaceName:'测试项目'};
 const output={report:'# 诊断证据\n\n| 工具 | 耗时 |\n| --- | --- |\n| Bash | 30 秒 |',findings:[{id:'failure-timeout',title:'工具超时',severity:'warning',evidence:'两次超时',recommendation:'先核对耗时根因再修复',traceIds:['turn-1']}],summary:{turns:2,tools:5,failures:2,longestTurnMs:80000,versions:['0.1.127']},sourceNote:'采样日志'};
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
@@ -85,13 +85,15 @@ test('多窗口同时修复只创建一次，通知更新不会覆盖修复链�
  assert.equal(record.repair.sessionId,'repair-one');assert.equal(createCalls,1);
 });
 
-test('通知未配置与失败可重试，HTTP 200 的飞书业务错误不会标记成功',async()=>{
- const record={...scope,id:randomUUID(),status:'completed',findings:output.findings,summary:output.summary};
- let calls=0;const request=async(url,options)=>{calls++;assert.match(url,/secret-token/);const body=JSON.parse(options.body);assert.equal(body.msg_type,'text');assert.match(body.content.text,new RegExp(record.id.slice(0,8)));assert.doesNotMatch(body.content.text,/诊断证据/);return {ok:true,json:async()=>({code:0})};};
- assert.equal((await notifyDiagnostic(record,'',request)).status,'not_configured');assert.equal(calls,0);
- const url='https://open.feishu.cn/open-apis/bot/v2/hook/secret-token';assert.equal((await notifyDiagnostic(record,url,request)).status,'sent');
- const error=await notifyDiagnostic(record,url,async()=>({ok:true,json:async()=>({code:9499})}));assert.equal(error.status,'failed');assert.match(error.message,/9499/);assert.doesNotMatch(JSON.stringify(error),/secret-token/);
- assert.equal((await notifyDiagnostic(record,'https://open.feishu.cn.attacker.invalid/hook',request)).status,'not_configured');
+test('诊断通知包含编号和摘要，失败及模型部分完成保留正确状态，不发送完整报告',()=>{
+ const record={...scope,id:randomUUID(),createdAt:100,finishedAt:80100,status:'completed',findings:output.findings,summary:output.summary};
+ const {text,extra}=diagnosticNotification(record);
+ assert.match(text,new RegExp(record.id.slice(0,8)));assert.doesNotMatch(text,/诊断证据/);
+ assert.equal(extra.diagnosticId,record.id);assert.equal(extra.durationMs,80000);assert.equal(extra.isError,false);
+ assert.match(extra.question,/待核验问题/);
+ for(const variant of [{status:'failed'},{status:'interrupted'},{modelAnalysis:{status:'failed'}}]) {
+  const notice=diagnosticNotification({...record,...variant});assert.equal(notice.extra.isError,true);assert.match(notice.text,/未全部完成/);
+ }
 });
 
 test('诊断分析保留未知等待含义，样本不足不生成虚构问题',()=>{

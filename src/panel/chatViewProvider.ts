@@ -8,6 +8,8 @@ import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
 import { NotificationRouter } from "../notificationRouter";
+import { diagnosticNotification } from "../diagnostics/notification";
+import type { DiagnosticRecord, NotificationResult } from "../diagnostics/jobs";
 import { WorkspaceSnapshot } from "../snapshot";
 import { QuestionImages } from "../questionImages";
 import { diffCounts, readDiffFile } from "../diff";
@@ -2989,7 +2991,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 <body>
 <div class="wrap">
   <h2>🔔 任务推送</h2>
-  <div class="sub">长任务跑完时向 webhook 推一条通知：任务耗时达到阈值即推送。Codex 停下来等你输入（工具授权 / 选项提问）且你离开超过同一阈值时，也会推一条「等你输入」。</div>
+  <div class="sub">长任务跑完时向 webhook 推一条通知：任务耗时达到阈值即推送。Codex 停下来等你输入（工具授权 / 选项提问）且你离开超过同一阈值时，也会推一条「等你输入」。诊断通知共用这里的渠道、耗时阈值和静默设置。</div>
   <label class="f"><span>飞书等远程推送 Webhook 地址（主要提醒渠道）</span><input id="webhook" type="text" spellcheck="false" placeholder="飞书/企业微信/钉钉群机器人的 webhook，或任意接收 JSON 的地址" /></label>
   <label class="f"><span>耗时阈值（秒）</span><input id="minsec" type="number" min="0" step="10" placeholder="60" /></label>
   <label><input id="local" type="checkbox" /> 同时开启本机通知（可选）</label>
@@ -3000,7 +3002,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <label class="f"><span>开始时间（北京时间）</span><input id="quietstart" type="time" value="08:30" step="60" /></label>
     <label class="f"><span>结束时间（北京时间）</span><input id="quietend" type="time" value="18:00" step="60" /></label>
   </div>
-  <div class="sub">默认关闭。按中国大陆节假日和调休判断工作日，开始时刻起暂停，结束时刻恢复；仅影响飞书的任务完成和等待输入提醒，本机通知不受影响。静默期间的提醒不会在下班后补发；“测试远程推送”始终发送。</div>
+  <div class="sub">默认关闭。按中国大陆节假日和调休判断工作日，开始时刻起暂停，结束时刻恢复；影响飞书的任务完成、等待输入和诊断提醒，本机通知不受影响。静默期间的提醒不会在下班后补发；“测试远程推送”始终发送。</div>
   <div class="sub">启用后每天联网更新日历，断网最多使用七天内缓存；无有效日历时照常推送。请保持本机通知开启，以便上班时收到提醒。</div>
   <div class="sub" id="calendarstatus">日历尚未加载。</div>
   <button id="refreshcalendar" class="btn">立即更新节假日与调休日历</button>
@@ -3339,8 +3341,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }, delay);
         this.notifyTimers.add(timer);
     }
-    /** 两个通道分别执行：本机通知权限/跳转异常不能阻断飞书提醒。 */
-    private dispatchNotification(ctx: SessionCtx, msg: string, extra: Record<string, unknown>): void {
+    async notifyDiagnostic(record: DiagnosticRecord): Promise<NotificationResult> {
+        const cfg = vscode.workspace.getConfiguration("codexChat");
+        if (!(cfg.get<string>("notifyWebhook") ?? "").trim() && !cfg.get<boolean>("notifyLocal"))
+            return { status: "not_configured", message: "全局通知未开启，请在通知设置中开启本机通知或配置 Webhook" };
+        const { text, extra } = diagnosticNotification(record);
+        const minSec = cfg.get<number>("notifyMinDurationSec") ?? 60;
+        if ((extra.durationMs as number) < minSec * 1000)
+            return { status: "skipped", message: `诊断耗时未达到全局通知阈值（${minSec} 秒）` };
+        return this.dispatchNotification({}, text, extra);
+    }
+    /** 两个通道分别执行；诊断复用相同设置和静默失败回退，并等待实际发送结果。 */
+    private dispatchNotification(ctx: Pick<SessionCtx, 'sessionId' | 'remotePrivate'>, msg: string, extra: Record<string, unknown>): Promise<NotificationResult> {
         const sessionId = ctx.sessionId;
         const epoch = this.notificationVersion(sessionId);
         const cfg = vscode.workspace.getConfiguration("codexChat");
@@ -3360,51 +3372,67 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.output.appendLine(`[notify] dispatch session=${sessionId ?? "none"} event=${event} local=${localEnabled} remote=${!!url && !muted} muted=${muted} epoch=${epoch}`);
         if (muted) this.output.appendLine("[notify] 当前为中国大陆工作日的配置时段，已跳过飞书推送（本机通知不受影响）");
+        const sent: string[] = [], failed: string[] = [], pending: Promise<void>[] = [];
         const sendRemote = () => {
             const remoteStartedAt = performance.now();
-            void this.sendWebhook(url, msg, extra).then(r => {
+            return this.sendWebhook(url, msg, extra).then(r => {
                 this.output.appendLine(`[notify] remote_result session=${sessionId ?? "none"} event=${event} ok=${r.ok} status=${r.status ?? "none"} elapsedMs=${Math.round(performance.now() - remoteStartedAt)}`);
-            }).catch(error => this.output.appendLine(`[notify] remote_error session=${sessionId ?? "none"} event=${event} errorType=${error instanceof Error ? error.name : typeof error}`));
+                if (r.ok) sent.push("远程通知已发送");
+                else failed.push(`远程通知发送失败${r.error ? `（${r.error}）` : r.status ? `（HTTP ${r.status}）` : ''}`);
+            }).catch(error => {
+                this.output.appendLine(`[notify] remote_error session=${sessionId ?? "none"} event=${event} errorType=${error instanceof Error ? error.name : typeof error}`);
+                failed.push("远程通知发送失败，请检查通知设置和网络");
+            });
         };
-        if (url && !muted) sendRemote();
+        if (url && !muted) pending.push(sendRemote());
         if (localEnabled) {
             const { title, body } = formatLocalNotification(msg, {
                 ...extra,
                 project: typeof extra.project === "string" ? localNotificationProject(extra.project) : extra.project,
             });
             const localStartedAt = performance.now();
-            void this.sendLocalNotice(title, body, sessionId).then(sent => {
-                this.output.appendLine(`[notify] local_result session=${sessionId ?? "none"} event=${event} result=${sent === false ? "stale" : "accepted"} elapsedMs=${Math.round(performance.now() - localStartedAt)}`);
+            const local = typeof extra.diagnosticId === 'string' ? this.sendLocalNotice(title, body, undefined, extra.diagnosticId) : this.sendLocalNotice(title, body, sessionId);
+            pending.push(local.then(accepted => {
+                this.output.appendLine(`[notify] local_result session=${sessionId ?? "none"} event=${event} result=${accepted === false ? "stale" : "accepted"} elapsedMs=${Math.round(performance.now() - localStartedAt)}`);
+                if (accepted !== false) sent.push("本机通知已发送");
+                else failed.push("本机通知未发送，来源窗口或任务状态已变化");
             }).catch(error => {
                 this.output.appendLine(`[notify] local_error session=${sessionId ?? "none"} event=${event} elapsedMs=${Math.round(performance.now() - localStartedAt)} errorType=${error instanceof Error ? error.name : typeof error}`);
+                failed.push("本机通知发送失败，请检查系统通知权限");
                 if (muted && ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch) {
                     this.output.appendLine(`[notify] remote_fallback session=${sessionId ?? "none"} event=${event}`);
-                    sendRemote();
+                    muted = false;
+                    return sendRemote();
                 }
-            });
+            }));
         }
+        return Promise.all(pending).then(() => ({
+            status: failed.length ? 'failed' : sent.length ? 'sent' : 'not_configured',
+            message: [...sent, ...failed, ...(muted ? ['远程通知按全局工作时段规则静默'] : [])].join('；') || '全局通知未开启',
+        }));
     }
-    private async sendLocalNotice(title: string, body: string, sessionId?: string): Promise<boolean> {
+    private async sendLocalNotice(title: string, body: string, sessionId?: string, diagnosticId?: string): Promise<boolean> {
         const createdAt = notificationTime();
         const epoch = this.notificationVersion(sessionId);
         // 地址解析不占据原生操作队列，用户回复后的清理无需等旧解析完成。
-        const uri = await this.notificationUri(sessionId);
+        const uri = await this.notificationUri(sessionId, diagnosticId);
         if (this.disposed) return false;
         const router = this.notificationRouter ??= new NotificationRouter();
-        const clickEndpoint = await router.endpoint(sessionId ?? "", () => this.handleNotificationUri(uri, true));
+        const clickEndpoint = await router.endpoint(diagnosticId ? `diagnostic:${diagnosticId}` : sessionId ?? "", () => this.handleNotificationUri(uri, true));
         return queueSessionNotification(sessionId, async () => {
             if (this.notificationVersion(sessionId) !== epoch) return false;
             await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt, clickEndpoint);
             return true;
         });
     }
-    private notificationUri(sessionId?: string): Promise<vscode.Uri> {
-        const key = sessionId ?? "";
+    private notificationUri(sessionId?: string, diagnosticId?: string): Promise<vscode.Uri> {
+        const key = diagnosticId ? `diagnostic:${diagnosticId}` : sessionId ?? "";
         this.notificationUris ??= new Map();
         const cached = this.notificationUris.get(key);
         if (cached) return cached;
         const query = new URLSearchParams({ window: this.notificationWindowKey });
         if (sessionId) query.set("session", sessionId);
+        if (diagnosticId) query.set("diagnostic", diagnosticId);
         // 保留 VS Code 返回的完整 URI；只在本窗口生命周期内复用，失败允许重试。
         const pending = Promise.resolve().then(() => vscode.env.asExternalUri(vscode.Uri.from({
             scheme: vscode.env.uriScheme, authority: this.context.extension.id,
@@ -3455,6 +3483,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (uri.path !== "/notification") return;
         const query = new URLSearchParams(uri.query);
         const sessionId = query.get("session");
+        const diagnosticId = query.get("diagnostic");
         if (query.get("window") !== this.notificationWindowKey) {
             this.output.appendLine(`[notify] click_rejected session=${sessionId ?? "none"} reason=other_window`);
             void vscode.window.showWarningMessage("该通知所属的 VS Code 窗口已关闭或重载，请在对应项目的会话历史中打开任务。");
@@ -3463,7 +3492,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try {
             // 在来源扩展宿主执行，直接聚焦对应原生窗口，不再经过有前缀歧义的 URI 路由。
             if (focusWindow) await vscode.commands.executeCommand("workbench.action.focusWindow");
-            if (!sessionId) {
+            if (diagnosticId) {
+                if (!/^[a-f\d-]{36}$/.test(diagnosticId)) throw new Error("诊断记录编号无效");
+                await vscode.commands.executeCommand("codex-chat.openDiagnostics", diagnosticId);
+            } else if (!sessionId) {
                 this.output.appendLine("[notify] click_open_settings");
                 this.showNotifyConfig();
             } else if ([...this.sessions].some(ctx => ctx.sessionId === sessionId) || this.detached.has(sessionId) ||
@@ -3485,24 +3517,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         status?: number;
         error?: string;
     }> {
-        let payload: unknown;
-        if (/open\.feishu\.cn|open\.larksuite\.com/.test(url))
-            payload = { msg_type: "text", content: { text: msg } };
-        else if (/qyapi\.weixin\.qq\.com|oapi\.dingtalk\.com/.test(url))
-            payload = { msgtype: "text", text: { content: msg } };
-        else
-            payload = { source: "codex-chat", text: msg, ...extra };
         try {
+            const host = new URL(url).hostname;
+            const feishu = isFeishuWebhook(url);
+            const otherBot = host === 'qyapi.weixin.qq.com' || host === 'oapi.dingtalk.com';
+            const payload = feishu ? { msg_type: "text", content: { text: msg } }
+                : otherBot ? { msgtype: "text", text: { content: msg } }
+                : { source: "codex-chat", text: msg, ...extra };
             const r = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
                 signal: AbortSignal.timeout(10000),
             });
+            if (r.ok && (feishu || otherBot)) {
+                const body = await r.json() as { code?: number; StatusCode?: number; errcode?: number } | null;
+                const code = feishu ? body?.code ?? body?.StatusCode : body?.errcode;
+                if (code !== 0) return { ok: false, status: r.status, error: `机器人未确认接收，错误码 ${Number.isInteger(code) ? code : '未知'}` };
+            }
             return { ok: r.ok, status: r.status, ...(r.ok ? {} : { error: `HTTP ${r.status}` }) };
         }
-        catch (err) {
-            return { ok: false, error: String((err as Error)?.message ?? err) };
+        catch {
+            return { ok: false, error: "请求超时、网络失败或机器人返回无效响应" };
         }
     }
     private runningIds(): string[] {

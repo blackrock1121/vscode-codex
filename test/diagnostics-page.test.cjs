@@ -25,6 +25,30 @@ function setup(t){
 }
 const openRecord=(w,id=record.id)=>w.document.querySelector(`.record[data-record-id="${id}"]`).click();
 
+test('诊断页通知入口使用全局设置，跳过状态和重试清晰展示，通知点击展开对应记录', t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({type:'state',records:[{...record,notification:{status:'skipped',message:'诊断耗时未达到全局通知阈值（60 秒）'}}],workspaceId:'project-a'});
+ const search=w.document.getElementById('search');search.value='无匹配';search.dispatchEvent(new w.Event('input'));
+ emit({type:'reveal',id:record.id});
+ assert.equal(search.value,'');assert.equal(w.document.getElementById('detail').hidden,false);
+ assert.match(w.document.getElementById('detail').textContent,/通知：已按设置跳过/);
+ assert.doesNotMatch(w.document.body.textContent,/飞书通知/);
+ const buttons=[...w.document.querySelectorAll('#detail button')];
+ buttons.find(b=>b.textContent==='全局通知设置').click();assert.equal(sent.at(-1).type,'settings');
+ buttons.find(b=>b.textContent==='重试通知').click();assert.equal(sent.at(-1).type,'notify');assert.equal(sent.at(-1).id,record.id);
+ assert.deepEqual(errors,[]);
+});
+
+test('诊断通知在新页面就绪后定位记录，普通刷新不重复展开也不启动诊断',async t=>{
+ const jobs=new EventEmitter();Object.assign(jobs,{scope:{workspaceId:'project-a'},list:async()=>[record]});
+ const page=new DiagnosticsPage({extensionUri:'/extension'},jobs,async()=>{},async()=>{});t.after(()=>page.dispose());
+ page.show(false,record.id);const panel=currentPanel;
+ assert.equal(panel.messages.length,0);await page.message({type:'ready'});
+ assert.deepEqual(panel.messages.map(m=>m.type),['state','reveal']);assert.equal(panel.messages.at(-1).id,record.id);
+ await page.message({type:'refresh'});assert.equal(panel.messages.filter(m=>m.type==='reveal').length,1);
+ page.show(false,record.id);await new Promise(r=>setImmediate(r));assert.equal(panel.messages.filter(m=>m.type==='reveal').length,2);
+});
+
 test('全面诊断展示独立源码覆盖结果，无运行异常仍可创建修复会话，历史记录不冒充已审查', t=>{
  const {w,emit,errors}=setup(t);
  const audited={...record,options:{kind:'general',hours:24,engine:'rules'},
@@ -91,7 +115,7 @@ test('后端默认不选中历史记录，收起会作废仍在读取的详情',
 test('诊断页面展示历史、通知状态与证据，点击修复发送对应记录 ID',t=>{
  const {w,sent,errors,emit}=setup(t);emit({type:'state',records:[record],selectedId:record.id,workspaceId:'project-a'});
  openRecord(w);
- assert.match(w.document.getElementById('records').textContent,/11111111/);assert.match(w.document.getElementById('detail').textContent,/飞书通知：已发送/);
+ assert.match(w.document.getElementById('records').textContent,/11111111/);assert.match(w.document.getElementById('detail').textContent,/通知：已发送/);
  assert.equal(w.document.querySelector('#detail img'),null);
  const repair=[...w.document.querySelectorAll('#detail button')].find(e=>e.textContent==='创建修复会话');assert.ok(repair);repair.click();repair.click();
  assert.equal(sent.filter(m=>m.type==='repair').length,1);assert.equal(sent.find(m=>m.type==='repair').id,record.id);

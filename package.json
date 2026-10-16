@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.142",
+  "version": "0.1.143",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -322,13 +322,13 @@
         "codexChat.notifyWebhook": {
           "type": "string",
           "default": "",
-          "description": "任务推送的 webhook 地址（长任务完成、以及 Codex 停下来等你输入时提醒）。填飞书/企业微信/钉钉群机器人的 webhook 可直接收到文本消息；其他地址会收到通用 JSON（{text, isError, durationMs, project, question}，等待输入推送另带 waiting:true 与 ask）。留空关闭推送。"
+          "description": "任务推送的 webhook 地址（长任务完成、诊断结束，以及 Codex 停下来等你输入时提醒）。填飞书/企业微信/钉钉群机器人的 webhook 可直接收到文本消息；其他地址会收到通用 JSON（{text, isError, durationMs, project, question}，等待输入推送另带 waiting:true 与 ask）。留空关闭推送。"
         },
         "codexChat.notifyMinDurationSec": {
           "type": "number",
           "default": 60,
           "minimum": 0,
-          "description": "任务执行时长达到该秒数才推送完成通知（默认 60 秒）；等待输入的提醒同用此阈值——距你上次操作超过该秒数才推。"
+          "description": "任务或诊断执行时长达到该秒数才推送完成通知（默认 60 秒）；等待输入的提醒同用此阈值——距你上次操作超过该秒数才推。"
         },
         "codexChat.fastMode": {
           "type": "boolean",
@@ -352,7 +352,7 @@
         "codexChat.notifyLocal": {
           "type": "boolean",
           "default": false,
-          "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主。"
+          "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话或诊断记录。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主。"
         },
         "codexChat.notifyUsageThresholdPct": {
           "type": "number",

@@ -15,7 +15,7 @@ let pendingRepair: string | undefined;
 let models: ModelChoice[] = [], settings: DiagnosticOptions = { kind: 'general', hours: 24, engine: 'model' }, starting = false;
 let settingsEdited = false;
 const status = { running: '诊断中', completed: '已完成', failed: '失败', interrupted: '已中断' };
-const notice = { pending: '诊断结束后发送', sending: '正在发送', sent: '已发送', failed: '发送失败', not_configured: '未配置' };
+const notice = { pending: '诊断结束后发送', sending: '正在发送', sent: '已发送', failed: '发送失败', not_configured: '未开启', skipped: '已按设置跳过' };
 const scopeLabel = (record: DiagnosticRecord) => record.diagnosticScope === 'local-plugin-full' ? '整个插件 · 全量' : '旧版全局采样';
 const recordStatus = (record: DiagnosticRecord) => record.modelAnalysis?.status === 'failed' && record.status === 'completed' ? '部分完成' : status[record.status];
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = '') {
@@ -77,7 +77,7 @@ function render() {
     item.append(heading,
       node('small', new Date(record.createdAt).toLocaleString(), 'muted'), node('small', `${kindLabel(record.options?.kind)} · ${scopeLabel(record)} · ${record.pluginVersion}`, 'muted'),
       node('small', `发起位置：${record.workspaceName}`, 'muted'));
-    item.append(node('small', record.status === 'running' ? record.progress : record.error ?? `待核验问题 ${record.findings.length} 项 · 飞书通知：${notice[record.notification.status]}`, 'record-summary'));
+    item.append(node('small', record.status === 'running' ? record.progress : record.error ?? `待核验问题 ${record.findings.length} 项 · 通知：${notice[record.notification.status]}`, 'record-summary'));
     item.onclick = () => { select(expanded ? undefined : record.id); document.getElementById(item.id)?.focus({ preventScroll: true }); };
     entry.append(item); list.append(entry);
     if (expanded) { detail.hidden = false; detail.setAttribute('aria-labelledby', item.id); entry.append(detail); }
@@ -119,7 +119,7 @@ function render() {
     detail.append(node('p', `被分析的插件版本：${summary.versions.join('、') || '旧日志未标注'}`, 'muted'));
     if (!summary.turns && !current.general?.groups) detail.append(node('p', '当前区间没有完整任务样本；日志异常检查不依赖完整轮次，仍会检查区间内报错。', 'progress'));
   }
-  detail.append(node('p', `飞书通知：${notice[current.notification.status]}${current.notification.message ? ` · ${current.notification.message}` : ''}`, 'muted'));
+  detail.append(node('p', `通知：${notice[current.notification.status]}${current.notification.message ? ` · ${current.notification.message}` : ''}`, 'muted'));
   const actions = node('div', '', 'actions');
   const wrongWorkspace = current.repair?.sessionId ? (current.repair.workspaceId ?? current.workspaceId) !== workspaceId :
     current.diagnosticScope !== 'local-plugin-full' && current.workspaceId !== workspaceId;
@@ -130,8 +130,8 @@ function render() {
       pendingRepair = current.id; render(); send('repair', current.id);
     }, wrongWorkspace || repairing || !current.findings.length));
   }
-  if (current.notification.status === 'failed' || current.notification.status === 'not_configured') actions.append(button('重试飞书通知', () => send('notify', current.id), false, true));
-  actions.append(button('飞书通知设置', () => send('settings'), false, true)); detail.append(actions);
+  if (current.notification.status === 'failed' || current.notification.status === 'not_configured' || current.notification.status === 'skipped') actions.append(button('重试通知', () => send('notify', current.id), false, true));
+  actions.append(button('全局通知设置', () => send('settings'), false, true)); detail.append(actions);
   if (wrongWorkspace) detail.append(node('p', '请到已有修复会话或旧诊断所属的工作区打开修复会话。', 'muted'));
   else if (current.diagnosticScope === 'local-plugin-full' && !current.repair?.sessionId) detail.append(node('p', '修复会话在当前工作区创建，目标为插件源码；会先核验源码位置，避免修改无关业务项目。', 'muted'));
   if (current.repair?.message) detail.append(node('p', current.repair.message, 'progress'));
@@ -161,6 +161,10 @@ window.addEventListener('message', event => {
     if (message.error) { $('banner').textContent = message.error; $('banner').hidden = false; }
   }
   else if (message?.type === 'started') { starting = false; updateControls(); if (message.id) select(message.id); }
+  else if (message?.type === 'reveal') {
+    ($('search') as HTMLInputElement).value = ''; select(message.id);
+    document.getElementById(`record-${message.id}`)?.scrollIntoView?.({ block: 'nearest' });
+  }
   else if (message?.type === 'state') {
     records = message.records; workspaceId = message.workspaceId;
     for (const record of records) if (record.status === 'running') requested.delete(record.id);

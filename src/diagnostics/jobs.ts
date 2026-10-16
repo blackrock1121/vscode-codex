@@ -15,10 +15,10 @@ export interface DiagnosticRecord extends DiagnosticScope {
   id: string; createdAt: number; updatedAt: number; finishedAt?: number; ownerPid: number;
   status: 'running' | 'completed' | 'failed' | 'interrupted'; progress: string; error?: string;
   findings: DiagnosticFinding[]; summary?: DiagnosticSummary; sourceNote?: string;
-  notification: { status: 'pending' | 'sending' | 'sent' | 'failed' | 'not_configured'; message?: string; ownerPid?: number };
+  notification: { status: 'pending' | 'sending' | NotificationResult['status']; message?: string; ownerPid?: number };
   repair?: { status: 'creating' | 'started' | 'failed'; sessionId?: string; message?: string; ownerPid?: number; workspaceId?: string };
 }
-export interface NotificationResult { status: 'sent' | 'failed' | 'not_configured'; message?: string }
+export interface NotificationResult { status: 'sent' | 'failed' | 'not_configured' | 'skipped'; message?: string }
 export type DiagnosticRunner = (progress: (message: string) => void, signal: AbortSignal, request?: DiagnosticRequest) => Promise<DiagnosticOutput>;
 const validId = (id: unknown): id is string => typeof id === 'string' && /^[a-f\d-]{36}$/.test(id);
 const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };
@@ -94,7 +94,7 @@ export class DiagnosticJobs extends EventEmitter {
             record = await this.update(record.id, row => { row.status = 'interrupted'; row.progress = '来源窗口已退出，诊断中断，可重新诊断'; row.finishedAt = Date.now(); });
           }
           if (record.notification.status === 'sending' && record.notification.ownerPid && !alive(record.notification.ownerPid)) {
-            record = await this.update(record.id, row => { row.notification = { status: 'failed', message: '来源窗口退出，尚未确认飞书发送结果，可重试通知' }; });
+            record = await this.update(record.id, row => { row.notification = { status: 'failed', message: '来源窗口退出，尚未确认通知发送结果，可重试通知' }; });
           }
           if (record.repair?.status === 'creating' && record.repair.ownerPid && !alive(record.repair.ownerPid)) {
             record = await this.update(record.id, row => { row.repair = { status: 'failed', message: '创建修复会话的窗口已退出，请检查历史会话后重试。' }; });
@@ -162,7 +162,7 @@ export class DiagnosticJobs extends EventEmitter {
       if ((await this.get(id)).notification.status === 'sent') return;
       await this.update(id, row => { row.notification = { status: 'sending', ownerPid: process.pid }; });
       let result: NotificationResult;
-      try { result = await this.notify(record); } catch { result = { status: 'failed', message: '飞书发送失败，请检查配置后重试' }; }
+      try { result = await this.notify(record); } catch { result = { status: 'failed', message: '通知发送失败，请检查全局通知设置后重试' }; }
       await this.update(id, row => { row.notification = result; });
     } finally { await lock.close(); await fs.unlink(this.file(id, '.notification.lock')).catch(() => {}); }
   }

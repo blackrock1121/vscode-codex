@@ -58,6 +58,84 @@ function provider() {
   return p;
 }
 
+const diagnosticRecord = { id: '11111111-1111-4111-8111-111111111111', status: 'completed',
+  createdAt: 1000, finishedAt: 61000, workspaceName: '诊断项目', pluginVersion: 'test', findings: [],
+  options: { kind: 'general', engine: 'rules', hours: 24 } };
+
+test('诊断跟随全局通知开关和耗时阈值，重试读取最新配置及原诊断耗时', async () => {
+  config = {}; const p = provider(), calls = [];
+  p.sendLocalNotice = async (...args) => { calls.push(args); return true; };
+  p.sendWebhook = async () => assert.fail('本机通知无需 Webhook');
+  assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'not_configured');
+  config = { notifyLocal: true, notifyMinDurationSec: 61 };
+  assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'skipped'); assert.equal(calls.length, 0);
+  config.notifyMinDurationSec = 60;
+  assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'sent');
+  assert.equal(calls.length, 1); assert.match(calls[0][0], /全面诊断完成/);
+  assert.match(calls[0][1], /11111111/); assert.equal(calls[0][2], undefined); assert.equal(calls[0][3], diagnosticRecord.id);
+  config.notifyMinDurationSec = 120;
+  assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'skipped'); assert.equal(calls.length, 1);
+  config = { notifyLocal: true, notifyMinDurationSec: 0 };
+  assert.equal((await p.notifyDiagnostic({...diagnosticRecord, finishedAt: 1000})).status, 'sent');
+});
+
+test('诊断复用全局静默及本机失败补发，部分失败如实记录，关闭本机立即恢复远程', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyLocal: true,
+    notifyFeishuQuietHours: { enabled: true, start: '08:30', end: '18:00' } };
+  const p = provider(); let remote = 0;
+  p.workdayCalendar = { refresh: async () => {}, shouldMute: () => true };
+  p.sendWebhook = async () => { remote++; return { ok: true, status: 200 }; };
+  p.sendLocalNotice = async () => true;
+  const muted = await p.notifyDiagnostic(diagnosticRecord);
+  assert.equal(muted.status, 'sent'); assert.match(muted.message, /静默/); assert.equal(remote, 0);
+  p.sendLocalNotice = async () => { throw new Error('拒绝权限'); };
+  const fallback = await p.notifyDiagnostic(diagnosticRecord);
+  assert.equal(fallback.status, 'failed'); assert.match(fallback.message, /远程通知已发送/);
+  assert.match(fallback.message, /本机通知发送失败/); assert.equal(remote, 1);
+  config.notifyLocal = false;
+  assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'sent'); assert.equal(remote, 2);
+  config.notifyLocal = true; config.notifyWebhook = 'https://example.invalid/hook';
+  p.sendWebhook = async () => { throw new Error('网络失败'); }; p.sendLocalNotice = async () => true;
+  const partial = await p.notifyDiagnostic(diagnosticRecord);
+  assert.equal(partial.status, 'failed'); assert.match(partial.message, /本机通知已发送/); assert.match(partial.message, /远程通知发送失败/);
+});
+
+test('诊断支持全局远程渠道格式，机器人业务失败和网络失败不会冒充发送成功或泄漏地址', async t => {
+  const p = provider(), originalFetch = global.fetch, requests = [];
+  t.after(() => { global.fetch = originalFetch; });
+  let reply = { code: 0, errcode: 0 };
+  global.fetch = async (url, options) => { requests.push(JSON.parse(options.body)); return { ok: true, status: 200, json: async () => reply }; };
+  for (const host of ['open.feishu.cn', 'open.larksuite.com', 'qyapi.weixin.qq.com', 'oapi.dingtalk.com', 'example.invalid']) {
+    config = { notifyWebhook: `https://${host}/hook/secret-token` };
+    assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'sent');
+  }
+  assert.match(requests[0].content.text, /11111111/); assert.equal(requests[1].msg_type, 'text');
+  assert.equal(requests[2].msgtype, 'text'); assert.match(requests[3].text.content, /全面诊断/);
+  assert.equal(requests[4].diagnosticId, diagnosticRecord.id); assert.equal(requests[4].durationMs, 60000);
+  for (const host of ['open.feishu.cn', 'qyapi.weixin.qq.com']) {
+    config = { notifyWebhook: `https://${host}/hook/secret-token` }; reply = { code: 9499, errcode: 9499 };
+    const failed = await p.notifyDiagnostic(diagnosticRecord); assert.equal(failed.status, 'failed'); assert.match(failed.message, /9499/);
+    assert.doesNotMatch(failed.message, /secret-token/);
+  }
+  global.fetch = async () => { throw new Error(config.notifyWebhook); };
+  const failed = await p.notifyDiagnostic(diagnosticRecord); assert.equal(failed.status, 'failed'); assert.doesNotMatch(failed.message, /secret-token/);
+});
+
+test('诊断本机通知点击定位对应记录，与会话通知和全局设置入口互不混用', async t => {
+  config = { notifyLocal: true }; nativeCalls = []; resultError = undefined;
+  const p = provider(), commands = [], originalCommand = vscode.commands.executeCommand;
+  t.after(() => { vscode.commands.executeCommand = originalCommand; });
+  vscode.commands.executeCommand = async (...args) => { commands.push(args); };
+  p.showNotifyConfig = () => assert.fail('诊断点击应打开诊断记录');
+  assert.equal((await p.notifyDiagnostic(diagnosticRecord)).status, 'sent');
+  assert.equal(nativeCalls[0].data.sessionId, undefined); assert.match(decodeURIComponent(nativeCalls[0].data.url), /diagnostic=11111111/);
+  const response = await fetch(nativeCalls[0].data.clickEndpoint, { method: 'POST' });
+  assert.equal(response.status, 204);
+  assert.deepEqual(commands, [['workbench.action.focusWindow'], ['codex-chat.openDiagnostics', diagnosticRecord.id]]);
+  const second = await p.notificationUri(undefined, '22222222-2222-4222-8222-222222222222');
+  const settings = await p.notificationUri(); assert.notEqual(second.toString(), settings.toString());
+});
+
 function closingProvider(ctx, other) {
   const p = provider();
   p.sessions = new Set([ctx, ...(other ? [other] : [])]);
@@ -323,7 +401,7 @@ test('默认不启用本机通知，飞书原文本格式保持不变', async t 
   config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test' };
   const p = provider(), bodies = [];
   const originalFetch = global.fetch;
-  global.fetch = async (url, options) => { bodies.push({ url, payload: JSON.parse(options.body) }); return { ok: true, status: 200 }; };
+  global.fetch = async (url, options) => { bodies.push({ url, payload: JSON.parse(options.body) }); return { ok: true, status: 200, json: async () => ({ code: 0 }) }; };
   t.after(() => { global.fetch = originalFetch; });
   p.sendLocalNotice = async () => assert.fail('本机通知默认不能发送');
   p.dispatchNotification({ sessionId: 'session-A' }, '✅ 任务完成\n项目：公司项目', { isError: false });
