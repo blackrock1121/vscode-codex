@@ -23,7 +23,7 @@ function fixture() {
   });
   const a = makeSession('session-a'), b = makeSession('session-b');
   Object.assign(provider, {
-    sessions: new Set([a, b]), detached: new Map(), activeCtx: a, forking: new Set(), restoring: new Set(),
+    modelCatalog: [], sessions: new Set([a, b]), detached: new Map(), activeCtx: a, forking: new Set(), restoring: new Set(),
     remoteRegistration: () => ({ windowId: 'window', workspaceId: 'project', label: '假项目' }),
     context: { workspaceState: { get: key => saved.get(key), update: async (key, value) => saved.set(key, value) } },
     store: { readTurnCount: async () => 0, list: () => [{ id: a.sessionId, title: 'A' }, { id: b.sessionId, title: 'B' }], hydrate: async () => {},
@@ -75,14 +75,14 @@ test('准备期间桌面和手机发送互斥，断线或目标变化后不能�
   active = false; finish();
   assert.equal(await sending, false); assert.equal(f.sends.length, 0); assert.equal(f.b.sending, false);
 });
-test('停止绑定真实轮次；已换轮次不打断，未实现的回答与不可用图片明确拒绝', async () => {
+test('停止绑定真实轮次；已换轮次不打断，过期的审批与不可用图片明确拒绝', async () => {
   const f = fixture(); f.b.proc.isBusy = true; const stopped = [];
   f.provider.stopContext = async ctx => { stopped.push(ctx.sessionId); ctx.proc.isBusy = false; };
   assert.equal((await f.provider.executeRemote(command({ kind: 'turn.stop', turnId: 'old' }), () => true)).error, 'TURN_CHANGED');
   assert.equal((await f.provider.executeRemote(command({ kind: 'turn.stop', turnId: 'turn-1' }), () => true)).accepted, true);
   assert.deepEqual(stopped, ['session-b']);
   assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '', attachmentIds: ['file'] }), () => true)).error, 'IMAGE_NOT_AVAILABLE');
-  assert.equal((await f.provider.executeRemote(command({ kind: 'permission.resolve', turnId: 'turn', requestId: 'req', requestVersion: 1, decision: 'allow' }), () => true)).error, 'OPERATION_NOT_READY');
+  assert.equal((await f.provider.executeRemote(command({ kind: 'permission.resolve', turnId: 'turn', requestId: 'req', requestVersion: 1, decision: 'allow' }), () => true)).error, 'REQUEST_ALREADY_RESOLVED');
 });
 test('尚未取得轮次 ID 或仅子任务运行时仍提供停止标识，跨新轮次失效', () => {
   const proc = Object.create(CodexProcess.prototype);
@@ -159,4 +159,80 @@ test('密集工具分页仍有名称、状态和稳定标识，整帧不超过�
     page=transcriptSnapshot(items,{model:'model',effort:'high',usage:{weekPct:93}},{end:page.start,revision:page.revision});
   }
   assert.ok(count>=100);
+});
+
+
+test('手机审批绑定轮次与内容版本；旧审批不执行，允许仅答原请求一次',async()=>{
+  const f=fixture(),calls=[];f.b.proc.isBusy=true;
+  f.b.pendingPerm={kind:'permission_request',requestId:'approval',toolName:'Bash',input:{command:'pwd'},suggestions:[]};
+  f.b.proc.respondPermission=(id,decision)=>{calls.push([id,decision]);return true;};
+  const first=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.request;
+  const operation={kind:'permission.resolve',turnId:first.turnId,requestId:first.requestId,requestVersion:first.requestVersion,decision:'allow'};
+  f.b.pendingPerm={...f.b.pendingPerm,input:{command:'new-command'}};
+  assert.equal((await f.provider.executeRemote(command(operation),()=>true)).error,'REQUEST_ALREADY_RESOLVED');assert.equal(calls.length,0);
+  const next=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.request;
+  assert.equal((await f.provider.executeRemote(command({...operation,requestVersion:next.requestVersion,turnId:'old-turn'}),()=>true)).error,'TURN_CHANGED');
+  assert.equal((await f.provider.executeRemote(command({...operation,requestVersion:next.requestVersion}),()=>true)).accepted,true);
+  assert.deepEqual(calls,[['approval',{behavior:'allow',suggestionId:undefined}]]);
+  assert.equal((await f.provider.executeRemote(command({...operation,requestVersion:next.requestVersion}),()=>true)).error,'REQUEST_ALREADY_RESOLVED');
+});
+
+test('手机问题按编号映射原始 ID，完整作答走原提问准备与提交路径',async()=>{
+  const f=fixture(),answers=[];f.b.proc.isBusy=true;
+  f.b.pendingPerm={kind:'permission_request',requestId:'question',toolName:'AskUserQuestion',input:{questions:[{id:'原始 id',question:'选一个'},{question:'填写说明'}]},suggestions:[]};
+  f.b.proc.prepareQuestionAnswer=()=>({text:'回答',turnId:'leaf'});
+  f.b.proc.answerQuestion=(id,value)=>{answers.push([id,value]);f.b.pendingPerm=undefined;return true;};
+  f.provider.store.rewindLeafFor=()=> 'leaf';f.provider.captureFinalSnapshot=async()=>{};
+  const req=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.request;
+  const op={kind:'question.answer',requestId:req.requestId,requestVersion:req.requestVersion,turnId:req.turnId,answers:{'0':['选择 A'],'1':'文字答案'}};
+  assert.equal((await f.provider.executeRemote(command({...op,answers:{'0':['选择 A']}}),()=>true)).error,'INVALID_ANSWERS');
+  assert.equal((await f.provider.executeRemote(command(op),()=>true)).accepted,true);
+  assert.deepEqual(answers,[['question',{'原始 id':['选择 A'],'填写说明':'文字答案'}]]);
+});
+
+test('配置复用原会话保存，不允许未知模型或运行中修改，支持持久化失败与排队期间离线',async()=>{
+  const f=fixture();delete f.provider.sessionModel;delete f.provider.sessionEffort;delete f.provider.speedMode;
+  f.b.model='model-a';f.b.effort='medium';f.b.speedMode='default';
+  f.provider.modelCatalog=[{id:'model-a',name:'A',efforts:['medium','high'],speedModes:['default','fast']},{id:'model-b',name:'B',efforts:['low'],speedModes:['default']}];
+  const configure=(key,value)=>f.provider.executeRemote(command({kind:'session.configure',key,value}),()=>true);
+  assert.equal((await configure('model','missing')).error,'SETTING_NOT_SUPPORTED');
+  assert.equal((await configure('effort','high')).accepted,true);assert.equal(f.saved.get('codexChat.sessionEffort.session-b'),'high');
+  f.b.proc.isBusy=true;assert.equal((await configure('model','model-b')).error,'SESSION_BUSY');f.b.proc.isBusy=false;
+  assert.equal((await configure('model','model-b')).accepted,true);assert.equal(f.b.model,'model-b');assert.equal(f.b.effort,'');
+  assert.equal((await configure('speed','fast')).error,'SETTING_NOT_SUPPORTED');
+  f.provider.context.workspaceState.update=async()=>{throw new Error('disk');};
+  assert.equal((await configure('effort','low')).error,'SETTING_NOT_SAVED');assert.equal(f.b.effort,'');
+  let release,active=true;f.b.settingsQueue=new Promise(r=>release=r);
+  const delayed=f.provider.executeRemote(command({kind:'session.configure',key:'effort',value:'low'}),()=>active);await Promise.resolve();active=false;release();await delayed;assert.equal(f.b.effort,'');
+});
+
+test('工具大输出不挤占会话正文，按需读取完整记录；任务清单直接呈现',async()=>{
+  const {transcriptSnapshot}=require('../dist/test/remote/transcript.js');
+  const items=[{type:'assistant_text',text:'关键结论'},{type:'tool',name:'Bash',toolId:'x',input:{command:'pwd'},result:'不重要的长输出'.repeat(5000)},
+    {type:'tool',name:'TodoWrite',toolId:'plan',input:{todos:[{content:'实现界面',status:'completed'},{content:'测试',status:'in_progress'}]},result:''}];
+  const snap=transcriptSnapshot(items,{},{});assert.match(snap.text,/关键结论/);assert.doesNotMatch(snap.text,/不重要的长输出/);assert.ok(snap.messages.some(m=>m.role==='plan'&&m.text.includes('✓ 实现界面')));
+  const f=fixture();f.provider.store.load=()=>items;
+  const details=(await f.provider.executeRemote(command({kind:'session.controls',section:'tool',item:1}),()=>true)).result;
+  assert.match(details.text,/不重要的长输出/);assert.ok(details.start>0);assert.ok(Buffer.byteLength(JSON.stringify(details))<6500);
+});
+
+
+test('问答准备期间远程目标失效，原进程不得收到迟到答案',async()=>{
+  const f=fixture();f.b.proc.isBusy=true;let release,active=true,calls=0;
+  f.b.pendingPerm={kind:'permission_request',requestId:'question',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'继续？'}]},suggestions:[]};
+  f.b.proc.prepareQuestionAnswer=()=>({text:'回答',turnId:'leaf'});f.b.proc.answerQuestion=()=>{calls++;return true;};
+  f.provider.store.rewindLeafFor=()=> 'leaf';let captured;const captureStarted=new Promise(r=>captured=r);
+  f.provider.captureFinalSnapshot=()=>{captured();return new Promise(r=>release=r);};
+  const req=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.request;
+  const pending=f.provider.executeRemote(command({kind:'question.answer',turnId:req.turnId,requestId:req.requestId,requestVersion:req.requestVersion,answers:{'0':'继续'}}),()=>active);
+  await captureStarted;active=false;release();await assert.rejects(pending,/提交已取消/);assert.equal(calls,0);assert.equal(f.b.answeringQuestion,false);
+});
+
+
+test('审批内容超长时拒绝手机操作，不能静默裁掉命令再批准',async()=>{
+ const f=fixture();let calls=0;f.b.proc.isBusy=true;f.b.proc.respondPermission=()=>{calls++;return true;};
+ f.b.pendingPerm={kind:'permission_request',requestId:'huge',toolName:'Bash',input:{command:'完整命令'.repeat(2000)},suggestions:[]};
+ const result=(await f.provider.executeRemote(command({kind:'session.controls',section:'request'}),()=>true)).result;assert.equal(result.unsupported,true);
+ const req=result.request;
+ assert.equal((await f.provider.executeRemote(command({kind:'permission.resolve',turnId:req.turnId,requestId:req.requestId,requestVersion:req.requestVersion,decision:'allow'}),()=>true)).error,'REQUEST_TOO_LARGE');assert.equal(calls,0);
 });

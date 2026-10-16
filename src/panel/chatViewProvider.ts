@@ -18,7 +18,7 @@ import { diffCounts, readDiffFile } from "../diff";
 import { createHash, randomUUID } from "node:crypto";
 import { parseCommand, type Command } from "../remote/command";
 import type { RemoteRegistration, RemoteReply } from "../remote/bridgeClient";
-import { transcriptSnapshot } from "../remote/transcript";
+import { transcriptSnapshot, transcriptText, transcriptPage } from "../remote/transcript";
 import { remoteImages } from "../remote/images";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
@@ -173,6 +173,12 @@ interface SessionCtx {
     remotePrivate?: boolean;
     remoteRead?: Promise<void>;
     remoteReadAt?: number;
+    remoteRequestSignature?: string;
+    remoteRequestVersion?: number;
+    remoteContext?: {used:number;total:number};
+    remoteStatus?: {text:string;error:boolean};
+    remoteMode?: string;
+    remoteLimit?: Extract<ToWebview,{kind:"rate_limit"}>;
     snapshot?: WorkspaceSnapshot;
     finalizing?: Promise<void>;
     changedFilesRefresh?: Promise<void>;
@@ -270,6 +276,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             workspaceId: 'project-' + createHash('sha256').update(JSON.stringify(folders.map(f => f.uri.fsPath))).digest('hex').slice(0, 24),
             label: folders.map(f => f.name).join(' · ').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 120) };
     }
+    private remoteRequest(ctx: SessionCtx) {
+        const pending=ctx.pendingPerm?.kind==='permission_request'?ctx.pendingPerm:undefined;
+        const signature=pending?createHash('sha256').update(JSON.stringify(pending)).digest('hex'):'';
+        if(signature!==ctx.remoteRequestSignature){ctx.remoteRequestSignature=signature;ctx.remoteRequestVersion=(ctx.remoteRequestVersion??0)+1;}
+        return pending?{requestId:pending.requestId,requestVersion:ctx.remoteRequestVersion??1,
+            turnId:ctx.proc?.currentTurnId??null,question:pending.toolName==='AskUserQuestion',
+            title:pending.toolName==='AskUserQuestion'?'有问题需要回答':(pending.displayName||pending.toolName).slice(0,100)}:null;
+    }
     /** 手机只能操作本窗口已打开或转入后台的原会话；不接收 Webview 任意指令。 */
     async executeRemote(input: Command, connected: () => boolean): Promise<RemoteReply> {
         const command = parseCommand(input, Date.now()), registration = this.remoteRegistration();
@@ -301,6 +315,69 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (sourceId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + sourceId))
             await this.context.workspaceState.update('codexChat.remotePrivate.' + sourceId, true);
         if (!selectedActive()) return denied('TARGET_CHANGED');
+        if(op.kind==='session.controls') {
+            const page=op.page??0;
+            if(op.section==='tool'){
+                const item=this.store.load(sourceId!)[op.item!];if(!item||item.type!=='tool')return denied('TOOL_NOT_AVAILABLE');
+                return {accepted:true,result:transcriptPage(transcriptText([item]),{kind:'session.controls',section:'tool',item:op.item,name:(item.displayName||item.name).slice(0,100)},op,4500)};
+            }
+            if(op.section==='settings'){
+                const selected=this.modelCatalog.find(m=>m.id===this.sessionModel(ctx))??this.modelCatalog.find(m=>m.isDefault);
+                return {accepted:true,result:{kind:'session.controls',section:op.section,page,total:this.modelCatalog.length,
+                    models:this.modelCatalog.slice(page*6,page*6+6).map(m=>({id:m.id,name:m.name.slice(0,100),efforts:m.efforts,speedModes:m.speedModes})),
+                    efforts:selected?.efforts.length?selected.efforts:['none','minimal','low','medium','high','xhigh','max','ultra'],
+                    speeds:selected?.speedModes?.filter(s=>s!=='ultrafast')??['default']}};
+            }
+            if(op.section==='changes'){
+                const changes=await this.getChangedFiles(ctx);if(!selectedActive())return denied('TARGET_CHANGED');
+                return {accepted:true,result:{kind:'session.controls',section:op.section,page,total:changes.files.length,
+                    added:changes.totalAdded,removed:changes.totalRemoved,
+                    files:changes.files.slice(page*5,page*5+5).map(f=>({name:f.rel.length<=240?f.rel:f.rel.slice(0,80)+'…'+f.rel.slice(-159),added:f.added,removed:f.removed,status:f.status}))}};
+            }
+            const request=this.remoteRequest(ctx),pending=ctx.pendingPerm;
+            if(!request || pending?.kind!=='permission_request')return denied('REQUEST_ALREADY_RESOLVED');
+            const details={kind:'session.controls',section:op.section,request,input:pending.input,description:pending.description};
+            // 批准必须建立在完整展示上，超大输入不静默裁掉关键命令或问题。
+            return {accepted:true,result:Buffer.byteLength(JSON.stringify(details))<=6000?details:{kind:'session.controls',section:op.section,request,unsupported:true}};
+        }
+        if(op.kind==='session.configure'){
+            if(ctx.sending||ctx.proc?.isBusy||ctx.pendingPerm||ctx.compactionPreparing||this.restoring.has(ctx)||this.forking.has(ctx))return denied('SESSION_BUSY');
+            const selected=this.modelCatalog.find(m=>m.id===this.sessionModel(ctx))??this.modelCatalog.find(m=>m.isDefault);
+            if(op.key==='model'){
+                if(op.value&&!this.modelCatalog.some(m=>m.id===op.value))return denied('SETTING_NOT_SUPPORTED');
+                await this.setModel(ctx,op.value,selectedActive);
+            }else if(op.key==='effort'){
+                if(op.value&&!(selected?.efforts.length?selected.efforts:['none','minimal','low','medium','high','xhigh','max','ultra']).includes(op.value))return denied('SETTING_NOT_SUPPORTED');
+                await this.setEffort(ctx,op.value,selectedActive);
+            }else{
+                if(op.value!=='default'&&!(op.value==='fast'&&selected?.speedModes?.includes('fast')))return denied('SETTING_NOT_SUPPORTED');
+                await this.setSpeedMode(ctx,op.value as SpeedMode,selectedActive);
+            }
+            const actual=op.key==='model'?this.sessionModel(ctx):op.key==='effort'?this.sessionEffort(ctx):this.speedMode(ctx);
+            return actual===op.value?{accepted:true,result:{kind:'session.configured',key:op.key,value:actual}}:denied('SETTING_NOT_SAVED');
+        }
+        if(op.kind==='permission.resolve'||op.kind==='question.answer'){
+            const request=this.remoteRequest(ctx),pending=ctx.pendingPerm;
+            if(!request||pending?.kind!=='permission_request'||request.requestId!==op.requestId||request.requestVersion!==op.requestVersion)return denied('REQUEST_ALREADY_RESOLVED');
+            if(request.turnId!==op.turnId)return denied('TURN_CHANGED');
+            if(Buffer.byteLength(JSON.stringify({input:pending.input,description:pending.description,request}))>5800)return denied('REQUEST_TOO_LARGE');
+            if(op.kind==='permission.resolve'){
+                if(request.question)return denied('QUESTION_REQUIRES_ANSWER');
+                if(!this.handlePermission(ctx,op.requestId,op.decision==='allow'?'allow':'deny'))return denied('REQUEST_ALREADY_RESOLVED');
+            }else{
+                if(!request.question||ctx.answeringQuestion)return denied('REQUEST_ALREADY_RESOLVED');
+                const questions=(pending.input as {questions?:{id?:string;question?:string;isSecret?:boolean}[]}).questions;
+                if(!Array.isArray(questions)||!questions.length||questions.length>20)return denied('INVALID_ANSWERS');
+                const answers:Record<string,string|string[]>={};
+                for(const [i,q] of questions.entries()){
+                    const value=op.answers[String(i)];if(value===undefined||(Array.isArray(value)?!value.length||value.some(v=>!v.trim()):!value.trim()))return denied('INVALID_ANSWERS');
+                    answers[q.id||q.question||String(i)]=value;
+                }
+                ctx.answeringQuestion=true;
+                try{await this.submitQuestionAnswer(ctx,op.requestId,answers,undefined,selectedActive);}finally{ctx.answeringQuestion=false;}
+            }
+            return {accepted:true,result:{kind:'request.resolved',requestId:op.requestId}};
+        }
         if (op.kind === 'session.snapshot') {
             if (!ctx.remoteRead && Date.now() - (ctx.remoteReadAt ?? 0) >= 4000) {
                 ctx.remoteRead = this.store.hydrate(sourceId!).then(() => { selected.remoteReadAt = Date.now(); }).finally(() => { selected.remoteRead = undefined; });
@@ -313,7 +390,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const state = { kind: 'session.snapshot', sessionId: sourceId, busy: !!ctx.proc?.isBusy || !!ctx.sending,
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
                 model: this.sessionModel(ctx).slice(0, 120), effort: this.sessionEffort(ctx).slice(0, 40),
-                speed: this.speedMode(ctx), usage: usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
+                speed: this.speedMode(ctx), capabilities:{controls:true}, request:this.remoteRequest(ctx), context:ctx.remoteContext??null, limit:ctx.remoteLimit??null, progress:ctx.remoteStatus??null,
+                permissionMode:ctx.remoteMode??null, usage: usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
                     weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType, updatedAt: this.lastUsageUpdatedAt } : null };
             return { accepted: true, result: transcriptSnapshot(items, state, op) };
         }
@@ -1763,14 +1841,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         fs.writeFileSync(uri.fsPath, Buffer.from(m[2], "base64"));
         vscode.window.showInformationMessage(`图片已保存到 ${uri.fsPath}`);
     }
-    private handlePermission(ctx: SessionCtx, requestId: string, behavior: "allow" | "deny", suggestionId?: string): void {
+    private handlePermission(ctx: SessionCtx, requestId: string, behavior: "allow" | "deny", suggestionId?: string): boolean {
         const sourceId = ctx.sessionId;
         if (ctx.pendingPerm?.kind !== "permission_request" || ctx.pendingPerm.requestId !== requestId ||
-            !ctx.proc?.respondPermission(requestId, { behavior, suggestionId })) return;
+            !ctx.proc?.respondPermission(requestId, { behavior, suggestionId })) return false;
         this.resolvePendingPermission(ctx, requestId);
         ctx.lastUserActionAt = Date.now();
         if (ctx.lastEventAt !== undefined) ctx.lastEventAt = Date.now();
         this.clearSessionNotification(sourceId);
+        return true;
     }
     private async updateConfig(key: string, value: unknown): Promise<boolean> {
         const insp = this.config().inspect(key);
@@ -1883,8 +1962,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "无法保存此会话的模型，重新打开后可能丢失，请重新选择。" });
         });
     }
-    private setModel(ctx: SessionCtx, model: string): Promise<void> {
+    private setModel(ctx: SessionCtx, model: string, allowed?:()=>boolean): Promise<void> {
         return this.queueSessionSettings(ctx, async () => {
+            if(allowed&&!allowed())return;
             const previousModel = this.sessionModel(ctx);
             const effort = this.sessionEffort(ctx);
             const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
@@ -1938,8 +2018,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const mode = configuredSpeedMode(explicit, cfg.get<boolean>("fastMode", false));
         return mode === "ultrafast" ? "default" : mode;
     }
-    private setSpeedMode(ctx: SessionCtx, mode: SpeedMode): Promise<void> {
+    private setSpeedMode(ctx: SessionCtx, mode: SpeedMode, allowed?:()=>boolean): Promise<void> {
         return this.queueSessionSettings(ctx, async () => {
+            if(allowed&&!allowed())return;
             if (!isSpeedMode(mode) || mode === "ultrafast") {
                 this.post(ctx, { kind: "error", message: "无效的速度模式。" });
                 this.postModelConfig(ctx);
@@ -1988,8 +2069,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "error", message: "无法保存此会话的推理强度，重新打开后可能丢失，请重新选择。" });
         });
     }
-    private setEffort(ctx: SessionCtx, effort: string): Promise<void> {
+    private setEffort(ctx: SessionCtx, effort: string, allowed?:()=>boolean): Promise<void> {
         return this.queueSessionSettings(ctx, async () => {
+            if(allowed&&!allowed())return;
             const model = this.sessionModel(ctx) || ctx.proc?.modelForNextTurn || "";
             const details = this.modelCatalog.find(m => m.id === model) ?? (model === "" ? this.modelCatalog.find(m => m.isDefault) : undefined);
             const supported = details?.efforts.length ? details.efforts : ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
@@ -2456,7 +2538,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[restore] ${oldId.slice(0, 8)} → 派生 ${newId.slice(0, 8)}（原会话保留，回退点 ${leaf.slice(0, 8)}，还原点 ${ctx.checkpoints.list().length} 个）`);
         return { result, rewoundToStart: false };
     }
-    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages): Promise<void> {
+    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages, allowed?:()=>boolean): Promise<void> {
+        if(allowed&&!allowed())throw new Error("远程请求已失效，答案未提交。");
         const startedAt = performance.now();
         // 子 Agent 的阻塞提问答回原请求，不能为根会话派生新轮次或重建文件快照。
         if (ctx.proc?.isChildQuestion?.(requestId)) {
@@ -2468,7 +2551,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
         await this.waitSessionSettings(ctx);
         const proc = ctx.proc && !ctx.proc.isExited ? ctx.proc : await this.ensureProcess(ctx);
-        if (ctx.questionAnswerSeq !== seq) {
+        if (ctx.questionAnswerSeq !== seq || (allowed&&!allowed())) {
             if (ctx.proc === proc && ctx.pendingPerm?.kind === "permission_request" && ctx.pendingPerm.requestId === requestId) await proc?.interrupt();
             throw new Error("答案提交已取消。");
         }
@@ -2480,7 +2563,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[question] hydrated session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}`);
         const cut = this.store.countLines(sourceId);
         if (this.store.rewindLeafFor(sourceId, cut) !== answer.turnId) throw new Error("问题与当前会话进度不一致，未提交答案，请重新打开会话。");
-        if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId) throw new Error("提交已取消，原问题或会话状态已变化。");
+        if ((allowed&&!allowed()) || ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId) throw new Error("提交已取消，原问题或会话状态已变化。");
         // 将问题之前的改动先归入原还原点，再为答案之后的改动建立独立基线。
         await this.captureFinalSnapshot(ctx);
         let snapshot: WorkspaceSnapshot | undefined;
@@ -2492,7 +2575,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.output.appendLine(`[question] snapshot_ready session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}`);
         await this.waitSessionSettings(ctx);
-        if (ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images)) throw new Error("提交已取消，原问题或会话状态已变化。");
+        if ((allowed&&!allowed()) || ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images)) throw new Error("提交已取消，原问题或会话状态已变化。");
         const displayText = userView([{ type: "text", text: answer.text }]).text;
         const checkpointId = ctx.checkpoints.beginTurn(displayText, cut, !!snapshot);
         ctx.snapshot = snapshot;
@@ -3196,6 +3279,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.handleEmitInner(ctx, e);
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview, notifyTurnDone = true): void {
+        if(e.kind==='session'&&e.permissionMode)ctx.remoteMode=e.permissionMode;
+        if(e.kind==='rate_limit')ctx.remoteLimit=e;
+        if(e.kind==='rate_limit_cleared')ctx.remoteLimit=undefined;
+        if(e.kind==='context')ctx.remoteContext={used:e.used,total:e.total};
+        if(e.kind==='status'||e.kind==='activity')ctx.remoteStatus={text:e.label.slice(0,240),error:false};
+        if(e.kind==='error')ctx.remoteStatus={text:e.message.slice(0,500),error:true};
+        if(e.kind==='busy'&&e.busy)ctx.remoteStatus=undefined;
+        if(e.kind==='result'&&!e.isError)ctx.remoteStatus=undefined;
         if (e.kind === "usage") this.maybeNotifyUsage(e);
         if (e.kind === "models") this.modelCatalog = e.models;
         if (e.kind === "compacting") ctx.compacting = true;

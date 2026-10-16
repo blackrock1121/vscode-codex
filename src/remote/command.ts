@@ -3,6 +3,8 @@ export interface Target { windowId: string; workspaceId: string; sessionId: stri
 export type Operation =
   | { kind: 'workspace.list' }
   | { kind: 'session.list' }
+  | { kind: 'session.controls'; section: 'settings' | 'request' | 'changes' | 'tool'; page?: number; item?: number; end?: number; revision?: string }
+  | { kind: 'session.configure'; key: 'model' | 'effort' | 'speed'; value: string }
   | { kind: 'session.snapshot'; end?: number; revision?: string }
   | { kind: 'session.create'; text: string; attachmentIds?: string[] }
   | { kind: 'message.send'; text: string; attachmentIds: string[] }
@@ -46,6 +48,14 @@ export function parseCommand(input: unknown, now: number): Command {
     if (op.kind === 'session.create' || op.kind === 'session.list') { if (t.sessionId !== '') fail(); } else id(t.sessionId);
     switch (op.kind) {
       case 'session.list': keys(op, ['kind']); break;
+      case 'session.controls':
+        keys(op,['kind','section',...['page','item','end','revision'].filter(k=>k in op)]);
+        if(!['settings','request','changes','tool'].includes(op.section as string))fail();
+        if('page' in op){integer(op.page);if((op.page as number)>10000)fail();}
+        if(op.section==='tool'){integer(op.item);if('end' in op){integer(op.end);if(!('revision' in op))fail();}if('revision' in op)id(op.revision);}
+        else if(['item','end','revision'].some(k=>k in op))fail();break;
+      case 'session.configure':
+        keys(op,['kind','key','value']);if(!['model','effort','speed'].includes(op.key as string))fail();text(op.value,120);break;
       case 'session.snapshot':
         keys(op, ['kind', ...('end' in op ? ['end'] : []), ...('revision' in op ? ['revision'] : [])]);
         if ('end' in op) { integer(op.end); if (!('revision' in op)) fail(); }
@@ -86,5 +96,5 @@ export function parseCommand(input: unknown, now: number): Command {
 }
 
 export function isReadOperation(operation: Operation): boolean {
-  return ['workspace.list', 'session.list', 'session.snapshot'].includes(operation.kind);
+  return ['workspace.list', 'session.list', 'session.snapshot', 'session.controls'].includes(operation.kind);
 }

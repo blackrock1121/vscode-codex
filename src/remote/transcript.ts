@@ -32,10 +32,16 @@ export function transcriptPage(text: string, state: Record<string, unknown>, que
 
 /** 分角色展示信息与旧文本共用同一页游标，避免用户正文中的角色名称被误解析。 */
 export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unknown>,query:{end?:number;revision?:string}) {
-    const blocks=items.map((item,index)=>({role:item.type==='user'?'user':item.type==='thinking'?'thinking':item.type==='tool'?'tool':'assistant',
-        text:transcriptText([item]), id:String(index),
-        ...(item.type==='tool'?{toolName:(item.displayName||item.name).slice(0,80),
-            status:item.isError?'failed':item.permission==='pending'?'waiting':item.result!==undefined?'completed':'running'}:{})})).filter(b=>b.text);
+    const blocks=items.map((item,index)=>{
+        const tool=item.type==='tool',plan=tool&&item.name==='TodoWrite';
+        let text=transcriptText([item]);
+        if(plan){const todos=item.input?.todos;text=Array.isArray(todos)?todos.map((t:any)=>(t.status==='completed'?'✓ ':t.status==='in_progress'?'◉ ':'○ ')+String(t.content??t.activeForm??'')).join('\n'):text;}
+        else if(tool){const input=item.input??{};const key=['command','cmd','query','pattern','file_path','path'].find(k=>typeof input[k]==='string');
+            text=(key?String(input[key]).replace(/\s+/g,' ').slice(0,160):item.displayName||item.name)+(item.isError?' · 失败':'');}
+        return {role:plan?'plan':item.type==='user'?'user':item.type==='thinking'?'thinking':tool?'tool':'assistant',
+            text,id:String(index),...(tool?{toolName:(item.displayName||item.name).slice(0,80),detail:true,
+                status:item.isError?'failed':item.permission==='pending'?'waiting':item.result!==undefined?'completed':'running'}:{})};
+    }).filter(b=>b.text);
     const text=blocks.map(b=>b.text).join('\n\n');
     const snapshotState={...state,timelineRevision:createHash('sha256').update(JSON.stringify(blocks.map(b=>[b.id,b.toolName,b.status]))).digest('hex')};
     // 文字、消息元数据与旧版兼容正文都算入 IPC 预算；大量短工具不能撑破 7000 B 帧。
@@ -44,13 +50,13 @@ export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unk
         const page=transcriptPage(text,snapshotState,query,budget);
         if(page.unchanged)return page;
         const visible=page as typeof page & {start:number;end:number};let offset=0;
-        const messages: {role:string;text:string;continued:boolean;id:string;toolName?:string;status?:string}[]=[];
+        const messages: {role:string;text:string;continued:boolean;id:string;toolName?:string;status?:string;detail?:boolean}[]=[];
         for(const block of blocks) {
             const end=offset+block.text.length,from=Math.max(offset,visible.start),to=Math.min(end,visible.end);
             if(to>from){let body=block.text.slice(from-offset,to-offset);const prefix=block.role==='user'?'你\n':block.role==='thinking'?'思考\n':block.role==='assistant'?'Codex\n':'';
                 if(from===offset&&prefix&&body.startsWith(prefix))body=body.slice(prefix.length);
                 if(body.trim())messages.push({role:block.role,text:body,continued:from>offset,id:block.id,
-                    ...(block.toolName?{toolName:block.toolName,status:block.status}:{})});}
+                    ...(block.toolName?{toolName:block.toolName,status:block.status,detail:block.detail}:{})});}
             offset=end+2;
         }
         const result={...page,messages};
