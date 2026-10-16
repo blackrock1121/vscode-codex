@@ -134,20 +134,30 @@ export class SessionStore {
     this.listing = this.refreshInner().finally(() => { this.listing = undefined; }); return this.listing;
   }
   private async refreshInner(): Promise<void> {
-    let cursor: string | null = null;
     const found = new Map<string, any>();
-    const seen = new Set<string>();
-    do {
-      const r: any = await this.read('thread/list', { cwd: this.cwd, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
-      for (const t of r.data) {
+    // archived 未传或为 false 都只返回未归档会话；两类必须分别读完所有分页。
+    // 任一查询失败时保留原缓存，避免把暂时没读到的会话误当成已删除。
+    const results = await Promise.allSettled([false, true].map(async archived => {
+      let cursor: string | null = null;
+      const seen = new Set<string>(), threads: any[] = [];
+      do {
+        const r: any = await this.read('thread/list', { cwd: this.cwd, archived, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
+        threads.push(...r.data.map((t: any) => ({ ...t, archived })));
+        cursor = r.nextCursor;
+        if (cursor && seen.has(cursor)) throw new Error('会话列表分页游标重复，已停止读取，请重试。');
+        if (cursor) seen.add(cursor);
+      } while (cursor);
+      return threads;
+    }));
+    for (const result of results) if (result.status === 'rejected') throw result.reason;
+    for (const result of results) {
+      if (result.status !== 'fulfilled') continue;
+      for (const t of result.value) {
         if (this.deletedIds.has(t.id)) continue;
         found.set(t.id, t);
         if (t.preview?.trim() || t.name?.trim()) this.pending.delete(t.id);
       }
-      cursor = r.nextCursor;
-      if (cursor && seen.has(cursor)) throw new Error('会话列表分页游标重复，已停止读取，请重试。');
-      if (cursor) seen.add(cursor);
-    } while (cursor);
+    }
     // 所有分页完成后再合并缓存，避免覆盖分页期间刚读取的完整历史。
     for (const [id, thread] of found) {
       if (this.deletedIds.has(id)) found.delete(id);
@@ -217,13 +227,13 @@ export class SessionStore {
       } while (cursor);
       thread.turns = turns;
     }
-    this.threads.set(id, thread);
+    this.threads.set(id, { ...thread, archived: this.threads.get(id)?.archived ?? false });
   }
   list(): SessionSummary[] {
-    const entries = new Map<string, SessionSummary>([...this.threads.values()].map(t => [t.id, { id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0 }]));
+    const entries = new Map<string, SessionSummary>([...this.threads.values()].map(t => [t.id, { id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0, archived: t.archived === true }]));
     for (const [id, p] of this.pending) {
       const existing = entries.get(id);
-      entries.set(id, { id, title: existing?.title && existing.title !== '新对话' ? existing.title : p.title, updatedAt: Math.max(existing?.updatedAt ?? 0, p.updatedAt), messageCount: existing?.messageCount ?? 0 });
+      entries.set(id, { ...existing, id, title: existing?.title && existing.title !== '新对话' ? existing.title : p.title, updatedAt: Math.max(existing?.updatedAt ?? 0, p.updatedAt), messageCount: existing?.messageCount ?? 0 });
     }
     return [...entries.values()].sort((a, b) => b.updatedAt - a.updatedAt);
   }
@@ -231,6 +241,7 @@ export class SessionStore {
     this.pending.set(id, { title: previewTitle(text), updatedAt: Date.now() });
   }
   load(id: string): TimelineItem[] { return timeline(this.threads.get(id)?.turns ?? []); }
+  isArchived(id: string): boolean { return this.threads.get(id)?.archived === true; }
   findFile(id: string): string | undefined { const t = this.threads.get(id); return t ? (t.path || id) : undefined; }
   countLines(id: string): number { return this.threads.get(id)?.turns?.length ?? 0; }
   userTurnLines(id: string): { text: string; hasImages: boolean; line: number }[] {
@@ -286,7 +297,10 @@ export class SessionStore {
     if (this.threads.has(id)) this.threads.get(id).name = title; return true;
   }
   async archive(id: string): Promise<void> {
-    await (await this.connection()).request('thread/archive', { threadId: id }); this.threads.delete(id); this.pending.delete(id);
+    await (await this.connection()).request('thread/archive', { threadId: id });
+    const thread = this.threads.get(id);
+    if (thread) thread.archived = true;
+    this.pending.delete(id);
   }
   async delete(id: string): Promise<boolean> {
     const rpc = await this.connection();

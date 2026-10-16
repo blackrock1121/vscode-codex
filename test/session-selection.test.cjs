@@ -144,14 +144,100 @@ test('删除顺序由派生依赖决定而不是时间或点击顺序，不扩�
 
 test('删除期间旧分页晚到也不能把已删除会话放回列表', async () => {
   const store = new SessionStore('/tmp', () => '/unused');
-  let release;
-  store.read = async () => new Promise(resolve => { release = resolve; });
+  const releases = [];
+  store.read = async () => new Promise(resolve => { releases.push(resolve); });
   store.connection = async () => ({ request: async () => ({}) });
   const refreshing = store.refresh();
   await store.delete('a');
-  release({ data: [{ id: 'a', preview: '旧列表', updatedAt: 1 }], nextCursor: null });
+  for (const release of releases) release({ data: [{ id: 'a', preview: '旧列表', updatedAt: 1 }], nextCursor: null });
   await refreshing;
   assert.deepEqual(store.list(), []);
+});
+
+test('归档与未归档列表各自完整分页，保持项目范围、去重并按时间合并', async () => {
+  const store = new SessionStore('/project', () => '/unused'), calls = [];
+  store.read = async (method, params) => {
+    assert.equal(method, 'thread/list');
+    assert.equal(params.cwd, '/project');
+    assert.deepEqual(params.modelProviders, []);
+    calls.push([params.archived, params.cursor]);
+    const id = params.archived ? (params.cursor ? 'old-2' : 'old-1') : (params.cursor ? 'new-2' : 'new-1');
+    return { data: [{ id, preview: id, updatedAt: params.archived ? 3 : 2 },
+      ...(params.archived && params.cursor ? [{ id: 'new-1', preview: 'new-1', updatedAt: 4 }] : [])],
+      nextCursor: params.cursor ? null : 'same-cursor' };
+  };
+  await store.refresh();
+  assert.deepEqual(calls.filter(c => c[0]), [[true, null], [true, 'same-cursor']]);
+  assert.deepEqual(calls.filter(c => !c[0]), [[false, null], [false, 'same-cursor']]);
+  assert.deepEqual(store.list().map(s => [s.id, s.archived]), [
+    ['new-1', true], ['old-1', true], ['old-2', true], ['new-2', false],
+  ]);
+});
+
+test('归档列表读取失败保留完整旧列表及待显示记录，下次刷新可恢复', async () => {
+  const store = new SessionStore('/project', () => '/unused');
+  store.threads.set('old', { id: 'old', preview: '旧归档', updatedAt: 1, archived: true });
+  store.notePending('new', '新记录');
+  store.read = async (_, params) => {
+    if (params.archived) throw new Error('归档查询失败');
+    return { data: [{ id: 'new', preview: '新记录', updatedAt: 2 }], nextCursor: null };
+  };
+  await assert.rejects(store.refresh(), /归档查询失败/);
+  assert.equal(store.list().some(s => s.id === 'old' && s.archived), true);
+  assert.equal(store.pending.has('new'), true);
+  store.read = async (_, params) => ({ data: params.archived ? [] : [{ id: 'new', preview: '新记录', updatedAt: 2 }], nextCursor: null });
+  await store.refresh();
+  assert.deepEqual(store.list().map(s => s.id), ['new']);
+  assert.equal(store.pending.has('new'), false);
+});
+
+test('读取归档会话历史与叠加待显示标题后仍保留归档标记，删除仍调用永久删除接口', async () => {
+  const store = new SessionStore('/project', () => '/unused'), calls = [];
+  store.threads.set('old', { id: 'old', preview: '', updatedAt: 1, archived: true });
+  store.connection = async () => ({ request: async (method, params) => {
+    calls.push([method, params.threadId]);
+    return { thread: { id: 'old', preview: '', updatedAt: 1, turns: [] } };
+  } });
+  await store.hydrate('old');
+  store.notePending('old', '归档标题');
+  assert.equal(store.list()[0].archived, true);
+  assert.equal(store.list()[0].title, '归档标题');
+  await store.delete('old');
+  assert.deepEqual(calls.at(-1), ['thread/delete', 'old']);
+  assert.deepEqual(store.list(), []);
+});
+
+test('侧边栏标注归档状态，不修改标题，归档会话可单独及批量选择删除', t => {
+  const f = sidebar(t);
+  f.emit({ kind: 'sessions', list: f.sessions.map(s => ({ ...s, archived: s.id === 'c' })) });
+  assert.match(f.row('c').querySelector('.meta').textContent, /^已归档/);
+  assert.equal(f.row('c').querySelector('.t').textContent, '最近 C');
+  assert.doesNotMatch(f.row('a').querySelector('.meta').textContent, /已归档/);
+  f.row('c').querySelector('.del').click();
+  assert.deepEqual(f.sent.at(-1), { type: 'deleteSessions', sessionIds: ['c'] });
+  f.emit({ kind: 'sessions_delete_status', busy: false, message: '已取消删除。', deletedIds: [] });
+  f.$('multi').click(); f.$('selectall').click(); f.$('delsel').click();
+  assert.equal(f.sent.at(-1).sessionIds.includes('c'), true);
+});
+
+test('打开归档历史不预热恢复，后端拒绝继续时保留原会话与历史', async () => {
+  const provider = Object.create(ChatViewProvider.prototype), events = [];
+  const ctx = { sessionId: 'old', blank: false };
+  provider.store = new SessionStore('/project', () => '/unused');
+  provider.store.threads.set('old', { id: 'old', archived: true });
+  provider.maybePrespawn(ctx); // 不应访问配置或启动进程。
+  assert.equal(ctx.proc, undefined);
+  let disposed = false;
+  provider.speedMode = () => 'default';
+  provider.createProcess = () => ({ start: async () => { throw new Error('session old is archived'); }, dispose: () => { disposed = true; } });
+  provider.output = { appendLine() {} };
+  provider.post = (_, event) => events.push(event);
+  provider.refreshSessions = () => {};
+  assert.equal(await provider.spawnProcess(ctx), undefined);
+  assert.equal(disposed, true);
+  assert.equal(ctx.sessionId, 'old'); assert.equal(ctx.blank, false);
+  assert.equal(events.some(e => e.kind === 'load_history'), false);
+  assert.match(events.at(-1).message, /历史和输入内容已保留/);
 });
 
 function host(t, { confirm = async () => '删除', remove = async () => true } = {}) {

@@ -609,7 +609,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (this.sessionsRefreshing) return;
         this.sessionsRefreshing = this.store.refresh().then(async () => {
             const last = this.context.workspaceState.get<string>(LAST_SESSION_KEY);
-            // thread/list 已排除归档会话。不能凭残留的 checkpoint 文件把它重新放回列表。
+            // 已合并普通与归档会话；不能凭残留的 checkpoint 文件放回真正缺失的会话。
             const live = last && [...this.sessions, ...this.detached.values()].some(ctx => ctx.sessionId === last && ctx.proc && !ctx.proc.isExited);
             if (last && !live && !this.store.list().some(s => s.id === last))
                 await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
@@ -2732,16 +2732,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return undefined;
             const raw = String(err);
             if (isResume && /session\s+\S+\s+is archived/i.test(raw)) {
-                this.output.appendLine(`[codex] 归档会话 ${sessionId!.slice(0, 8)} 无法恢复，切换到新会话`);
+                this.output.appendLine(`[codex] 归档会话 ${sessionId!.slice(0, 8)} 无法继续，保留历史查看`);
                 ctx.proc = undefined;
-                ctx.sessionId = undefined;
-                ctx.blank = true;
-                ctx.checkpoints.clear();
-                ctx.checkpoints = new CheckpointManager(this.storageDir());
-                if (this.context.workspaceState.get<string>(LAST_SESSION_KEY) === sessionId)
-                    await this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
-                this.post(ctx, { kind: "load_history", items: [], checkpoints: [] });
-                this.post(ctx, { kind: "notice", message: "原会话已归档，已切换到空白会话。输入内容已保留，请重新发送。" });
+                this.post(ctx, { kind: "notice", message: "会话已归档，暂时无法继续对话。历史和输入内容已保留，可在会话列表中删除此归档记录。" });
                 this.refreshSessions();
                 return undefined;
             }
@@ -2757,6 +2750,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return proc;
     }
     private maybePrespawn(ctx: SessionCtx): void {
+        // 打开归档记录只查看历史，不自动恢复或切换为空白会话。
+        if (ctx.sessionId && this.store.isArchived(ctx.sessionId)) return;
         if (!this.config().get<boolean>("prespawnOnOpen", true) && !(ctx.sessionId && fs.existsSync(questionStateFile(this.storageDir(), ctx.sessionId))))
             return;
         if (!ctx.sessionId) {
@@ -3722,7 +3717,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.output.appendLine(`[deleteSessions:${id}] ${String(err)}`);
                     const reason = String((err as Error)?.message ?? err);
                     failures.push(`「${titles.get(id) ?? id}」：` + (/forked history still references/i.test(reason)
-                        ? "仍被派生会话引用，请先删除相关派生会话（可能已归档或位于其他项目）。"
+                        ? "仍被派生会话引用，请先删除相关派生会话（列表中包含标注“已归档”的会话，也可能位于其他项目）。"
                         : /no rollout found/i.test(reason) ? "找不到会话记录，请刷新列表后重试。"
                         : /\(-32601\)$/.test(reason) ? "当前 Codex CLI 不支持永久删除，请更新 CLI 后重试。"
                         : reason.slice(0, 200)));
@@ -4433,7 +4428,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const t = document.createElement("div"); t.className = "t"; t.textContent = s.title || "新对话";
       tRow.appendChild(t);
       const meta = document.createElement("div"); meta.className = "meta";
-      meta.textContent = fmt(s.updatedAt) + (s.messageCount ? "  ·  " + s.messageCount + " 条" : "");
+      meta.textContent = (s.archived ? "已归档  ·  " : "") + fmt(s.updatedAt) + (s.messageCount ? "  ·  " + s.messageCount + " 条" : "");
       body.append(tRow, meta);
       const pin = document.createElement("button"); pin.className = "pin";
       pin.title = s.pinned ? "取消置顶" : "置顶"; pin.innerHTML = PIN;

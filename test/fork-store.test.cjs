@@ -62,9 +62,10 @@ test('会话列表跨页读取不能覆盖期间更新的完整历史',async()=>
 
 test('列表与历史重复分页游标快速失败，保留已有缓存而不是无限读取',async()=>{
  const store=new SessionStore('/tmp',()=>'/unused');
- store.threads.set('source',{id:'source',turns:[turn('old')]});let reads=0;
- store.read=async()=>{assert.ok(++reads<=2);return {data:[],nextCursor:'repeat'};};
+ store.threads.set('source',{id:'source',turns:[turn('old')]});const reads=[0,0];
+ store.read=async(_,params)=>{assert.ok(++reads[Number(params.archived)]<=2);return {data:[],nextCursor:'repeat'};};
  await assert.rejects(store.refresh(),/分页游标重复/);assert.equal(store.countLines('source'),1);
+ assert.deepEqual(reads,[2,2],'两类列表均在第二次重复游标时停止');
  const p=preparation({id:'branch',historyMode:'paginated'},undefined,[{data:[turn('one')],nextCursor:'repeat'},{data:[turn('two')],nextCursor:'repeat'}]);
  await assert.rejects(store.fork('source','leaf',p),/分页游标重复/);
  assert.equal(p.disposed(),1);assert.equal(store.findFile('branch'),undefined);

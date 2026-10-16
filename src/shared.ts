@@ -238,6 +238,8 @@ export interface SessionSummary {
   title: string;
   updatedAt: number;
   messageCount: number;
+  /** 已归档会话仍展示在当前项目的会话列表中，可选择删除。 */
+  archived?: boolean;
   /** 用户在会话列表里手动置顶——由宿主根据 globalState 里的置顶集合回填。 */
   pinned?: boolean;
 }
