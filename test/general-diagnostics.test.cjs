@@ -29,7 +29,8 @@ test('全面诊断检查滚动24小时普通报错、压缩恢复失败、重试
  assert.ok(result.findings.some(f=>f.category==='页面脚本'));assert.ok(result.findings.some(f=>f.evidence.includes('badRequest')));
  assert.match(result.report,/codex-chat-2026-10-14.log:2/);assert.match(result.report,/版本 0.1.130/);
  assert.doesNotMatch(result.report,/TOPSECRET|example.invalid|key=SECRET|old failure|future failure|未标时间失败/);
- const perf=await scanPluginLogs(root,()=>{},{...request,kind:'performance'});assert.equal(perf.general,undefined);
+ const perf=await scanPluginLogs(root,()=>{},{...request,kind:'performance'});assert.equal(perf.general.errors,4);
+ assert.ok(perf.findings.some(f=>f.category==='页面脚本'),'速度诊断也必须携带页面异常证据');
 });
 
 test('异常归类合并重复事件，保留最早和最近示例，不把主动取消当内部错误',()=>{

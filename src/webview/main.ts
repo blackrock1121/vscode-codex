@@ -946,19 +946,32 @@ function updateJumpLatest() {
   jumpLatestBtn.querySelector(".jump-new-reply")?.classList.toggle("hidden", !away || !newReplyAvailable);
 }
 
-if (composerEl && "ResizeObserver" in window) {
-  new ResizeObserver(() => {
-    const wasPinned = pinnedToBottom;
-    // +114：正文最后一条要完全越过渐隐幕布（其上探 34px）再留出约两行的
-    // 呼吸空间——直播时状态药丸是最后一行，贴着输入框会显得压迫。
-    messagesEl.style.paddingBottom = `${composerEl.offsetHeight + 150}px`;
-    jumpLatestBtn.style.bottom = `${composerEl.offsetHeight + 12}px`;
-    positionSpeedPopover(speedFeedback);
-    if (wasPinned) messagesEl.scrollTop = messagesEl.scrollHeight;
-    updateJumpLatest();
-  }).observe(composerEl);
+let transcriptResizeRAF = 0;
+let composerSizeChanged = false;
+function scheduleTranscriptResize(composerChanged = false) {
+  composerSizeChanged ||= composerChanged;
+  if (transcriptResizeRAF) return;
+  // 观察器投递期间不能修改另一个被观察节点的尺寸：输入区调整 padding
+  // 会使消息区再次变高，触发 ResizeObserver 的同帧循环保护。
+  transcriptResizeRAF = requestAnimationFrame(() => {
+    transcriptResizeRAF = 0;
+    if (composerSizeChanged && composerEl) {
+      composerSizeChanged = false;
+      const height = composerEl.offsetHeight;
+      // 正文最后一条越过渐隐幕布，再留出呼吸空间，避免贴住输入框。
+      const padding = `${height + 150}px`, bottom = `${height + 12}px`;
+      if (messagesEl.style.paddingBottom !== padding) messagesEl.style.paddingBottom = padding;
+      if (jumpLatestBtn.style.bottom !== bottom) jumpLatestBtn.style.bottom = bottom;
+      positionSpeedPopover(speedFeedback);
+    }
+    // 使用执行时的跟随状态，保留观察通知后、下一帧前用户向上滚动的选择。
+    maybeScroll();
+  });
 }
-if ("ResizeObserver" in window) new ResizeObserver(() => maybeScroll()).observe(messagesEl);
+if (composerEl && "ResizeObserver" in window)
+  new ResizeObserver(() => scheduleTranscriptResize(true)).observe(composerEl);
+if ("ResizeObserver" in window)
+  new ResizeObserver(() => scheduleTranscriptResize()).observe(messagesEl);
 
 /** Auto-scroll only when the user is already near the bottom. */
 function maybeScroll() {

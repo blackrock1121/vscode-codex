@@ -1,0 +1,512 @@
+{
+  "diagnosticId": "8cbff40e-8c5d-4a72-9233-3db491c5f227",
+  "baselineCommit": "83a725a",
+  "baselineVersion": "0.1.139",
+  "integrationBase": "7ce296b",
+  "fixedVersion": "0.1.141",
+  "date": "2026-10-16T06:32:32.519Z",
+  "scope": {
+    "through": "2026-10-16T06:13:52.448Z",
+    "rawLogsModified": false,
+    "files": 7,
+    "allRetainedDays": "2026-10-10 至 2026-10-16",
+    "workspacesFiltered": false
+  },
+  "findings": [
+    {
+      "area": "页面布局循环",
+      "rootCause": "输入区 ResizeObserver 同步修改被另一观察器监听的消息区 padding；同帧多次布局导致浏览器循环保护。",
+      "historicalOccurrences": 635,
+      "versions": {
+        "未标注": 553,
+        "0.1.126": 7,
+        "0.1.132": 9,
+        "0.1.134": 7,
+        "0.1.135": 8,
+        "0.1.136": 13,
+        "0.1.138": 36,
+        "0.1.139": 2
+      },
+      "examples": [
+        {
+          "file": "codex-chat-2026-10-16.log",
+          "line": 12012,
+          "version": "0.1.138",
+          "at": "2026-10-16T05:41:12.875Z"
+        },
+        {
+          "file": "codex-chat-2026-10-16.log",
+          "line": 12013,
+          "version": "0.1.138",
+          "at": "2026-10-16T05:41:12.879Z"
+        },
+        {
+          "file": "codex-chat-2026-10-16.log",
+          "line": 13440,
+          "version": "0.1.139",
+          "at": "2026-10-16T06:13:09.020Z"
+        },
+        {
+          "file": "codex-chat-2026-10-16.log",
+          "line": 13448,
+          "version": "0.1.139",
+          "at": "2026-10-16T06:13:09.356Z"
+        }
+      ],
+      "fix": "输入区与消息区尺寸通知在下一帧合并，尺寸不变不重复写入；执行时再检查阅读位置。"
+    },
+    {
+      "area": "工具超时误判",
+      "rootCause": "timed?\\s*out 中零个空格允许匹配普通 timeout 单词；源码和配置输出被误判。",
+      "fix": "只接受有空格的 timed out/time out、明确超时异常、独立 timeout 响应或退出码 124；其余保留真实非零退出或文件缺失。"
+    },
+    {
+      "area": "诊断证据缺失",
+      "rootCause": "速度扫描跳过普通异常归类，通用规则又未识别中文脚本错误，压缩证据白名单丢弃 reason/scope 和来源。",
+      "fix": "速度诊断附带运行异常；中文脚本错误可识别；压缩回退保留脱敏原因、范围、请求/轮次与时间/版本/窗口。"
+    },
+    {
+      "area": "启动 fallback",
+      "evidence": "codex-chat-2026-10-16.log:13460",
+      "result": "startup_budget_expired；config/read 随后 536ms 成功，thread/resume 1943ms 成功。保留原生压缩是预期回退，不能宣称压缩失败或强制改变用户设置。"
+    },
+    {
+      "area": "新增 11 条工具失败",
+      "result": "均关联原命令完成记录；5 条位于插件开发工作区，6 条位于另一工作区。开发期间构建/测试失败与当前运行异常分开；当前类型检查、测试验证另列。浏览器或 Git 失败不在本次原样重跑。"
+    },
+    {
+      "area": "历史读取与用户等待",
+      "result": "上一版 0.1.139 已修复历史重复传输、提问 callId 与预期暂停关联；本次不重复宣称这些改动。53 轮未知等待及长工具/压缩耗时没有统一插件根因，仍保留未知。"
+    }
+  ],
+  "historicalReplay": [
+    {
+      "scope": "retained",
+      "before": {
+        "scanMs": 191,
+        "summary": {
+          "turns": 107,
+          "tools": 1583,
+          "failures": 137,
+          "longestTurnMs": 52999747,
+          "versions": [
+            "0.1.125",
+            "0.1.126",
+            "0.1.128",
+            "0.1.132",
+            "0.1.134",
+            "0.1.135",
+            "0.1.136",
+            "0.1.137",
+            "0.1.138",
+            "0.1.139"
+          ]
+        },
+        "coverage": {
+          "files": 7,
+          "readFiles": 7,
+          "records": 36329,
+          "windows": 13,
+          "sessions": 90,
+          "invalidLines": 0,
+          "oversizedLines": 0
+        },
+        "resizeErrors": 0,
+        "fallbackReasonIncluded": false,
+        "findings": 17
+      },
+      "after": {
+        "scanMs": 247,
+        "summary": {
+          "turns": 107,
+          "tools": 1583,
+          "failures": 137,
+          "longestTurnMs": 52999747,
+          "versions": [
+            "0.1.125",
+            "0.1.126",
+            "0.1.128",
+            "0.1.132",
+            "0.1.134",
+            "0.1.135",
+            "0.1.136",
+            "0.1.137",
+            "0.1.138",
+            "0.1.139"
+          ]
+        },
+        "coverage": {
+          "files": 7,
+          "readFiles": 7,
+          "records": 36329,
+          "windows": 13,
+          "sessions": 90,
+          "invalidLines": 0,
+          "oversizedLines": 0
+        },
+        "general": {
+          "errors": 11303,
+          "warnings": 4,
+          "retries": 3,
+          "recoveries": 0,
+          "compactionErrors": 0,
+          "groups": 52,
+          "overflow": 0
+        },
+        "resizeErrors": 635,
+        "fallbackReasonIncluded": true,
+        "findings": 69
+      }
+    },
+    {
+      "scope": "report24Hours",
+      "before": {
+        "scanMs": 149,
+        "summary": {
+          "turns": 107,
+          "tools": 1583,
+          "failures": 137,
+          "longestTurnMs": 52999747,
+          "versions": [
+            "0.1.125",
+            "0.1.126",
+            "0.1.128",
+            "0.1.132",
+            "0.1.134",
+            "0.1.135",
+            "0.1.136",
+            "0.1.137",
+            "0.1.138",
+            "0.1.139"
+          ]
+        },
+        "coverage": {
+          "files": 7,
+          "readFiles": 7,
+          "records": 26536,
+          "windows": 13,
+          "sessions": 32,
+          "invalidLines": 0,
+          "oversizedLines": 0
+        },
+        "resizeErrors": 0,
+        "fallbackReasonIncluded": false,
+        "findings": 17
+      },
+      "after": {
+        "scanMs": 166,
+        "summary": {
+          "turns": 107,
+          "tools": 1583,
+          "failures": 137,
+          "longestTurnMs": 52999747,
+          "versions": [
+            "0.1.125",
+            "0.1.126",
+            "0.1.128",
+            "0.1.132",
+            "0.1.134",
+            "0.1.135",
+            "0.1.136",
+            "0.1.137",
+            "0.1.138",
+            "0.1.139"
+          ]
+        },
+        "coverage": {
+          "files": 7,
+          "readFiles": 7,
+          "records": 26536,
+          "windows": 13,
+          "sessions": 32,
+          "invalidLines": 0,
+          "oversizedLines": 0
+        },
+        "general": {
+          "errors": 358,
+          "warnings": 1,
+          "retries": 0,
+          "recoveries": 0,
+          "compactionErrors": 0,
+          "groups": 38,
+          "overflow": 0
+        },
+        "resizeErrors": 192,
+        "fallbackReasonIncluded": true,
+        "findings": 55
+      }
+    }
+  ],
+  "classificationReplay": {
+    "totalFailures": 137,
+    "matched": 133,
+    "commandOutputs": 130,
+    "changes": [
+      {
+        "traceId": "291dad3c-e959-4350-a05f-0f1c9b5c7bb1",
+        "itemId": "exec-2e285efe-fadd-44d1-9e65-4eda0976875d",
+        "loggedCategory": "timeout",
+        "before": "timeout",
+        "after": "missing_file",
+        "exitCode": 1
+      },
+      {
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "itemId": "exec-e594532b-c24d-4505-83d7-681294452a9e",
+        "loggedCategory": "timeout",
+        "before": "timeout",
+        "after": "nonzero_exit",
+        "exitCode": 1
+      },
+      {
+        "traceId": "a181947c-5493-43db-96de-93259adea644",
+        "itemId": "exec-173f61f9-4665-4a4a-b052-b0118c99c57d",
+        "loggedCategory": "timeout",
+        "before": "timeout",
+        "after": "missing_file",
+        "exitCode": 1
+      }
+    ],
+    "recent": [
+      {
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "itemId": "exec-73292694-1656-4188-8101-d372836a47c2",
+        "loggedCategory": "build_or_test",
+        "before": "build_or_test",
+        "after": "build_or_test",
+        "exitCode": 1,
+        "workspace": "plugin-source"
+      },
+      {
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "itemId": "exec-416adc0c-029d-4b2c-9e48-061ca636e2d0",
+        "loggedCategory": "build_or_test",
+        "before": "build_or_test",
+        "after": "build_or_test",
+        "exitCode": 2,
+        "workspace": "plugin-source"
+      },
+      {
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "itemId": "exec-370a850f-3585-41bd-837f-0076b298d575",
+        "loggedCategory": "nonzero_exit",
+        "before": "nonzero_exit",
+        "after": "nonzero_exit",
+        "exitCode": 1,
+        "workspace": "plugin-source"
+      },
+      {
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "itemId": "exec-93c2c282-00d2-4e36-b3f1-27ec0ef3d8ca",
+        "loggedCategory": "nonzero_exit",
+        "before": "nonzero_exit",
+        "after": "nonzero_exit",
+        "exitCode": 1,
+        "workspace": "plugin-source"
+      },
+      {
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "itemId": "exec-e594532b-c24d-4505-83d7-681294452a9e",
+        "loggedCategory": "timeout",
+        "before": "timeout",
+        "after": "nonzero_exit",
+        "exitCode": 1,
+        "workspace": "plugin-source"
+      },
+      {
+        "traceId": "08554392-3e06-4d15-894a-07e0f8b67377",
+        "itemId": "exec-33f4bbbd-213e-4546-adb3-53ff3813a764",
+        "loggedCategory": "missing_file",
+        "before": "missing_file",
+        "after": "missing_file",
+        "exitCode": 2,
+        "workspace": "other-workspace"
+      },
+      {
+        "traceId": "08554392-3e06-4d15-894a-07e0f8b67377",
+        "itemId": "exec-4048fa91-82b0-422a-94d0-6c704fb10af5",
+        "loggedCategory": "nonzero_exit",
+        "before": "nonzero_exit",
+        "after": "nonzero_exit",
+        "exitCode": 1,
+        "workspace": "other-workspace"
+      },
+      {
+        "traceId": "3fdd3431-eb1b-43a9-a7f7-0759f9301ce7",
+        "itemId": "exec-55111bb4-b3cf-452f-a28e-fe12693e09a6",
+        "loggedCategory": "nonzero_exit",
+        "before": "nonzero_exit",
+        "after": "nonzero_exit",
+        "exitCode": 129,
+        "workspace": "other-workspace"
+      },
+      {
+        "traceId": "3fd45530-0b0d-4816-ae62-45577d404ed8",
+        "itemId": "exec-b13a4257-f983-4707-8e58-e9af2c0dd081",
+        "loggedCategory": "nonzero_exit",
+        "before": "nonzero_exit",
+        "after": "nonzero_exit",
+        "exitCode": 1,
+        "workspace": "other-workspace"
+      },
+      {
+        "traceId": "573c7cee-e4d6-4a62-a7a7-6549b1d7b332",
+        "itemId": "exec-5f1b3968-17f7-4c5f-80c3-ea56cdd19aa8",
+        "loggedCategory": "nonzero_exit",
+        "before": "nonzero_exit",
+        "after": "nonzero_exit",
+        "exitCode": 1,
+        "workspace": "other-workspace"
+      },
+      {
+        "traceId": "573c7cee-e4d6-4a62-a7a7-6549b1d7b332",
+        "itemId": "exec-20a2dcf6-a448-4250-844c-7ffaaf3bfaac",
+        "loggedCategory": "timeout",
+        "before": "timeout",
+        "after": "timeout",
+        "exitCode": 1,
+        "workspace": "other-workspace"
+      }
+    ]
+  },
+  "browser": {
+    "method": "ego-browser 真实 Chromium，两个同样 minify 的 bundle、同一页面与 12 次多行输入；交替顺序各三组。",
+    "samples": [
+      {
+        "mode": "before",
+        "repeat": 1,
+        "LayoutCount": 129,
+        "RecalcStyleCount": 359,
+        "LayoutDuration": 0.008013,
+        "RecalcStyleDuration": 0.008215,
+        "errorCount": 5,
+        "errorTypes": [
+          "ResizeObserver loop completed with undelivered notifications."
+        ],
+        "composerHeight": 247,
+        "padding": "397px"
+      },
+      {
+        "mode": "after",
+        "repeat": 1,
+        "LayoutCount": 129,
+        "RecalcStyleCount": 368,
+        "LayoutDuration": 0.00929,
+        "RecalcStyleDuration": 0.009554,
+        "errorCount": 0,
+        "errorTypes": [],
+        "composerHeight": 247,
+        "padding": "397px"
+      },
+      {
+        "mode": "after",
+        "repeat": 2,
+        "LayoutCount": 129,
+        "RecalcStyleCount": 368,
+        "LayoutDuration": 0.008676000000000001,
+        "RecalcStyleDuration": 0.008811000000000001,
+        "errorCount": 0,
+        "errorTypes": [],
+        "composerHeight": 247,
+        "padding": "397px"
+      },
+      {
+        "mode": "before",
+        "repeat": 2,
+        "LayoutCount": 129,
+        "RecalcStyleCount": 358,
+        "LayoutDuration": 0.011538,
+        "RecalcStyleDuration": 0.010158,
+        "errorCount": 5,
+        "errorTypes": [
+          "ResizeObserver loop completed with undelivered notifications."
+        ],
+        "composerHeight": 247,
+        "padding": "397px"
+      },
+      {
+        "mode": "before",
+        "repeat": 3,
+        "LayoutCount": 129,
+        "RecalcStyleCount": 358,
+        "LayoutDuration": 0.007927,
+        "RecalcStyleDuration": 0.007398,
+        "errorCount": 5,
+        "errorTypes": [
+          "ResizeObserver loop completed with undelivered notifications."
+        ],
+        "composerHeight": 247,
+        "padding": "397px"
+      },
+      {
+        "mode": "after",
+        "repeat": 3,
+        "LayoutCount": 129,
+        "RecalcStyleCount": 367,
+        "LayoutDuration": 0.00855,
+        "RecalcStyleDuration": 0.008358999999999998,
+        "errorCount": 0,
+        "errorTypes": [],
+        "composerHeight": 247,
+        "padding": "397px"
+      }
+    ],
+    "beforeErrors": 15,
+    "afterErrors": 0,
+    "note": "页面异常 15→0；正常逐次输入的 LayoutCount 均为129，没有整轮任务或正常输入耗时显著改善的结论。",
+    "scroll": {
+      "scrollTop": 100,
+      "errorCount": 0,
+      "readableMessages": 24,
+      "padding": "475px",
+      "composerHeight": 325
+    }
+  },
+  "burst": {
+    "baseline": "83a725a",
+    "scope": "JSDOM 合成突发尺寸通知；读取与写入次数可复现，耗时不代表真实浏览器布局或模型任务时间",
+    "samples": [
+      {
+        "mode": "before",
+        "notifications": 200,
+        "synchronous": {
+          "heightReads": 200,
+          "scrollWrites": 200
+        },
+        "scheduledFrames": 0,
+        "heightReads": 200,
+        "scrollWrites": 200,
+        "paddingStyleWrites": 199,
+        "elapsedMs": 8.106
+      },
+      {
+        "mode": "after",
+        "notifications": 200,
+        "synchronous": {
+          "heightReads": 0,
+          "scrollWrites": 0
+        },
+        "scheduledFrames": 1,
+        "heightReads": 1,
+        "scrollWrites": 1,
+        "paddingStyleWrites": 1,
+        "elapsedMs": 0.557
+      }
+    ]
+  },
+  "verification": {
+    "typeCheck": "通过",
+    "fullTestsBeforeIntegration": 611,
+    "failed": 0,
+    "newRegressionTests": 6,
+    "integratedBaseVersion": "0.1.140",
+    "fullTestsAfterIntegration": 620,
+    "browserErrorsAfter": 0
+  },
+  "limitations": [
+    "突发通知合并是本地合成测量，不代表模型推理、后端等待或整轮任务同比提速。",
+    "137 条历史失败中当前只读找到 133 条完成事件，130 条命令有输出可重算分类，其余证据不足不推断成功或根因。",
+    "不更改模型、推理强度、服务档位、权限和压缩策略；没有发起模型生成。",
+    "真实浏览器的截图接口超时；异常计数、布局指标、滚动状态通过页面事件和 DOM 验证。"
+  ]
+}

@@ -6,7 +6,7 @@ import { redactDiagnosticText } from './redact';
 export interface GeneralSummary { errors: number; warnings: number; retries: number; recoveries: number; compactionErrors: number; groups: number; overflow: number }
 export interface LogLocation { file: string; line: number; atMs?: number; pluginVersion?: string; windowId?: string; traceId?: string }
 interface Incident { category: string; severity: 'warning' | 'error'; title: string; message: string }
-const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|(?:\b(?:ok|success)|"(?:ok|success)")\s*[:=]\s*false\b|(?:\bisError|"isError")\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应/i;
+const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|(?:\b(?:ok|success)|"(?:ok|success)")\s*[:=]\s*false\b|(?:\bisError|"isError")\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应|(?:脚本|运行时)错误/i;
 const warning = /\b(?:warn(?:ing)?|retry|fallback|reconnect(?:ing)?)\b|重试|降级|警告|重连/i;
 const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '压缩' : /webview|脚本|渲染|布局/i.test(line) ? '页面脚本' :
   /snapshot|checkpoint|快照|还原点/i.test(line) ? '快照与还原点' : /restore|resume|恢复/i.test(line) ? '会话恢复' :
@@ -32,7 +32,7 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
-      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`), row.message]
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'reason', 'scope'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`), row.message]
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
     return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };
   }

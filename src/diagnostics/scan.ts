@@ -4,6 +4,7 @@ import { StringDecoder } from 'node:string_decoder';
 import type { PerformanceRow } from '../codex/performanceTrace';
 import { performanceReport } from '../diagnosticsReport';
 import { GeneralAccumulator } from './general';
+import { redactDiagnosticText } from './redact';
 import type { DiagnosticRequest } from './options';
 import { PerformanceAccumulator, DiagnosticCoverage, DiagnosticOutput, DiagnosticSource } from './analysis';
 
@@ -95,7 +96,8 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     if (invalid) coverage.invalidLines++;
     const dropped = line.match(/\[logging\] droppedLines=(\d+)/);
     if (dropped) coverage.droppedLines += Number(dropped[1]);
-    if (request?.kind === 'general') general.add(line, row, { file, line: lineNumber, atMs: at,
+    // 速度分析也需要本地运行异常证据，否则页面/连接错误会在模型摘要中完全消失。
+    general.add(line, row, { file, line: lineNumber, atMs: at,
       pluginVersion: meta.pluginVersion ?? (typeof row?.pluginVersion === 'string' ? row.pluginVersion : undefined),
       windowId: meta.windowId ?? (typeof row?.windowId === 'string' ? row.windowId : undefined), traceId: typeof row?.traceId === 'string' ? row.traceId : undefined });
     if (at !== undefined) { coverage.fromMs = Math.min(coverage.fromMs ?? at, at); coverage.toMs = Math.max(coverage.toMs ?? at, at); }
@@ -107,6 +109,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     const source = sources.get(key) ?? { pluginVersion, windowId, hostId, records: 0, turns: 0, tools: 0, failures: 0 };
     source.logLines = (source.logLines ?? 0) + 1;
     if (!row) { accumulator.add(meta); sources.set(key, source); return; }
+    if (at !== undefined) row.logAtMs = at;
     coverage.records++; accumulator.add(row); samples.add(row); source.records++;
     if (typeof row.windowId === 'string') windows.add(row.windowId);
     for (const id of [row.threadId, row.parentThreadId, row['conversation.id'], row.thread_id]) if (typeof id === 'string' && id) sessions.add(id);
@@ -144,8 +147,9 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
   }
   coverage.windows = windows.size; coverage.sessions = sessions.size; coverage.sources = [...sources.values()];
   const analyzed = accumulator.result();
-  const generic = request?.kind === 'general' ? general.result() : undefined;
-  if (generic) analyzed.findings.unshift(...generic.findings);
+  const generic = general.result();
+  if (request?.kind === 'general') analyzed.findings.unshift(...generic.findings);
+  else analyzed.findings.push(...generic.findings);
   if (coverage.unreadableFiles || coverage.invalidLines || coverage.oversizedLines || coverage.droppedLines) analyzed.findings.push({ id: 'log-coverage', title: '部分观测证据缺失', severity: 'warning', traceIds: [],
     evidence: `未完整读取 ${coverage.unreadableFiles} 个文件；损坏记录 ${coverage.invalidLines} 行；超长行 ${coverage.oversizedLines} 行；日志缓冲丢弃 ${coverage.droppedLines} 行。`,
     recommendation: '先核对目录权限、日志写入和采集开关，修复证据缺失；已删除或未采集的数据无法追溯恢复。' });
@@ -160,7 +164,10 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     ...coverage.sources.map(s => `| ${cell(s.pluginVersion)} | ${cell(s.windowId)} | ${cell(s.hostId)} | ${s.logLines ?? s.records} | ${s.records} | ${s.turns} | ${s.tools} | ${s.failures} |`), '',
     '## 代表性明细', '', '上述统计和问题检测处理了全部有效记录；以下仅展示有限的最慢项与近期示例，以控制报告大小，不代表只分析了这些示例。', ''];
   const compactionEvidence = samples.rows().filter(row => ['compaction', 'compaction_route'].includes(String(row.diagnosticType))).slice(-20)
-    .map(row => Object.fromEntries(['stage', 'model', 'fromModel', 'toModel', 'effort', 'trigger', 'speedMode', 'serviceTier', 'outcome', 'errorCategory', 'httpStatusCode', 'elapsedMs']
-      .filter(key => typeof row[key] === 'string' || typeof row[key] === 'number').map(key => [key, row[key] as string | number])));
-  return { ...analyzed, coverage, sourceNote, general: generic?.summary, compactionEvidence, report: overview.join('\n') + '\n' + (generic ? generic.report + '\n\n' : '') + performanceReport(samples.rows(), '明细展示经过筛选；全量统计以上方全局汇总为准。') };
+    .map(row => Object.fromEntries(['stage', 'model', 'fromModel', 'toModel', 'effort', 'trigger', 'speedMode', 'serviceTier', 'outcome', 'reason', 'scope', 'errorCategory', 'httpStatusCode', 'elapsedMs',
+      'id', 'compactionId', 'traceId', 'threadId', 'processRunId', 'pluginVersion', 'windowId', 'logAtMs']
+      .filter(key => typeof row[key] === 'string' || typeof row[key] === 'number').map(key => [key, typeof row[key] === 'string' ? redactDiagnosticText(row[key] as string, 160) : row[key] as number])));
+  const performance = performanceReport(samples.rows(), '明细展示经过筛选；全量统计以上方全局汇总为准。');
+  return { ...analyzed, coverage, sourceNote, general: generic.summary, compactionEvidence, report: overview.join('\n') + '\n' +
+    (request?.kind === 'general' ? generic.report + '\n\n' + performance : performance + '\n\n' + generic.report) };
 }

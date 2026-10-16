@@ -607,13 +607,14 @@ test('从我的消息查看历史后，一键回到最新回复并恢复流式�
 });
 test('回到底部按钮适配输入区高度、手动滚到底部和切换空会话',t=>{
  const {w,emit,resize}=setup(t),{messages,scroll,setHeight,setViewport}=scrollFixture(w);
+ const flush=manualFrames(w);
  const button=w.document.querySelector('.jump-latest'),composer=w.document.getElementById('composer');
  scroll(100);assert.equal(button.classList.contains('hidden'),false);
- Object.defineProperty(composer,'offsetHeight',{get:()=>350});resize(composer);
+ Object.defineProperty(composer,'offsetHeight',{get:()=>350});resize(composer);flush();
  assert.equal(button.style.bottom,'362px');
  assert.equal(messages.scrollTop,100);
  scroll(1400);assert.equal(button.classList.contains('hidden'),true);
- scroll(100);setHeight(400);setViewport(600);resize(messages);
+ scroll(100);setHeight(400);setViewport(600);resize(messages);flush();
  assert.equal(button.classList.contains('hidden'),true,'内容不足一屏时不显示');
  setHeight(2000);scroll(100);assert.equal(button.classList.contains('hidden'),false);
  setHeight(400);emit({kind:'load_history',items:[],checkpoints:[]});
@@ -1342,6 +1343,7 @@ test('模式保存失败保留错误提醒，不生成成功反馈或误亮闪�
 });
 test('窄窗口提示按实际小数宽度留足边距，并随输入区位置变化',t=>{
  const {w,emit,resize}=setup(t),feedback=w.document.getElementById('speed-feedback');
+ const flush=manualFrames(w);
  Object.defineProperties(w,{innerWidth:{value:320},innerHeight:{value:500}});
  let top=396;
  w.document.getElementById('speed-trigger').getBoundingClientRect=()=>({left:219.75,top,bottom:top+26});
@@ -1351,7 +1353,7 @@ test('窄窗口提示按实际小数宽度留足边距，并随输入区位置�
  assert.ok(parseFloat(feedback.style.left)>=8);
  assert.ok(parseFloat(feedback.style.left)+128.3125<=312,'整数尺寸不能使提示侵入窗口右侧边距');
  assert.equal(parseFloat(feedback.style.top)+34,top-8);
- top=300;resize(w.document.getElementById('composer'));
+ top=300;resize(w.document.getElementById('composer'));flush();
  assert.equal(parseFloat(feedback.style.top)+34,top-8);
 });
 test('默认模型等待真实会话确认，API 计费不残留订阅额度倍率',t=>{
@@ -1383,6 +1385,25 @@ test('推理入口与模型和快速开关同层可见，保存失败回执不�
 });
 
 function manualFrames(w){let next=0;const frames=new Map();w.requestAnimationFrame=f=>{frames.set(++next,f);return next;};w.cancelAnimationFrame=id=>frames.delete(id);return ()=>{const callbacks=[...frames.values()];frames.clear();callbacks.forEach(f=>f(w.performance.now()));};}
+test('输入区和消息区尺寸通知合并到下一帧，不在观察器中强制布局或重复写入尺寸',t=>{
+ const {w,resize}=setup(t),flush=manualFrames(w),composer=w.document.getElementById('composer'),messages=w.document.getElementById('messages');
+ let heightReads=0,scrollWrites=0,top=0;
+ Object.defineProperty(composer,'offsetHeight',{get:()=>{heightReads++;return 300;}});
+ Object.defineProperties(messages,{scrollHeight:{get:()=>2000},clientHeight:{get:()=>600},scrollTop:{get:()=>top,set:value=>{scrollWrites++;top=value;}}});
+ const changes=new w.MutationObserver(()=>{});changes.observe(messages,{attributes:true,attributeFilter:['style']});
+ for(let i=0;i<100;i++){resize(composer);resize(messages);}
+ assert.equal(heightReads,0);assert.equal(scrollWrites,0);assert.equal(changes.takeRecords().length,0);
+ flush();assert.equal(heightReads,1);assert.equal(scrollWrites,1);
+ assert.equal(messages.style.paddingBottom,'450px');assert.equal(w.document.querySelector('.jump-latest').style.bottom,'312px');
+ assert.equal(changes.takeRecords().length,1);
+ resize(composer);resize(messages);flush();assert.equal(changes.takeRecords().length,0,'相同尺寸不得反复改样式');changes.disconnect();
+});
+test('尺寸通知后下一帧前用户开始阅读历史，不得被迟到回调拉到底部',t=>{
+ const {w,resize}=setup(t),flush=manualFrames(w),{messages,scroll}=scrollFixture(w);
+ resize(w.document.getElementById('composer'));resize(messages);
+ messages.dispatchEvent(new w.WheelEvent('wheel',{deltaY:-50}));scroll(100);
+ flush();assert.equal(messages.scrollTop,100);assert.equal(w.document.querySelector('.jump-latest').classList.contains('hidden'),false);
+});
 test('输入区宽度变化合并到下一帧测量，换行引起的高度变化不重复适配',t=>{
  const {w,resize}=setup(t),flush=manualFrames(w),row=w.document.querySelector('.composer-tools');
  let width=240,reads=0;

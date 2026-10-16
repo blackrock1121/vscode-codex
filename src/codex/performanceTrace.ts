@@ -39,7 +39,8 @@ export function failureCategory(value: unknown, exitCode?: number | null): strin
   if (exitCode === 124) return 'timeout';
   // KeyboardInterrupt 只说明执行被中断，仍保留失败；不推断由用户主动取消。
   if (/\bKeyboardInterrupt\b|(?:^|\n)\s*(?:InterruptedError|AbortError):/i.test(text)) return 'interrupted';
-  if (/\btimed?\s*out\b|\bETIMEDOUT\b|\b\w*Timeout(?:Error|Exception)\b|请求超时/i.test(text)) return 'timeout';
+  // 中间必须有空格；\s* 会把源码、配置中的普通 timeout 字段也当作 timed out。
+  if (/\btimed?[ \t]+out\b|\bETIMEDOUT\b|\b\w*Timeout(?:Error|Exception)\b|请求超时|^\s*timeout[.!]?\s*$/i.test(text)) return 'timeout';
   if (/\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?|response code)[ :="']+429\b|\b429[ :]+Too Many Requests\b|\brate[ -]limit(?:ed|ing)?\b|\brate_limit_exceeded\b|\btoo many requests\b/i.test(text)) return 'rate_limit';
   if (/ENOTFOUND|EAI_AGAIN|could not resolve|name resolution/i.test(text)) return 'dns';
   if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|502 Bad Gateway|503 Service/i.test(text)) return 'network_or_service';

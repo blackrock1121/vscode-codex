@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { observedChildTailMs, type PerformanceRow } from './codex/performanceTrace';
+import { redactDiagnosticText } from './diagnostics/redact';
 
 const seconds = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `${(v / 1000).toFixed(2)} 秒` : '未观测';
 const cell = (v: unknown) => String(v ?? '—').replace(/[|`\r\n<>]/g, ' ').slice(0, 160);
@@ -70,6 +71,13 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   text.push('', '## 压缩（包括实际压缩模型）', '', '| 任务 | 触发 / 阶段 | 实际模型 / effort | 已耗时 | 结果 |', '| --- | --- | --- | --- | --- |');
   for (const r of rows.filter(r => r.diagnosticType === 'compaction' && ['end', 'model_selected', 'settings_synced'].includes(String(r.stage))).slice(-20))
     text.push(`| ${cell(r.traceId)} | ${cell(r.trigger)} / ${cell(r.stage)} | ${cell(r.model)} / ${cell(r.effort)} | ${seconds(r.elapsedMs)} | ${cell(r.outcome ?? r.modelSource)} |`);
+  text.push('', '### 压缩路由与回退', '', '回退表示本次采用原生路径；是否压缩成功须另看同一请求的结束记录，启动预算到期也不等于 RPC 超时。', '',
+    '| 时间 / 版本 / 窗口 | 任务或会话 | 阶段 | 原因 / 范围 |', '| --- | --- | --- | --- |');
+  for (const r of rows.filter(r => r.diagnosticType === 'compaction_route').slice(-20)) {
+    const at = new Date(Number(r.logAtMs ?? r.atMs));
+    const safe = (value: unknown) => cell(typeof value === 'string' ? redactDiagnosticText(value, 160) : value);
+    text.push(`| ${Number.isFinite(at.getTime()) ? at.toISOString() : '未记录'} / ${safe(r.pluginVersion)} / ${safe(r.windowId)} | ${safe(r.traceId ?? r.threadId)} | ${safe(r.stage)} | ${safe(r.reason)} / ${safe(r.scope)} |`);
+  }
   text.push('', '## 模型/网络观测', '',
     '下表只列后端实际给出的数值。API 请求耗时包含多种等待，不能等同于推理耗时；不同记录也可能覆盖同一次请求，不合并相加。', '',
     '| 任务 | 事件 | 请求时长 | 首 token | 后端 engine 时间 | 状态 / attempt |', '| --- | --- | --- | --- | --- | --- |');
