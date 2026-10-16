@@ -103,6 +103,10 @@ function render() {
   if (current.error) detail.append(node('p', current.error, 'progress'));
   if (coverage?.requestedFromMs) detail.append(node('p', `检查区间：${new Date(coverage.requestedFromMs).toLocaleString()} 至 ${new Date(coverage.requestedToMs!).toLocaleString()}；时间未标注、未纳入区间统计 ${coverage.unknownTimeLines ?? 0} 行。`, 'muted'));
   if (current.general) detail.append(node('p', `日志检查：错误 ${current.general.errors} 条，警告 ${current.general.warnings} 条；压缩错误 ${current.general.compactionErrors} 条，重试 ${current.general.retries} 条，明确恢复 ${current.general.recoveries} 条。`, 'progress'));
+  const audit = current.loggingAudit;
+  if (audit) detail.append(node('p', audit.status === 'unavailable' ? '源码日志覆盖审查不可用，不能据此认定日志完整。' :
+    `源码日志覆盖：构建 ${audit.version}，检查 ${audit.files} 个文件、${audit.operations} 个操作路径及 ${audit.catches} 个错误处理器；${audit.candidates} 处待核验线索，${audit.unsupported} 个组件尚无自动规则。此项不依赖运行日志，不受日志时间范围限制。`, 'progress'));
+  else if (current.options?.kind === 'general') detail.append(node('p', '本条历史诊断未包含源码日志覆盖审查，请重新开始全面诊断。', 'muted'));
   if (current.modelAnalysis) detail.append(node('p', `模型诊断：${current.modelAnalysis.status === 'completed' ? '已完成' : '失败，本地检查结果已保留'} · ${current.modelAnalysis.model} / ${current.modelAnalysis.effort} · ${(current.modelAnalysis.durationMs / 1000).toFixed(1)} 秒${current.modelAnalysis.message ? ` · ${current.modelAnalysis.message}` : ''}`, 'progress'));
   if (current.modelAnalysis?.evidenceSent !== undefined) detail.append(node('p', `模型输入：${current.modelAnalysis.evidenceSent} 组分类证据；另有 ${current.modelAnalysis.evidenceOmitted ?? 0} 组仅保留在本地结果中。`, 'muted'));
   const summary = current.summary;

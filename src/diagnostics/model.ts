@@ -17,9 +17,10 @@ export function diagnosticModelPrompt(output: DiagnosticOutput): string {
   const candidates = selectDiagnosticEvidence(output.findings).map(f => ({ id: f.id, title: f.title, severity: f.severity,
     evidence: redactDiagnosticText(f.evidence, 800), recommendation: f.recommendation, traceIds: f.traceIds }));
   return '请诊断整个插件的异常、稳定性、压缩配置/恢复、连接/进程、页面脚本、通知、工具和性能问题。按影响与复现价值排序，合并同一根因，指出恢复或证据不足。\n' +
+    '全面诊断还包括当前构建的源码日志覆盖审查：即使没有运行错误记录，也必须评估静默错误处理和未见日志的操作路径。源码规则结果是待核验线索，不可断言必然漏记；指出需检查的调用链、日志阶段和复验方法。无日志不等于无问题，当前源码审查不代表历史版本。\n' +
     'evidenceIds 只能引用以下问题 id 或 coverage。模型看到的是全量本地扫描生成的脱敏摘要，原始日志未全部发送，不能宣称读过所有原始行。\n' +
     JSON.stringify({ coverage: output.coverage ? { ...output.coverage, sources: output.coverage.sources.slice(0, 100) } : undefined,
-      general: output.general, performance: output.summary,
+      general: output.general, loggingAudit: output.loggingAudit, performance: output.summary,
       compactionEvidence: output.compactionEvidence?.map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === 'string' ? redactDiagnosticText(value, 160) : value]))),
       evidence: candidates, evidenceNotSent: Math.max(0, output.findings.length - candidates.length) });
 }

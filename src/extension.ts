@@ -1,3 +1,4 @@
+import { checkLoggingConfiguration } from './diagnostics/loggingAudit';
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -61,7 +62,9 @@ export function activate(context: vscode.ExtensionContext): void {
     let timer: ReturnType<typeof setTimeout> | undefined;
     try { await Promise.race([Promise.all([...logWriters].map(writer => writer.flush())), new Promise<void>(resolve => { timer = setTimeout(resolve, 1500); })]); }
     finally { clearTimeout(timer); }
-    const result = await runner(progress, signal, request);
+    const scanned = await runner(progress, signal, request);
+    const result = request?.kind === 'general' ? checkLoggingConfiguration(scanned,
+      vscode.workspace.getConfiguration('codexChat').get<boolean>('transportDiagnostics', true)) : scanned;
     if (request?.engine !== 'model') return result;
     try {
       progress('正在确认所选诊断模型…');

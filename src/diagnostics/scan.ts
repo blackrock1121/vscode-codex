@@ -4,6 +4,7 @@ import { StringDecoder } from 'node:string_decoder';
 import type { PerformanceRow } from '../codex/performanceTrace';
 import { performanceReport } from '../diagnosticsReport';
 import { GeneralAccumulator } from './general';
+import { auditLoggingCoverage } from './loggingAudit';
 import { redactDiagnosticText } from './redact';
 import type { DiagnosticRequest } from './options';
 import { PerformanceAccumulator, DiagnosticCoverage, DiagnosticOutput, DiagnosticSource } from './analysis';
@@ -57,6 +58,8 @@ export function diagnosticLogTime(line: string, file: string, row?: PerformanceR
 
 /** 扫描开始时存在的全部日文件及各自长度快照，避免追随持续追加而永不结束。 */
 export async function scanPluginLogs(dir: string, progress: (message: string) => void = () => {}, request?: DiagnosticRequest): Promise<DiagnosticOutput> {
+  if (request?.kind === 'general') progress('正在检查当前插件源码的日志覆盖，包括没有运行记录的路径…');
+  const audit = request?.kind === 'general' ? auditLoggingCoverage() : undefined;
   const names = (await fs.promises.readdir(dir).catch(error => {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [] as string[];
     throw error;
@@ -150,6 +153,12 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
   const generic = general.result();
   if (request?.kind === 'general') analyzed.findings.unshift(...generic.findings);
   else analyzed.findings.push(...generic.findings);
+  if (audit) {
+    analyzed.findings.unshift(...audit.findings);
+    if (!coverage.includedLines) analyzed.findings.push({ id: 'logging-no-runtime-evidence', category: '采集完整性', severity: 'warning', traceIds: [],
+      title: '所选区间没有可用运行日志，运行状态无法判断', evidence: `纳入区间的日志为 0 行；时间缺失未纳入 ${coverage.unknownTimeLines} 行。源码日志覆盖审查仍已独立执行。`,
+      recommendation: '检查采集开关、日志写入权限和运行环境，执行一次相关功能并验证日志落盘；没有运行日志不代表功能正常。' });
+  }
   if (coverage.unreadableFiles || coverage.invalidLines || coverage.oversizedLines || coverage.droppedLines) analyzed.findings.push({ id: 'log-coverage', title: '部分观测证据缺失', severity: 'warning', traceIds: [],
     evidence: `未完整读取 ${coverage.unreadableFiles} 个文件；损坏记录 ${coverage.invalidLines} 行；超长行 ${coverage.oversizedLines} 行；日志缓冲丢弃 ${coverage.droppedLines} 行。`,
     recommendation: '先核对目录权限、日志写入和采集开关，修复证据缺失；已删除或未采集的数据无法追溯恢复。' });
@@ -158,7 +167,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     `文件日期：${coverage.firstDay ?? '无'} 至 ${coverage.lastDay ?? '无'}；可识别窗口 ${coverage.windows} 个、会话/子线程 ${coverage.sessions} 个。`,
     `全量汇总：${analyzed.summary.turns} 轮任务、${analyzed.summary.tools} 次工具调用、${analyzed.summary.failures} 次失败。`, '',
     '包含本机共享日志目录中的所有工作区、窗口、会话和插件版本。通常保留最近 7 天；文件按扫描开始时的长度读取，扫描期间新增数据留到下次诊断。',
-    '仅分析实际采集的观测数据，不是对所有源代码的自动审查。已删除、关闭采集或升级前未记录的内容，以及其他机器/远程宿主的日志不在覆盖范围。',
+    `${audit ? '全面诊断同时检查当前构建源码的日志覆盖线索；源码规则审查与以下运行日志分析独立。' : '本模式仅分析实际采集的观测数据，不包含源码日志覆盖审查。'}已删除、关闭采集或升级前未记录的内容，以及其他机器/远程宿主的日志不在运行证据覆盖范围。`,
     `证据缺口：未完整读取文件 ${coverage.unreadableFiles}；损坏行 ${coverage.invalidLines}；超长行 ${coverage.oversizedLines}；缓冲丢弃行 ${coverage.droppedLines}。`, '',
     '## 全量版本与窗口统计', '', '| 插件版本 | 窗口 | 宿主 | 日志行 | 结构化记录 | 轮次 | 工具 | 失败 |', '| --- | --- | --- | --- | --- | --- | --- | --- |',
     ...coverage.sources.map(s => `| ${cell(s.pluginVersion)} | ${cell(s.windowId)} | ${cell(s.hostId)} | ${s.logLines ?? s.records} | ${s.records} | ${s.turns} | ${s.tools} | ${s.failures} |`), '',
@@ -168,6 +177,6 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
       'id', 'compactionId', 'traceId', 'threadId', 'processRunId', 'pluginVersion', 'windowId', 'logAtMs']
       .filter(key => typeof row[key] === 'string' || typeof row[key] === 'number').map(key => [key, typeof row[key] === 'string' ? redactDiagnosticText(row[key] as string, 160) : row[key] as number])));
   const performance = performanceReport(samples.rows(), '明细展示经过筛选；全量统计以上方全局汇总为准。');
-  return { ...analyzed, coverage, sourceNote, general: generic.summary, compactionEvidence, report: overview.join('\n') + '\n' +
-    (request?.kind === 'general' ? generic.report + '\n\n' + performance : performance + '\n\n' + generic.report) };
+  return { ...analyzed, coverage, sourceNote, general: generic.summary, loggingAudit: audit?.loggingAudit, compactionEvidence, report: overview.join('\n') + '\n' +
+    (request?.kind === 'general' ? generic.report + '\n\n' + performance : performance + '\n\n' + generic.report) + (audit ? '\n\n' + audit.report : '') };
 }

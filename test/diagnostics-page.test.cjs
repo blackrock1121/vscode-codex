@@ -25,6 +25,19 @@ function setup(t){
 }
 const openRecord=(w,id=record.id)=>w.document.querySelector(`.record[data-record-id="${id}"]`).click();
 
+test('全面诊断展示独立源码覆盖结果，无运行异常仍可创建修复会话，历史记录不冒充已审查', t=>{
+ const {w,emit,errors}=setup(t);
+ const audited={...record,options:{kind:'general',hours:24,engine:'rules'},
+  loggingAudit:{status:'review-required',version:'test',files:2,operations:3,catches:4,candidates:5,unsupported:1}};
+ emit({type:'state',records:[audited],workspaceId:'project-a'});openRecord(w);
+ assert.match(w.document.getElementById('detail').textContent,/源码日志覆盖：构建 test/);
+ assert.match(w.document.getElementById('detail').textContent,/5 处待核验线索/);
+ assert.equal([...w.document.querySelectorAll('#detail button')].find(b=>b.textContent==='创建修复会话').disabled,false);
+ emit({type:'state',records:[{...audited,loggingAudit:undefined}],workspaceId:'project-a'});
+ assert.match(w.document.getElementById('detail').textContent,/历史诊断未包含源码日志覆盖审查/);
+ assert.deepEqual(errors,[]);
+});
+
 test('历史默认展示记录列表，详情可反复展开收起，刷新及迟到报告不会重新打开',t=>{
  const {w,sent,emit,errors}=setup(t),doc=w.document;
  emit({type:'state',records:[record],selectedId:record.id,workspaceId:'project-a'});

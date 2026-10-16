@@ -1,4 +1,5 @@
 const esbuild = require("esbuild");
+const { logAuditPlugin } = require('./scripts/log-audit.cjs');
 
 const production = process.argv.includes("--production");
 const watch = process.argv.includes("--watch");
@@ -30,7 +31,7 @@ const extensionConfig = {
   external: ["vscode"],
   sourcemap: !production,
   minify: production,
-  plugins: [logPlugin],
+  plugins: [logPlugin, logAuditPlugin()],
 
 };
 
