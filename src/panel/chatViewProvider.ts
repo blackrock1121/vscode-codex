@@ -3640,43 +3640,81 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.broadcastRunning();
     }
+    private deletingSessions = false;
     private async deleteSessions(ids: string[]): Promise<void> {
-        if (!ids.length)
-            return;
-        const detail = ids.length === 1
-            ? `会话「${this.store.list().find((s) => s.id === ids[0])?.title ?? ids[0]}」将被永久删除。`
-            : `选中的 ${ids.length} 个会话将被永久删除。`;
-        const ok = await vscode.window.showWarningMessage("删除会话？此操作不可撤销。", { modal: true, detail }, "删除");
-        if (ok !== "删除")
-            return;
-        for (const id of ids) {
-            const waits: Promise<void>[] = [];
-            for (const ctx of [...this.sessions]) {
-                if (ctx.sessionId === id) {
-                    this.sessions.delete(ctx);
-                    if (this.activeCtx === ctx)
-                        this.activeCtx = undefined;
-                    if (ctx.proc)
-                        waits.push(ctx.proc.disposeAndWait());
-                    ctx.proc = undefined;
-                    ctx.panel.dispose();
+        if (this.deletingSessions) return;
+        ids = [...new Set(Array.isArray(ids) ? ids.filter(id => typeof id === "string" && id.length > 0) : [])];
+        this.deletingSessions = true;
+        const deletedIds: string[] = [], failedIds: string[] = [], failures: string[] = [];
+        const titles = new Map(this.store.list().map(s => [s.id, s.title]));
+        let message = "已取消删除。", error = false;
+        const status = (text: string) => this.post2(this.view?.webview, { kind: "sessions_delete_status", busy: true, message: text });
+        try {
+            if (!ids.length) { message = "请先选择要删除的会话。"; return; }
+            status("等待删除确认…");
+            const detail = (ids.length === 1
+                ? `会话「${titles.get(ids[0]) ?? ids[0]}」将被永久删除。`
+                : `选中的 ${ids.length} 个会话将被永久删除。`) + "关联的子 Agent 会话也会被删除。";
+            const ok = await vscode.window.showWarningMessage("删除会话？此操作不可撤销。", { modal: true, detail }, "删除");
+            if (ok !== "删除") return;
+            const ordered = this.store.deletionOrder(ids);
+            for (const [index, id] of ordered.entries()) {
+                status(`正在删除 ${index + 1}/${ordered.length}…`);
+                try {
+                    const waits: Promise<void>[] = [];
+                    for (const ctx of [...this.sessions]) {
+                        if (ctx.sessionId !== id) continue;
+                        this.sessions.delete(ctx);
+                        if (this.activeCtx === ctx) this.activeCtx = undefined;
+                        if (ctx.proc) waits.push(ctx.proc.disposeAndWait());
+                        ctx.proc = undefined;
+                        ctx.panel.dispose();
+                    }
+                    const det = this.detached.get(id);
+                    if (det) {
+                        if (det.proc) waits.push(det.proc.disposeAndWait());
+                        this.detached.delete(id);
+                    }
+                    await Promise.all(waits);
+                    await this.store.delete(id);
+                } catch (err) {
+                    failedIds.push(id);
+                    this.output.appendLine(`[deleteSessions:${id}] ${String(err)}`);
+                    const reason = String((err as Error)?.message ?? err);
+                    failures.push(`「${titles.get(id) ?? id}」：` + (/forked history still references/i.test(reason)
+                        ? "仍被派生会话引用，请先删除相关派生会话（可能已归档或位于其他项目）。"
+                        : /no rollout found/i.test(reason) ? "找不到会话记录，请刷新列表后重试。"
+                        : /\(-32601\)$/.test(reason) ? "当前 Codex CLI 不支持永久删除，请更新 CLI 后重试。"
+                        : reason.slice(0, 200)));
+                    continue;
+                }
+                deletedIds.push(id);
+                if (this.lastClosedSessionId === id) this.lastClosedSessionId = undefined;
+                try {
+                    await this.context.workspaceState.update(`codexChat.sessionSpeed.${id}`, undefined);
+                    deleteQuestionState(this.storageDir(), id);
+                    CheckpointManager.deleteFor(this.storageDir(), id);
+                } catch (err) {
+                    // 后端已经删除，不能因本机辅助数据清理失败误报“会话未删除”。
+                    this.output.appendLine(`[deleteSessions:cleanup:${id}] ${String(err)}`);
                 }
             }
-            const det = this.detached.get(id);
-            if (det) {
-                if (det.proc)
-                    waits.push(det.proc.disposeAndWait());
-                this.detached.delete(id);
-            }
-            if (waits.length)
-                await Promise.all(waits);
-            await this.store.delete(id);
-            await this.context.workspaceState.update(`codexChat.sessionSpeed.${id}`, undefined);
-            deleteQuestionState(this.storageDir(), id);
-            CheckpointManager.deleteFor(this.storageDir(), id);
+            error = failedIds.length > 0;
+            message = `已删除 ${deletedIds.length} 个会话。`;
+            if (error) message += `${failedIds.length} 个未删除。${failures.slice(0, 3).join(" ")}${failures.length > 3 ? " 其余原因见插件日志。" : ""}`;
+        } catch (err) {
+            error = true;
+            message = `删除会话失败：${String((err as Error)?.message ?? err)}`;
+            this.output.appendLine(`[deleteSessions] ${String(err)}`);
+        } finally {
+            this.broadcastRunning();
+            this.refreshSessions();
+            await this.sessionsRefreshing;
+            this.renderSessions();
+            this.deletingSessions = false;
+            this.post2(this.view?.webview, { kind: "sessions_delete_status", busy: false, message, deletedIds, failedIds, error });
+            if (error) void vscode.window.showErrorMessage(message);
         }
-        this.broadcastRunning();
-        this.refreshSessions();
     }
     private async renameSession(sessionId: string, title: string): Promise<void> {
         const clean = (title || "").trim().slice(0, 80);
@@ -4240,6 +4278,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   .abtn.primary { color: var(--vscode-button-background); font-weight: 600; }
   .abtn.danger { color: var(--vscode-errorForeground, #e55); }
   .abtn.hidden { display: none; }
+  button:disabled { opacity: .4; cursor: default; }
+  .selection-tools { display: none; align-items: center; flex-wrap: wrap; gap: 4px; padding: 6px 10px 0; flex: 0 0 auto; }
+  body.multi .selection-tools { display: flex; }
+  .selection-count { flex: 1; font-size: 11px; opacity: .7; white-space: nowrap; }
+  .selection-hint { display: none; padding: 4px 10px; font-size: 11px; opacity: .6; }
+  body.multi .selection-hint { display: block; }
+  .delete-status { padding: 6px 10px; font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; flex: 0 0 auto; }
+  .delete-status:empty { display: none; }
+  .delete-status.error { color: var(--vscode-errorForeground, #e55); }
   .new { display: flex; align-items: center; gap: 7px; width: calc(100% - 16px); margin: 8px; padding: 7px 10px; border: 1px solid var(--vscode-panel-border, rgba(127,127,127,.3)); border-radius: 7px; background: none; color: var(--vscode-foreground); cursor: pointer; font-size: 12.5px; flex: 0 0 auto; }
   .new:hover { background: var(--vscode-toolbar-hoverBackground, rgba(127,127,127,.16)); }
   .new svg { width: 15px; height: 15px; }
@@ -4253,6 +4300,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   .row { display: flex; align-items: center; gap: 8px; padding: 7px 8px; border-radius: 6px; cursor: pointer; position: relative; }
   .row:hover { background: var(--vscode-list-hoverBackground, rgba(127,127,127,.14)); }
   .row.active { background: var(--vscode-list-activeSelectionBackground, rgba(80,120,255,.22)); }
+  body.multi .row { user-select: none; }
+  body.multi .row.selected { background: var(--vscode-list-activeSelectionBackground, rgba(80,120,255,.22)); color: var(--vscode-list-activeSelectionForeground); }
   .row .chk { display: none; flex: 0 0 auto; width: 14px; height: 14px; }
   body.multi .row .chk { display: inline-block; }
   .row .body { flex: 1; min-width: 0; }
@@ -4293,8 +4342,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <span class="ttl">会话</span>
     <span class="sp"></span>
     <button id="multi" class="abtn" title="多选">多选</button>
-    <button id="delsel" class="abtn danger hidden">删除所选</button>
   </div>
+  <div class="selection-tools">
+    <button id="selectall" class="abtn">全选</button>
+    <span id="selection-count" class="selection-count">已选 0 项</span>
+    <button id="delsel" class="abtn danger" disabled>删除所选</button>
+  </div>
+  <div class="selection-hint">Shift + 点击连续选择 · Ctrl/⌘ + A 全选</div>
+  <div id="delete-status" class="delete-status" role="status" aria-live="polite"></div>
   <button id="upd-banner" class="upd-banner hidden">${ICONS.update}<span>发现新版本 <b id="upd-ver"></b> · 点击更新</span></button>
   <button id="new" class="new">${ICONS.add}<span>新建会话</span></button>
   <div id="list" class="list"><div class="empty">暂无会话</div></div>
@@ -4312,7 +4367,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const PENCIL = ${JSON.stringify(PENCIL)};
     const PIN = ${JSON.stringify(PIN)};
     const EYE = ${JSON.stringify(EYE)}, EYE_OFF = ${JSON.stringify(EYE_OFF)};
-    let sessions = [], activeId = null, runningIds = new Set(), multi = false;
+    let sessions = [], activeId = null, runningIds = new Set(), multi = false, anchorId = null, deleting = false;
     const sel = new Set();
     const $ = (id) => document.getElementById(id);
 
@@ -4326,11 +4381,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     function makeRow(s) {
       const row = document.createElement("div");
-      row.className = "row" + (s.id === activeId ? " active" : "") + (s.pinned ? " pinned" : "");
+      row.className = "row" + (s.id === activeId ? " active" : "") + (s.pinned ? " pinned" : "") + (sel.has(s.id) ? " selected" : "");
       row.dataset.id = s.id;
       const chk = document.createElement("input");
-      chk.type = "checkbox"; chk.className = "chk"; chk.checked = sel.has(s.id);
-      chk.addEventListener("click", (e) => { e.stopPropagation(); toggle(s.id, chk.checked); });
+      chk.type = "checkbox"; chk.className = "chk"; chk.checked = sel.has(s.id); chk.disabled = deleting;
+      chk.setAttribute("aria-label", "选择会话：" + (s.title || "新对话"));
+      chk.addEventListener("click", (e) => { e.stopPropagation(); toggle(s.id, chk.checked, e.shiftKey); });
       const body = document.createElement("div"); body.className = "body";
       const tRow = document.createElement("div"); tRow.className = "trow";
       if (runningIds.has(s.id)) { const dot = document.createElement("span"); dot.className = "run-dot"; dot.title = "正在回复中"; tRow.appendChild(dot); }
@@ -4345,13 +4401,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       const edit = document.createElement("button"); edit.className = "edit"; edit.title = "重命名"; edit.innerHTML = PENCIL;
       edit.addEventListener("click", (e) => { e.stopPropagation(); rename(s.id); });
       const del = document.createElement("button"); del.className = "del"; del.title = "删除"; del.innerHTML = TRASH;
+      del.disabled = deleting;
       del.addEventListener("click", (e) => { e.stopPropagation(); confirmDel([s.id]); });
       row.append(chk, body, pin, edit, del);
-      row.addEventListener("click", () => { if (multi) toggle(s.id, !sel.has(s.id)); else open(s.id); });
+      row.addEventListener("click", (e) => {
+        if (deleting) return;
+        if (multi || e.shiftKey || e.ctrlKey || e.metaKey) {
+          if (!multi) enterMulti();
+          toggle(s.id, !sel.has(s.id), e.shiftKey);
+        } else { anchorId = s.id; open(s.id); }
+      });
       return row;
     }
 
     function render() {
+      updateSelection();
       const list = $("list");
       if (!sessions.length) { list.innerHTML = '<div class="empty">暂无会话</div>'; return; }
       list.innerHTML = "";
@@ -4372,9 +4436,48 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       for (const s of others) list.appendChild(makeRow(s));
     }
 
-    function toggle(id, on) { if (on) sel.add(id); else sel.delete(id); $("delsel").classList.toggle("hidden", sel.size === 0); render(); }
+    function updateSelection() {
+      $("selection-count").textContent = "已选 " + sel.size + " 项";
+      $("selectall").textContent = sessions.length && sel.size === sessions.length ? "取消全选" : "全选";
+      $("selectall").disabled = deleting || !sessions.length;
+      $("delsel").disabled = deleting || !sel.size;
+      $("multi").disabled = deleting;
+      for (const row of document.querySelectorAll(".row")) {
+        row.classList.toggle("selected", sel.has(row.dataset.id));
+        const chk = row.querySelector(".chk");
+        chk.checked = sel.has(row.dataset.id); chk.disabled = deleting;
+        row.querySelector(".del").disabled = deleting;
+      }
+    }
+    function toggle(id, on, range) {
+      if (deleting) return;
+      const ordered = [...sessions.filter(s => s.pinned), ...sessions.filter(s => !s.pinned)].map(s => s.id);
+      const start = ordered.indexOf(anchorId), end = ordered.indexOf(id);
+      const ids = range && start >= 0 && end >= 0 ? ordered.slice(Math.min(start, end), Math.max(start, end) + 1) : [id];
+      for (const selected of ids) { if (on) sel.add(selected); else sel.delete(selected); }
+      anchorId = id;
+      // 原地更新勾选，避免每次选择重建列表造成焦点、滚动位置丢失。
+      updateSelection();
+    }
+    function selectAll() {
+      if (deleting) return;
+      const all = sessions.length > 0 && sel.size === sessions.length;
+      sel.clear();
+      if (!all) for (const s of sessions) sel.add(s.id);
+      anchorId = null;
+      updateSelection();
+    }
     function open(id) { vscode.postMessage({ type: "openSession", sessionId: id }); }
-    function confirmDel(ids) { if (ids.length) vscode.postMessage({ type: "deleteSessions", sessionIds: ids }); }
+    function deleteStatus(message, error) {
+      $("delete-status").textContent = message;
+      $("delete-status").classList.toggle("error", !!error);
+      $("delete-status").setAttribute("role", error ? "alert" : "status");
+    }
+    function confirmDel(ids) {
+      if (!ids.length || deleting) return;
+      deleting = true; updateSelection(); deleteStatus("等待删除确认…", false);
+      vscode.postMessage({ type: "deleteSessions", sessionIds: ids });
+    }
 
     function rename(id) {
       const row = document.querySelector('.row[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
@@ -4404,16 +4507,31 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       document.body.classList.remove("multi");
       $("multi").textContent = "多选";
       sel.clear();
-      $("delsel").classList.add("hidden");
-      render();
+      anchorId = null;
+      updateSelection();
     }
-    $("multi").addEventListener("click", () => {
-      if (multi) { exitMulti(); return; }
+    function enterMulti() {
       multi = true; document.body.classList.add("multi");
       $("multi").textContent = "取消";
-      render();
+      updateSelection();
+    }
+    $("multi").addEventListener("click", () => {
+      if (deleting) return;
+      if (multi) { exitMulti(); return; }
+      enterMulti();
     });
+    $("selectall").addEventListener("click", selectAll);
     $("delsel").addEventListener("click", () => confirmDel([...sel]));
+    document.addEventListener("keydown", (e) => {
+      if (e.target.closest("input:not([type=checkbox]), textarea, [contenteditable=true]")) return;
+      if (e.key.toLowerCase() === "a" && (e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        if (deleting) return;
+        enterMulti();
+        for (const s of sessions) sel.add(s.id);
+        anchorId = null; updateSelection();
+      } else if (e.key === "Escape" && multi && !deleting) { e.preventDefault(); exitMulti(); }
+    });
     $("upd-banner").addEventListener("click", () => vscode.postMessage({ type: "checkUpdate", fromBanner: true }));
 
     window.addEventListener("message", (ev) => {
@@ -4422,12 +4540,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (m && m.kind === "sessions") {
         sessions = m.list || []; activeId = m.activeId || null;
         if (m.runningIds !== undefined) runningIds = new Set(m.runningIds || []);
-        const hadSel = sel.size > 0;
         for (const id of [...sel]) if (!sessions.find((s) => s.id === id)) sel.delete(id);
-        // 批量删除完成的信号：之前选中的会话全部从列表消失 → 自动退出多选。
-        // （宿主弹窗点了取消时 sel 原样保留，不会误退。）
-        if (multi && hadSel && sel.size === 0) { exitMulti(); return; }
-        $("delsel").classList.toggle("hidden", sel.size === 0);
+        if (!sessions.some(s => s.id === anchorId)) anchorId = null;
+        render();
+      } else if (m && m.kind === "sessions_delete_status") {
+        deleting = m.busy;
+        const deleted = new Set(m.deletedIds || []);
+        sessions = sessions.filter(s => !deleted.has(s.id));
+        for (const id of deleted) sel.delete(id);
+        if (!deleting && !m.error && deleted.size && multi && !sel.size) exitMulti();
+        deleteStatus(m.message || "", m.error);
         render();
       } else if (m && m.kind === "running") {
         runningIds = new Set(m.sessionIds || []);

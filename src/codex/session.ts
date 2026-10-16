@@ -39,6 +39,7 @@ export class SessionStore {
   private threads = new Map<string, any>();
   private hydrating = new Map<string, Promise<void>>();
   private pending = new Map<string, { title: string; updatedAt: number }>();
+  private deletedIds = new Set<string>();
   private listing?: Promise<void>;
   private forkIds = new Set<string>();
   private preparations = new Set<ForkPreparation>();
@@ -132,6 +133,7 @@ export class SessionStore {
     do {
       const r: any = await this.read('thread/list', { cwd: this.cwd, limit: 100, cursor, sortKey: 'updated_at', modelProviders: [] });
       for (const t of r.data) {
+        if (this.deletedIds.has(t.id)) continue;
         found.set(t.id, t);
         if (t.preview?.trim() || t.name?.trim()) this.pending.delete(t.id);
       }
@@ -140,7 +142,10 @@ export class SessionStore {
       if (cursor) seen.add(cursor);
     } while (cursor);
     // 所有分页完成后再合并缓存，避免覆盖分页期间刚读取的完整历史。
-    for (const [id, thread] of found) found.set(id, { ...thread, turns: this.threads.get(id)?.turns ?? thread.turns });
+    for (const [id, thread] of found) {
+      if (this.deletedIds.has(id)) found.delete(id);
+      else found.set(id, { ...thread, turns: this.threads.get(id)?.turns ?? thread.turns });
+    }
     // Forked threads can be absent from thread/list briefly after creation.
     for (const [id, thread] of this.threads) if (this.pending.has(id) && !found.has(id)) found.set(id, thread);
     this.threads = found;
@@ -278,8 +283,31 @@ export class SessionStore {
   }
   async delete(id: string): Promise<boolean> {
     const rpc = await this.connection();
-    await rpc.request('thread/archive', { threadId: id });
-    await rpc.request('thread/delete', { threadId: id }); this.threads.delete(id); this.pending.delete(id); return true;
+    // thread/delete 支持活跃及已归档会话。先归档会让删除失败的会话消失，
+    // 还会在缺少 rollout 时提前失败，阻止 delete 清理残留元数据。
+    await rpc.request('thread/delete', { threadId: id });
+    this.deletedIds.add(id); this.threads.delete(id); this.pending.delete(id); return true;
+  }
+  /** 只重排用户选中的会话，先删派生历史，再删被引用的原会话。 */
+  deletionOrder(ids: string[]): string[] {
+    const selected = new Set(ids), children = new Map<string, string[]>();
+    for (const id of selected) {
+      const thread = this.threads.get(id);
+      for (const parent of new Set([thread?.forkedFromId, thread?.parentThreadId])) {
+        if (!selected.has(parent)) continue;
+        const list = children.get(parent) ?? [];
+        list.push(id); children.set(parent, list);
+      }
+    }
+    const seen = new Set<string>(), ordered: string[] = [];
+    const visit = (id: string) => {
+      if (seen.has(id)) return;
+      seen.add(id);
+      for (const child of children.get(id) ?? []) visit(child);
+      ordered.push(id);
+    };
+    for (const id of selected) visit(id);
+    return ordered;
   }
   prepareFork(): ForkPreparation {
     const rpc = new CodexRpc(this.executable(), this.cwd);

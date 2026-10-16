@@ -202,6 +202,7 @@ export type ToWebview =
   | { kind: "history_status"; sessionId: string; error?: string }
   | { kind: "load_history"; items: TimelineItem[]; sessionId?: string; checkpoints?: CheckpointSummary[] }
   | { kind: "sessions"; list: SessionSummary[]; activeId?: string; runningIds?: string[] }
+  | { kind: "sessions_delete_status"; busy: boolean; message: string; deletedIds?: string[]; failedIds?: string[]; error?: boolean }
   | { kind: "running"; sessionIds: string[] }
   // A restore point was created for the turn just sent (live).
   | { kind: "checkpoint_marker"; checkpointId: string; userText: string; sendId?: string }

@@ -1,0 +1,201 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const { JSDOM } = require('jsdom');
+const Module = require('node:module');
+const { SessionStore } = require('../dist/test/codex/session.js');
+const vscode = { window: {} };
+const originalLoad = Module._load;
+Module._load = function(id, ...args) { return id === 'vscode' ? vscode : originalLoad.call(this, id, ...args); };
+const { ChatViewProvider } = require('../dist/test/panel/chatViewProvider.js');
+Module._load = originalLoad;
+
+function sidebar(t) {
+  const sent = [], errors = [];
+  const provider = Object.create(ChatViewProvider.prototype);
+  const dom = new JSDOM(provider.sidebarHtml(), { runScripts: 'outside-only', pretendToBeVisual: true });
+  t.after(() => dom.window.close());
+  const w = dom.window;
+  w.acquireVsCodeApi = () => ({ postMessage: m => sent.push(JSON.parse(JSON.stringify(m))) });
+  w.addEventListener('error', e => errors.push(e.message));
+  w.eval(w.document.querySelector('script').textContent);
+  const $ = id => w.document.getElementById(id);
+  const emit = data => w.dispatchEvent(new w.MessageEvent('message', { data }));
+  const row = id => w.document.querySelector(`.row[data-id="${id}"]`);
+  const click = (id, options = {}, checkbox = false) => (checkbox ? row(id).querySelector('.chk') : row(id))
+    .dispatchEvent(new w.MouseEvent('click', { bubbles: true, cancelable: true, ...options }));
+  const selected = () => [...w.document.querySelectorAll('.chk:checked')].map(chk => chk.closest('.row').dataset.id);
+  const sessions = [
+    { id: 'a', title: '最近 A', updatedAt: 500 },
+    { id: 'b', title: '置顶 B', pinned: true, updatedAt: 400 },
+    { id: 'c', title: '最近 C', updatedAt: 300 },
+    { id: 'd', title: '置顶 D', pinned: true, updatedAt: 200 },
+    { id: 'e', title: '最近 E', updatedAt: 100 },
+  ];
+  emit({ kind: 'sessions', list: sessions });
+  t.after(() => assert.deepEqual(errors, []));
+  return { w, $, emit, sent, row, click, selected, sessions };
+}
+
+test('Shift 按实际显示顺序跨置顶分组选取，支持反向和复选框，原地更新保留焦点', t => {
+  const f = sidebar(t);
+  f.$('multi').click();
+  const first = f.row('d'), checkbox = first.querySelector('.chk');
+  checkbox.focus(); f.click('d', {}, true);
+  f.click('c', { shiftKey: true });
+  assert.deepEqual(f.selected(), ['d', 'a', 'c']);
+  assert.equal(f.w.document.activeElement, checkbox);
+  assert.equal(f.row('d'), first);
+  f.click('b', { shiftKey: true }, true);
+  assert.deepEqual(f.selected(), ['b', 'd', 'a', 'c']);
+  f.click('a', { shiftKey: true }, true);
+  assert.deepEqual(f.selected(), ['c'], 'Shift 取消选中同样作用于连续范围');
+  assert.equal(f.$('selection-count').textContent, '已选 1 项');
+  assert.equal(f.sent.some(m => m.type === 'openSession'), false);
+});
+
+test('普通点击仍打开会话，Shift 或 Ctrl/⌘ 点击可直接进入多选；刷新按 ID 保留锚点', t => {
+  const f = sidebar(t);
+  f.click('d'); assert.equal(f.sent.at(-1).type, 'openSession');
+  f.emit({ kind: 'running', sessionIds: ['a'] });
+  f.click('c', { shiftKey: true });
+  assert.deepEqual(f.selected(), ['d', 'a', 'c']);
+  f.$('multi').click();
+  f.click('e', { metaKey: true });
+  assert.deepEqual(f.selected(), ['e']);
+  f.emit({ kind: 'sessions', list: f.sessions.filter(s => s.id !== 'e') });
+  f.click('b', { shiftKey: true });
+  assert.deepEqual(f.selected(), ['b'], '锚点被移除后只选择当前项');
+});
+
+test('全选按钮可取消全选，快捷键重复执行仍全选，重命名输入不被劫持，空列表不可删除', t => {
+  const f = sidebar(t);
+  f.$('multi').click(); f.$('selectall').click();
+  assert.deepEqual(f.selected(), ['b', 'd', 'a', 'c', 'e']);
+  assert.equal(f.$('selectall').textContent, '取消全选');
+  f.$('selectall').click(); assert.deepEqual(f.selected(), []);
+  assert.equal(f.$('delsel').disabled, true);
+  const key = (target, options) => target.dispatchEvent(new f.w.KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...options }));
+  key(f.row('b').querySelector('.chk'), { key: 'a', metaKey: true });
+  key(f.w.document.body, { key: 'a', ctrlKey: true });
+  assert.equal(f.selected().length, 5);
+  key(f.w.document.body, { key: 'Escape' });
+  assert.equal(f.w.document.body.classList.contains('multi'), false);
+  f.row('a').querySelector('.edit').click();
+  const input = f.row('a').querySelector('.rename');
+  assert.equal(key(input, { key: 'a', metaKey: true }), true);
+  assert.equal(f.w.document.body.classList.contains('multi'), false);
+  f.emit({ kind: 'sessions', list: [] });
+  f.$('multi').click();
+  assert.equal(f.$('selectall').disabled, true); assert.equal(f.$('delsel').disabled, true);
+});
+
+test('删除请求防重复，取消保留选择，部分失败显示原因并保留失败项，成功后退出多选', t => {
+  const f = sidebar(t);
+  f.$('multi').click(); f.click('a'); f.click('c');
+  f.$('delsel').click(); f.$('delsel').click(); f.click('e');
+  assert.deepEqual(f.sent.filter(m => m.type === 'deleteSessions'), [{ type: 'deleteSessions', sessionIds: ['a', 'c'] }]);
+  assert.equal(f.$('multi').disabled, true);
+  assert.match(f.$('delete-status').textContent, /确认/);
+  f.emit({ kind: 'sessions_delete_status', busy: false, message: '已取消删除。', deletedIds: [] });
+  assert.deepEqual(f.selected(), ['a', 'c']); assert.equal(f.$('delsel').disabled, false);
+  f.$('delsel').click();
+  f.emit({ kind: 'sessions_delete_status', busy: true, message: '正在删除 1/2…' });
+  assert.match(f.$('delete-status').textContent, /1\/2/);
+  f.emit({ kind: 'sessions', list: f.sessions.filter(s => s.id !== 'a') });
+  f.emit({ kind: 'sessions_delete_status', busy: false, message: '仍被派生会话引用', error: true, deletedIds: ['a'], failedIds: ['c'] });
+  assert.deepEqual(f.selected(), ['c']); assert.equal(f.$('delete-status').getAttribute('role'), 'alert');
+  f.$('delsel').click();
+  f.emit({ kind: 'sessions', list: f.sessions.filter(s => !['a', 'c'].includes(s.id)) });
+  assert.equal(f.w.document.body.classList.contains('multi'), true, '列表更新不等同于删除完成');
+  f.emit({ kind: 'sessions_delete_status', busy: false, message: '已删除 1 个会话。', deletedIds: ['c'] });
+  assert.equal(f.w.document.body.classList.contains('multi'), false);
+  assert.equal(f.$('multi').disabled, false);
+});
+
+test('永久删除直接调用 delete；失败不归档且缓存不丢，缺失 rollout 不再被归档阶段阻断', async () => {
+  for (const fail of [true, false]) {
+    const store = new SessionStore('/tmp', () => '/unused'), calls = [];
+    store.threads.set('a', { id: 'a', preview: '记录', updatedAt: 1 });
+    store.notePending('a', '草稿');
+    store.connection = async () => ({ request: async method => {
+      calls.push(method);
+      assert.equal(method, 'thread/delete', '归档会因缺失 rollout 提前报错');
+      if (fail) throw new Error('cannot delete thread a: forked history still references it (-32600)');
+      return {};
+    } });
+    if (fail) await assert.rejects(store.delete('a'), /forked history/);
+    else assert.equal(await store.delete('a'), true);
+    assert.deepEqual(calls, ['thread/delete']);
+    assert.equal(store.list().length, fail ? 1 : 0);
+    assert.equal(store.pending.has('a'), fail);
+  }
+});
+
+test('删除顺序由派生依赖决定而不是时间或点击顺序，不扩大选择，重复和异常环不死循环', () => {
+  const store = new SessionStore('/tmp', () => '/unused');
+  store.threads.set('b', { id: 'b', forkedFromId: 'a' });
+  store.threads.set('c', { id: 'c', forkedFromId: 'b' });
+  store.threads.set('unselected', { id: 'unselected', forkedFromId: 'a' });
+  assert.deepEqual(store.deletionOrder(['a', 'b', 'c', 'a']), ['c', 'b', 'a']);
+  assert.deepEqual(store.deletionOrder(['a']), ['a']);
+  store.threads.set('a', { id: 'a', forkedFromId: 'c' });
+  assert.deepEqual(new Set(store.deletionOrder(['a', 'b', 'c'])), new Set(['a', 'b', 'c']));
+});
+
+test('删除期间旧分页晚到也不能把已删除会话放回列表', async () => {
+  const store = new SessionStore('/tmp', () => '/unused');
+  let release;
+  store.read = async () => new Promise(resolve => { release = resolve; });
+  store.connection = async () => ({ request: async () => ({}) });
+  const refreshing = store.refresh();
+  await store.delete('a');
+  release({ data: [{ id: 'a', preview: '旧列表', updatedAt: 1 }], nextCursor: null });
+  await refreshing;
+  assert.deepEqual(store.list(), []);
+});
+
+function host(t, { confirm = async () => '删除', remove = async () => true } = {}) {
+  const provider = Object.create(ChatViewProvider.prototype), events = [], logs = [], errors = [], removed = [];
+  const store = new SessionStore('/tmp', () => '/unused');
+  for (const id of ['a', 'b', 'c']) store.threads.set(id, { id, preview: id, updatedAt: 1 });
+  store.threads.get('b').forkedFromId = 'a';
+  store.delete = async id => { removed.push(id); await remove(id); store.threads.delete(id); return true; };
+  store.refresh = async () => {};
+  Object.assign(provider, {
+    store, sessions: new Set(), detached: new Map(), output: { appendLine: line => logs.push(line) },
+    view: { webview: { postMessage: event => events.push(event) } },
+    context: { workspaceState: { get: () => undefined, update: async () => {} } },
+    broadcastRunning() {}, withPinned: list => list,
+    storageDir: () => { throw new Error('测试清理失败，不得把已删除误报为失败'); },
+  });
+  vscode.window.showWarningMessage = confirm;
+  vscode.window.showErrorMessage = message => { errors.push(message); return Promise.resolve(); };
+  return { provider, store, events, logs, errors, removed };
+}
+
+test('宿主删除先处理派生会话，单项失败仍继续，刷新列表并明确报告成功和失败', async t => {
+  const f = host(t, { remove: async id => { if (id === 'a') throw new Error('forked history still references it (-32600)'); } });
+  await f.provider.onSidebarMessage({ type: 'deleteSessions', sessionIds: ['a', 'b', 'c', 'a'] });
+  assert.deepEqual(f.removed, ['b', 'a', 'c']);
+  const result = f.events.at(-1);
+  assert.equal(result.busy, false); assert.equal(result.error, true);
+  assert.deepEqual(result.deletedIds, ['b', 'c']); assert.deepEqual(result.failedIds, ['a']);
+  assert.match(result.message, /已删除 2 个会话/); assert.match(result.message, /派生会话/);
+  assert.equal(f.errors.length, 1); assert.equal(f.provider.deletingSessions, false);
+  assert.deepEqual(f.events.findLast(e => e.kind === 'sessions').list.map(s => s.id), ['a']);
+});
+
+test('宿主确认期间防重复；取消和异常都结束等待且不删除', async t => {
+  let resolve;
+  const f = host(t, { confirm: () => new Promise(r => { resolve = r; }) });
+  const pending = f.provider.deleteSessions(['a']);
+  await f.provider.deleteSessions(['a']);
+  assert.equal(f.events.filter(e => e.kind === 'sessions_delete_status').length, 1);
+  resolve(undefined); await pending;
+  assert.deepEqual(f.removed, []); assert.equal(f.events.at(-1).busy, false);
+  assert.match(f.events.at(-1).message, /取消/);
+  vscode.window.showWarningMessage = async () => { throw new Error('确认窗口失败'); };
+  await f.provider.deleteSessions(['a']);
+  assert.equal(f.events.at(-1).error, true); assert.equal(f.events.at(-1).busy, false);
+  assert.deepEqual(f.removed, []); assert.equal(f.provider.deletingSessions, false);
+});
