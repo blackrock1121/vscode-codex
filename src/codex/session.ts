@@ -1,3 +1,4 @@
+import { observeOperation, operationLog } from '../operations';
 import { CodexRpc } from './rpc';
 import { timeline, userView, parseQuestionReply, normalizeQuestions } from './events';
 import { SessionSummary, TimelineItem } from '../shared';
@@ -114,12 +115,18 @@ export class SessionStore {
     });
   }
   /** 只用于无副作用的读取；连接在请求期间断开时重建并重试一次。 */
-  async read<T = any>(method: string, params: unknown = {}): Promise<T> {
+  read<T = any>(method: string, params: unknown = {}): Promise<T> {
+    return observeOperation('session.read', () => this.readInner<T>(method, params), { method });
+  }
+  private async readInner<T>(method: string, params: unknown): Promise<T> {
     const rpc = await this.connection();
     try { return await rpc.request<T>(method, params); }
     catch (error) {
       if (!rpc.isClosed) throw error;
-      return (await this.connection()).request<T>(method, params);
+      operationLog('session.read', 'retry', { method });
+      const result = await (await this.connection()).request<T>(method, params);
+      operationLog('session.read', 'recovered', { method });
+      return result;
     }
   }
   async refresh(): Promise<void> {

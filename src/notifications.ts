@@ -1,3 +1,4 @@
+import { observeOperation } from './operations';
 import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -131,7 +132,10 @@ export async function clearPreviousLocalNotifications(extensionPath: string, ses
     return { completed, failed };
 }
 
-async function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
+function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
+    return observeOperation(payload.operation === 'clear' ? 'notification.clear' : 'notification.show', () => requestLocalNotificationInner(extensionPath, payload));
+}
+async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
     if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-chat-notify-"));
     await fs.chmod(dir, 0o700);

@@ -51,6 +51,11 @@ export function failureCategory(value: unknown, exitCode?: number | null): strin
   return exitCode ? 'nonzero_exit' : 'unknown';
 }
 
+/** 仅提取行首的标准异常名；既不复制错误正文，也不把 unknown 推断为成功。 */
+export function failureType(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.slice(0, 32768).match(/(?:^|\n)\s*(TypeError|ReferenceError|SyntaxError|RangeError|TimeoutError|AbortError|AssertionError|ModuleNotFoundError):/)?.[1] : undefined;
+}
+
 type Kind = 'bash' | 'tool' | 'agent' | 'agent_wait' | 'compaction' | 'reasoning' | 'message' | 'approval' | 'question' | 'child_validation' | 'pretool';
 interface Span {
   key: string; spanId: number; kind: Kind; threadId?: string; turnId?: string; itemId?: string;
@@ -254,6 +259,8 @@ export class PerformanceTrace {
       resultBytes: typeof output === 'string' ? Buffer.byteLength(output) : null,
       receiverThreadIds: Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds.map(diagnosticId).filter(Boolean).slice(0, 32) : undefined,
       failureCategory: failed ? failureCategory(output, exitCode) : null,
+      failureEvidence: failed ? typeof output === 'string' && output.length ? 'tool_output' : exitCode !== null ? 'exit_code' : 'unavailable' : undefined,
+      errorType: failed ? failureType(output) : undefined,
       routingDelayMs: Math.round(at - (this.arrivals.get(message) ?? at)) });
   }
   approval(id: string, question: boolean, threadId?: string, turnId?: string, itemId?: string): void {

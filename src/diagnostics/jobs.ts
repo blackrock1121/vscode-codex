@@ -7,6 +7,7 @@ import type { DiagnosticOutput, DiagnosticFinding, DiagnosticSummary, Diagnostic
 import type { GeneralSummary } from './general';
 import type { LoggingAuditSummary } from './loggingAudit';
 import { DiagnosticOptions, DiagnosticRequest, DEFAULT_DIAGNOSTIC_OPTIONS, diagnosticOptions, kindLabel } from './options';
+import { expectedFileError, observeOperation, operationFailure, operationLog } from '../operations';
 
 export interface DiagnosticScope { pluginVersion: string; windowId: string; workspaceId: string; workspaceName: string }
 export interface DiagnosticRecord extends DiagnosticScope {
@@ -31,12 +32,13 @@ export function workerRunner(workerPath: string, logDir: string): DiagnosticRunn
     const abort = () => finish(new Error('诊断已中断'));
     const finish = (error?: Error, result?: DiagnosticOutput) => {
       if (settled) return; settled = true; signal.removeEventListener('abort', abort);
-      void worker.terminate();
+      void worker.terminate().catch(error => operationFailure('diagnostics.worker.terminate', error));
       if (error) reject(error); else resolve(result!);
     };
     signal.addEventListener('abort', abort, { once: true });
     worker.on('message', message => {
-      if (message?.type === 'progress') progress(String(message.message).slice(0, 200));
+      if (message?.type === 'diagnostic') operationLog('diagnostics.worker', 'failed', message.fields);
+      else if (message?.type === 'progress') progress(String(message.message).slice(0, 200));
       else if (message?.type === 'result') finish(undefined, message.result);
       else if (message?.type === 'error') finish(new Error(message.message));
     });
@@ -61,12 +63,15 @@ export class DiagnosticJobs extends EventEmitter {
     if (data.id !== id || !['running', 'completed', 'failed', 'interrupted'].includes(data.status) || !Array.isArray(data.findings)) throw new Error('诊断记录已损坏');
     return data;
   }
-  private async save(record: DiagnosticRecord): Promise<void> {
+  private save(record: DiagnosticRecord): Promise<void> {
+    return observeOperation('diagnostics.save', () => this.saveInner(record), { diagnosticId: record.id, status: record.status });
+  }
+  private async saveInner(record: DiagnosticRecord): Promise<void> {
     await fs.mkdir(this.dir, { recursive: true });
     const file = this.file(record.id), temp = file + '.' + randomUUID() + '.tmp';
     try { await fs.writeFile(temp, JSON.stringify(record), { mode: 0o600 }); await fs.rename(temp, file); }
-    finally { await fs.unlink(temp).catch(() => {}); }
-    try { this.emit('changed', record.id); } catch { /* 页面关闭或刷新失败不影响记录 */ }
+    finally { await fs.unlink(temp).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.cleanup', error, { diagnosticId: record.id }); }); }
+    try { this.emit('changed', record.id); } catch (error) { operationFailure('diagnostics.changed', error, { diagnosticId: record.id }); }
   }
   private async update(id: string, change: (record: DiagnosticRecord) => void): Promise<DiagnosticRecord> {
     const previous = this.mutations.get(id) ?? Promise.resolve();
@@ -74,7 +79,10 @@ export class DiagnosticJobs extends EventEmitter {
       let lock: import('node:fs/promises').FileHandle | undefined;
       for (let attempt = 0; attempt < 40; attempt++) {
         try { lock = await this.lock(id, '.update.lock'); break; }
-        catch { await new Promise(resolve => setTimeout(resolve, 25)); }
+        catch (error) {
+          if (!expectedFileError(error, ['EEXIST'])) throw error;
+          await new Promise(resolve => setTimeout(resolve, 25));
+        }
       }
       if (!lock) throw new Error('诊断记录正在更新，请稍后重试。');
       try { const record = await this.get(id); change(record); record.updatedAt = Date.now(); await this.save(record); return record; }
@@ -84,7 +92,10 @@ export class DiagnosticJobs extends EventEmitter {
     try { return await next; } finally { if (this.mutations.get(id) === next) this.mutations.delete(id); }
   }
   async list(): Promise<DiagnosticRecord[]> {
-    const files = (await fs.readdir(this.dir).catch(() => [] as string[])).filter(name => validId(name.replace(/\.json$/, '')) && name.endsWith('.json'));
+    const files = (await fs.readdir(this.dir).catch(error => {
+      if (expectedFileError(error)) return [] as string[];
+      operationFailure('diagnostics.list', error); throw error;
+    })).filter(name => validId(name.replace(/\.json$/, '')) && name.endsWith('.json'));
     const records: DiagnosticRecord[] = [];
     for (let i = 0; i < files.length; i += 20) {
       const batch = await Promise.all(files.slice(i, i + 20).map(async name => {
@@ -100,7 +111,7 @@ export class DiagnosticJobs extends EventEmitter {
             record = await this.update(record.id, row => { row.repair = { status: 'failed', message: '创建修复会话的窗口已退出，请检查历史会话后重试。' }; });
           }
           return record;
-        } catch { return undefined; }
+        } catch (error) { operationFailure('diagnostics.record.read', error, { diagnosticId: name.slice(0, -5) }); return undefined; }
       }));
       records.push(...batch.filter((r): r is DiagnosticRecord => !!r));
     }
@@ -127,26 +138,33 @@ export class DiagnosticJobs extends EventEmitter {
       const task = this.execute(record, controller.signal).finally(() => {
         this.controllers.delete(record.id); if (this.runningId === record.id) this.runningId = undefined; this.tasks.delete(task);
       });
-      this.tasks.add(task); void task.catch(() => {});
+      this.tasks.add(task); void task.catch(error => operationFailure('diagnostics.execute', error, { diagnosticId: record.id }));
       return record;
     })().finally(() => { this.starting = undefined; });
     return this.starting;
   }
   private async execute(record: DiagnosticRecord, signal: AbortSignal): Promise<void> {
+    const fields = { diagnosticId: record.id, operationId: record.id };
+    operationLog('diagnostics.execute', 'start', fields);
     try {
-      const result = await this.run(message => { void this.update(record.id, row => { if (row.status === 'running') row.progress = message; }).catch(() => {}); }, signal, record.options);
+      const result = await this.run(message => { void this.update(record.id, row => { if (row.status === 'running') row.progress = message; })
+        .catch(error => operationFailure('diagnostics.progress.save', error, fields)); }, signal, record.options);
       if (signal.aborted) throw new Error('诊断已中断');
       const report = this.file(record.id, '.report.md'), temp = report + '.' + randomUUID() + '.tmp';
       try { await fs.writeFile(temp, result.report, { mode: 0o600 }); await fs.rename(temp, report); }
-      finally { await fs.unlink(temp).catch(() => {}); }
+      finally { await fs.unlink(temp).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.report.cleanup', error, fields); }); }
       await this.update(record.id, row => { row.status = 'completed'; row.progress = result.modelAnalysis?.status === 'failed' ? '本地检查完成，模型诊断失败' : '诊断完成'; row.finishedAt = Date.now();
         row.findings = result.findings; row.summary = result.summary; row.sourceNote = result.sourceNote; row.coverage = result.coverage; row.general = result.general; row.loggingAudit = result.loggingAudit; row.modelAnalysis = result.modelAnalysis; });
+      operationLog('diagnostics.execute', 'completed', fields);
     } catch (error) {
+      if (signal.aborted) operationLog('diagnostics.execute', 'cancelled', fields);
+      else operationFailure('diagnostics.execute', error, fields);
       await this.update(record.id, row => { row.status = signal.aborted ? 'interrupted' : 'failed'; row.finishedAt = Date.now();
-        row.progress = signal.aborted ? this.disposed ? '窗口关闭，诊断已中断' : '诊断已停止' : '诊断失败'; row.error = String((error as Error).message).slice(0, 300); }).catch(() => {});
+        row.progress = signal.aborted ? this.disposed ? '窗口关闭，诊断已中断' : '诊断已停止' : '诊断失败'; row.error = String((error as Error).message).slice(0, 300); })
+        .catch(error => operationFailure('diagnostics.terminal.save', error, fields));
     }
     if (this.runningId === record.id) this.runningId = undefined;
-    if (!this.disposed) await this.retryNotification(record.id).catch(() => {});
+    if (!this.disposed) await this.retryNotification(record.id).catch(error => operationFailure('diagnostics.notification', error, fields));
   }
   async cancel(id: string): Promise<void> {
     const controller = this.controllers.get(id);
@@ -157,13 +175,14 @@ export class DiagnosticJobs extends EventEmitter {
     const record = await this.get(id);
     if (record.status === 'running' || record.notification.status === 'sent') return;
     let lock: import('node:fs/promises').FileHandle;
-    try { lock = await this.lock(id, '.notification.lock'); } catch { return; }
+    try { lock = await this.lock(id, '.notification.lock'); } catch (error) { if (expectedFileError(error, ['EEXIST'])) return; throw error; }
     try {
       if ((await this.get(id)).notification.status === 'sent') return;
       await this.update(id, row => { row.notification = { status: 'sending', ownerPid: process.pid }; });
       let result: NotificationResult;
-      try { result = await this.notify(record); } catch { result = { status: 'failed', message: '通知发送失败，请检查全局通知设置后重试' }; }
+      try { result = await this.notify(record); } catch (error) { operationFailure('diagnostics.notification', error, { diagnosticId: id }); result = { status: 'failed', message: '通知发送失败，请检查全局通知设置后重试' }; }
       await this.update(id, row => { row.notification = result; });
+      operationLog('diagnostics.notification', result.status, { diagnosticId: id });
     } finally { await lock.close(); await fs.unlink(this.file(id, '.notification.lock')).catch(() => {}); }
   }
   private async lock(id: string, suffix: string): Promise<import('node:fs/promises').FileHandle> {
@@ -175,7 +194,7 @@ export class DiagnosticJobs extends EventEmitter {
       let stale = false;
       try { const owner = JSON.parse(await fs.readFile(file, 'utf8')); stale = Number.isInteger(owner.pid) && owner.pid > 0 && !alive(owner.pid); }
       catch { stale = Date.now() - (await fs.stat(file)).mtimeMs > 30000; }
-      if (!stale) throw new Error('记录处理中');
+      if (!stale) throw Object.assign(new Error('记录处理中'), { code: 'EEXIST' });
       await fs.unlink(file); handle = await fs.open(file, 'wx', 0o600);
     }
     try { await handle.writeFile(JSON.stringify({ pid: process.pid, windowId: this.scope.windowId })); return handle; }
@@ -194,7 +213,7 @@ export class DiagnosticJobs extends EventEmitter {
     const lockFile = this.file(id, '.repair.lock');
     let lock: import('node:fs/promises').FileHandle;
     try { lock = await this.lock(id, '.repair.lock'); }
-    catch { throw new Error('该诊断正在创建修复会话，请稍后刷新查看。'); }
+    catch (error) { if (!expectedFileError(error, ['EEXIST'])) throw error; throw new Error('该诊断正在创建修复会话，请稍后刷新查看。'); }
     let creating = false;
     try {
       record = await this.get(id);
@@ -207,7 +226,7 @@ export class DiagnosticJobs extends EventEmitter {
       await this.update(id, row => { row.repair = { status: 'started', sessionId, workspaceId: this.scope.workspaceId }; });
       return sessionId;
     } catch (error) {
-      if (creating) await this.update(id, row => { row.repair = { status: 'failed', message: String((error as Error).message).slice(0, 300) }; }).catch(() => {});
+      if (creating) await this.update(id, row => { row.repair = { status: 'failed', message: String((error as Error).message).slice(0, 300) }; }).catch(error => operationFailure('diagnostics.repair.save', error, { diagnosticId: id }));
       throw error;
     } finally { await lock.close(); await fs.unlink(lockFile).catch(() => {}); }
   }

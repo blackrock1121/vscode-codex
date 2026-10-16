@@ -1,3 +1,4 @@
+import { errorFields, operationFailure, operationLog } from '../operations';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as os from 'node:os';
@@ -192,6 +193,7 @@ export class CodexProcess {
   private async preTool(key: string, name: string, input: Record<string, unknown>, p: any): Promise<void> {
     this.latency.start(`pretool:${key}`, 'pretool', { threadId: p.threadId ?? this.sessionId, turnId: p.turnId, itemId: p.itemId });
     try { await this.hooks.onPreTool?.(name, input); }
+    catch (error) { this.latency.end(`pretool:${key}`, 'failed', errorFields(error)); throw error; }
     finally { this.latency.end(`pretool:${key}`); }
   }
   private error(e: unknown) { this.emit({ kind: 'error', message: String(e instanceof Error ? e.message : e) }); }
@@ -202,16 +204,19 @@ export class CodexProcess {
   }
   private async loadModels(): Promise<void> {
     try {
-      const models: ModelChoice[] = [];
+      const models: ModelChoice[] = [], seen = new Set<string>();
       let cursor: string | null = null;
       do {
         const catalog = await this.timedRequest('model/list', { cursor });
         models.push(...modelChoices(catalog.data));
         cursor = catalog.nextCursor ?? null;
+        if (cursor && seen.has(cursor)) throw new Error('模型列表分页游标重复');
+        if (cursor) seen.add(cursor);
       } while (cursor);
       this.models = models;
       this.emit({ kind: 'models', models });
     } catch (e) {
+      operationFailure('models.load', e);
       if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，普通模式仍可使用：${String(e)}` });
     } finally { this.modelsLoaded = true; this.scheduleCompactionValidation(); }
   }
@@ -271,7 +276,7 @@ export class CodexProcess {
     this.compactionPreparation = Promise.all([
       this.rpc.request('config/read', { includeLayers: false }),
       this.rpc.request('getAuthStatus', { includeToken: false, refreshToken: false }),
-    ]).then(([settings, identity]) => ({ settings, identity })).catch(() => undefined);
+    ]).then(([settings, identity]) => ({ settings, identity })).catch(error => { operationFailure('compaction.settings', error); return undefined; });
   }
   private async prepareCompactionRelay(): Promise<void> {
     if (!this.canPrepareCompactionRelay() || this.exited || this.disposed) return;
@@ -300,7 +305,8 @@ export class CodexProcess {
       if (this.exited || this.disposed) { relay.close(); return; }
       this.compactionRelay = relay; this.compactionUpstreamUrl = upstream;
       this.emit({ kind: 'diag', message: '[compaction_route] {"stage":"ready","scope":"manual_and_auto"}' });
-    } catch {
+    } catch (error) {
+      operationLog('compaction.relay.prepare', 'fallback', { ...errorFields(error), scope: 'native' });
       this.emit({ kind: 'notice', message: '自动压缩优化连接未启用，当前连接继续使用 CLI 原生压缩。' });
     } finally { clearTimeout(timer); }
   }
@@ -344,7 +350,9 @@ export class CodexProcess {
       this.emit({ kind: 'diag', message: `[compaction_validation] ${JSON.stringify({ model: candidate.id, ...result })}` });
       this.emit({ kind: 'notice', message: result.passed ? `${candidate.id} 已通过压缩验证，后续符合层级和档位要求的压缩可自动使用。` :
         `${candidate.id} 未通过本次质量或耗时检查，继续沿用已验证的压缩策略。` });
-    } catch {
+    } catch (error) {
+      if (controller.signal.aborted) operationLog('compaction.validation', 'cancelled');
+      else operationFailure('compaction.validation', error);
       this.compactionStore.complete(candidate.id);
       if (!controller.signal.aborted) this.emit({ kind: 'notice', message: `${candidate.id} 的压缩验证未完成，保留当前策略，不自动重复评测。` });
     } finally { if (this.validationAbort === controller) this.validationAbort = undefined; }
@@ -364,7 +372,7 @@ export class CodexProcess {
     if (!fs.existsSync(file)) return;
     let saved: any;
     try { saved = JSON.parse(fs.readFileSync(file, 'utf8')); }
-    catch { this.clearSavedQuestion(); this.emit({ kind: 'notice', message: '保存的提问已损坏，请重新发送消息。' }); return; }
+    catch (error) { operationFailure('question.restore', error); this.clearSavedQuestion(); this.emit({ kind: 'notice', message: '保存的提问已损坏，请重新发送消息。' }); return; }
     const questions = normalizeQuestions(saved?.request?.input?.questions);
     if (saved?.version !== 1 || saved.sessionId !== this.sessionId || typeof saved.turnId !== 'string' ||
         saved.request?.toolName !== 'AskUserQuestion' || typeof saved.request.requestId !== 'string' ||
@@ -579,7 +587,7 @@ export class CodexProcess {
           if (thread.status?.type === 'active') this.latency.registerChild(thread.id, thread.parentThreadId);
         }
         return this.children.has(threadId);
-      } catch { return false; }
+      } catch (error) { this.latency.end(`validate:${threadId}`, 'failed', errorFields(error)); return false; }
       finally { this.latency.end(`validate:${threadId}`); this.childChecks.delete(threadId); }
     })();
     this.childChecks.set(threadId, checking);

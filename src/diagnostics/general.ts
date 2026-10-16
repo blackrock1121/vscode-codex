@@ -16,7 +16,7 @@ const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '�
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
   if (row) {
     if (row.event === 'codex.tool_result' && row.expectedCancellation === true && row.cancellationReason === 'question_pause' && row.outcome === 'waiting_for_user' && ['unknown', 'interrupted'].includes(String(row.failureCategory))) return;
-    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' || /compact/i.test(String(row.method ?? ''));
+    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' || String(row.operation ?? '').startsWith('compaction.') || /compact/i.test(String(row.method ?? ''));
     const stage = String(row.stage ?? row.event ?? ''), outcome = String(row.outcome ?? row.status ?? '');
     const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
       row.success === false || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
@@ -25,14 +25,14 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     if (!failed && !retry && !fallback) return;
     // 旧 stderr 脱敏可能留下 ANSI 的 [2m 前缀，不能依赖模块名前的单词边界。
     const telemetry = row.type === 'runtime_error' && /opentelemetry_sdk\b.*\b(?:ExportError|export error)\b/i.test(String(row.message ?? ''));
-    const category = telemetry ? '遥测采集' : compaction ? '压缩' : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
+    const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' ? '采集完整性' : compaction ? '压缩' : row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
-    const detail = [row.diagnosticType, row.method, stage, outcome, row.errorCategory ?? row.failureCategory,
+    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.errorType, row.failureEvidence,
       diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
-      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'reason', 'scope'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`), row.message]
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'reason', 'scope', 'operationId', 'diagnosticId'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`), row.message]
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
     return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };
   }
@@ -50,12 +50,14 @@ export class GeneralAccumulator {
   private readonly counts: GeneralSummary = { errors: 0, warnings: 0, retries: 0, recoveries: 0, compactionErrors: 0, groups: 0, overflow: 0 };
   private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string> }>();
   add(line: string, row: PerformanceRow | undefined, where: LogLocation): void {
+    if (row?.stage === 'recovered') { this.counts.recoveries++; return; }
     if (!row && /恢复成功|恢复完成|recovered|retry succeeded|connection restored/i.test(line) && !/失败|异常|error|failed|未能|尚未|没有/i.test(line)) { this.counts.recoveries++; return; }
     const incident = classifyIncident(line, row); if (!incident) return;
     if (incident.severity === 'error') this.counts.errors++; else this.counts.warnings++;
     if (/retry|重试/i.test(String(row?.stage ?? row?.event ?? line))) this.counts.retries++;
     if (incident.category === '压缩' && incident.severity === 'error') this.counts.compactionErrors++;
-    const signature = incident.message.replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>')
+    const signature = incident.message.replace(/(ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)[^@]*)(?:@.*)?/i, '$1')
+      .replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>')
       .replace(/\bcallId=[\w.:-]+/g, 'callId=<id>')
       .replace(/\b(?:attempt|elapsedMs|durationMs|requestId|request_id|retry)\s*[:=]?\s*\d+(?:\.\d+)?/gi, match => match.replace(/\d+(?:\.\d+)?$/, '<n>'))
       .replace(/\b\d+(?:\.\d+)?(?:ms|秒)\b/g, '<duration>');

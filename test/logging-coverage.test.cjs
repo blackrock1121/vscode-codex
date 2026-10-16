@@ -140,3 +140,10 @@ test('源码覆盖结果持久化，模型和修复会话无需运行报错即�
   assert.match(diagnosticRepairPrompt(saved, result.report), /不要因为没有运行错误记录就忽略/);
   assert.match(diagnosticRepairPrompt(saved, 'x'.repeat(60001), '/tmp/audit.report.md'), /完整报告文件："\/tmp\/audit.report.md"/);
 });
+
+test('正则 exec 与直接哈希 update 是纯计算，未知同名调用仍保留覆盖候选',()=>{
+ const pure=scanSource('src/pure.ts',`function parse(s){return /x/.exec(s)} function hash(s){return createHash('sha256').update(s).digest('hex')}`);
+ assert.equal(pure.operations,0);assert.equal(pure.candidates.length,0);
+ const unknown=scanSource('src/unknown.ts',`function run(){return client.exec('x')} function save(){store.update('x')}`);
+ assert.equal(unknown.operations,2);assert.equal(unknown.candidates.length,2);
+});

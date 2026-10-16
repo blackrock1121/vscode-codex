@@ -1,3 +1,4 @@
+import { operationFailure } from './operations';
 import * as fs from 'node:fs/promises';
 
 const MAX_DIFF_BYTES = 2 * 1024 * 1024;
@@ -32,6 +33,7 @@ export async function readDiffFile(file: string): Promise<{
     } finally { await handle.close(); }
   } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return { exists: false, text: '' };
+    operationFailure('diff.read', error);
     return undefined;
   }
 }

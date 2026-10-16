@@ -1,3 +1,4 @@
+import { expectedFileError, operationFailure } from '../operations';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -46,7 +47,7 @@ export class CompactionValidationStore {
       const row = JSON.parse(fs.readFileSync(file, 'utf8'));
       if (row.revision === VALIDATION_REVISION && row.model === model && row.effort === 'xhigh' &&
         ['running', 'passed', 'failed'].includes(row.status)) return row;
-    } catch { /* 未验证或记录损坏时不擅自采用新模型 */ }
+    } catch (error) { if (!expectedFileError(error)) operationFailure('compaction.validation.read', error); }
   }
   validated(model: string): boolean {
     if (VALIDATED_BASELINES.some(x => x.model === model)) return true;
@@ -66,7 +67,7 @@ export class CompactionValidationStore {
         fs.writeFileSync(daily, JSON.stringify({ model }), { flag: 'wx', mode: 0o600 });
         fs.writeFileSync(file, JSON.stringify(row), { flag: 'wx', mode: 0o600 });
       }
-      catch { return false; }
+      catch (error) { if (!expectedFileError(error, ['EEXIST'])) operationFailure('compaction.validation.claim', error); return false; }
     }
     this.cache.set(model, row); return true;
   }
@@ -76,7 +77,7 @@ export class CompactionValidationStore {
     const row: ValidationRecord = { revision: VALIDATION_REVISION, model, effort: 'xhigh', status: result?.passed ? 'passed' : 'failed', result };
     this.cache.set(model, row);
     const file = this.file(model);
-    if (file) { const tmp = `${file}.${randomUUID()}.tmp`; try { fs.writeFileSync(tmp, JSON.stringify(row), { mode: 0o600 }); fs.renameSync(tmp, file); } catch { /* 写盘失败不影响用户任务；保留 running 防止重复收费 */ } finally { try { fs.rmSync(tmp, { force: true }); } catch {} } }
+    if (file) { const tmp = `${file}.${randomUUID()}.tmp`; try { fs.writeFileSync(tmp, JSON.stringify(row), { mode: 0o600 }); fs.renameSync(tmp, file); } catch (error) { operationFailure('compaction.validation.save', error); /* 保留 running 防止重复收费 */ } finally { try { fs.rmSync(tmp, { force: true }); } catch (error) { operationFailure('compaction.validation.cleanup', error); } } }
   }
 }
 

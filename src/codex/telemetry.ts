@@ -1,7 +1,8 @@
+import { operationFailure } from '../operations';
 import * as http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
-import { failureCategory } from './performanceTrace';
+import { failureCategory, failureType } from './performanceTrace';
 
 /** CLI 的 OTLP 只送到本机；原始属性可能含工具输出，必须先过白名单再交给日志。 */
 export type TransportDiagnostic = Record<string, string | number | boolean | null>;
@@ -57,6 +58,8 @@ function fields(a: Record<string, unknown>): TransportDiagnostic {
     const error = typeof a['error.message'] === 'string' && a['error.message'].length ? a['error.message'] : undefined;
     const output = typeof a.output === 'string' && a.output.length ? a.output : undefined;
     out.failureCategory = failureCategory(error ?? output, out.exitCode as number | undefined);
+    const errorType = failureType(error ?? output);
+    if (errorType) out.errorType = errorType;
     out.failureEvidence = error !== undefined ? 'error_message' : output !== undefined ? 'tool_output' : out.exitCode !== undefined ? 'exit_code' : 'unavailable';
   }
   // 只保存已知 API 路由，不保存主机、查询参数或任意 URL。
@@ -132,7 +135,7 @@ export class LocalTelemetry {
         res.writeHead(404).end(); req.resume(); return;
       }
       let size = 0; const chunks: Buffer[] = [];
-      req.on('error', () => {});
+      req.on('error', error => operationFailure('telemetry.receive', error));
       req.on('data', (chunk: Buffer) => {
         size += chunk.length;
         if (size > MAX_BYTES) { res.writeHead(413).end(); req.destroy(); return; }
@@ -147,9 +150,9 @@ export class LocalTelemetry {
             res.writeHead(415).end(); return;
           }
           const rows = transportDiagnostics(JSON.parse(body.toString('utf8')));
-          for (const row of rows) { try { this.receive(row); } catch { /* 日志失败不能影响对话 */ } }
+          for (const row of rows) { try { this.receive(row); } catch (error) { operationFailure('telemetry.receiver', error); } }
           res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}');
-        } catch { res.writeHead(400).end(); }
+        } catch (error) { operationFailure('telemetry.decode', error); res.writeHead(400).end(); }
       });
     });
     this.server.requestTimeout = 5000;

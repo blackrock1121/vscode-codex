@@ -78,7 +78,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
   const consume = (line: string, file: string, lineNumber: number) => {
     const identity = line.match(/\[pluginVersion=([\w.-]+) windowId=([\w.-]+) hostId=([\w.-]+)\]/);
     const meta = identity ? { pluginVersion: identity[1], windowId: identity[2], hostId: identity[3] } : {};
-    const match = line.match(/\[(perf|transport|compaction|compaction_route)\] (\{.*\})\s*$/);
+    const match = line.match(/\[(perf|transport|compaction|compaction_route|operation|logging)\] (\{.*\})\s*$/);
     let row: PerformanceRow | undefined, invalid = false;
     if (match) {
       try {
@@ -86,7 +86,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
         if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid');
         row = { ...parsed, diagnosticType: match[1], ...meta };
       } catch { invalid = true; }
-    } else if (/\[(perf|transport|compaction|compaction_route)\] /.test(line)) invalid = true;
+    } else if (/\[(perf|transport|compaction|compaction_route|operation|logging)\] /.test(line) && !/\[logging\] droppedLines=\d+\b/.test(line)) invalid = true;
     const day = file.match(LOG_NAME)![1], at = diagnosticLogTime(line, file, row);
     if (request?.fromMs !== undefined && at === undefined) {
       const [y, m, d] = day!.split('-').map(Number), start = new Date(y, m - 1, d).getTime(), end = new Date(y, m - 1, d + 1).getTime();

@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { operationFailure, operationLog } from '../operations';
 import type { CodexRpc, RpcMessage } from '../codex/rpc';
 import type { DiagnosticOutput, DiagnosticFinding } from './analysis';
 import type { DiagnosticRequest } from './options';
@@ -28,6 +30,8 @@ export function diagnosticModelPrompt(output: DiagnosticOutput): string {
 /** 独立临时线程，不附加到业务会话；普通服务档位，诊断期间不执行工具。 */
 export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, request: DiagnosticRequest,
   cwd: string, progress: (message: string) => void, signal: AbortSignal, timeoutMs = 15 * 60_000): Promise<DiagnosticOutput> {
+  const operationId = randomUUID();
+  operationLog('diagnostics.model', 'start', { operationId });
   const started = Date.now(); let threadId: string | undefined, turnId: string | undefined, settled = false, text = '', failureMessage: string | undefined;
   const lifetime = new AbortController(), selectedEvidence = selectDiagnosticEvidence(output.findings);
   const evidenceCounts = { evidenceSent: selectedEvidence.length, evidenceOmitted: output.findings.length - selectedEvidence.length };
@@ -99,10 +103,12 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
         evidence: `${redactDiagnosticText(f.explanation, 2000)}\n证据：${f.evidenceIds.join('、')}`,
         recommendation: redactDiagnosticText(f.recommendation, 2000), traceIds: [...new Set<string>(refs.flatMap((id: string) => evidence.get(id)!.traceIds))].slice(0, 8) };
     });
+    operationLog('diagnostics.model', 'completed', { operationId, durationMs: Date.now() - started });
     return { ...output, findings: [...findings, ...output.findings], modelAnalysis: { status: 'completed', model: session.model, effort: request.effort!, durationMs: Date.now() - started, ...evidenceCounts },
       report: '# 模型诊断结论\n\n' + redactDiagnosticText(parsed.summary, 6000) + '\n\n' + findings.map(f => `## ${f.title}\n\n${f.evidence}\n\n${f.recommendation}`).join('\n\n') + '\n\n' + output.report };
   } catch (error) {
-    if (signal.aborted) throw error;
+    if (signal.aborted) { operationLog('diagnostics.model', 'cancelled', { operationId }); throw error; }
+    operationFailure('diagnostics.model', error, { operationId });
     const message = redactDiagnosticText(failureMessage ?? String((error as Error).message), 300);
     return { ...output, modelAnalysis: { status: 'failed', model: request.model!, effort: request.effort!, durationMs: Date.now() - started, message, ...evidenceCounts },
       report: `# 模型诊断未完成\n\n${message}\n\n本地规则检查结果如下。\n\n` + output.report };
@@ -111,6 +117,6 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
     lifetime.abort();
     rpc.off('notification', notification); rpc.off('close', closed); rpc.off('request', serverRequest);
     if (threadId && turnId && !settled) void rpc.request('turn/interrupt', { threadId, turnId }, 1000).catch(() => {});
-    await rpc.disposeAndWait();
+    await rpc.disposeAndWait().catch(error => operationFailure('diagnostics.model.dispose', error));
   }
 }

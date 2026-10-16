@@ -1,3 +1,5 @@
+import { postWebviewMessage } from '../webviewDelivery';
+import { expectedFileError, operationFailure, operationLog } from '../operations';
 import * as vscode from "vscode";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -418,7 +420,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             }
             else {
-                this.view.webview.postMessage({ kind: "ping", id: Date.now() } satisfies ToWebview);
+                postWebviewMessage(this.view.webview, { kind: "ping", id: Date.now() } satisfies ToWebview);
             }
         }
         else {
@@ -459,7 +461,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             try {
                 stat = fs.statSync(p);
             }
-            catch {
+            catch (error) { operationFailure('context.file', error);
                 continue;
             }
             const rel = vscode.workspace.asRelativePath(p);
@@ -468,7 +470,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 try {
                     entries = fs.readdirSync(p).slice(0, 200);
                 }
-                catch {
+                catch (error) { operationFailure('context.file', error);
                 }
                 parts.push(`目录 ${rel}/ 包含:\n${entries.map((e) => "  " + e).join("\n")}`);
             }
@@ -486,7 +488,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     const ext = path.extname(p).replace(".", "");
                     parts.push(`文件 ${rel}:\n\`\`\`${ext}\n${content}\n\`\`\`${note}`);
                 }
-                catch {
+                catch (error) { operationFailure('context.file', error);
                     parts.push(`文件 ${rel}（无法读取，请用 Read 工具）`);
                 }
             }
@@ -514,7 +516,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             }
         }
-        catch {
+        catch (error) { if (!expectedFileError(error)) operationFailure('context.import', error);
         }
         const safe = (rel: string) => rel
             .split(/[\\/]+/)
@@ -544,7 +546,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 if (r.isDir)
                     fs.mkdirSync(p, { recursive: true });
             }
-            catch {
+            catch (error) { if (!expectedFileError(error)) operationFailure('context.import', error);
             }
             if (fs.existsSync(p))
                 paths.push(p);
@@ -592,10 +594,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
     }
     private post2(target: vscode.Webview | undefined, e: ToWebview): void {
-        target?.postMessage(e);
+        postWebviewMessage(target, e);
     }
     private postUpdateDot(): void {
-        this.view?.webview.postMessage({ kind: "update_available", version: this.updateAvailable ?? "" });
+        postWebviewMessage(this.view?.webview, { kind: "update_available", version: this.updateAvailable ?? "" });
         if (this.view) {
             this.view.badge = this.updateAvailable
                 ? { value: 1, tooltip: `发现新版本 v${this.updateAvailable}` }
@@ -618,20 +620,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private renderSessions(): void {
         const list = this.store.list();
         try {
-            this.view?.webview.postMessage({
+            postWebviewMessage(this.view?.webview, {
                 kind: "sessions",
                 list: this.withPinned(list),
                 activeId: this.activeCtx?.sessionId,
                 runningIds: this.runningIds(),
             } satisfies ToWebview);
         }
-        catch {
+        catch (error) { operationFailure('sessions.render', error);
         }
         for (const ctx of this.sessions) {
             try {
                 this.setPanelTitle(ctx, list);
             }
-            catch {
+            catch (error) { operationFailure('sessions.render', error);
             }
         }
     }
@@ -865,7 +867,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
             }
         }
-        catch {
+        catch (error) { operationFailure('panel.keepFilesLeft', error);
         }
         finally {
             this.layoutFixing = false;
@@ -879,7 +881,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return;
             await vscode.commands.executeCommand("workbench.action.lockEditorGroup");
         }
-        catch {
+        catch (error) { operationFailure('panel.lockChatGroup', error);
         }
     }
     async login(): Promise<void> {
@@ -901,7 +903,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (response.authUrl)
                 await vscode.env.openExternal(vscode.Uri.parse(response.authUrl));
         }
-        catch (e) {
+        catch (e) { operationFailure('panel.login', e);
             void vscode.window.showErrorMessage(`无法启动登录：${String(e)}`);
         }
     }
@@ -910,7 +912,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const r = await (await this.store.connection()).request("account/read", {});
             void vscode.window.showInformationMessage(r.account ? `Codex 已登录 · ${r.account.type === "chatgpt" ? "ChatGPT 订阅" : r.account.type} · ${r.account.planType ?? ""}` : "Codex 尚未登录，请执行“Codex: 登录账号”。");
         }
-        catch (e) {
+        catch (e) { operationFailure('panel.account', e);
             void vscode.window.showErrorMessage(String(e));
         }
     }
@@ -1479,7 +1481,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await this.context.workspaceState.update(LOCAL_SNAPSHOT_EXCLUDES_KEY, saved);
             });
             this.post(ctx, { kind: "snapshot_exclude_result", ok: true, message: `已在本机排除 ${selected.length} 项，下一轮快照生效；未修改项目文件。`, paths: selected });
-        } catch (err) {
+        } catch (err) { operationFailure('panel.excludeSnapshotPaths', err);
             this.post(ctx, { kind: "snapshot_exclude_result", ok: false, message: `排除失败：${String(err)}`, paths: [] });
         }
     }
@@ -2029,7 +2031,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
                 }
             }
-            catch {
+            catch (error) { operationFailure('panel.openDiff', error);
             }
         }
     }
@@ -2084,10 +2086,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         const saves = vscode.workspace.textDocuments
             .filter((d) => d.isDirty && !d.isUntitled && want.has(d.uri.fsPath))
-            .map((d) => d.save().then(() => undefined, () => undefined));
+            .map((d) => d.save().then(saved => { if (!saved) operationLog('autosave.tool', 'unavailable'); }, error => operationFailure('autosave.tool', error)));
         if (!saves.length)
             return;
-        await Promise.race([Promise.all(saves), new Promise<void>((r) => setTimeout(r, 2000))]);
+        let timer: NodeJS.Timeout | undefined;
+        try { await Promise.race([Promise.all(saves), new Promise<void>(resolve => { timer = setTimeout(() => { operationLog('autosave.tool', 'fallback', { reason: 'timeout' }); resolve(); }, 2000); })]); }
+        finally { clearTimeout(timer); }
     }
     private refreshChangedFiles(ctx: SessionCtx): void {
         if (!this.alive(ctx))
@@ -2863,11 +2867,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (saving) break;
                         const quietHours = parseQuietHours(m.quietHours);
                         if (!quietHours) {
-                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: "工作时间必须是同一天的 HH:mm，结束时间须晚于开始时间，例如 08:30–18:00。" } satisfies ToWebview);
+                            postWebviewMessage(panel.webview, { kind: "notify_result", ok: false, message: "工作时间必须是同一天的 HH:mm，结束时间须晚于开始时间，例如 08:30–18:00。" } satisfies ToWebview);
                             break;
                         }
                         if (!Number.isInteger(m.usageThresholdPct) || m.usageThresholdPct < 1 || m.usageThresholdPct > 100) {
-                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: "每周用量预警阈值须为 1–100 的整数。" } satisfies ToWebview);
+                            postWebviewMessage(panel.webview, { kind: "notify_result", ok: false, message: "每周用量预警阈值须为 1–100 的整数。" } satisfies ToWebview);
                             break;
                         }
                         saving = true;
@@ -2882,7 +2886,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                             await cfg.update("notifyUsageLocal", m.usageLocal === true, vscode.ConfigurationTarget.Global);
                         } finally { saving = false; }
                         this.postNotifyConfig();
-                        panel.webview.postMessage({ kind: "notify_result", ok: true,
+                        postWebviewMessage(panel.webview, { kind: "notify_result", ok: true,
                             message: m.usageFeishu && !m.webhook.trim() ? "已保存；飞书用量预警需要填写上方 Webhook 地址。" : "已保存。" } satisfies ToWebview);
                         break;
                     }
@@ -2898,20 +2902,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                                 question: "点击返回当前窗口的任务推送设置。",
                             });
                             await this.sendLocalNotice(notice.title, notice.body);
-                            panel.webview.postMessage({ kind: "notify_result", ok: true, message: "系统已接受本机通知，请点击通知验证返回本窗口。若未显示，请检查系统通知设置或专注模式。" } satisfies ToWebview);
+                            postWebviewMessage(panel.webview, { kind: "notify_result", ok: true, message: "系统已接受本机通知，请点击通知验证返回本窗口。若未显示，请检查系统通知设置或专注模式。" } satisfies ToWebview);
                         } catch (error) {
-                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: `本机通知失败：${String((error as Error).message ?? error)}；飞书推送不受影响。` } satisfies ToWebview);
+                            postWebviewMessage(panel.webview, { kind: "notify_result", ok: false, message: `本机通知失败：${String((error as Error).message ?? error)}；飞书推送不受影响。` } satisfies ToWebview);
                         }
                         break;
                     }
                     case "notifyTest": {
                         const url = m.webhook.trim();
                         if (!url) {
-                            panel.webview.postMessage({ kind: "notify_result", ok: false, message: "请先填写 webhook 地址。" } satisfies ToWebview);
+                            postWebviewMessage(panel.webview, { kind: "notify_result", ok: false, message: "请先填写 webhook 地址。" } satisfies ToWebview);
                             break;
                         }
                         const r = await this.sendWebhook(url, "🔔 Codex Copilot 推送测试：webhook 配置成功。", { test: true });
-                        panel.webview.postMessage({
+                        postWebviewMessage(panel.webview, {
                             kind: "notify_result",
                             ok: r.ok,
                             message: r.ok ? `测试消息已发出（HTTP ${r.status}），请到群里确认。` : `发送失败：${r.error}`,
@@ -2922,7 +2926,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             catch (err) {
                 this.output.appendLine(`[notify] 面板消息处理失败(${m.type}): ${String(err)}`);
-                panel.webview.postMessage({ kind: "notify_result", ok: false, message: `操作失败：${String((err as Error).message ?? err)}` } satisfies ToWebview);
+                postWebviewMessage(panel.webview, { kind: "notify_result", ok: false, message: `操作失败：${String((err as Error).message ?? err)}` } satisfies ToWebview);
                 if (m.type === "notifyCalendarRefresh") this.postNotifyCalendar();
             }
         });
@@ -2942,7 +2946,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private postNotifyConfig(): void {
         const cfg = vscode.workspace.getConfiguration("codexChat");
-        this.notifyPanel?.webview.postMessage({
+        postWebviewMessage(this.notifyPanel?.webview, {
             kind: "notify_config",
             quietHours: parseQuietHours(cfg.get("notifyFeishuQuietHours")) ?? DEFAULT_QUIET_HOURS,
             local: cfg.get<boolean>("notifyLocal") ?? false,
@@ -2956,7 +2960,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.postNotifyCalendar();
     }
     private postNotifyCalendar(): void {
-        this.notifyPanel?.webview.postMessage({ kind: "notify_calendar", message: this.workdayCalendar.status() } satisfies ToWebview);
+        postWebviewMessage(this.notifyPanel?.webview, { kind: "notify_calendar", message: this.workdayCalendar.status() } satisfies ToWebview);
     }
     private notifyHtml(): string {
         const nonce = randomUUID().replace(/-/g, "");
@@ -3024,7 +3028,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   // 只保存恢复标记；已保存配置从 VS Code 设置重新读取，不复制 webhook。
   vscode.setState({ view: "notify", version: 1 });
   window.addEventListener("error", (e) => {
-    try { vscode.postMessage({ type: "webviewError", message: (e.message || "?") + " @notify:" + e.lineno }); } catch {}
+    try { vscode.postMessage({ type: "webviewError", message: "通知页面脚本异常" }); } catch {}
   });
   const $ = (id) => document.getElementById(id);
   function status(text, kind) {
@@ -3121,7 +3125,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try {
             ctx.proc?.dispose();
         }
-        catch {
+        catch (error) { operationFailure('session.stall.dispose', error);
         }
         ctx.proc = undefined;
         ctx.starting = undefined;
@@ -3177,7 +3181,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     ctx.checkpoints.flush();
                     if (ctx.mayHaveModifiedWorkspace) this.refreshChangedFiles(ctx);
                 }
-                catch (err) {
+                catch (err) { operationFailure('panel.handleEmit', err);
                     this.post(ctx, { kind: "notice", message: `会话或文件快照刷新失败：${String(err)}` });
                 }
                 this.output.appendLine(`[${new Date().toISOString()}] [finalize] 文件差异与还原点整理 ${Date.now() - finalizeAt}ms`);
@@ -3553,7 +3557,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private broadcastRunning(): void {
         try {
-            this.view?.webview.postMessage({ kind: "running", sessionIds: this.runningIds() } satisfies ToWebview);
+            postWebviewMessage(this.view?.webview, { kind: "running", sessionIds: this.runningIds() } satisfies ToWebview);
         }
         catch {
         }
@@ -3768,7 +3772,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const pkg = await this.fetchRepoFile("package.json");
             remote = JSON.parse(pkg.toString("utf8")).version || "";
         }
-        catch (err) {
+        catch (err) { operationFailure('panel.checkForUpdate', err);
             if (!quiet)
                 vscode.window.showErrorMessage(`检查更新失败：${String((err as Error)?.message ?? err)}`);
             return;
@@ -3809,7 +3813,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await vscode.commands.executeCommand("workbench.extensions.installExtension", vscode.Uri.file(dest));
             });
         }
-        catch (err) {
+        catch (err) { operationFailure('panel.checkForUpdate', err);
             vscode.window.showErrorMessage(`更新失败：${String((err as Error)?.message ?? err)}`);
             return;
         }
@@ -3931,7 +3935,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 ok = found.some((s) => s.name === name || s.name.startsWith(name + "("));
             }
-            catch {
+            catch (error) { operationFailure('panel.validateSymbols', error);
                 ok = true;
             }
             results.set(name, ok);
@@ -4052,7 +4056,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         syms =
                             (await vscode.commands.executeCommand<vscode.SymbolInformation[]>("vscode.executeWorkspaceSymbolProvider", name)) ?? [];
                     }
-                    catch {
+                    catch (error) { operationFailure('panel.openSymbolInner', error);
                         return undefined;
                     }
                     if (syms.length) {
@@ -4105,7 +4109,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
         }
-        catch {
+        catch (error) { operationFailure('panel.openSymbolInner', error);
         }
         try {
             const hit = await this.searchDefinition(name);
@@ -4116,7 +4120,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
         }
-        catch {
+        catch (error) { operationFailure('panel.openSymbolInner', error);
         }
         done("找不到→搜索面板");
         try {
@@ -4127,7 +4131,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 isCaseSensitive: true,
             });
         }
-        catch {
+        catch (error) { operationFailure('panel.openSymbolInner', error);
             vscode.window.showInformationMessage(`未找到符号定义：${name}`);
         }
     }
@@ -4215,7 +4219,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (e.kind === "busy" && !e.busy)
             e = { ...e, restoring: this.restoring.has(ctx) };
         // 设置、链接等操作报错不代表当前轮次结束，发送队列只能由真实结束事件放行。
-        ctx.webview.postMessage(e.kind === "error" && ctx.proc?.isBusy ? { ...e, keepBusy: true } : e);
+        postWebviewMessage(ctx.webview, e.kind === "error" && ctx.proc?.isBusy ? { ...e, keepBusy: true } : e);
     }
     private config(): vscode.WorkspaceConfiguration {
         return vscode.workspace.getConfiguration("codexChat");
@@ -4394,10 +4398,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const vscode = acquireVsCodeApi();
     // 侧边栏脚本一旦抛错整个面板就会"点了没反应"且无迹可循——错误上报给 host 记日志。
     window.addEventListener("error", (e) => {
-      try { vscode.postMessage({ type: "webviewError", message: (e.message || "?") + " @sidebar:" + e.lineno }); } catch {}
+      try { vscode.postMessage({ type: "webviewError", message: "侧边栏脚本异常" }); } catch {}
     });
     window.addEventListener("unhandledrejection", (e) => {
-      try { vscode.postMessage({ type: "webviewError", message: "unhandledrejection@sidebar: " + String(e.reason).slice(0, 300) }); } catch {}
+      try { vscode.postMessage({ type: "webviewError", message: "侧边栏异步脚本异常" }); } catch {}
     });
     const TRASH = ${JSON.stringify(TRASH)};
     const PENCIL = ${JSON.stringify(PENCIL)};

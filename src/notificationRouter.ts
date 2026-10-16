@@ -1,3 +1,4 @@
+import { observeOperation } from './operations';
 import * as http from "node:http";
 import { randomUUID } from "node:crypto";
 
@@ -16,7 +17,7 @@ export class NotificationRouter {
         req.resume();
         void Promise.resolve().then(() => {
             if (this.disposed) throw new Error("通知来源窗口已关闭。");
-            return route.open();
+            return observeOperation('notification.click', route.open);
         }).then(
             () => res.writeHead(204).end(),
             () => res.writeHead(500).end(),

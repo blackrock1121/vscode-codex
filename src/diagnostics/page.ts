@@ -1,3 +1,5 @@
+import { postWebviewMessage } from '../webviewDelivery';
+import { operationFailure, operationLog } from '../operations';
 import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
 import { DiagnosticJobs } from './jobs';
@@ -10,6 +12,7 @@ export class DiagnosticsPage {
   private revealId?: string;
   private ready = false;
   private refreshSequence = 0;
+  private refreshFailure?: string;
   private selectionSequence = 0;
   private refreshTimer?: NodeJS.Timeout;
   private readonly changed = () => {
@@ -44,15 +47,16 @@ export class DiagnosticsPage {
     await this.configuration?.save(options);
     const record = await this.jobs.start(options); this.selected = record.id;
     await this.refresh();
-    this.panel?.webview.postMessage({ type: 'started', id: record.id });
+    postWebviewMessage(this.panel?.webview, { type: 'started', id: record.id });
   }
-  private async message(message: { type?: string; id?: string; options?: unknown }): Promise<void> {
+  private async message(message: { type?: string; id?: string; options?: unknown; category?: unknown }): Promise<void> {
     switch (message?.type) {
+      case 'webviewError': operationFailure('diagnostics.webview', new Error('页面脚本异常')); break;
       case 'ready': {
         const panel = this.panel;
         this.ready = true;
         await this.refresh();
-        if (this.configuration) void this.configuration.load().then(config => { if (this.panel === panel) panel?.webview.postMessage({ type: 'configuration', ...config }); }).catch(error => { if (this.panel === panel) this.error(error); });
+        if (this.configuration) void this.configuration.load().then(config => { if (this.panel === panel) postWebviewMessage(panel?.webview, { type: 'configuration', ...config }); }).catch(error => { if (this.panel === panel) this.error(error); });
         break;
       }
       case 'refresh': await this.refresh(); break;
@@ -62,7 +66,7 @@ export class DiagnosticsPage {
         const panel = this.panel;
         if (this.configuration) {
           const config = await this.configuration.load(true);
-          if (panel === this.panel) panel?.webview.postMessage({ type: 'configuration', ...config });
+          if (panel === this.panel) postWebviewMessage(panel?.webview, { type: 'configuration', ...config });
         }
         break;
       }
@@ -75,7 +79,7 @@ export class DiagnosticsPage {
         this.selected = record.id;
         if (record.status !== 'completed') { await this.refresh(); break; }
         const report = await this.jobs.report(record.id);
-        if (selection === this.selectionSequence && panel === this.panel) panel?.webview.postMessage({ type: 'detail', id: record.id, report }); break;
+        if (selection === this.selectionSequence && panel === this.panel) postWebviewMessage(panel?.webview, { type: 'detail', id: record.id, report }); break;
       }
       case 'repair': await this.repair(message.id!); await this.refresh(); break;
       case 'notify': await this.jobs.retryNotification(message.id!); await this.refresh(); break;
@@ -89,16 +93,23 @@ export class DiagnosticsPage {
       const records = await this.jobs.list();
       if (sequence !== this.refreshSequence || panel !== this.panel) return;
       if (!records.some(r => r.id === this.selected)) this.selected = undefined;
-      panel.webview.postMessage({ type: 'state', records, selectedId: this.selected, workspaceId: this.jobs.scope.workspaceId });
+      postWebviewMessage(panel.webview, { type: 'state', records, selectedId: this.selected, workspaceId: this.jobs.scope.workspaceId });
       if (this.ready && this.revealId) {
         const id = this.revealId; this.revealId = undefined;
-        if (records.some(record => record.id === id)) panel.webview.postMessage({ type: 'reveal', id });
+        if (records.some(record => record.id === id)) postWebviewMessage(panel.webview, { type: 'reveal', id });
         else this.error(new Error('该通知对应的诊断记录已不存在。'));
       }
-    } catch (error) { this.error(error); }
+      if (this.refreshFailure) { operationLog('diagnostics.page.refresh', 'recovered', { operationId: this.refreshFailure }); this.refreshFailure = undefined; }
+    } catch (error) {
+      if (sequence !== this.refreshSequence || panel !== this.panel) { operationFailure('diagnostics.page.refresh', error, { stale: true }); return; }
+      this.refreshFailure ??= randomUUID();
+      operationFailure('diagnostics.page.refresh', error, { operationId: this.refreshFailure });
+      postWebviewMessage(panel.webview, { type: 'error', message: error instanceof Error ? error.message : '刷新未完成，请重试。' });
+    }
   }
   private error(error: unknown): void {
-    this.panel?.webview.postMessage({ type: 'error', message: error instanceof Error ? error.message : '操作未完成，请重试。' });
+    operationFailure('diagnostics.page', error);
+    postWebviewMessage(this.panel?.webview, { type: 'error', message: error instanceof Error ? error.message : '操作未完成，请重试。' });
   }
   dispose(): void { this.jobs.off('changed', this.changed); clearTimeout(this.refreshTimer); this.refreshTimer = undefined; this.panel?.dispose(); }
 }

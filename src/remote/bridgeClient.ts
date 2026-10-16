@@ -1,3 +1,4 @@
+import { expectedFileError, operationFailure, operationLog } from '../operations';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
@@ -33,7 +34,7 @@ export class RemoteBridgeClient {
                 socket.write(text);
             };
             socket.on('connect', () => send({ kind: 'register', version: 1, token: config.token, ...this.registration }));
-            socket.on('error', () => {});
+            socket.on('error', error => operationFailure('remote.connection', error));
             socket.on('close', () => {
                 clearTimeout(deadline);
                 if (this.socket === socket) this.socket = undefined;
@@ -42,14 +43,15 @@ export class RemoteBridgeClient {
             const receive = (frame: any) => {
                 if (!registered) {
                     if (frame?.kind !== 'registered' || frame.version !== 1) throw new Error();
-                    registered = true; clearTimeout(deadline); return;
+                    registered = true; clearTimeout(deadline); operationLog('remote.connection', 'ready'); return;
                 }
                 if (frame?.kind !== 'execute' || typeof frame.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(frame.id) || pending >= 16) throw new Error();
                 const command = parseCommand(frame.command, Date.now());
                 if (command.target?.windowId !== this.registration.windowId || command.target.workspaceId !== this.registration.workspaceId) throw new Error();
                 pending++;
                 const active = () => !this.disposed && !socket.destroyed && command.expiresAt > Date.now();
-                void this.execute(command, active).catch((): RemoteReply => {
+                void this.execute(command, active).catch((error): RemoteReply => {
+                    operationFailure('remote.execute', error);
                     // 未知异常可能发生在交接以后；中断连接让桥接记录“结果未知”，不能谎报未执行。
                     if (!isReadOperation(command.operation)) socket.destroy();
                     return { accepted: false, error: 'PLUGIN_OPERATION_FAILED' };
@@ -57,7 +59,7 @@ export class RemoteBridgeClient {
                     .then(reply => {
                         if (Buffer.byteLength(JSON.stringify(reply)) > 7000) reply = { accepted: false, error: 'RESULT_TOO_LARGE' };
                         send({ kind: 'reply', id: frame.id, reply });
-                    }).finally(() => { pending--; });
+                    }).finally(() => { pending--; }).catch(error => { operationFailure('remote.reply', error); socket.destroy(); });
             };
             socket.on('data', data => {
                 buffer = Buffer.concat([buffer, data]);
@@ -68,9 +70,9 @@ export class RemoteBridgeClient {
                         const frame = JSON.parse(buffer.subarray(0, end).toString('utf8')); buffer = buffer.subarray(end + 1); receive(frame);
                     }
                     if (buffer.length > 16_000) throw new Error();
-                } catch { socket.destroy(); }
+                } catch (error) { operationFailure('remote.protocol', error); socket.destroy(); }
             });
-        } catch { this.schedule(); }
+        } catch (error) { if (!expectedFileError(error)) operationFailure('remote.prepare', error); this.schedule(); }
     }
     private schedule(): void {
         if (this.disposed || this.retry) return;

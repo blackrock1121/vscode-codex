@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -8,7 +9,7 @@ export function logDay(date: Date): string {
 }
 
 /** 保留今天和之前六个本地日历日的插件日志，不触碰目录中的其它文件。 */
-export async function pruneLogs(dir: string, now = new Date()): Promise<void> {
+export async function pruneLogs(dir: string, now = new Date(), failure: (error: unknown) => void = () => {}): Promise<void> {
   const oldest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
   const cutoff = `codex-chat-${logDay(oldest)}.log`;
   try {
@@ -17,9 +18,9 @@ export async function pruneLogs(dir: string, now = new Date()): Promise<void> {
       if (!LOG_NAME.test(name) || name >= cutoff || !entry.isFile()) continue;
       try {
         await fs.promises.unlink(path.join(dir, name));
-      } catch { /* 单个文件无法清理，不影响日志和插件 */ }
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failure(error); }
     }
-  } catch { /* 日志目录不可读时不影响插件 */ }
+  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failure(error); }
 }
 
 export interface LogIdentity { pluginVersion: string; windowId: string; hostId: string }
@@ -34,18 +35,37 @@ export class DailyLogWriter {
   private latestDate = new Date();
   private prunedDay = "";
   private pruning?: Promise<void>;
+  private readonly operationId = randomUUID();
+  private writeFailures = 0;
+  private healthFailures = new Set<string>();
   private readonly identityPrefix: string;
 
-  constructor(private readonly dir: string, identity?: LogIdentity, private readonly onBatch?: (text: string) => void) {
+  constructor(private readonly dir: string, identity?: LogIdentity, private readonly onBatch?: (text: string) => void,
+    private readonly onHealth: (text: string) => void = text => console.warn(text)) {
     const safe = (value: string) => /^[\w.-]{1,160}$/.test(value) ? value : 'unknown';
     this.identityPrefix = identity ? `[pluginVersion=${safe(identity.pluginVersion)} windowId=${safe(identity.windowId)} hostId=${safe(identity.hostId)}] ` : '';
+  }
+  private health(operation: string, error?: unknown): void {
+    if (error && this.healthFailures.has(operation)) return;
+    if (!error && !this.healthFailures.has(operation)) return;
+    if (error) this.healthFailures.add(operation); else this.healthFailures.delete(operation);
+    const code = (error as NodeJS.ErrnoException)?.code;
+    const line = `[logging] ${JSON.stringify({ atMs: Date.now(), operationId: this.operationId, operation, stage: error ? 'failed' : 'recovered',
+      errorCode: typeof code === 'string' && /^E[A-Z0-9_]{1,32}$/.test(code) ? code : undefined })}`;
+    // 不经过队列；磁盘不可写时也能在扩展宿主/输出通道看到故障，不递归写同一日志。
+    try { this.onHealth(line); } catch { /* 最终反馈通道也可能已经关闭 */ }
+    if (!this.closed) this.write(line);
   }
 
   async prune(now = new Date()): Promise<void> {
     if (this.pruning) return this.pruning;
     this.pruning = (async () => {
-      try { await fs.promises.mkdir(this.dir, { recursive: true }); await pruneLogs(this.dir, now); }
-      catch { /* 清理失败不影响插件 */ }
+      try {
+        await fs.promises.mkdir(this.dir, { recursive: true });
+        let failed = false;
+        await pruneLogs(this.dir, now, error => { failed = true; this.health('prune', error); });
+        if (!failed) this.health('prune');
+      } catch (error) { this.health('prune', error); }
     })();
     try { await this.pruning; } finally { this.pruning = undefined; }
   }
@@ -61,14 +81,14 @@ export class DailyLogWriter {
       const rows = this.pending.get(day) ?? []; rows.push(row); this.pending.set(day, rows);
       this.pendingBytes += bytes; this.latestDate = now;
       if (!this.timer) { this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 200); this.timer.unref(); }
-    } catch { /* 写日志失败不影响插件功能 */ }
+    } catch (error) { try { this.onHealth('[logging] enqueue_failed'); } catch { /* 不递归 */ } }
   }
 
   /** 有界队列 + 串行异步批量落盘，流式事件不再逐条阻塞扩展宿主。 */
   async flush(): Promise<void> {
     clearTimeout(this.timer); this.timer = undefined;
-    if (this.flushing) { await this.flushing; if (this.pending.size) await this.flush(); return; }
-    if (!this.pending.size) return;
+    if (this.flushing) { await this.flushing; if (this.pending.size || this.dropped) await this.flush(); return; }
+    if (!this.pending.size && !this.dropped) return;
     const batches = this.pending; this.pending = new Map(); this.pendingBytes = 0;
     const date = this.latestDate, dropped = this.dropped; this.dropped = 0;
     this.flushing = (async () => {
@@ -76,13 +96,28 @@ export class DailyLogWriter {
         await fs.promises.mkdir(this.dir, { recursive: true });
         for (const [day, rows] of batches) {
           const text = rows.join('');
-          try { this.onBatch?.(text); } catch { /* 输出通道失败不影响文件日志 */ }
           await fs.promises.appendFile(path.join(this.dir, `codex-chat-${day}.log`), text, 'utf8');
+          batches.delete(day); // 部分成功后重试不能把已落盘的日期重放。
+          try { this.onBatch?.(text); this.health('output'); } catch (error) { this.health('output', error); }
         }
         if (dropped) await fs.promises.appendFile(path.join(this.dir, `codex-chat-${logDay(date)}.log`), `${this.identityPrefix}[logging] droppedLines=${dropped} reason=buffer_or_write_limit\n`, 'utf8');
+        this.writeFailures = 0; this.health('write');
         // 先完成跨天批次再清理，避免把过期批次重新创建出来。
         if (this.prunedDay !== logDay(date)) { await this.prune(date); this.prunedDay = logDay(date); }
-      } catch { this.dropped += [...batches.values()].reduce((n, rows) => n + rows.length, 0) + dropped; }
+      } catch (error) {
+        // 保留未落盘批次并保持先后顺序；总内存仍有界，不等待下次业务日志才恢复。
+        this.dropped += dropped;
+        const newer = this.pending; this.pending = new Map(); this.pendingBytes = 0;
+        for (const source of [batches, newer]) for (const [day, rows] of source) for (const row of rows) {
+          const bytes = Buffer.byteLength(row);
+          if (this.pendingBytes + bytes > 1024 * 1024) { this.dropped++; continue; }
+          const list = this.pending.get(day) ?? []; list.push(row); this.pending.set(day, list); this.pendingBytes += bytes;
+        }
+        this.health('write', error);
+        if (++this.writeFailures <= 3 && !this.closed && !this.timer) {
+          this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 1000 * this.writeFailures); this.timer.unref();
+        }
+      }
     })();
     try { await this.flushing; } finally { this.flushing = undefined; }
   }

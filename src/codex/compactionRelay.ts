@@ -1,3 +1,4 @@
+import { operationFailure, operationLog } from '../operations';
 import * as http from 'node:http';
 import * as https from 'node:https';
 import { randomBytes } from 'node:crypto';
@@ -76,7 +77,8 @@ function bytes(data: RawData): Buffer { return Buffer.isBuffer(data) ? data : Ar
  * 不更改全局配置。WebSocket 与 SSE 均保留原传输方式。
  */
 export class CompactionRelay {
-  private readonly server = http.createServer((req, res) => { void this.http(req, res).catch(() => {
+  private readonly server = http.createServer((req, res) => { void this.http(req, res).catch(error => {
+    operationFailure('compaction.http', error);
     if (!res.headersSent) res.writeHead(502); res.end();
   }); });
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
@@ -128,7 +130,7 @@ export class CompactionRelay {
     } catch { /* 畸形 URL 不能影响扩展宿主 */ }
   }
   private report(route: CompactionRoute): void {
-    try { this.onRoute(route); } catch { /* 诊断失败不能中断模型请求 */ }
+    try { this.onRoute(route); } catch (error) { operationFailure('compaction.observer', error); /* 诊断失败不能中断模型请求 */ }
   }
   private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], signal: AbortSignal, history?: ResponseHistory): Promise<{ body: Buffer; route?: CompactionRoute }> {
     if (!target.pathname.endsWith('/responses') || req.headers['content-encoding']) return { body: raw };
@@ -152,7 +154,7 @@ export class CompactionRelay {
             }
           }
         }
-      } catch { /* 历史不完整、未知协议或归档失败时沿用原生输入 */ }
+      } catch (error) { operationFailure('compaction.rewrite', error); /* 保留原生输入 */ }
     }
     if (this.options.constrain) result.body = this.options.constrain(result.body);
     if (result.route) {
@@ -197,7 +199,7 @@ export class CompactionRelay {
         } else if (upstream.readyState === WebSocket.OPEN) {
           await new Promise<void>((resolve, reject) => upstream.send(body, { binary }, error => error ? reject(error) : resolve()));
         }
-      }).catch(() => { client.terminate(); upstream.terminate(); }).finally(() => {
+      }).catch(error => { operationFailure('compaction.websocket.write', error); client.terminate(); upstream.terminate(); }).finally(() => {
         pendingBytes -= original.length;
         if (pendingBytes === 0 && client.readyState === WebSocket.OPEN) client.resume();
       });
@@ -230,8 +232,8 @@ export class CompactionRelay {
     };
     client.on('close', (code, reason) => { controller.abort(); this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
     upstream.on('close', (code, reason) => { controller.abort(); this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
-    client.on('error', () => { controller.abort(); upstream.terminate(); });
-    upstream.on('error', () => { controller.abort(); client.terminate(); });
+    client.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.client', error); controller.abort(); upstream.terminate(); });
+    upstream.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.upstream', error); controller.abort(); client.terminate(); });
   }
   private async http(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const target = this.target(req);
@@ -254,11 +256,11 @@ export class CompactionRelay {
       method: req.method, headers, agent: this.agent,
     }, response => {
       res.writeHead(response.statusCode ?? 502, forwardedHeaders(response.headers, false));
-      response.on('error', () => res.destroy()); response.pipe(res);
+      response.on('error', error => { operationFailure('compaction.http.response', error); res.destroy(); }); response.pipe(res);
     });
     this.requests.add(upstream);
     upstream.on('close', () => this.requests.delete(upstream));
-    upstream.on('error', () => { if (!res.headersSent) res.writeHead(502); res.end(); });
+    upstream.on('error', error => { if (!controller.signal.aborted) operationFailure('compaction.http.upstream', error); if (!res.headersSent) res.writeHead(502); res.end(); });
     req.on('aborted', () => upstream.destroy());
     res.on('close', () => { if (!res.writableEnded) upstream.destroy(); });
     upstream.end(body);

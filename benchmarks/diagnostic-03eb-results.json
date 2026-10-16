@@ -1,0 +1,165 @@
+{
+  "diagnosticId": "03eb2976-1da2-4589-92eb-f22bd08f9217",
+  "version": "0.1.144",
+  "baseline": "e99d434 / 0.1.142",
+  "integrationBase": "dc4da18 / 0.1.143",
+  "validation": {
+    "typeCheck": "passed",
+    "tests": 650,
+    "passed": 650,
+    "failed": 0,
+    "sourceCandidatesReviewed": 813,
+    "sourceCandidateFiles": 34,
+    "nativeReview": "人工检查 Swift 调用链；编译由发布验证记录，未发送实际 macOS 通知",
+    "nativeBuild": "passed: arm64 + x86_64; codesign --verify --deep --strict",
+    "package": "passed: project/lock/VSIX/native plist 0.1.144; packed bundle bytes match"
+  },
+  "injectedFailures": {
+    "baseline": "e99d434",
+    "scope": "隔离临时目录注入 EIO/EACCES，无真实模型请求；锁竞争等待计时为本机合成场景",
+    "samples": [
+      {
+        "mode": "before",
+        "retainedRows": 0,
+        "independentHealthEvents": 0,
+        "permissionLockAttempts": 40,
+        "permissionFailureMs": 1047,
+        "existingFileSurvivesReadFailure": false,
+        "skippedFiles": 0
+      },
+      {
+        "mode": "after",
+        "retainedRows": 1,
+        "independentHealthEvents": 2,
+        "permissionLockAttempts": 1,
+        "permissionFailureMs": 0,
+        "existingFileSurvivesReadFailure": true,
+        "skippedFiles": 1
+      }
+    ]
+  },
+  "historicalReplay": {
+    "scope": "同一历史时间区间与全部保留日志独立回放；旧错误不应因修复被删除，诊断分组变化不等于故障数下降",
+    "before": {
+      "files": 7,
+      "readFiles": 7,
+      "bytes": 28383615,
+      "invalidLines": 0,
+      "unreadableFiles": 0,
+      "turns": 119,
+      "tools": 1794,
+      "failures": 155,
+      "errors": 359,
+      "warnings": 1,
+      "groups": 43,
+      "resizeGroups": 4,
+      "sourceAudit": {
+        "status": "review-required",
+        "files": 46,
+        "functions": 1829,
+        "operations": 283,
+        "catches": 258,
+        "logSites": 140,
+        "candidates": 813,
+        "unsupported": 1,
+        "version": "0.1.142",
+        "sourceHash": "5ebf768739874010cdf2d4822101d94306305e55b5db6caf8a8073d8c5dd5211"
+      }
+    },
+    "after": {
+      "files": 7,
+      "readFiles": 7,
+      "bytes": 28383615,
+      "invalidLines": 0,
+      "unreadableFiles": 0,
+      "turns": 119,
+      "tools": 1794,
+      "failures": 155,
+      "errors": 359,
+      "warnings": 1,
+      "groups": 42,
+      "resizeGroups": 1,
+      "sourceAudit": {
+        "status": "review-required",
+        "files": 49,
+        "functions": 1866,
+        "operations": 258,
+        "catches": 267,
+        "logSites": 265,
+        "candidates": 673,
+        "unsupported": 1,
+        "version": "0.1.144",
+        "sourceHash": "32361ce8068a271dd58b68d716409181daa2d3d9d1951c43eaa7b7d817dcb599"
+      }
+    },
+    "allRetained": {
+      "files": 7,
+      "readFiles": 7,
+      "bytes": 28385706,
+      "invalidLines": 0,
+      "unreadableFiles": 0,
+      "turns": 127,
+      "tools": 2019,
+      "failures": 173,
+      "errors": 11359,
+      "warnings": 5,
+      "groups": 54,
+      "resizeGroups": 1,
+      "sourceAudit": {
+        "status": "review-required",
+        "files": 49,
+        "functions": 1866,
+        "operations": 258,
+        "catches": 267,
+        "logSites": 265,
+        "candidates": 673,
+        "unsupported": 1,
+        "version": "0.1.144",
+        "sourceHash": "32361ce8068a271dd58b68d716409181daa2d3d9d1951c43eaa7b7d817dcb599"
+      }
+    }
+  },
+  "priorResizeFixRevalidated": {
+    "baseline": "83a725a",
+    "scope": "JSDOM 合成突发尺寸通知；读取与写入次数可复现，耗时不代表真实浏览器布局或模型任务时间",
+    "samples": [
+      {
+        "mode": "before",
+        "notifications": 200,
+        "synchronous": {
+          "heightReads": 200,
+          "scrollWrites": 200
+        },
+        "scheduledFrames": 0,
+        "heightReads": 200,
+        "scrollWrites": 200,
+        "paddingStyleWrites": 199,
+        "elapsedMs": 7.108
+      },
+      {
+        "mode": "after",
+        "notifications": 200,
+        "synchronous": {
+          "heightReads": 0,
+          "scrollWrites": 0
+        },
+        "scheduledFrames": 1,
+        "heightReads": 1,
+        "scrollWrites": 1,
+        "paddingStyleWrites": 1,
+        "elapsedMs": 0.235
+      }
+    ]
+  },
+  "evidenceConclusions": [
+    "最长历史轮次 52999747ms，其中 user_wait 52849421ms；不能视为模型持续计算时间。",
+    "同窗口 config/read 的 204ms/342ms 超时属于两个不同进程，随后另外两个进程分别 101ms/8ms 读取成功；当前代码的200ms预算只限制可选准备，不充当RPC超时。",
+    "二进制文件文本打开、fork引用拒绝、真实工具退出失败和遥测网络故障分别归类；已有修复通过回归验证，未修改业务项目或擅自切换模型/权限。",
+    "故障注入证明 EACCES 快照不再误删已有文件；原子写失败保留旧检查点并支持恢复写入；丢弃计数写失败可独立重试。"
+  ],
+  "limits": [
+    "合成故障的毫秒数不是整轮任务加速率；后端等待、限流、网络、实际系统通知权限需要真实运行观测。",
+    "保留旧故障记录，不把诊断分组下降当作错误数下降。",
+    "静态候选仍需结合调用链理解；此账本不证明所有未来路径均已覆盖。"
+  ]
+}

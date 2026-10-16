@@ -1,3 +1,4 @@
+import { setOperationLogSink, observeOperation, operationLog, operationFailure } from './operations';
 import { checkLoggingConfiguration } from './diagnostics/loggingAudit';
 import * as vscode from "vscode";
 import * as fs from "node:fs";
@@ -23,9 +24,9 @@ const LOG_DIR = path.join(os.homedir(), ".codex-chat", "logs");
 const logWriters = new Set<DailyLogWriter>();
 const diagnosticServices = new Set<DiagnosticJobs>();
 
-/** 包一层 OutputChannel：appendLine 同时落盘到固定目录。写盘失败静默（日志不能反噬功能）。 */
+/** 包一层 OutputChannel：appendLine 同时落盘到固定目录。写盘失败走独立健康反馈，不反噬功能。 */
 function teeOutput(channel: vscode.OutputChannel, identity: LogIdentity): vscode.OutputChannel {
-  const writer = new DailyLogWriter(LOG_DIR, identity, text => channel.append(text));
+  const writer = new DailyLogWriter(LOG_DIR, identity, text => channel.append(text), text => channel.appendLine(text));
   logWriters.add(writer);
   // 窗口长期不重启、甚至没有新日志时，也要持续清理过期文件。
   const pruneTimer = setInterval(() => void writer.prune(), 60 * 60 * 1000);
@@ -48,6 +49,11 @@ export function activate(context: vscode.ExtensionContext): void {
     windowId: randomUUID(), hostId: String(process.pid) };
   const output = teeOutput(vscode.window.createOutputChannel("Codex Chat"), identity);
   output.appendLine(`[boot] Codex Copilot v${(context.extension.packageJSON as { version?: string }).version ?? "?"} 日志目录 ${LOG_DIR}`);
+  setOperationLogSink(line => output.appendLine(line));
+  operationLog('extension.activate', 'start', { operationId: identity.windowId });
+  try {
+  const registerCommand: typeof vscode.commands.registerCommand = (command, callback, thisArg) =>
+    vscode.commands.registerCommand(command, (...args: any[]) => observeOperation(command, () => callback.apply(thisArg, args)));
   const provider = new ChatViewProvider(context, output);
   const workspacePaths = (vscode.workspace.workspaceFolders ?? []).map(folder => folder.uri.fsPath);
   const workspaceId = createHash('sha256').update(JSON.stringify(workspacePaths.length ? workspacePaths : [vscode.workspace.workspaceFile?.toString() ?? 'empty'])).digest('hex').slice(0, 24);
@@ -96,8 +102,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     output,
-    vscode.commands.registerCommand("codex-chat.login", () => provider.login()),
-    vscode.commands.registerCommand("codex-chat.account", () => provider.account()),
+    registerCommand("codex-chat.login", () => provider.login()),
+    registerCommand("codex-chat.account", () => provider.account()),
     provider,
     vscode.window.registerUriHandler({ handleUri: uri => provider.handleNotificationUri(uri) }),
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, provider, {
@@ -115,37 +121,35 @@ export function activate(context: vscode.ExtensionContext): void {
         provider.reviveNotifyPanel(panel);
       },
     }),
-    vscode.commands.registerCommand("codex-chat.newSession", () => provider.newSession()),
-    vscode.commands.registerCommand("codex-chat.showSessions", () => provider.showSessions()),
-    vscode.commands.registerCommand("codex-chat.closeSession", () => provider.closeActiveSession()),
-    vscode.commands.registerCommand("codex-chat.stop", () => provider.stop()),
-    vscode.commands.registerCommand("codex-chat.focusInput", () => provider.focusInput()),
-    vscode.commands.registerCommand("codex-chat.addSelectionToChat", () => provider.addSelection()),
+    registerCommand("codex-chat.newSession", () => provider.newSession()),
+    registerCommand("codex-chat.showSessions", () => provider.showSessions()),
+    registerCommand("codex-chat.closeSession", () => provider.closeActiveSession()),
+    registerCommand("codex-chat.stop", () => provider.stop()),
+    registerCommand("codex-chat.focusInput", () => provider.focusInput()),
+    registerCommand("codex-chat.addSelectionToChat", () => provider.addSelection()),
     // 手动检查：只点亮侧边栏横幅（不直接弹安装确认），但保留结果反馈。
     // 真正的"下载并安装"确认统一由点击横幅触发，避免同时冒出两个入口。
-    vscode.commands.registerCommand("codex-chat.checkUpdate", () => provider.checkForUpdate(true, false)),
+    registerCommand("codex-chat.checkUpdate", () => provider.checkForUpdate(true, false)),
 
 
-    vscode.commands.registerCommand("codex-chat.notifyConfig", () => provider.showNotifyConfig()),
-    vscode.commands.registerCommand("codex-chat.resetLocalSnapshotExcludes", () => provider.resetLocalSnapshotExcludes()),
-    vscode.commands.registerCommand("codex-chat.performanceReport", () => diagnosticsPage.show(false)),
-    vscode.commands.registerCommand("codex-chat.startDiagnostics", () => diagnosticsPage.show(true)),
-    vscode.commands.registerCommand("codex-chat.openDiagnostics", (id?: string) => diagnosticsPage.show(false, id)),
+    registerCommand("codex-chat.notifyConfig", () => provider.showNotifyConfig()),
+    registerCommand("codex-chat.resetLocalSnapshotExcludes", () => provider.resetLocalSnapshotExcludes()),
+    registerCommand("codex-chat.performanceReport", () => diagnosticsPage.show(false)),
+    registerCommand("codex-chat.startDiagnostics", () => diagnosticsPage.show(true)),
+    registerCommand("codex-chat.openDiagnostics", (id?: string) => diagnosticsPage.show(false, id)),
     vscode.window.registerWebviewPanelSerializer("codex-chat.diagnostics", {
       async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> { panel.dispose(); diagnosticsPage.show(false); },
     }),
-    vscode.commands.registerCommand("codex-chat.openLogs", async () => {
-      try {
-        await fs.promises.mkdir(LOG_DIR, { recursive: true });
-      } catch { /* ignore */ }
-      void vscode.env.openExternal(vscode.Uri.file(LOG_DIR));
+    registerCommand("codex-chat.openLogs", async () => {
+      await fs.promises.mkdir(LOG_DIR, { recursive: true });
+      if (!await vscode.env.openExternal(vscode.Uri.file(LOG_DIR))) operationLog('logs.open', 'unavailable');
     }),
-    vscode.commands.registerCommand("codex-chat.openInEditor", () => provider.openInEditor()),
+    registerCommand("codex-chat.openInEditor", () => provider.openInEditor()),
     // Cmd+Shift+T（仅聊天面板聚焦时接管）：重开最近关闭的会话标签页，对齐官方插件。
-    vscode.commands.registerCommand("codex-chat.reopenClosedSession", () => provider.reopenClosedSession()),
+    registerCommand("codex-chat.reopenClosedSession", () => provider.reopenClosedSession()),
     // The icon on FILE editors' title bar: always start a FRESH conversation
     // (openInEditor would resurrect the last session).
-    vscode.commands.registerCommand("codex-chat.open", () => provider.newSession()),
+    registerCommand("codex-chat.open", () => provider.newSession()),
   );
 
   // Auto-check for updates: once shortly after startup, then every 3 hours —
@@ -161,6 +165,8 @@ export function activate(context: vscode.ExtensionContext): void {
     },
   });
 
+  operationLog('extension.activate', 'completed', { operationId: identity.windowId });
+  } catch (error) { operationFailure('extension.activate', error, { operationId: identity.windowId }); throw error; }
 }
 
 export async function deactivate(): Promise<void> {

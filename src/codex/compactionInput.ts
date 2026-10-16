@@ -1,3 +1,4 @@
+import { errorFields, expectedFileError, operationFailure, operationLog } from '../operations';
 import { createHash, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import * as fs from 'node:fs/promises';
@@ -43,7 +44,7 @@ export class CompactionArchive {
         if (error.code !== 'EEXIST') throw error;
         if (hash(await fs.readFile(file, { encoding: 'utf8', signal })) !== digest) throw new Error('压缩归档内容校验失败');
       }
-    } finally { await fs.rm(temporary, { force: true }).catch(() => {}); }
+    } finally { await fs.rm(temporary, { force: true }).catch(error => { if (!expectedFileError(error)) operationFailure('compaction.archive.cleanup', error); }); }
     return file;
   }
 }
@@ -59,7 +60,7 @@ export async function optimizeCompactionInput(input: any[], archive: Pick<Compac
   const unchanged = () => ({ input, savings: { ...savings } });
   if (originalBytes < 64_000 || originalBytes > MAX_TRACKED_BYTES || protectedFrom === 0 || options.signal?.aborted) return unchanged();
   const controller = new AbortController(), deadline = performance.now() + (options.maxDurationMs ?? 250);
-  const abort = () => controller.abort();
+  const abort = () => { operationLog('compaction.input', options.signal?.aborted ? 'cancelled' : 'fallback', { reason: 'preparation_budget' }); controller.abort(); };
   options.signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(abort, Math.max(0, deadline - performance.now())); timer.unref();
   const cancelled = new Promise<ReturnType<typeof unchanged>>(resolve => controller.signal.addEventListener('abort', () => resolve(unchanged()), { once: true }));
@@ -106,7 +107,7 @@ export async function optimizeCompactionInput(input: any[], archive: Pick<Compac
       try {
         if (!archived.has(change.digest)) {
           try { archived.set(change.digest, await archive.save(change.original, controller.signal)); }
-          catch { archived.set(change.digest, undefined); }
+          catch (error) { if (!controller.signal.aborted) operationLog('compaction.archive', 'fallback', { ...errorFields(error), scope: 'original_input' }); archived.set(change.digest, undefined); }
         }
         if (stopped()) return unchanged();
         const file = archived.get(change.digest); if (!file) continue;
@@ -116,7 +117,7 @@ export async function optimizeCompactionInput(input: any[], archive: Pick<Compac
           item.output.map((x: any, i: number) => i === change.part ? { ...x, text } : x);
         result[change.item] = { ...item, output };
         if (text.startsWith('[旧工具输出与')) nextSavings.duplicateOutputs++; else nextSavings.archivedOutputs++;
-      } catch { /* 不丢弃无法归档的结果 */ }
+      } catch (error) { operationLog('compaction.input', 'fallback', { ...errorFields(error), scope: 'original_input' }); /* 保留原文 */ }
     }
     nextSavings.optimizedBytes = Buffer.byteLength(JSON.stringify(result));
     return worthwhile(originalBytes - nextSavings.optimizedBytes) && !stopped() ? { input: result, savings: nextSavings } : unchanged();

@@ -1,3 +1,4 @@
+import { installWebviewErrors } from './errors';
 import MarkdownIt from 'markdown-it';
 import type { DiagnosticRecord } from '../diagnostics/jobs';
 import { kindLabel, DiagnosticOptions } from '../diagnostics/options';
@@ -5,6 +6,7 @@ import type { ModelChoice } from '../shared';
 
 declare const acquireVsCodeApi: () => { postMessage: (message: unknown) => void; getState: () => any; setState: (value: unknown) => void };
 const api = acquireVsCodeApi();
+installWebviewErrors(category => api.postMessage({ type: 'webviewError', category }));
 const $ = (id: string) => document.getElementById(id)!;
 const markdown = new MarkdownIt({ html: false, linkify: false });
 let records: DiagnosticRecord[] = [], selectedId = api.getState()?.selectedId as string | undefined, workspaceId = '';

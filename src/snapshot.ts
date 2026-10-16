@@ -1,3 +1,4 @@
+import { operationLog } from './operations';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 
@@ -119,6 +120,8 @@ export class WorkspaceSnapshot {
       this.files.set(file, text); this.bytes += size;
     });
     this.skippedBaseline = await this.fingerprints([...this.skipped]);
+    const unreadable = [...this.skipReasons.values()].filter(reason => reason === 'unreadable').length;
+    operationLog('snapshot.capture', unreadable ? 'unavailable' : 'completed', { files: this.files.size, skipped: this.skipped.size, unreadable });
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();

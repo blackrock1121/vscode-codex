@@ -3,6 +3,7 @@ import * as path from "node:path";
 import { randomUUID } from "node:crypto";
 import { CheckpointSummary } from "./shared";
 import { checkpointTextKey, QUESTION_REPLY_PREFIX } from "./codex/events";
+import { expectedFileError, operationFailure, operationLog } from './operations';
 
 interface FileBackup {
   path: string;
@@ -120,8 +121,12 @@ export class CheckpointManager {
         return;
       }
       content = buf.toString("utf8");
-    } catch {
-      content = null; // file does not exist yet -> created by this turn
+    } catch (error) {
+      if (!expectedFileError(error)) {
+        operationFailure('checkpoint.snapshot', error, { checkpointId: cp.id });
+        (cp.skipped ??= []).push(absPath); this.persistSoon(); return;
+      }
+      content = null; // 仅 ENOENT 能证明文件原本不存在。
     }
     cp.files.push({ path: absPath, content });
     // Debounced: a turn with many edits otherwise rewrites the (potentially
@@ -271,7 +276,7 @@ export class CheckpointManager {
     const before = new Map<string, { backup: string; mode: number } | null>();
     let backupDir: string | undefined;
     const clearBackups = () => {
-      if (backupDir) try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch { /* 后续可清理的临时备份 */ }
+      if (backupDir) try { fs.rmSync(backupDir, { recursive: true, force: true }); } catch (error) { operationFailure('checkpoint.cleanup', error, { checkpointId }); }
     };
     try {
       for (const file of target.keys()) {
@@ -328,9 +333,9 @@ export class CheckpointManager {
             fs.copyFileSync(previous.backup, file);
             fs.chmodSync(file, previous.mode);
           }
-        } catch { recoveryFailed.push(file); }
+        } catch (error) { operationFailure('checkpoint.restore.recovery', error, { checkpointId }); recoveryFailed.push(file); }
       }
-      if (!recoveryFailed.length) clearBackups();
+      if (!recoveryFailed.length) { clearBackups(); operationLog('checkpoint.restore', 'recovered', { checkpointId }); }
       this.flush();
       throw new Error(`文件还原失败：${failure}。${recoveryFailed.length
         ? `以下文件未能恢复到操作前状态，请检查：${recoveryFailed.join("、")}。操作前备份保留在 ${backupDir ?? "无备份（原文件不存在）"}`
@@ -424,14 +429,15 @@ export class CheckpointManager {
       const payload = { checkpoints: CheckpointManager.rebase(prefix, turns), baseline: j.baseline ?? [], baselineSkipped: j.baselineSkipped ?? [] };
       fs.writeFileSync(path.join(storageDir, `checkpoints-${destSessionId}.json`), JSON.stringify(payload), { mode: 0o600 });
       return true;
-    } catch {
+    } catch (error) {
+      if (!expectedFileError(error)) operationFailure('checkpoint.fork', error);
       return false;
     }
   }
 
   /** Force any debounced snapshot write to disk (window closing / disposal). */
   flush(): void {
-    if (this.persistTimer) this.persist();
+    if (this.persistTimer || this.persistFailureId) this.persist();
   }
 
   private current(): Checkpoint | undefined {
@@ -447,8 +453,8 @@ export class CheckpointManager {
   static deleteFor(storageDir: string, sessionId: string): void {
     try {
       fs.unlinkSync(path.join(storageDir, `checkpoints-${sessionId}.json`));
-    } catch {
-      /* absent is fine */
+    } catch (error) {
+      if (!expectedFileError(error)) operationFailure('checkpoint.delete', error);
     }
   }
 
@@ -466,12 +472,13 @@ export class CheckpointManager {
         for (const [p, c] of raw.baseline ?? []) this.baseline.set(p, c);
         for (const s of raw.baselineSkipped ?? []) this.baselineSkipped.add(s);
       }
-    } catch {
-      /* absent/corrupt — start clean */
+    } catch (error) {
+      if (!expectedFileError(error)) operationFailure('checkpoint.load', error);
     }
   }
 
   private persistTimer?: ReturnType<typeof setTimeout>;
+  private persistFailureId?: string;
 
   /** Debounced persist for high-frequency snapshot writes. */
   private persistSoon(): void {
@@ -487,6 +494,8 @@ export class CheckpointManager {
       clearTimeout(this.persistTimer);
       this.persistTimer = undefined;
     }
+    let temporary: string | undefined;
+    const operationId = this.persistFailureId ?? randomUUID();
     try {
       fs.mkdirSync(this.storageDir, { recursive: true });
       const payload = {
@@ -494,9 +503,18 @@ export class CheckpointManager {
         baseline: [...this.baseline],
         baselineSkipped: [...this.baselineSkipped],
       };
-      fs.writeFileSync(this.file(), JSON.stringify(payload), "utf8");
-    } catch {
-      /* ignore persistence failure */
+      temporary = this.file() + '.' + randomUUID() + '.tmp';
+      fs.writeFileSync(temporary, JSON.stringify(payload), { mode: 0o600 });
+      fs.renameSync(temporary, this.file());
+      operationLog('checkpoint.persist', this.persistFailureId ? 'recovered' : 'completed', { operationId });
+      this.persistFailureId = undefined;
+    } catch (error) {
+      this.persistFailureId = operationId;
+      operationFailure('checkpoint.persist', error, { operationId });
+    } finally {
+      if (temporary) try { fs.unlinkSync(temporary); } catch (error) {
+        if (!expectedFileError(error)) operationFailure('checkpoint.cleanup', error);
+      }
     }
   }
 }

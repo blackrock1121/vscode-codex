@@ -4,7 +4,7 @@ const { createHash } = require('node:crypto');
 const ts = require('typescript');
 
 // 语法检查只提供可复核的覆盖线索，不把任意 log 同名函数当作已落盘证明。
-const logMethods = new Set(['appendLine', 'log', 'diagnostic', 'record', 'recordEvent']);
+const logMethods = new Set(['appendLine', 'log', 'diagnostic', 'record', 'recordEvent', 'operationLog', 'operationFailure', 'observeOperation']);
 const operationMethods = new Set(['fetch', 'request', 'send', 'postMessage', 'writeFile', 'readFile', 'appendFile', 'rename',
   'unlink', 'mkdir', 'readdir', 'stat', 'open', 'spawn', 'exec', 'execFile', 'update', 'executeCommand']);
 const callable = node => ts.isFunctionDeclaration(node) || ts.isFunctionExpression(node) || ts.isArrowFunction(node) ||
@@ -26,13 +26,16 @@ function scanSource(file, source) {
     !(ts.isPropertyAccessExpression(node.expression) && ts.isIdentifier(node.expression.expression) && node.expression.expression.text === 'console') &&
     (logMethods.has(callName(node.expression)) ||
       callName(node.expression) === 'emit' && node.arguments[0] && ts.isStringLiteral(node.arguments[0]) && ['diagnostic', 'log'].includes(node.arguments[0].text));
+  const pureReceiver = expression => ts.isPropertyAccessExpression(expression) &&
+    (ts.isRegularExpressionLiteral(expression.expression) ||
+      ts.isCallExpression(expression.expression) && ['createHash', 'createHmac'].includes(callName(expression.expression.expression)));
   // 不把未执行的嵌套回调/函数里的日志算在外层路径上。
   function facts(body) {
     const value = { log: false, operation: false, propagated: false };
     function visit(node) {
       if (node !== body && callable(node)) return;
       if (isLog(node)) value.log = true;
-      if (ts.isAwaitExpression(node) || ts.isCallExpression(node) && operationMethods.has(callName(node.expression))) value.operation = true;
+      if (ts.isAwaitExpression(node) || ts.isCallExpression(node) && operationMethods.has(callName(node.expression)) && !pureReceiver(node.expression)) value.operation = true;
       if (ts.isThrowStatement(node) || ts.isCallExpression(node) && callName(node.expression) === 'reject') value.propagated = true;
       ts.forEachChild(node, visit);
     }

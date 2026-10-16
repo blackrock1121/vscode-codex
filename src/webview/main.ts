@@ -1,3 +1,4 @@
+import { installWebviewErrors } from './errors';
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
 import { latestModelChoices, modelDescription } from "./modelPicker";
@@ -18,18 +19,7 @@ declare function acquireVsCodeApi(): {
 const vscode = acquireVsCodeApi();
 const send = (m: FromWebview) => vscode.postMessage(m);
 
-// Webview 内的 JS 错误平时完全不可见（不进扩展宿主日志）——上报给 host 记进
-// "Codex Chat" 输出通道，"界面没反应"这类问题才有迹可循。
-window.addEventListener("error", (e) => {
-  try {
-    vscode.postMessage({ type: "webviewError", message: `${e.message} @${(e as ErrorEvent).filename?.split("/").pop()}:${(e as ErrorEvent).lineno}` });
-  } catch { /* 上报本身绝不能再抛 */ }
-});
-window.addEventListener("unhandledrejection", (e) => {
-  try {
-    vscode.postMessage({ type: "webviewError", message: `unhandledrejection: ${String((e as PromiseRejectionEvent).reason).slice(0, 300)}` });
-  } catch { /* ignore */ }
-});
+const reportWebviewError = installWebviewErrors(message => vscode.postMessage({ type: 'webviewError', message }));
 
 // ---------------------------------------------------------------------------
 // Markdown (fast = per-line while streaming; full = finalized w/ highlighting)
@@ -2356,6 +2346,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
         pictures[qi].push(added);
       }
     } catch (err) {
+      reportWebviewError('webview.question.images', err);
       if (!done) { submitError.textContent = String((err as Error).message); submitError.classList.remove("hidden"); }
     } finally {
       readingImages--;
@@ -4154,7 +4145,8 @@ async function importDroppedEntries(entries: any[]): Promise<void> {
       let f: File;
       try {
         f = await entryFile(en);
-      } catch {
+      } catch (error) {
+        reportWebviewError('webview.drop.file', error);
         stat.skipped++;
         return;
       }
@@ -4171,7 +4163,9 @@ async function importDroppedEntries(entries: any[]): Promise<void> {
         let batch: any[];
         try {
           batch = await readBatch(rd);
-        } catch {
+        } catch (error) {
+          reportWebviewError('webview.drop.directory', error);
+          stat.skipped++;
           break;
         }
         if (!batch.length) break;
