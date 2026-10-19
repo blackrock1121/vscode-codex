@@ -76,8 +76,9 @@ export class CodexRpc extends EventEmitter {
       } catch (error) { operationFailure('rpc.telemetry.start', error, { operationId: this.processRunId }); this.diagnostic({ type: 'telemetry_status', status: 'unavailable' }); }
     }
     if (this.closed) { this.telemetry?.close(); throw new Error('Codex 连接已关闭'); }
-    const child = spawn(resolveCodex(this.executable), ['app-server', '--listen', 'stdio://', ...(this.telemetry?.args() ?? [])], {
-      cwd: this.cwd, env: { ...process.env, ...this.env }, stdio: 'pipe', windowsHide: true,
+    const executable = resolveCodex(this.executable);
+    const child = spawn(executable, ['app-server', '--listen', 'stdio://', ...(this.telemetry?.args() ?? [])], {
+      cwd: this.cwd, env: codexSpawnEnvironment(executable, { ...process.env, ...this.env }), stdio: 'pipe', windowsHide: true,
     });
     this.child = child;
     child.on('error', e => this.fail(e));
@@ -85,7 +86,11 @@ export class CodexRpc extends EventEmitter {
     child.stdout.on('error', e => this.fail(e));
     // 只留有界、脱敏后的错误/警告线索；普通输出和整份 stderr 不落盘。
     let stderrTail = '', stderrWindow = Date.now(), stderrCount = 0;
+    let startupFailure: Error | undefined;
     const stderrLine = (line: string) => {
+      // 管理连接也需要启动原因；仅识别固定错误，不把 stderr 原文/凭据展示或落盘。
+      if (/^env: (?:node: |[‘']node[’']: )No such file or directory\s*$/.test(line.trim()))
+        startupFailure = Object.assign(new Error('无法启动 Codex：当前 VS Code 环境找不到 Node.js。请检查 Codex 安装目录中的 node 或 codexChat.codexPath。'), { code: 'ENOENT' });
       if (!this.diagnostics || !/\b(?:error|warn|panic|fatal|exception)\b|失败|异常|报错/i.test(line)) return;
       if (Date.now() - stderrWindow >= 60000) { stderrWindow = Date.now(); stderrCount = 0; }
       if (++stderrCount > 30) { if (stderrCount === 31) this.diagnostic({ type: 'runtime_error', source: 'cli_stderr', severity: 'warning', event: 'stderr_limit', message: 'CLI 错误/警告摘要达到每分钟 30 条上限，后续重复摘要省略', sourceTimeMs: Date.now() }); return; }
@@ -150,7 +155,8 @@ export class CodexRpc extends EventEmitter {
     child.stdout.on('end', () => {
       if (fragments.length) receiveLine(fragments.join(''));
       fragments = [];
-      this.fail(new Error('Codex 输出通道已关闭'));
+      if (stderrTail) stderrLine(stderrTail);
+      this.fail(startupFailure ?? new Error('Codex 输出通道已关闭'));
     });
     const initialized = await this.request('initialize', { clientInfo: { name: 'vscode_codex_copilot', title: 'Codex Copilot', version: '0.1.0' }, capabilities: { experimentalApi: true } });
     if (this.diagnostics) this.diagnostic({ type: 'cli_info', version:
@@ -213,6 +219,22 @@ export class CodexRpc extends EventEmitter {
     if (!child || child.exitCode !== null || child.signalCode !== null) { this.dispose(); return; }
     await new Promise<void>(resolve => { child.once('close', () => resolve()); this.dispose(); });
   }
+}
+
+/** npm 的 Codex 启动器使用 /usr/bin/env node；GUI 更新后可能没有加载 nvm 的 PATH。 */
+export function codexSpawnEnvironment(executable: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  let fd: number | undefined;
+  try {
+    if (!path.isAbsolute(executable)) return env;
+    fd = fs.openSync(executable, 'r');
+    const header = Buffer.alloc(128), bytes = fs.readSync(fd, header, 0, header.length, 0);
+    if (!/^#![^\r\n]*\benv(?:\s+-S)?\s+node(?:\s|$)/.test(header.toString('utf8', 0, bytes))) return env;
+    const directory = path.dirname(executable);
+    fs.accessSync(path.join(directory, process.platform === 'win32' ? 'node.exe' : 'node'), fs.constants.X_OK);
+    if ((env.PATH ?? '').split(path.delimiter).includes(directory)) return env;
+    return { ...env, PATH: [directory, env.PATH].filter(Boolean).join(path.delimiter) };
+  } catch { return env; /* 可选探测失败仍交给 spawn 的统一错误处理，不替换用户选择的 CLI。 */ }
+  finally { if (fd !== undefined) fs.closeSync(fd); }
 }
 
 export function resolveCodex(configured: string): string {
