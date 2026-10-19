@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.152",
+  "version": "0.1.153",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -203,6 +203,11 @@
     "configuration": {
       "title": "Codex Chat",
       "properties": {
+        "codexChat.remoteEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "允许独立手机服务通过本机接口连接。关闭仅停用远程接入和手机等待队列的后续派发，不停止已经执行的任务；电脑聊天照常使用。"
+        },
         "codexChat.codexPath": {
           "type": "string",
           "default": "codex",

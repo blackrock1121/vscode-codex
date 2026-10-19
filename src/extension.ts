@@ -97,19 +97,30 @@ export function activate(context: vscode.ExtensionContext): void {
   if (process.platform === 'darwin') {
     let remote: RemoteBridgeClient | undefined, signature = '';
     const registerRemote = () => {
-      const registration = provider.remoteRegistration(), next = JSON.stringify(registration) ?? '';
-      if (next === signature) return;
-      remote?.dispose(); remote = undefined; signature = next;
-      if (registration) {
-        remote = new RemoteBridgeClient(path.join(os.homedir(), '.codex-chat', 'remote-bridge'), registration,
-          (command, active) => provider.executeRemote(command, active));
-        remote.start();
+      try {
+        const enabled = vscode.workspace.getConfiguration('codexChat').get<boolean>('remoteEnabled', true);
+        provider.setRemoteEnabled(enabled);
+        const registration = enabled ? provider.remoteRegistration() : undefined;
+        const next = JSON.stringify(registration) ?? '';
+        if (next === signature) return;
+        remote?.dispose(); remote = undefined; signature = next;
+        if (registration) {
+          remote = new RemoteBridgeClient(path.join(os.homedir(), '.codex-chat', 'remote-bridge'), registration,
+            (command, active) => provider.executeRemote(command, active));
+          remote.start();
+        }
+      } catch (error) {
+        signature = ''; remote?.dispose(); remote = undefined;
+        operationFailure('remote.start', error);
       }
     };
-    provider.remotePublish=(sessionId,event)=>remote?.publish(sessionId,event);
+    provider.remotePublish = (sessionId, event) => remote?.publish(sessionId, event);
     registerRemote();
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(registerRemote),
-      vscode.workspace.onDidGrantWorkspaceTrust(registerRemote), { dispose: () => remote?.dispose() });
+      vscode.workspace.onDidGrantWorkspaceTrust(registerRemote),
+      vscode.workspace.onDidChangeConfiguration(event => {
+        if (event.affectsConfiguration('codexChat.remoteEnabled')) registerRemote();
+      }), { dispose: () => { provider.remotePublish = undefined; remote?.dispose(); } });
   }
 
   context.subscriptions.push(

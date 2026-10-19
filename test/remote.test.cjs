@@ -260,14 +260,55 @@ test('审批内容超长时拒绝手机操作，不能静默裁掉命令再批�
 });
 
 test('长中文实时输出快照不超 IPC 帧预算，完成事件强制刷新最终历史',async()=>{
-  const f=fixture();f.b.remoteStream={id:'stream',seq:100,text:'回复'.repeat(4000),thinking:'思考'.repeat(4000),active:true};
+  const f=fixture();
+  f.provider.remote().observe(f.b,{kind:'text_delta',text:'回复'.repeat(4000)});
+  f.provider.remote().observe(f.b,{kind:'thinking_delta',text:'思考'.repeat(4000)});
   const reply=await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true);
   assert.equal(reply.accepted,true);assert.ok(Buffer.byteLength(JSON.stringify(reply.result))<=6500);assert.equal(reply.result.stream.truncated,true);
-  f.b.remoteReadAt=Date.now();f.provider.remoteEvent(f.b,{kind:'result',isError:false});assert.equal(f.b.remoteReadAt,0);assert.equal(f.b.remoteStream.active,false);
+  let reads=0;f.provider.store.hydrate=async()=>{reads++;};
+  f.provider.remote().observe(f.b,{kind:'result',isError:false});
+  const final=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;
+  assert.equal(reads,1);assert.equal(final.stream.active,false);
 });
 test('生成图片文件已删除时返回明确错误，不能触发 IPC 非法错误码断连',async()=>{
   const f=fixture(),{itemRevision}=require('../dist/test/remote/timeline.js');const item={type:'tool',name:'imageGeneration',input:{savedPath:'/nonexistent-codex-mobile-picture.png'},result:'{}'};
   f.provider.store.load=()=>[item];f.provider.cwd=()=>'/tmp';
   const reply=await f.provider.executeRemote(command({kind:'session.image',item:0,revision:itemRevision(item),index:0,offset:0}),()=>true);
   assert.equal(reply.accepted,false);assert.equal(reply.error,'IMAGE_NOT_AVAILABLE');
+});
+
+
+test('远程发布异常不影响电脑正文和完成处理；远程状态不写入电脑会话对象',async()=>{
+  const f=fixture();f.provider.remotePublish=()=>{throw new Error('通知服务故障');};
+  await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true);
+  const seen=[];f.provider.post=(_,e)=>seen.push(e);f.provider.broadcastRunning=()=>{};
+  f.provider.refreshSessions=()=>{};f.provider.maybeNotifyTurnDone=()=>{};
+  assert.doesNotThrow(()=>f.provider.handleEmitInner(f.b,{kind:'text_delta',text:'电脑正常显示'}));
+  assert.doesNotThrow(()=>f.provider.handleEmitInner(f.b,{kind:'result',isError:false}));
+  assert.ok(seen.some(e=>e.kind==='text_delta'&&e.text==='电脑正常显示'));
+  assert.ok(seen.some(e=>e.kind==='result'));
+  assert.equal(f.b.remoteStream,undefined);assert.equal(f.b.taskQueue,undefined);
+});
+test('关闭远程接入后拒绝手机命令，电脑仍能通过原发送路径工作',async()=>{
+  const f=fixture();f.provider.setRemoteEnabled(false);
+  assert.equal((await f.provider.executeRemote(command({kind:'message.send',text:'手机',attachmentIds:[]}),()=>true)).error,'TARGET_OFFLINE');
+  assert.equal(await f.provider.handleSend(f.b,'电脑继续'),true);assert.equal(f.sends[0][1],'电脑继续');
+  f.b.proc.isBusy=false;f.provider.setRemoteEnabled(true);
+  assert.equal((await f.provider.executeRemote(command({kind:'message.send',text:'手机恢复',attachmentIds:[]}),()=>true)).accepted,true);
+});
+
+test('手机排队在关闭接入后停止派发，恢复并明确继续后仅发送一次',{timeout:5000},async()=>{
+  const f=fixture();f.b.proc.isBusy=true;
+  await f.provider.executeRemote(command({kind:'message.enqueue',text:'手机队列',attachmentIds:[]}),()=>true);
+  assert.equal(f.provider.remote().hasPending(f.b),true);assert.equal(f.sends.length,0);
+  f.provider.setRemoteEnabled(false);f.b.proc.isBusy=false;
+  f.provider.remote().observe(f.b,{kind:'result',isError:false});
+  await f.provider.remote().drainTasks(f.b);assert.equal(f.sends.length,0);
+  f.provider.setRemoteEnabled(true);
+  let sent;const delivered=new Promise(resolve=>sent=resolve);const original=f.b.proc.sendUserMessage;
+  f.b.proc.sendUserMessage=function(...args){const result=original.apply(this,args);sent();return result;};
+  await f.provider.executeRemote(command({kind:'queue.resume'}),()=>true);
+  await delivered;await new Promise(resolve=>setImmediate(resolve));
+  assert.deepEqual(f.sends,[['session-b','手机队列']]);assert.equal(f.provider.remote().hasPending(f.b),false);
+  f.provider.remote().dispose();
 });

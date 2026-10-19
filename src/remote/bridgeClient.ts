@@ -4,6 +4,7 @@ import * as fs from 'node:fs';
 import * as net from 'node:net';
 import * as path from 'node:path';
 import { isReadOperation, parseCommand, type Command } from './command';
+import { CURRENT_CAPABILITIES, requiredCapability } from './contract';
 
 export type RemoteReply = { accepted: true; result: unknown } | { accepted: false; error: string };
 export interface RemoteRegistration { windowId: string; workspaceId: string; label: string; path?: string; folderCount?: number }
@@ -14,14 +15,23 @@ export class RemoteBridgeClient {
     private retry?: NodeJS.Timeout;
     private disposed = false;
     private registered = false;
+    private eventsEnabled = false;
     private readonly completions = new Map<string,{sessionId:string;event:Record<string,unknown>}>();
     publish(sessionId:string,event:Record<string,unknown>):void {
-        if(event.kind==='completed'&&typeof event.commandId==='string'){this.completions.set(event.commandId,{sessionId,event});if(this.completions.size>500)this.completions.delete(this.completions.keys().next().value!);}
-        if(!this.registered||!this.socket||this.socket.destroyed)return;
-        const text=JSON.stringify({kind:'event',sessionId,event})+'\n';
-        if(Buffer.byteLength(text)>7000)return;
-        if(this.socket.writableLength>64000){this.socket.destroy();return;}
-        this.socket.write(text);
+        try {
+            const text=JSON.stringify({kind:'event',sessionId,event})+'\n';
+            if(Buffer.byteLength(text)>7000)return;
+            if(event.kind==='completed'&&typeof event.commandId==='string'){
+                this.completions.set(`${event.deviceId}:${event.commandId}`,{sessionId,event:JSON.parse(text).event});
+                if(this.completions.size>500)this.completions.delete(this.completions.keys().next().value!);
+            }
+            if(!this.registered||!this.eventsEnabled||!this.socket||this.socket.destroyed)return;
+            if(this.socket.writableLength>64000){this.socket.destroy();return;}
+            this.socket.write(text);
+        } catch (error) {
+            operationFailure('remote.publish', error);
+            this.socket?.destroy();
+        }
     }
     private connectedBefore = false;
     constructor(private readonly directory: string, private readonly registration: RemoteRegistration,
@@ -47,21 +57,38 @@ export class RemoteBridgeClient {
                 if (socket.destroyed || socket.writableLength > 64_000 || Buffer.byteLength(text) > 16_000) { socket.destroy(); return; }
                 socket.write(text);
             };
-            socket.on('connect', () => send({ kind: 'register', version: 1, token: config.token, ...this.registration }));
+            socket.on('connect', () => {
+                try { send({ kind: 'register', version: 1, token: config.token, ...this.registration, capabilities: CURRENT_CAPABILITIES }); }
+                catch (error) { operationFailure('remote.register', error); socket.destroy(); }
+            });
             socket.on('error', error => operationFailure('remote.connection', error, { operationId }));
             socket.on('close', () => {
-                clearTimeout(deadline);this.registered=false;
+                clearTimeout(deadline);
                 operationLog('remote.connection', this.disposed ? 'cancelled' : 'disconnected', { operationId, registered, pending });
-                if (this.socket === socket) this.socket = undefined;
+                if (this.socket === socket) { this.socket = undefined; this.registered = false; this.eventsEnabled = false; }
                 this.schedule();
             });
             const receive = (frame: any) => {
                 if (!registered) {
                     if (frame?.kind !== 'registered' || frame.version !== 1) throw new Error();
-                    registered = true; this.registered=true;for(const value of this.completions.values())this.publish(value.sessionId,value.event);clearTimeout(deadline); operationLog('remote.connection', this.connectedBefore ? 'recovered' : 'ready', { operationId }); this.connectedBefore = true; return;
+                    registered = true;
+                    this.registered = true;
+                    // 未明确支持事件的旧桥接只收回执，不能被新事件帧断开。
+                    this.eventsEnabled = frame.features?.events === true;
+                    for (const value of this.completions.values()) this.publish(value.sessionId, value.event);
+                    clearTimeout(deadline); operationLog('remote.connection', this.connectedBefore ? 'recovered' : 'ready', { operationId }); this.connectedBefore = true; return;
                 }
                 if (frame?.kind !== 'execute' || typeof frame.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(frame.id) || pending >= 16) throw new Error();
-                const command = parseCommand(frame.command, Date.now());
+                let command: Command;
+                try { command = parseCommand(frame.command, Date.now()); }
+                catch (error) {
+                    const kind = frame.command?.operation?.kind;
+                    const unsupported = typeof kind === 'string' && !requiredCapability({kind});
+                    const code = unsupported ? 'UNSUPPORTED_OPERATION' :
+                        (error as {code?: string}).code === 'COMMAND_EXPIRED' ? 'COMMAND_EXPIRED' : 'INVALID_COMMAND';
+                    send({kind: 'reply', id: frame.id, reply: {accepted: false, error: code}});
+                    return;
+                }
                 if (command.target?.windowId !== this.registration.windowId || command.target.workspaceId !== this.registration.workspaceId) throw new Error();
                 pending++;
                 const active = () => !this.disposed && !socket.destroyed && command.expiresAt > Date.now();
