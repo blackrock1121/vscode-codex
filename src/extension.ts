@@ -93,11 +93,21 @@ export function activate(context: vscode.ExtensionContext): void {
       save: async options => { await context.globalState.update('codexChat.diagnosticOptions', diagnosticOptions(options)); },
     });
   context.subscriptions.push(diagnosticsPage, { dispose: () => { void diagnostics.dispose().finally(() => diagnosticServices.delete(diagnostics)); } });
-  const registration = provider.remoteRegistration();
-  if (registration && process.platform === 'darwin') {
-    const remote = new RemoteBridgeClient(path.join(os.homedir(), '.codex-chat', 'remote-bridge'), registration,
-      (command, active) => provider.executeRemote(command, active));
-    remote.start(); context.subscriptions.push(remote);
+  if (process.platform === 'darwin') {
+    let remote: RemoteBridgeClient | undefined, signature = '';
+    const registerRemote = () => {
+      const registration = provider.remoteRegistration(), next = JSON.stringify(registration) ?? '';
+      if (next === signature) return;
+      remote?.dispose(); remote = undefined; signature = next;
+      if (registration) {
+        remote = new RemoteBridgeClient(path.join(os.homedir(), '.codex-chat', 'remote-bridge'), registration,
+          (command, active) => provider.executeRemote(command, active));
+        remote.start();
+      }
+    };
+    registerRemote();
+    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(registerRemote),
+      vscode.workspace.onDidGrantWorkspaceTrust(registerRemote), { dispose: () => remote?.dispose() });
   }
 
   context.subscriptions.push(

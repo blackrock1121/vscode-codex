@@ -270,11 +270,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private disposed = false;
     private readonly remoteWindowId = randomUUID();
     remoteRegistration(): RemoteRegistration | undefined {
-        const folders = vscode.workspace.workspaceFolders;
-        if (!vscode.workspace.isTrusted || vscode.env.remoteName || !folders?.length || folders.some(f => f.uri.scheme !== 'file')) return;
+        const folders = vscode.workspace.workspaceFolders ?? [];
+        if (!vscode.workspace.isTrusted || vscode.env.remoteName || folders.some(f => f.uri.scheme !== 'file')) return;
         return { windowId: this.remoteWindowId,
-            workspaceId: 'project-' + createHash('sha256').update(JSON.stringify(folders.map(f => f.uri.fsPath))).digest('hex').slice(0, 24),
-            label: folders.map(f => f.name).join(' · ').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 120) };
+            workspaceId: 'project-' + createHash('sha256').update(JSON.stringify(folders.length ? folders.map(f => f.uri.fsPath) : [vscode.workspace.workspaceFile?.toString() ?? this.remoteWindowId])).digest('hex').slice(0, 24),
+            label: (folders.map(f => f.name).join(' · ') || '未打开文件夹的窗口').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 120),
+            path: (folders[0]?.uri.fsPath ?? '').replace(/[\x00-\x1f\x7f]/g, '').slice(0, 1024), folderCount: folders.length };
+    }
+    private remoteTitle(ctx: SessionCtx): string {
+        return (this.store.list().find(s => s.id === ctx.sessionId)?.title || ctx.lastUserText || '新会话').replace(/\s+/g, ' ').trim().slice(0, 80);
     }
     private remoteRequest(ctx: SessionCtx) {
         const pending=ctx.pendingPerm?.kind==='permission_request'?ctx.pendingPerm:undefined;
@@ -295,10 +299,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const contexts = () => [...new Set([...this.sessions, ...this.detached.values()])];
         const op = command.operation;
         if (op.kind === 'session.list') {
-            const titles = new Map(this.store.list().map(s => [s.id, s.title]));
             const all = contexts().filter(c => c.sessionId);
             return { accepted: true, result: { kind: 'session.list', total: all.length,
-                sessions: all.slice(0, 20).map(c => ({ id: c.sessionId, title: (titles.get(c.sessionId!) || c.lastUserText || '已打开会话').slice(0, 60),
+                sessions: all.slice(0, 20).map(c => ({ id: c.sessionId, title: this.remoteTitle(c),
                     busy: !!c.proc?.isBusy || !!c.sending, waiting: c.pendingPerm?.kind === 'permission_request' })) } };
         }
         let ctx = contexts().find(c => c.sessionId === command.target!.sessionId);
@@ -387,7 +390,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const items = this.store.load(sourceId!);
             this.fetchUsage();
             const usage = this.lastUsage?.kind === 'usage' ? this.lastUsage : undefined;
-            const state = { kind: 'session.snapshot', sessionId: sourceId, busy: !!ctx.proc?.isBusy || !!ctx.sending,
+            const state = { kind: 'session.snapshot', sessionId: sourceId, title: this.remoteTitle(ctx), busy: !!ctx.proc?.isBusy || !!ctx.sending,
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
                 model: this.sessionModel(ctx).slice(0, 120), effort: this.sessionEffort(ctx).slice(0, 40),
                 speed: this.speedMode(ctx), capabilities:{controls:true}, request:this.remoteRequest(ctx), context:ctx.remoteContext??null, limit:ctx.remoteLimit??null, progress:ctx.remoteStatus??null,
@@ -402,7 +405,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion || ctx.compactionPreparing) return denied('SESSION_BUSY');
             const accepted = await this.handleSend(ctx, op.text, undefined, images.length?images:undefined, undefined, selectedActive);
             if (!accepted) return denied('MESSAGE_NOT_SENT');
-            return { accepted: true, result: { kind: 'message.accepted', sessionId: ctx.sessionId, delivery: 'handed_to_original_session' } };
+            return { accepted: true, result: { kind: 'message.accepted', sessionId: ctx.sessionId, title: this.remoteTitle(ctx), delivery: 'handed_to_original_session' } };
         }
         if (op.kind === 'turn.stop') {
             if (!ctx.proc?.isBusy || ctx.proc.currentTurnId !== op.turnId) return denied('TURN_CHANGED');

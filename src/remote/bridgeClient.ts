@@ -5,7 +5,7 @@ import * as path from 'node:path';
 import { isReadOperation, parseCommand, type Command } from './command';
 
 export type RemoteReply = { accepted: true; result: unknown } | { accepted: false; error: string };
-export interface RemoteRegistration { windowId: string; workspaceId: string; label: string }
+export interface RemoteRegistration { windowId: string; workspaceId: string; label: string; path?: string; folderCount?: number }
 
 /** 桥接不存在时仅定期检查私有目录；不访问公网，也不自动执行断线前的指令。 */
 export class RemoteBridgeClient {

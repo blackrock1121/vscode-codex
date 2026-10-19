@@ -2,6 +2,8 @@
 export interface Target { windowId: string; workspaceId: string; sessionId: string }
 export type Operation =
   | { kind: 'workspace.list' }
+  | { kind: 'workspace.folders'; path: string; offset?: number }
+  | { kind: 'workspace.open'; path: string }
   | { kind: 'session.list' }
   | { kind: 'session.controls'; section: 'settings' | 'request' | 'changes' | 'tool'; page?: number; item?: number; end?: number; revision?: string }
   | { kind: 'session.configure'; key: 'model' | 'effort' | 'speed'; value: string }
@@ -42,6 +44,12 @@ export function parseCommand(input: unknown, now: number): Command {
   const op = object(c.operation);
   if (op.kind === 'workspace.list') {
     keys(op, ['kind']); if (c.target !== null) fail();
+  } else if (op.kind === 'workspace.folders' || op.kind === 'workspace.open') {
+    keys(op, ['kind', 'path', ...(op.kind === 'workspace.folders' && 'offset' in op ? ['offset'] : [])]);
+    if (c.target !== null) fail();
+    text(op.path, 1024);
+    if (/[\x00-\x1f\x7f]/.test(op.path as string) || ((op.path !== '' || op.kind === 'workspace.open') && !(op.path as string).startsWith('/'))) fail();
+    if ('offset' in op) integer(op.offset);
   } else {
     const t = object(c.target); keys(t, ['windowId', 'workspaceId', 'sessionId']);
     id(t.windowId); id(t.workspaceId);
@@ -96,5 +104,5 @@ export function parseCommand(input: unknown, now: number): Command {
 }
 
 export function isReadOperation(operation: Operation): boolean {
-  return ['workspace.list', 'session.list', 'session.snapshot', 'session.controls'].includes(operation.kind);
+  return ['workspace.list', 'workspace.folders', 'session.list', 'session.snapshot', 'session.controls'].includes(operation.kind);
 }

@@ -2,7 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const Module = require('node:module');
 const originalLoad = Module._load;
-const vscode = { workspace: { getConfiguration: () => ({ get: key => key === 'notifyWebhook' ? 'https://example.invalid/hook' : false }) } };
+const vscode = { env: {}, workspace: { getConfiguration: () => ({ get: key => key === 'notifyWebhook' ? 'https://example.invalid/hook' : false }) } };
 Module._load = function(id, ...args) { return id === 'vscode' ? vscode : originalLoad.call(this, id, ...args); };
 const { ChatViewProvider } = require('../dist/test/panel/chatViewProvider.js');
 Module._load = originalLoad;
@@ -48,6 +48,28 @@ test('手机指定 B 时只调用 B 原进程，桌面焦点 A 不改变；同�
   assert.equal(f.b.draft, '电脑未发送草稿'); assert.equal(f.b.draftImages[0].data, 'test');
   assert.ok(f.events.every(([, e]) => e.kind !== 'draft'));
   assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '重复点击', attachmentIds: [] }), () => true)).error, 'SESSION_BUSY');
+});
+test('手机列表与快照跟随桌面真实标题，重命名也使快照更新', async () => {
+  const f = fixture();let title='真实会话标题';f.provider.store.list=()=>[{id:f.b.sessionId,title}];
+  const list=await f.provider.executeRemote(command({kind:'session.list'},''),()=>true);
+  assert.equal(list.result.sessions.find(s=>s.id===f.b.sessionId).title,title);
+  const first=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;assert.equal(first.title,title);
+  title='电脑重命名后的标题';const next=(await f.provider.executeRemote(command({kind:'session.snapshot',revision:first.revision}),()=>true)).result;
+  assert.equal(next.title,title);assert.equal(next.unchanged,false);
+  const sent=await f.provider.executeRemote(command({kind:'message.send',text:'继续',attachmentIds:[]}),()=>true);assert.equal(sent.result.title,title);
+});
+test('本机空窗口和多文件夹工作区均注册；远端、不可信窗口仍拒绝', () => {
+  const saved={...vscode.workspace},env=vscode.env;vscode.env={};
+  try{
+    vscode.workspace.isTrusted=true;vscode.workspace.workspaceFolders=[];
+    const p=Object.create(ChatViewProvider.prototype);p.remoteWindowId='empty-window';
+    assert.equal(p.remoteRegistration().folderCount,0);assert.equal(p.remoteRegistration().label,'未打开文件夹的窗口');
+    const blankId=p.remoteRegistration().workspaceId;
+    vscode.workspace.workspaceFolders=[{name:'a',uri:{scheme:'file',fsPath:'/a'}},{name:'b',uri:{scheme:'file',fsPath:'/b'}}];
+    const multiple=p.remoteRegistration();assert.equal(multiple.folderCount,2);assert.equal(multiple.path,'/a');assert.equal(multiple.label,'a · b');assert.notEqual(multiple.workspaceId,blankId);
+    vscode.workspace.isTrusted=false;assert.equal(p.remoteRegistration(),undefined);vscode.workspace.isTrusted=true;
+    vscode.env.remoteName='ssh-remote';assert.equal(p.remoteRegistration(),undefined);
+  }finally{vscode.workspace=saved;vscode.env=env;}
 });
 test('手机发送失败不把手机文字写入电脑草稿，保留桌面原输入', async () => {
   const f = fixture(); f.b.draft = '电脑自己的草稿'; f.provider.ensureProcess = async () => undefined;
