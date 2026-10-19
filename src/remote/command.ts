@@ -5,6 +5,7 @@ export type Operation =
   | { kind: 'workspace.folders'; path: string; offset?: number }
   | { kind: 'workspace.open'; path: string }
   | { kind: 'session.list' }
+  | { kind: 'command.status'; commandId: string }
   | { kind: 'session.rename'; title: string }
   | { kind: 'session.pin'; pinned: boolean }
   | { kind: 'session.delete'; confirmed: true }
@@ -66,6 +67,7 @@ export function parseCommand(input: unknown, now: number): Command {
     id(t.windowId); id(t.workspaceId);
     if (op.kind === 'session.create' || op.kind === 'session.list') { if (t.sessionId !== '') fail(); } else id(t.sessionId);
     switch (op.kind) {
+      case 'command.status': keys(op, ['kind', 'commandId']); id(op.commandId); break;
       case 'session.list': case 'session.compact': case 'queue.resume': keys(op, ['kind']); break;
       case 'session.rename': keys(op,['kind','title']);text(op.title,80);if(!(op.title as string).trim())fail();break;
       case 'session.pin': keys(op,['kind','pinned']);if(typeof op.pinned!=='boolean')fail();break;
@@ -125,5 +127,5 @@ export function parseCommand(input: unknown, now: number): Command {
 }
 
 export function isReadOperation(operation: Operation): boolean {
-  return ['workspace.list', 'workspace.folders', 'session.list', 'session.snapshot', 'session.controls', 'message.read', 'session.image'].includes(operation.kind);
+  return ['command.status', 'workspace.list', 'workspace.folders', 'session.list', 'session.snapshot', 'session.controls', 'message.read', 'session.image'].includes(operation.kind);
 }

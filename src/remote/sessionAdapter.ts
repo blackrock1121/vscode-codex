@@ -9,6 +9,7 @@ import { SessionTaskQueue } from './taskQueue';
 import { checkedItem, RemoteImageReader, decodeImage, sourceUserIndex } from './timeline';
 import { remoteImages } from './images';
 import { CURRENT_CAPABILITIES } from './contract';
+import { ExecutionReceipts } from './executionReceipts';
 
 interface RemoteState {
     taskQueue?: SessionTaskQueue;
@@ -32,7 +33,8 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     private remoteImageReader?: RemoteImageReader;
     private disabled = false;
     private lastFailureAt = 0;
-    constructor(private readonly host: RemoteSessionHost<C>) {}
+    private readonly receipts?: ExecutionReceipts;
+    constructor(private readonly host: RemoteSessionHost<C>) { if (host.receipts) this.receipts = new ExecutionReceipts(host.receipts); }
     private state(ctx: C): RemoteState {
         let state = this.states.get(ctx);
         if (!state) { state = {}; this.states.set(ctx, state); }
@@ -136,8 +138,17 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             turnId:ctx.proc?.currentTurnId??null,question:pending.toolName==='AskUserQuestion',
             title:pending.toolName==='AskUserQuestion'?'有问题需要回答':(pending.displayName||pending.toolName).slice(0,100)}:null;
     }
-    /** 手机只能操作本窗口已打开或转入后台的原会话；不接收 Webview 任意指令。 */
     async execute(input: Command, connected: () => boolean): Promise<RemoteReply> {
+        const command = parseCommand(input, Date.now()), registration = this.host.registration();
+        if (!registration || !connected() || this.disabled || this.host.disposed || command.target?.windowId !== registration.windowId || command.target.workspaceId !== registration.workspaceId)
+            return {accepted: false, error: 'TARGET_OFFLINE'};
+        if (command.operation.kind === 'command.status') return {accepted: true, result: this.receipts?.status(command, command.operation.commandId)
+            ?? {kind: 'command.status', commandId: command.operation.commandId, state: 'unknown'}};
+        if (command.operation.kind === 'message.send' && this.receipts) return this.receipts.run(command, () => this.executeOperation(command, connected));
+        return this.executeOperation(command, connected);
+    }
+    /** 手机只能操作本窗口已打开或转入后台的原会话；不接收 Webview 任意指令。 */
+    private async executeOperation(input: Command, connected: () => boolean): Promise<RemoteReply> {
         const command = parseCommand(input, Date.now()), registration = this.host.registration();
         const denied = (error: string): RemoteReply => ({ accepted: false, error });
         const active = () => !this.disabled && connected() && !this.host.disposed && command.expiresAt > Date.now() &&

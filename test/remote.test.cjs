@@ -9,7 +9,8 @@ Module._load = originalLoad;
 const { transcriptText, transcriptPage } = require('../dist/test/remote/transcript.js');
 const { parseCommand } = require('../dist/test/remote/command.js');
 const { CodexProcess } = require('../dist/test/codex/process.js');
-const command = (operation, sid = 'session-b') => ({ version: 1, commandId: 'cmd', deviceId: 'phone', issuedAt: Date.now(), expiresAt: Date.now() + 60000,
+let commandSequence = 0;
+const command = (operation, sid = 'session-b') => ({ version: 1, commandId: 'cmd-' + ++commandSequence, deviceId: 'phone', issuedAt: Date.now(), expiresAt: Date.now() + 60000,
   target: { windowId: 'window', workspaceId: 'project', sessionId: sid }, operation });
 
 function fixture() {

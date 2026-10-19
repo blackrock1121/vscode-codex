@@ -11,6 +11,18 @@ const registration={windowId:'window',workspaceId:'project',label:'兼容测试'
 const command=operation=>({version:1,commandId:'command',deviceId:'phone',issuedAt:Date.now(),expiresAt:Date.now()+60000,
   target:{windowId:'window',workspaceId:'project',sessionId:'session'},operation});
 
+test('新插件兼容上一正式桥接 0.1.1：能力新增和事件仍使用 v1 连接',{timeout:8000},async t=>{
+  const {PluginSocket}=require('./fixtures/remote-0.1.1/bridge.cjs');
+  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'codex-previous-bridge-'));let connected;
+  const ready=new Promise(resolve=>connected=resolve),events=[];
+  const bridge=new PluginSocket(dir,{register:plugin=>{connected(plugin);return()=>{};},pluginEvent:(...args)=>events.push(args)});
+  const client=new RemoteBridgeClient(dir,registration,async c=>({accepted:true,result:c.operation.kind==='session.snapshot'?{text:'历史',busy:false}:{sessionId:'session'}}));
+  t.after(async()=>{client.dispose();await bridge.close();fs.rmSync(dir,{recursive:true,force:true});});
+  await bridge.listen();client.start();const peer=await ready;
+  assert.equal((await peer.execute(command({kind:'session.snapshot'}))).accepted,true);
+  assert.equal((await peer.execute(command({kind:'message.send',text:'旧桥接基础聊天',attachmentIds:[]}))).accepted,true);
+});
+
 test('新插件连接冻结的旧桥接：新增能力不破坏注册，流事件降级后基础聊天仍工作',{timeout:8000},async t=>{
   const dir=fs.mkdtempSync(path.join(os.tmpdir(),'codex-old-bridge-'));let connected;
   const ready=new Promise(resolve=>connected=resolve);

@@ -1,7 +1,7 @@
 /** 稳定的 v1 接口。两仓库独立发布；兼容测试核对本文件与历史协议样本。 */
 export const PROTOCOL_VERSION = 1;
 export const CURRENT_CAPABILITIES = Object.freeze({
-    chat: true, controls: true, attachments: true, actions: true, images: true, queue: true, stream: true,
+    chat: true, controls: true, attachments: true, actions: true, images: true, queue: true, stream: true, receipts: true,
 });
 export type RemoteCapabilities = Partial<Record<keyof typeof CURRENT_CAPABILITIES, boolean>>;
 export const BASIC_CAPABILITIES: RemoteCapabilities = Object.freeze({chat: true});
@@ -17,6 +17,7 @@ export function readCapabilities(value: unknown): RemoteCapabilities | undefined
 
 export function requiredCapability(operation: {kind: string; section?: string; attachmentIds?: string[]}): keyof RemoteCapabilities | undefined {
     switch (operation.kind) {
+        case 'command.status': return 'receipts';
         case 'session.list': case 'session.snapshot': case 'turn.stop': return 'chat';
         case 'session.create': case 'message.send': return operation.attachmentIds?.length ? 'attachments' : 'chat';
         case 'session.controls': return operation.section === 'queue' ? 'queue' : 'controls';

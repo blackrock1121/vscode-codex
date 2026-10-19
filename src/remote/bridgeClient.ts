@@ -6,7 +6,8 @@ import * as path from 'node:path';
 import { isReadOperation, parseCommand, type Command } from './command';
 import { CURRENT_CAPABILITIES, requiredCapability } from './contract';
 
-export type RemoteReply = { accepted: true; result: unknown } | { accepted: false; error: string };
+import type { PluginReply } from './results';
+export type RemoteReply = PluginReply;
 export interface RemoteRegistration { windowId: string; workspaceId: string; label: string; path?: string; folderCount?: number }
 
 /** 桥接不存在时仅定期检查私有目录；不访问公网，也不自动执行断线前的指令。 */
@@ -50,7 +51,7 @@ export class RemoteBridgeClient {
             const socket = this.socket = net.createConnection(path.join(this.directory, 'bridge.sock'));
             const operationId = randomUUID();
             operationLog('remote.connection', 'start', { operationId });
-            let buffer = Buffer.alloc(0), registered = false, pending = 0;
+            let buffer = Buffer.alloc(0), registered = false, pending = 0, unknownResults = false;
             const deadline = setTimeout(() => { operationLog('remote.connection', 'timeout', { operationId, phase: 'register' }); socket.destroy(); }, 5000);
             const send = (value: unknown) => {
                 const text = JSON.stringify(value) + '\n';
@@ -75,6 +76,7 @@ export class RemoteBridgeClient {
                     this.registered = true;
                     // 未明确支持事件的旧桥接只收回执，不能被新事件帧断开。
                     this.eventsEnabled = frame.features?.events === true;
+                    unknownResults = frame.features?.unknownResults === true;
                     for (const value of this.completions.values()) this.publish(value.sessionId, value.event);
                     clearTimeout(deadline); operationLog('remote.connection', this.connectedBefore ? 'recovered' : 'ready', { operationId }); this.connectedBefore = true; return;
                 }
@@ -98,7 +100,10 @@ export class RemoteBridgeClient {
                     return reply;
                 }, { connectionId: operationId, commandId: frame.id, kind: command.operation.kind }).catch((error): RemoteReply => {
                     // 未知异常可能发生在交接以后；中断连接让桥接记录“结果未知”，不能谎报未执行。
-                    if (!isReadOperation(command.operation)) socket.destroy();
+                    if (!isReadOperation(command.operation)) {
+                        if (!unknownResults) socket.destroy();
+                        return {accepted: false, error: 'PLUGIN_RESULT_UNKNOWN'};
+                    }
                     return { accepted: false, error: 'PLUGIN_OPERATION_FAILED' };
                 })
                     .then(reply => {

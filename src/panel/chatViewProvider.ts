@@ -266,6 +266,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private remote(): RemoteSessionAdapter<SessionCtx> {
         const provider = this;
         return this.remoteAdapter ??= new RemoteSessionAdapter({
+            receipts: {
+                read: () => this.context.workspaceState.get('codexChat.remoteExecutionReceipts.v1', {}) ?? {},
+                write: async value => { await this.context.workspaceState.update('codexChat.remoteExecutionReceipts.v1', value); },
+            },
             get disposed() { return provider.disposed; },
             get store() { return provider.store; },
             get modelCatalog() { return provider.modelCatalog; },

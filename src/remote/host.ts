@@ -2,6 +2,7 @@ import type { CodexProcess } from '../codex/process';
 import type { SessionStore } from '../codex/session';
 import type { ChangedFile, CheckpointSummary, ModelChoice, SpeedMode, ToWebview } from '../shared';
 import type { RemoteRegistration } from './bridgeClient';
+import type { ReceiptStorage } from './executionReceipts';
 
 /** 远程接入只依赖此宿主契约，不引用 VS Code、Webview 或 ChatViewProvider。 */
 export interface RemoteSession {
@@ -17,6 +18,7 @@ export interface RemoteSession {
 }
 
 export interface RemoteSessionHost<C extends RemoteSession> {
+    readonly receipts?: ReceiptStorage;
     readonly disposed: boolean;
     readonly store: Pick<SessionStore, 'list' | 'load' | 'hydrate' | 'setCustomTitle'>;
     readonly modelCatalog: ModelChoice[];
