@@ -1,3 +1,4 @@
+let listWarning: string | undefined;
 import { installWebviewErrors } from './errors';
 import MarkdownIt from 'markdown-it';
 import type { DiagnosticRecord } from '../diagnostics/jobs';
@@ -19,7 +20,7 @@ let settingsEdited = false;
 const status = { running: '诊断中', completed: '已完成', failed: '失败', interrupted: '已中断' };
 const notice = { pending: '诊断结束后发送', sending: '正在发送', sent: '已发送', failed: '发送失败', not_configured: '未开启', skipped: '已按设置跳过' };
 const scopeLabel = (record: DiagnosticRecord) => record.diagnosticScope === 'local-plugin-full' ? '整个插件 · 全量' : '旧版全局采样';
-const recordStatus = (record: DiagnosticRecord) => record.modelAnalysis?.status === 'failed' && record.status === 'completed' ? '部分完成' : status[record.status];
+const recordStatus = (record: DiagnosticRecord) => record.status === 'completed' && (record.modelAnalysis?.status === 'failed' || !!record.coverage && (record.coverage.unreadableFiles > 0 || record.coverage.invalidLines > 0 || record.coverage.oversizedLines > 0 || record.coverage.droppedLines > 0)) ? '部分完成' : status[record.status];
 function node<K extends keyof HTMLElementTagNameMap>(tag: K, text = '', className = '') {
   const element = document.createElement(tag); element.textContent = text; element.className = className; return element;
 }
@@ -169,6 +170,9 @@ window.addEventListener('message', event => {
   }
   else if (message?.type === 'state') {
     records = message.records; workspaceId = message.workspaceId;
+    if (listWarning && $('banner').textContent === listWarning) $('banner').hidden = true;
+    listWarning = message.warning;
+    if (listWarning) { $('banner').textContent = listWarning; $('banner').hidden = false; }
     for (const record of records) if (record.status === 'running') requested.delete(record.id);
     // 展开状态由用户操作决定，后台刷新和迟到的消息不能重新展开已收起的记录。
     if (selectedId && !records.some(r => r.id === selectedId)) { selectedId = undefined; api.setState({ selectedId, options: settings }); }

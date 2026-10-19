@@ -1,3 +1,4 @@
+import { DiagnosticHealth } from '../diagnosticHealth';
 import { createHmac, randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import type { RpcMessage } from './rpc';
@@ -43,10 +44,10 @@ export function failureCategory(value: unknown, exitCode?: number | null): strin
   if (/\btimed?[ \t]+out\b|\bETIMEDOUT\b|\b\w*Timeout(?:Error|Exception)\b|请求超时|^\s*timeout[.!]?\s*$/i.test(text)) return 'timeout';
   if (/\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?|response code)[ :="']+429\b|\b429[ :]+Too Many Requests\b|\brate[ -]limit(?:ed|ing)?\b|\brate_limit_exceeded\b|\btoo many requests\b/i.test(text)) return 'rate_limit';
   if (/ENOTFOUND|EAI_AGAIN|could not resolve|name resolution/i.test(text)) return 'dns';
-  if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|502 Bad Gateway|503 Service/i.test(text)) return 'network_or_service';
+  if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|error sending request|fetch failed|network unreachable|ENETUNREACH|EHOSTUNREACH|502 Bad Gateway|503 Service/i.test(text)) return 'network_or_service';
   if (/401 Unauthorized|403 Forbidden|authentication failed|unauthorized/i.test(text)) return 'authentication';
   if (/syntax error|SyntaxError|unexpected token|unterminated/i.test(text)) return 'syntax';
-  if (/\berror TS\d+\b|\b(?:compilation|build) failed\b|\btests? (?:\d+ )?failed\b|(?:^|\n)[ \t]*(?:[✗✘×❌ℹ]\uFE0F?[ \t]*)?(?:FAIL(?:ED)?(?![ \t]+(?:0|false)\b)[ \t]+|not ok \d+\b)/i.test(text)) return 'build_or_test';
+  if (/\berror TS\d+\b|\b(?:compilation|build) failed\b|\btests? (?:\d+ )?failed\b|(?:^|\n)[ \t]*(?:[✗✘×❌ℹ]\uFE0F?[ \t]*)?(?:FAIL(?:ED)?(?![ \t]+(?:0|false|to)\b)[ \t]+|not ok \d+\b)/i.test(text)) return 'build_or_test';
   if (/No such file or directory|ENOENT/i.test(text)) return 'missing_file';
   return exitCode ? 'nonzero_exit' : 'unknown';
 }
@@ -66,6 +67,7 @@ interface Run {
   context: PerformanceContext; threadId?: string; turnId?: string; threads: Set<string>; turns: Set<string>;
   rootEndedAt?: number; endedWallMs?: number; lastAt: number; lastEventAt: number; sequence: number;
   spans: Map<string, Span>; ended: Set<string>; fingerprints: Map<string, number>;
+  unobservedEvidenceMs: Record<string, number>;
   phases: Record<string, number>; kinds: Record<string, { count: number; failed: number; totalMs: number; maxMs: number }>;
   toolCount: number; failures: number; retries: number; repeated: number; maxTools: number; maxAgents: number;
   parallelToolMs: number; parallelAgentMs: number; childTailMs: number; incomplete: number; dropped: number;
@@ -83,6 +85,7 @@ export class PerformanceTrace {
   private readonly recent: Pick<Run, 'context' | 'threadId' | 'turnId' | 'threads' | 'turns' | 'endedWallMs'>[] = [];
   private readonly salt = randomUUID();
   private timer?: NodeJS.Timeout;
+  private readonly health = new DiagnosticHealth('performance.sink');
   private readonly arrivals = new WeakMap<RpcMessage, number>();
   private readonly questionPauses = new Map<string, { traceId: string; threadId: string; turnId?: string; itemId: string; startedWallMs: number; confirmedWallMs?: number }>();
   constructor(private readonly emit: (row: PerformanceRow) => void,
@@ -91,8 +94,10 @@ export class PerformanceTrace {
   get currentTraceId(): string | undefined { return this.run?.context.traceId; }
   private write(event: string, extra: PerformanceRow = {}): void {
     const r = this.run;
-    try { this.emit({ schema: 1, event, atMs: this.wall(), traceId: r?.context.traceId ?? null,
-      threadId: r?.threadId ?? null, turnId: r?.turnId ?? null, ...extra }); } catch { /* 诊断不影响执行 */ }
+    try {
+      this.health.recovered(line => this.emit({ schema: 1, event: 'logging_health', atMs: this.wall(), ...JSON.parse(line.slice(10)) }));
+      this.emit({ schema: 1, event, atMs: this.wall(), traceId: r?.context.traceId ?? null,
+      threadId: r?.threadId ?? null, turnId: r?.turnId ?? null, ...extra }); } catch (error) { this.health.failed(error); }
   }
   begin(threadId: string | undefined, settings: PerformanceRow, context?: PerformanceContext): void {
     if (this.run) this.finish('superseded');
@@ -100,7 +105,7 @@ export class PerformanceTrace {
     const c = context ?? { traceId: randomUUID(), startedAt: at, startedWallMs: this.wall() };
     this.run = { context: c, threadId, threads: new Set(threadId ? [threadId] : []), turns: new Set(),
       lastAt: at, lastEventAt: at, sequence: 0, spans: new Map(), ended: new Set(), fingerprints: new Map(),
-      phases: { preparation: Math.max(0, at - c.startedAt) }, kinds: {}, toolCount: 0, failures: 0, retries: 0,
+      unobservedEvidenceMs: {}, phases: { preparation: Math.max(0, at - c.startedAt) }, kinds: {}, toolCount: 0, failures: 0, retries: 0,
       repeated: 0, maxTools: 0, maxAgents: 0, parallelToolMs: 0, parallelAgentMs: 0, childTailMs: 0, incomplete: 0, dropped: 0,
       maxEventLoopDelayMs: 0, lastHeartbeatAt: at, cpu: process.cpuUsage() };
     this.write('turn_start', { startedAtMs: c.startedWallMs, queueMs: c.queueMs ?? 0, ...settings,
@@ -121,6 +126,13 @@ export class PerformanceTrace {
       n.pretool || n.child_validation ? 'local_preparation' : n.reasoning || n.message ? 'model_visible' :
       r.rootEndedAt !== undefined && agents ? 'child_tail' : n.agent_wait ? 'agent_wait' : 'unobserved';
     r.phases[phase] = (r.phases[phase] ?? 0) + delta;
+    if (phase === 'unobserved' && delta > 0) {
+      // 只描述客户端此时在等什么，不能从没有事件推断网络或模型推理耗时。
+      const local = this.transport();
+      const evidence = local.connectionState === 'closed' ? 'connection_closed' : Number(local.localPendingRequests) > 0 ? 'rpc_pending' :
+        r.rootEndedAt !== undefined ? 'after_root_end' : 'no_active_backend_event';
+      r.unobservedEvidenceMs[evidence] = (r.unobservedEvidenceMs[evidence] ?? 0) + delta;
+    }
     if (tools > 1) r.parallelToolMs += delta;
     if (agents > 1) r.parallelAgentMs += delta;
     // 尾部指标可以与子任务工具阶段重叠，但不能把问题卡片或收尾时间当作子任务执行。
@@ -318,6 +330,8 @@ export class PerformanceTrace {
     clearInterval(this.timer); this.timer = undefined;
     r.endedWallMs = this.wall();
     this.write('turn_summary', { outcome, elapsedMs: Math.round(this.now() - r.context.startedAt), queueMs: r.context.queueMs ?? 0,
+      unobservedEvidenceBasis: 'client_state_at_interval_end_not_backend_timing',
+      unobservedEvidenceMs: Object.fromEntries(Object.entries(r.unobservedEvidenceMs).map(([k, v]) => [k, Math.round(v)])),
       phasesMs: Object.fromEntries(Object.entries(r.phases).map(([k, v]) => [k, Math.round(v)])),
       toolCount: r.toolCount, failures: r.failures, retries: r.retries, repeatedCommands: r.repeated,
       maxParallelTools: r.maxTools, parallelToolMs: Math.round(r.parallelToolMs), maxParallelAgents: r.maxAgents,

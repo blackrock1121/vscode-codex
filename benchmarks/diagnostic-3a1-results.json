@@ -1,0 +1,424 @@
+{
+  "diagnosticId": "3a1baa93-8b3d-4ebd-9240-48103db8dbee",
+  "baseCommit": "c52fad0",
+  "logFlush": {
+    "scenario": "25 concurrent flush calls, first 24 append attempts configured to fail with ENOSPC; each injected failed I/O takes 5ms; explicit recovery then dispose; timing is a synthetic microbenchmark, not user task latency",
+    "before": {
+      "immediateAttempts": 2,
+      "flushGroupMs": 12.3,
+      "markerOccurrences": 1,
+      "recoveryVisible": true
+    },
+    "after": {
+      "immediateAttempts": 1,
+      "flushGroupMs": 6.8,
+      "markerOccurrences": 1,
+      "recoveryVisible": true
+    }
+  },
+  "originalWindow": {
+    "from": "2026-10-18T02:27:28.125Z",
+    "to": "2026-10-19T02:27:28.125Z",
+    "before": {
+      "durationMs": 224,
+      "summary": {
+        "turns": 11,
+        "tools": 329,
+        "failures": 16,
+        "longestTurnMs": 822209,
+        "versions": [
+          "0.1.144",
+          "0.1.138",
+          "0.1.145",
+          "0.1.147",
+          "0.1.148"
+        ]
+      },
+      "general": {
+        "errors": 21,
+        "warnings": 0,
+        "retries": 0,
+        "recoveries": 0,
+        "compactionErrors": 0,
+        "groups": 11,
+        "overflow": 0
+      }
+    },
+    "after": {
+      "durationMs": 247,
+      "summary": {
+        "turns": 11,
+        "tools": 329,
+        "failures": 16,
+        "longestTurnMs": 822209,
+        "versions": [
+          "0.1.144",
+          "0.1.138",
+          "0.1.145",
+          "0.1.147",
+          "0.1.148"
+        ]
+      },
+      "general": {
+        "errors": 21,
+        "warnings": 0,
+        "retries": 0,
+        "recoveries": 0,
+        "compactionErrors": 0,
+        "groups": 11,
+        "overflow": 0
+      }
+    },
+    "unchangedTotals": true
+  },
+  "retainedLogReview": {
+    "scope": "all retained logs up to original diagnostic cutoff; no workspace/window/session/version filter",
+    "summary": {
+      "turns": 160,
+      "tools": 2730,
+      "failures": 215,
+      "longestTurnMs": 52999747,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136",
+        "0.1.137",
+        "0.1.138",
+        "0.1.139",
+        "0.1.142",
+        "0.1.144",
+        "0.1.145",
+        "0.1.147",
+        "0.1.148"
+      ]
+    },
+    "general": {
+      "errors": 2857,
+      "warnings": 5,
+      "retries": 4,
+      "recoveries": 0,
+      "compactionErrors": 0,
+      "groups": 76,
+      "overflow": 0
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 42669952,
+      "lines": 98621,
+      "records": 74501,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 25,
+      "sessions": 104,
+      "firstDay": "2026-10-13",
+      "lastDay": "2026-10-19",
+      "sources": [
+        {
+          "pluginVersion": "未标注",
+          "windowId": "未标注",
+          "hostId": "未标注",
+          "records": 18119,
+          "turns": 23,
+          "tools": 260,
+          "failures": 25,
+          "logLines": 18119
+        },
+        {
+          "pluginVersion": "0.1.125",
+          "windowId": "aa5eb810-5107-4141-8bda-f4e475a0eed5",
+          "hostId": "31286",
+          "records": 231,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 235
+        },
+        {
+          "pluginVersion": "0.1.126",
+          "windowId": "0b815063-b30c-4d61-bec5-839e90b159a8",
+          "hostId": "41317",
+          "records": 3021,
+          "turns": 7,
+          "tools": 266,
+          "failures": 23,
+          "logLines": 3151
+        },
+        {
+          "pluginVersion": "0.1.128",
+          "windowId": "3a99fcd3-4267-4df6-83df-8eb1658f9609",
+          "hostId": "71443",
+          "records": 15,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 19
+        },
+        {
+          "pluginVersion": "0.1.132",
+          "windowId": "9fb68ef4-9d47-4943-8c5a-bb7132b20325",
+          "hostId": "21238",
+          "records": 3162,
+          "turns": 19,
+          "tools": 182,
+          "failures": 22,
+          "logLines": 3514
+        },
+        {
+          "pluginVersion": "0.1.134",
+          "windowId": "7edbb856-2882-48ff-9e5d-10f2ec292a86",
+          "hostId": "61344",
+          "records": 416,
+          "turns": 1,
+          "tools": 39,
+          "failures": 4,
+          "logLines": 463
+        },
+        {
+          "pluginVersion": "0.1.135",
+          "windowId": "807da4c9-1cfd-4801-9ec6-35f0e58b7a8e",
+          "hostId": "71793",
+          "records": 449,
+          "turns": 1,
+          "tools": 37,
+          "failures": 0,
+          "logLines": 503
+        },
+        {
+          "pluginVersion": "0.1.136",
+          "windowId": "da26864b-cd0e-4ed5-aacb-88a8c76daa27",
+          "hostId": "84773",
+          "records": 4215,
+          "turns": 15,
+          "tools": 128,
+          "failures": 12,
+          "logLines": 4528
+        },
+        {
+          "pluginVersion": "0.1.136",
+          "windowId": "d615cd43-91b6-4891-a7b6-e54122737a17",
+          "hostId": "29765",
+          "records": 1802,
+          "turns": 6,
+          "tools": 176,
+          "failures": 13,
+          "logLines": 1913
+        },
+        {
+          "pluginVersion": "0.1.137",
+          "windowId": "3cd0f8ab-20b4-426e-b3d1-067367a57980",
+          "hostId": "49624",
+          "records": 38,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 50
+        },
+        {
+          "pluginVersion": "0.1.138",
+          "windowId": "622b3902-547c-40d5-8396-1048447791f3",
+          "hostId": "60796",
+          "records": 976,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 993
+        },
+        {
+          "pluginVersion": "0.1.138",
+          "windowId": "e61a52ad-ec13-4768-95c6-bbdcf138975f",
+          "hostId": "62006",
+          "records": 6555,
+          "turns": 48,
+          "tools": 546,
+          "failures": 42,
+          "logLines": 7399
+        },
+        {
+          "pluginVersion": "0.1.138",
+          "windowId": "591c44c5-fd0f-469a-a7f9-58923839f701",
+          "hostId": "27547",
+          "records": 722,
+          "turns": 1,
+          "tools": 79,
+          "failures": 5,
+          "logLines": 766
+        },
+        {
+          "pluginVersion": "0.1.139",
+          "windowId": "c2aeb38e-5c7b-42a9-8536-a196bb0f93c5",
+          "hostId": "54267",
+          "records": 1683,
+          "turns": 5,
+          "tools": 162,
+          "failures": 17,
+          "logLines": 1813
+        },
+        {
+          "pluginVersion": "0.1.142",
+          "windowId": "e2cc87c3-cb08-4fd2-a98d-36aec97b11f8",
+          "hostId": "86750",
+          "records": 1547,
+          "turns": 2,
+          "tools": 155,
+          "failures": 10,
+          "logLines": 1610
+        },
+        {
+          "pluginVersion": "0.1.144",
+          "windowId": "9dc473c2-2581-49a0-94e3-6d7a7fa24702",
+          "hostId": "23897",
+          "records": 1075,
+          "turns": 2,
+          "tools": 35,
+          "failures": 1,
+          "logLines": 1134
+        },
+        {
+          "pluginVersion": "0.1.144",
+          "windowId": "581ea854-88e8-46ca-af9a-220097b8e4a2",
+          "hostId": "31798",
+          "records": 6177,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6200
+        },
+        {
+          "pluginVersion": "0.1.144",
+          "windowId": "8363d021-7ea9-4a48-b6ae-0403c3901434",
+          "hostId": "39297",
+          "records": 6682,
+          "turns": 9,
+          "tools": 71,
+          "failures": 4,
+          "logLines": 6835
+        },
+        {
+          "pluginVersion": "0.1.145",
+          "windowId": "4717ea62-6a55-4ae6-a477-c2a9252331ec",
+          "hostId": "44481",
+          "records": 2819,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2835
+        },
+        {
+          "pluginVersion": "0.1.145",
+          "windowId": "b07c66e4-e16e-4465-8bfb-b8654379400b",
+          "hostId": "61509",
+          "records": 10261,
+          "turns": 13,
+          "tools": 363,
+          "failures": 24,
+          "logLines": 10500
+        },
+        {
+          "pluginVersion": "0.1.147",
+          "windowId": "9a3a3809-91ed-43df-b9de-a212f8317431",
+          "hostId": "46396",
+          "records": 2,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3
+        },
+        {
+          "pluginVersion": "0.1.147",
+          "windowId": "32aa006a-8c1a-4b4e-ac9a-4989d7e4401a",
+          "hostId": "47331",
+          "records": 1890,
+          "turns": 4,
+          "tools": 110,
+          "failures": 8,
+          "logLines": 1973
+        },
+        {
+          "pluginVersion": "0.1.147",
+          "windowId": "9e52790a-31b0-42f5-8755-95af8d8fb49c",
+          "hostId": "71597",
+          "records": 602,
+          "turns": 1,
+          "tools": 49,
+          "failures": 3,
+          "logLines": 625
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "98f70c21-9b7c-447c-8993-1e5373902fe0",
+          "hostId": "77815",
+          "records": 711,
+          "turns": 1,
+          "tools": 9,
+          "failures": 1,
+          "logLines": 751
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "d4309962-be5f-431e-8f42-70e1fd1c2c4c",
+          "hostId": "81835",
+          "records": 865,
+          "turns": 2,
+          "tools": 52,
+          "failures": 1,
+          "logLines": 903
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "d96d4c73-a0fa-46dd-a986-aefaff1b8d48",
+          "hostId": "12127",
+          "records": 466,
+          "turns": 0,
+          "tools": 11,
+          "failures": 0,
+          "logLines": 492
+        }
+      ],
+      "scanErrors": [],
+      "requestedToMs": 1792376848125,
+      "includedLines": 93914,
+      "outsideRangeLines": 4707,
+      "unknownTimeLines": 0,
+      "fromMs": 1791820861000,
+      "toMs": 1792376847606
+    }
+  },
+  "conclusions": [
+    "并发刷新失败不再绕过退避；保留内容在恢复后只落盘一次。",
+    "原区间历史统计保持11轮/329工具/16失败，新增诊断不篡改旧证据。",
+    "全保留日志与原24小时区间分别统计，不相加。",
+    "不能从合成写盘耗时推算模型端任务提速；749.5秒等待仍无后端细分证据。"
+  ],
+  "releaseVersion": "0.1.150",
+  "integratedParentCommit": "6edec9ec8c47e6d9f8820ad5fe21e002435d8d5a",
+  "validation": {
+    "typecheck": "passed",
+    "baselineTests": 667,
+    "releaseTests": 691,
+    "newRegressionTests": 22,
+    "upstreamAddedTests": 2,
+    "failed": 0,
+    "releaseTestDurationMs": 11158.770333,
+    "nativeValidation": "arm64+x86_64 Swift编译和codesign校验通过；未触发真实系统权限弹窗",
+    "limits": "历史后端等待没有新请求对照样本；不从测试总耗时或合成 I/O 测试推算真实任务提速。"
+  },
+  "package": {
+    "version": "0.1.150",
+    "verifiedFiles": 17,
+    "vsixSHA256": "f00514c9eb8290daf4d6ad1c88416ceb7940018ab1d0f86dd98693ae9a1ce4c4",
+    "nativeArchitectures": [
+      "x86_64",
+      "arm64"
+    ],
+    "codesign": "passed",
+    "readmeTransform": "已核对 vsce 仅将相对文档链接转换为仓库绝对链接"
+  }
+}

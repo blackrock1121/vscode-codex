@@ -7,6 +7,14 @@ const attributes=a=>Object.entries(a).map(([key,value])=>({key,value:
 const logs=(a,extra={})=>({resourceLogs:[{resource:{attributes:attributes({'app.version':'0.162.1'})},scopeLogs:[{logRecords:[{
  timeUnixNano:'1791954000123000000',attributes:attributes(a),body:{stringValue:'PRIVATE_BODY'},...extra}]}]}]});
 
+test('3a1 后端 timing 嵌套指标和无 success 的请求错误保持分类，畸形 timing 明确标记',()=>{
+ const row=transportDiagnostics(logs({'event.name':'codex.api_request','error.message':'failed to fetch codex rate limits: error sending request PRIVATE',
+  timing_metrics:JSON.stringify({ttft_ms:125,duration_ms:350,engine_service_total_ms:200,PRIVATE:999})}))[0];
+ assert.equal(row.failureCategory,'network_or_service');assert.equal(row.ttft_ms,125);assert.equal(row.duration_ms,350);assert.equal(row.engine_service_total_ms,200);
+ assert.equal(transportDiagnostics(logs({'event.name':'codex.api_request',timing_metrics:'{PRIVATE'}))[0].timingStatus,'invalid_data');
+ assert.doesNotMatch(JSON.stringify(row),/PRIVATE/);
+});
+
 test('OTLP 仅保留请求时序、关联标识和用量，不保留凭据、正文或工具结果',()=>{
  const rows=transportDiagnostics(logs({'event.name':'codex.sse_event','event.kind':'response.completed',
   'conversation.id':'thread-1','turn_id':'turn-1','model':'test-model','duration_ms':'1500','ttft_ms':'300',

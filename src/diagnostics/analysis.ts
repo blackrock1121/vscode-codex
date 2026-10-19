@@ -10,6 +10,7 @@ export interface DiagnosticSummary { turns: number; tools: number; failures: num
 export interface DiagnosticSource { pluginVersion: string; windowId: string; hostId: string; records: number; turns: number; tools: number; failures: number; logLines?: number }
 export interface DiagnosticCoverage {
   mode: 'local-plugin-full'; files: number; readFiles: number; unreadableFiles: number; bytes: number; lines: number;
+  scanErrors?: { phase: string; errorCode?: string; failureCategory?: string }[];
   records: number; invalidLines: number; oversizedLines: number; droppedLines: number;
   windows: number; sessions: number; fromMs?: number; toMs?: number; firstDay?: string; lastDay?: string; sources: DiagnosticSource[];
   requestedFromMs?: number; requestedToMs?: number; includedLines?: number; outsideRangeLines?: number; unknownTimeLines?: number;

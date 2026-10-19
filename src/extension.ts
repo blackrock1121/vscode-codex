@@ -78,6 +78,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return await analyzeWithModel(new CodexRpc(vscode.workspace.getConfiguration('codexChat').get<string>('codexPath', 'codex'), diagnosticsDir), result, request, diagnosticsDir, progress, signal);
     } catch (error) {
       if (signal.aborted) throw error;
+      operationFailure('diagnostics.model.prepare', error);
       const message = redactDiagnosticText(String((error as Error).message), 300);
       return { ...result, modelAnalysis: { status: 'failed' as const, model: request.model!, effort: request.effort!, durationMs: 0, message }, report: `# 模型诊断未完成\n\n${message}\n\n` + result.report };
     }
@@ -123,12 +124,12 @@ export function activate(context: vscode.ExtensionContext): void {
     // doesn't come back as a blank, titleless tab.
     vscode.window.registerWebviewPanelSerializer("codex-chat.editor", {
       async deserializeWebviewPanel(panel: vscode.WebviewPanel, state: { sessionId?: string } | undefined): Promise<void> {
-        await provider.revivePanel(panel, state?.sessionId);
+        await observeOperation('panel.revive', () => provider.revivePanel(panel, state?.sessionId));
       },
     }),
     vscode.window.registerWebviewPanelSerializer("codex-chat.notify", {
       async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> {
-        provider.reviveNotifyPanel(panel);
+        await observeOperation('notification.panel.revive', () => provider.reviveNotifyPanel(panel));
       },
     }),
     registerCommand("codex-chat.newSession", () => provider.newSession()),

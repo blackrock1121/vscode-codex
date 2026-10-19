@@ -8,6 +8,7 @@ const seconds = (v: unknown) => typeof v === 'number' && Number.isFinite(v) ? `$
 const cell = (v: unknown) => String(v ?? '—').replace(/[|`\r\n<>]/g, ' ').slice(0, 160);
 const phaseNames: Record<string, string> = { preparation: '发送前准备', tools: '工具/Bash', user_wait: '用户审批/回答',
   compaction: '压缩', local_preparation: '本地工具准备/子任务核验', model_visible: '可见模型输出阶段', child_tail: '子任务收尾等待', agent_wait: '显式等待子任务', unobserved: '未归因等待' };
+const waitNames: Record<string, string> = { rpc_pending: 'RPC 请求尚未结算', connection_closed: '连接已关闭', after_root_end: '根轮次结束后收尾', no_active_backend_event: '连接期间未观测到活动阶段（后端细分未知）' };
 const preparationNames: Record<string, string> = { previous_finalization_wait: '等待前轮收尾', attachments: '附件读取', autosave: '自动保存',
   connection: '连接与会话准备', history: '历史读取', snapshot: '工作区快照', session_settings_wait: '等待设置保存', checkpoint_metadata: '还原点元数据', finalization: '结束后快照整理' };
 
@@ -48,6 +49,7 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
     const phases = r.phasesMs as Record<string, number> | undefined;
     text.push('', `### ${cell(r.traceId)}`, '', ...Object.entries(phases ?? {}).filter(([, v]) => v > 0)
       .sort((a, b) => b[1] - a[1]).map(([k, v]) => `- ${phaseNames[k] ?? cell(k)}：${seconds(v)}`),
+      ...Object.entries((r.unobservedEvidenceMs ?? {}) as Record<string, number>).map(([k, v]) => `- 未归因等待（按区间结束时客户端状态采样）· ${waitNames[k] ?? cell(k)}：${seconds(v)}`),
       `- 工具实际并行时间：${seconds(r.parallelToolMs)}；重复命令：${r.repeatedCommands}；明确报告的模型重试：${r.retries}。`,
       `- 不完整阶段：${r.incompleteSpans}；因上限未采集的阶段：${r.droppedSpans}；扩展宿主最大定时器延迟：${seconds(r.maxEventLoopDelayMs)}。`);
   }
@@ -104,7 +106,7 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
 
 export async function readPerformanceData(dir: string): Promise<{ rows: PerformanceRow[]; sourceNote: string }> {
   const names = (await fs.readdir(dir).catch(error => { if (expectedFileError(error)) return [] as string[]; operationFailure('diagnostics.report.read', error); throw error; })).filter(n => /^codex-chat-\d{4}-\d{2}-\d{2}\.log$/.test(n)).sort().slice(-3);
-  const rows: PerformanceRow[] = []; let truncated = false;
+  const rows: PerformanceRow[] = []; let truncated = false, invalidLines = 0;
   // 限制一次报告读取 12 MiB；日常运行不解析历史日志。
   for (const name of names) {
     const handle = await fs.open(path.join(dir, name), 'r');
@@ -121,11 +123,11 @@ export async function readPerformanceData(dir: string): Promise<{ rows: Performa
           const identity = line.slice(0, match.index).match(/\[pluginVersion=([\w.-]+) windowId=([\w.-]+) hostId=([\w.-]+)\]/);
           if (row && typeof row === 'object' && !Array.isArray(row)) rows.push({ ...row, diagnosticType: match[1],
             ...(identity ? { pluginVersion: identity[1], windowId: identity[2], hostId: identity[3] } : {}) });
-        } catch { /* 中断写入或旧日志 */ }
+        } catch { invalidLines++; /* 报告明确显示证据缺口，不能冒充没有异常。 */ }
       }
     } finally { await handle.close(); }
   }
-  return { rows, sourceNote: `读取最近 ${names.length} 个日志文件，每个最多 4 MiB。${truncated ? '部分旧记录被截断，统计只是当前采样范围。' : ''}` };
+  return { rows, sourceNote: `读取最近 ${names.length} 个日志文件，每个最多 4 MiB。${truncated ? '部分旧记录被截断，统计只是当前采样范围。' : ''}${invalidLines ? `有 ${invalidLines} 条结构化记录损坏，诊断不完整。` : ''}` };
 }
 
 export async function readPerformanceReport(dir: string): Promise<string> {

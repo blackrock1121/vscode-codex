@@ -241,8 +241,12 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                   file.deletingLastPathComponent().lastPathComponent.hasPrefix("codex-chat-notify-") else { continue }
             let finish: (String?) -> Void = { error in
                 let result: [String: Any] = error.map { ["ok": false, "error": $0] } ?? ["ok": true]
-                if let data = try? JSONSerialization.data(withJSONObject: result) {
-                    try? data.write(to: file.deletingLastPathComponent().appendingPathComponent("result.json"), options: .atomic)
+                do {
+                    let data = try JSONSerialization.data(withJSONObject: result)
+                    try data.write(to: file.deletingLastPathComponent().appendingPathComponent("result.json"), options: .atomic)
+                } catch {
+                    // 独立系统日志仅保留固定事件，不输出路径、通知正文或凭据。
+                    NSLog("[CodexNotification] result_write_failed")
                 }
             }
             guard let data = try? Data(contentsOf: file), data.count <= 16384,

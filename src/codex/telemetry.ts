@@ -54,7 +54,7 @@ function fields(a: Record<string, unknown>): TransportDiagnostic {
   }
   const exitCode = typeof a.exit_code === 'number' ? a.exit_code : typeof a.exit_code === 'string' && /^-?\d+$/.test(a.exit_code) ? Number(a.exit_code) : undefined;
   if (Number.isSafeInteger(exitCode)) out.exitCode = exitCode!;
-  if (out.success === false) {
+  if (out.success === false || out.hasError === true) {
     const error = typeof a['error.message'] === 'string' && a['error.message'].length ? a['error.message'] : undefined;
     const output = typeof a.output === 'string' && a.output.length ? a.output : undefined;
     out.failureCategory = failureCategory(error ?? output, out.exitCode as number | undefined);
@@ -98,10 +98,10 @@ export function transportDiagnostics(payload: any): TransportDiagnostic[] {
       if (typeof a.timing_metrics === 'string' && a.timing_metrics.length < 8192) {
         try {
           const timing = JSON.parse(a.timing_metrics);
-          for (const key of NUMBERS.filter(x => x.includes('engine_'))) {
+          for (const key of NUMBERS.filter(x => x.includes('engine_') || x === 'ttft_ms' || x === 'duration_ms')) {
             const v = number(timing?.[key]); if (v !== undefined) row[key] = v;
           }
-        } catch { /* 未提供结构化 timing */ }
+        } catch { row.timingStatus = 'invalid_data'; }
       }
       out.push(row);
     }

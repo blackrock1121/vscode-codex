@@ -22,6 +22,7 @@ readJsonl(process.stdin,m=>{
   const marker=process.env.TEST_BAD_INITIALIZE_ONCE;
   if(!fs.existsSync(marker)){fs.writeFileSync(marker,'1');process.stdout.write('not-json\n');return;}
  }
+ if(m.method==='initialize'&&process.env.TEST_FAIL_INITIALIZE){send({id:m.id,error:{code:-32603,message:'error sending request PRIVATE_TOKEN'}});return;}
  let result={};
  if(m.method==='initialize'&&process.env.TEST_UNICODE_INITIALIZE)result={text:'初始化\u2028行分隔符\u2029段分隔符'};
  if(m.method==='unicode-output'){

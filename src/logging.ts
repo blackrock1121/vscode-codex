@@ -87,7 +87,12 @@ export class DailyLogWriter {
   /** 有界队列 + 串行异步批量落盘，流式事件不再逐条阻塞扩展宿主。 */
   async flush(): Promise<void> {
     clearTimeout(this.timer); this.timer = undefined;
-    if (this.flushing) { await this.flushing; if (this.pending.size || this.dropped) await this.flush(); return; }
+    if (this.flushing) {
+      await this.flushing;
+      // 失败批次由有界退避或下次显式刷新重试；并发等待者不能绕开退避递归刷盘。
+      if (!this.writeFailures && (this.pending.size || this.dropped)) await this.flush();
+      return;
+    }
     if (!this.pending.size && !this.dropped) return;
     const batches = this.pending; this.pending = new Map(); this.pendingBytes = 0;
     const date = this.latestDate, dropped = this.dropped; this.dropped = 0;

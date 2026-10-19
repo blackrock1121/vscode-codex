@@ -1,3 +1,4 @@
+import { expectedFileError, operationFailure, operationLog } from './operations';
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -101,7 +102,7 @@ export class WorkdayCalendar {
                 const raw = JSON.parse(await fs.readFile(path.join(this.directory, `${year}.json`), "utf8")) as CachedYear;
                 if (Number.isFinite(raw.fetchedAt) && raw.fetchedAt <= now && raw.fetchedAt > 0)
                     this.cache.set(year, { fetchedAt: raw.fetchedAt, data: parseHolidayYear(raw.data, year) });
-            } catch { /* 损坏或首次启动不使用缓存，不影响远程提醒。 */ }
+            } catch (error) { if (!expectedFileError(error)) operationFailure('calendar.cache.read', error, { year }); }
         }
         const cached = this.cache.get(year), attempted = this.attempts.get(year);
         if (!force && ((cached && now >= cached.fetchedAt && now - cached.fetchedAt < DAY) ||
@@ -131,6 +132,7 @@ export class WorkdayCalendar {
             if (signal.aborted) return;
             const record = { fetchedAt: now, data };
             this.cache.set(year, record);
+            if (this.errors.has(year)) operationLog('calendar.update', 'recovered', { year });
             this.errors.delete(year);
             const temp = path.join(this.directory, `${year}-${randomUUID()}.tmp`);
             try {
@@ -138,7 +140,7 @@ export class WorkdayCalendar {
                 await fs.writeFile(temp, JSON.stringify(record));
                 await fs.rename(temp, path.join(this.directory, `${year}.json`));
             } catch (error) { this.log(`[calendar] 缓存写入失败: ${String(error)}`); }
-            finally { await fs.rm(temp, { force: true }).catch(() => {}); }
+            finally { await fs.rm(temp, { force: true }).catch(error => { if (!expectedFileError(error)) operationFailure('calendar.cleanup', error, { year }); }); }
             this.log(`[calendar] ${year} 年日历${data.days.length ? "已更新（含节假日与调休）" : "尚未公布"}`);
         } catch (error) {
             if (signal.aborted) return;

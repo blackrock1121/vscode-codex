@@ -116,7 +116,7 @@ export class SessionStore {
   }
   /** 只用于无副作用的读取；连接在请求期间断开时重建并重试一次。 */
   read<T = any>(method: string, params: unknown = {}): Promise<T> {
-    return observeOperation('session.read', () => this.readInner<T>(method, params), { method });
+    return observeOperation('session.read', () => this.readInner<T>(method, params), { method, targetKind: method.startsWith('account/') ? 'account_api' : method.startsWith('thread/') ? 'thread_api' : 'metadata_api' });
   }
   private async readInner<T>(method: string, params: unknown): Promise<T> {
     const rpc = await this.connection();
@@ -170,7 +170,16 @@ export class SessionStore {
   async hydrate(id: string): Promise<void> {
     const active = this.hydrating.get(id);
     if (active) return active;
-    const work = (async () => this.hydrateWith(await this.connection(), id))();
+    const work = observeOperation('session.hydrate', async () => {
+      const rpc = await this.connection();
+      try { await this.hydrateWith(rpc, id); }
+      catch (error) {
+        if (!rpc.isClosed || this.disposed) throw error;
+        operationLog('session.hydrate', 'retry', { reason: 'connection_closed' });
+        await this.hydrateWith(await this.connection(), id);
+        operationLog('session.hydrate', 'recovered');
+      }
+    }, { threadId: id });
     this.hydrating.set(id, work);
     try { await work; }
     finally { if (this.hydrating.get(id) === work) this.hydrating.delete(id); }
@@ -221,6 +230,9 @@ export class SessionStore {
       const seen = new Set<string>();
       do {
         const page: any = await rpc.request('thread/turns/list', { threadId: id, cursor, limit: 100, sortDirection: 'asc', itemsView: 'full' });
+        if (!Array.isArray(page?.data) || page.data.some((turn: any) => !turn || typeof turn.id !== 'string' || !Array.isArray(turn.items)) ||
+          (page.nextCursor != null && (typeof page.nextCursor !== 'string' || !page.nextCursor)))
+          throw Object.assign(new Error('会话历史分页格式无效，已保留上次读取的内容。'), { name: 'SyntaxError' });
         turns.push(...page.data); cursor = page.nextCursor;
         if (cursor && seen.has(cursor)) throw new Error('会话历史分页游标重复，已停止读取，请重试。');
         if (cursor) seen.add(cursor);

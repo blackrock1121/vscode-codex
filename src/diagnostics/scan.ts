@@ -1,3 +1,4 @@
+import { errorFields } from '../operations';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
@@ -64,13 +65,18 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [] as string[];
     throw error;
   })).filter(name => LOG_NAME.test(name)).sort();
+  const scanErrors: NonNullable<DiagnosticCoverage['scanErrors']> = [];
+  const scanError = (phase: string, error: unknown) => {
+    const fields = errorFields(error);
+    if (scanErrors.length < 20) scanErrors.push({ phase, errorCode: fields.errorCode as string | undefined, failureCategory: fields.failureCategory as string | undefined });
+  };
   const snapshots = await Promise.all(names.map(async name => {
     try { return { name, size: (await fs.promises.stat(path.join(dir, name))).size }; }
-    catch { return { name, size: -1 }; }
+    catch (error) { scanError('stat', error); return { name, size: -1 }; }
   }));
   const coverage: DiagnosticCoverage = { mode: 'local-plugin-full', files: names.length, readFiles: 0, unreadableFiles: 0,
     bytes: 0, lines: 0, records: 0, invalidLines: 0, oversizedLines: 0, droppedLines: 0, windows: 0, sessions: 0,
-    firstDay: names[0]?.match(LOG_NAME)?.[1], lastDay: names.at(-1)?.match(LOG_NAME)?.[1], sources: [] };
+    firstDay: names[0]?.match(LOG_NAME)?.[1], lastDay: names.at(-1)?.match(LOG_NAME)?.[1], sources: [], scanErrors };
   const accumulator = new PerformanceAccumulator(), samples = new ReportSamples(), general = new GeneralAccumulator();
   coverage.requestedFromMs = request?.fromMs; coverage.requestedToMs = request?.toMs;
   coverage.includedLines = 0; coverage.outsideRangeLines = 0; coverage.unknownTimeLines = 0;
@@ -99,6 +105,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     if (invalid) coverage.invalidLines++;
     const dropped = line.match(/\[logging\] droppedLines=(\d+)/);
     if (dropped) coverage.droppedLines += Number(dropped[1]);
+    if (row?.stage === 'recovered' && Number.isSafeInteger(row.lostRecords) && Number(row.lostRecords) > 0) coverage.droppedLines += Number(row.lostRecords);
     // 速度分析也需要本地运行异常证据，否则页面/连接错误会在模型摘要中完全消失。
     general.add(line, row, { file, line: lineNumber, atMs: at,
       pluginVersion: meta.pluginVersion ?? (typeof row?.pluginVersion === 'string' ? row.pluginVersion : undefined),
@@ -146,7 +153,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
       accept(decoder.end());
       if (pending || oversized) { coverage.lines++; fileLine++; if (oversized) coverage.oversizedLines++; else consume(pending, snapshot.name, fileLine); }
       if (fileBytes === snapshot.size) coverage.readFiles++; else coverage.unreadableFiles++;
-    } catch { coverage.unreadableFiles++; }
+    } catch (error) { coverage.unreadableFiles++; scanError('read', error); }
   }
   coverage.windows = windows.size; coverage.sessions = sessions.size; coverage.sources = [...sources.values()];
   const analyzed = accumulator.result();
@@ -160,7 +167,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
       recommendation: '检查采集开关、日志写入权限和运行环境，执行一次相关功能并验证日志落盘；没有运行日志不代表功能正常。' });
   }
   if (coverage.unreadableFiles || coverage.invalidLines || coverage.oversizedLines || coverage.droppedLines) analyzed.findings.push({ id: 'log-coverage', title: '部分观测证据缺失', severity: 'warning', traceIds: [],
-    evidence: `未完整读取 ${coverage.unreadableFiles} 个文件；损坏记录 ${coverage.invalidLines} 行；超长行 ${coverage.oversizedLines} 行；日志缓冲丢弃 ${coverage.droppedLines} 行。`,
+    evidence: `未完整读取 ${coverage.unreadableFiles} 个文件；损坏记录 ${coverage.invalidLines} 行；超长行 ${coverage.oversizedLines} 行；日志缓冲丢弃 ${coverage.droppedLines} 行。${scanErrors.length ? ` 读取失败分类：${scanErrors.map(e => `${e.phase}/${e.errorCode ?? e.failureCategory}`).join('、')}` : ''}`,
     recommendation: '先核对目录权限、日志写入和采集开关，修复证据缺失；已删除或未采集的数据无法追溯恢复。' });
   const sourceNote = `诊断范围：本机整个插件，不按工作区或会话过滤。扫描全部 ${coverage.files} 个保留日志文件，完整读取 ${coverage.readFiles} 个，已读 ${(coverage.bytes / 1048576).toFixed(2)} MiB、${coverage.records} 条结构化记录。${request?.fromMs !== undefined ? `仅分析 ${new Date(request.fromMs).toISOString()} 至 ${new Date(request.toMs).toISOString()} 的日志；区间内 ${coverage.includedLines} 行，区间外 ${coverage.outsideRangeLines} 行，时间缺失未纳入 ${coverage.unknownTimeLines} 行。` : ''}`;
   const overview = ['# 插件全局诊断范围', '', sourceNote, '',

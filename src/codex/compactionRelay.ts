@@ -22,6 +22,8 @@ export interface CompactionRoute {
   stage: 'request' | 'response';
   threadId?: string;
   fromModel: string;
+  fromEffort?: string;
+  outcome?: 'completed' | 'failed' | 'incomplete';
   toModel: string;
   effort: string;
   serviceTier: string | null;
@@ -54,11 +56,11 @@ export function routeCompaction(raw: Buffer, legacy: boolean, select: Compaction
   if (tier !== null && !['default', 'priority', 'fast', 'ultrafast', 'flex', 'auto'].includes(tier)) return { body: raw };
   const selection = select(body.model, tier);
   if (!selection) return { body: raw };
-  const fromModel = body.model;
+  const fromModel = body.model, fromEffort = typeof body.reasoning?.effort === 'string' && /^[a-z]{1,16}$/.test(body.reasoning.effort) ? body.reasoning.effort : undefined;
   body.model = selection.model;
   body.reasoning = { ...(body.reasoning ?? {}), effort: selection.effort };
   return { body: Buffer.from(JSON.stringify(body)), route: {
-    fromModel, toModel: selection.model, effort: selection.effort, serviceTier: tier,
+    fromModel, ...(fromEffort ? { fromEffort } : {}), toModel: selection.model, effort: selection.effort, serviceTier: tier,
   } };
 }
 
@@ -150,7 +152,7 @@ export class CompactionRelay {
               // 改写的是完整历史，不能再沿用包含未精简前缀的服务端响应引用。
               delete body.previous_response_id;
               result.body = Buffer.from(JSON.stringify(body));
-              try { this.options.onOptimized?.(threadId, optimized.savings); } catch { /* 诊断不可影响请求 */ }
+              try { this.options.onOptimized?.(threadId, optimized.savings); } catch (error) { operationFailure('compaction.optimized.observer', error); }
             }
           }
         }
@@ -214,13 +216,14 @@ export class CompactionRelay {
       if (!binary) {
         try {
           const event = JSON.parse(bytes(data).toString());
+          const terminal = ['response.completed', 'response.failed', 'response.incomplete', 'error'].includes(event.type);
+          const route = terminal ? responses.shift() : undefined;
           history.event(event);
           if (!history.isReliable) responses.length = 0;
-          if (event.type === 'response.completed' || event.type === 'response.failed' || event.type === 'response.incomplete' || event.type === 'error') {
-            const route = responses.shift();
+          if (route) {
             const model = event.response?.model;
-            if (route && typeof model === 'string' && /^[\w.-]{1,100}$/.test(model))
-              this.report({ ...route, stage: 'response', servedModel: model });
+            this.report({ ...route, stage: 'response', outcome: event.type === 'response.completed' ? 'completed' : event.type === 'response.incomplete' ? 'incomplete' : 'failed',
+              servedModel: typeof model === 'string' && /^[\w.-]{1,100}$/.test(model) ? model : undefined });
           }
         } catch { history.clear(); responses.length = 0; /* 上游原文只转发，不写日志 */ }
       } else { history.clear(); responses.length = 0; }

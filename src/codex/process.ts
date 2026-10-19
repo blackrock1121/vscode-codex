@@ -88,7 +88,7 @@ export class CodexProcess {
   private sessionId?: string;
   private activeModel = "";
   private activeEffort?: string;
-  private compactionRestore?: { model: string; effort: string; pending: boolean; isError: boolean };
+  private compactionRestore?: { operationId?: string; model: string; effort: string; pending: boolean; isError: boolean };
   private compactionRelay?: CompactionRelay;
   private compactionPreparation?: Promise<{ settings: any; identity: any } | undefined>;
   private autoCompactionsWithoutProgress = 0;
@@ -156,7 +156,7 @@ export class CodexProcess {
       const trace = row.type === 'event' && source !== undefined && thread ?
         [...this.recentCompactions, ...(this.compactionTrace ? [this.compactionTrace] : [])].find(t =>
           thread === t.threadId && source >= t.startedWallMs && source <= (t.endedWallMs ?? Date.now())) : undefined;
-      this.emit({ kind: 'diag', message: `[transport] ${JSON.stringify({ ...row, traceId: this.latency.associate(row), compactionId: trace?.id ?? null })}` });
+      this.emit({ kind: 'diag', message: `[transport] ${JSON.stringify({ ...row, backendTraceId: row.traceId ?? null, traceId: this.latency.associate(row), compactionId: trace?.id ?? null })}` });
     });
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
@@ -236,7 +236,8 @@ export class CodexProcess {
       const account = await this.timedRequest('account/read', { refreshToken: false });
       this.emit({ kind: 'speed_context', billing: billingKind(account.account?.type),
         planType: account.account?.type === 'chatgpt' ? account.account.planType : undefined });
-    } catch {
+    } catch (error) {
+      operationFailure('account.background.read', error);
       // 账号读取只补充套餐显示；实际请求的鉴权交由 Codex，不能阻塞发送。
       if (!this.exited) this.emit({ kind: 'diag', message: '[account] 后台账号信息读取失败，不阻塞会话' });
     }
@@ -420,6 +421,7 @@ export class CodexProcess {
         throw new Error(`无法确认当前账号的模型「${model}」支持${speedLabel(speed)}模式。请改用普通模式、选择提供该档位的模型，或更新 Codex CLI 后重试。`);
       this.emit({ kind: 'diag', message: `[dispatch] model=${model} speed=${speed} effort=${params.effort ?? 'default'} 目录等待${Date.now() - this.beganAt}ms` });
       this.lastDispatched = { model, speedMode: speed, effort: params.effort ?? 'default' };
+      operationLog('turn.configuration', 'dispatched', { traceId: this.latency.currentTraceId, model, effort: params.effort ?? 'default', serviceTier: params.serviceTier, permissionMode: this.opts.permissionMode });
       // busy:true 会保留已有阶段；必须在实际发送时结束“创建/连接会话”提示。
       // 不在异步回执中更新，避免覆盖先到达的思考、工具或完成状态。
       this.emit({ kind: 'status', label: '等待 Codex 响应…' });
@@ -1089,7 +1091,9 @@ export class CodexProcess {
       restore.isError ||= isError;
       if (restore.pending) return;
       restore.pending = true;
+      const operationId = restore.operationId = randomUUID();
       this.latency.start('compaction_restore', 'pretool');
+      operationLog('compaction.restore', 'start', { operationId, traceId: this.latency.currentTraceId, model: restore.model, effort: restore.effort });
       this.emit({ kind: 'status', label: '正在恢复会话模型设置…' });
       void this.rpc.request('thread/settings/update', {
         threadId: this.sessionId, model: restore.model, effort: restore.effort,
@@ -1097,10 +1101,12 @@ export class CodexProcess {
       }).then(() => {
         if (this.disposed || this.compactionRestore !== restore) return;
         this.latency.end('compaction_restore');
+        operationLog('compaction.restore', 'completed', { operationId, traceId: this.latency.currentTraceId, model: restore.model, effort: restore.effort });
         this.compactionRestore = undefined;
         this.finish(restore.isError);
-      }).catch(() => {
+      }).catch(error => {
         if (this.disposed || this.compactionRestore !== restore) return;
+        operationFailure('compaction.restore', error, { operationId, traceId: this.latency.currentTraceId });
         this.latency.end('compaction_restore', 'failed');
         this.compactionRestore = undefined;
         this.error('压缩后的会话设置恢复失败，已关闭连接；下一条消息会按会话配置重新连接。');
@@ -1121,6 +1127,13 @@ export class CodexProcess {
     this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
     this.scheduleCompactionValidation();
   }
-  dispose() { this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
-  async disposeAndWait() { this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
+  private cancelCompactionRestore(): void {
+    if (this.compactionRestore?.operationId) {
+      operationLog('compaction.restore', 'cancelled', { operationId: this.compactionRestore.operationId, traceId: this.latency.currentTraceId });
+      this.latency.end('compaction_restore', 'cancelled');
+    }
+    this.compactionRestore = undefined;
+  }
+  dispose() { this.cancelCompactionRestore(); this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
+  async disposeAndWait() { this.cancelCompactionRestore(); this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
 }

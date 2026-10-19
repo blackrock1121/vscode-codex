@@ -10,3 +10,7 @@ export * from '../../src/diagnostics/scan';
 export * from '../../src/webviewDelivery';
 export * from '../../src/webview/errors';
 export * from '../../src/diagnostics/page';
+export * from '../../src/codex/performanceTrace';
+export * from '../../src/diagnostics/configuration';
+export * from '../../src/remote/bridgeClient';
+export * from '../../src/panel/chatViewProvider';

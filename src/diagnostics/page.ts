@@ -93,7 +93,7 @@ export class DiagnosticsPage {
       const records = await this.jobs.list();
       if (sequence !== this.refreshSequence || panel !== this.panel) return;
       if (!records.some(r => r.id === this.selected)) this.selected = undefined;
-      postWebviewMessage(panel.webview, { type: 'state', records, selectedId: this.selected, workspaceId: this.jobs.scope.workspaceId });
+      postWebviewMessage(panel.webview, { type: 'state', records, selectedId: this.selected, workspaceId: this.jobs.scope.workspaceId, warning: this.jobs.listWarning });
       if (this.ready && this.revealId) {
         const id = this.revealId; this.revealId = undefined;
         if (records.some(record => record.id === id)) postWebviewMessage(panel.webview, { type: 'reveal', id });

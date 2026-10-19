@@ -55,6 +55,15 @@ function request(url,body,headers={}){
 async function connect(t,base){const ws=new WebSocket(base.replace('http:','ws:')+'/responses',{headers:{'thread-id':'thread-test'}});t.after(()=>ws.terminate());await once(ws,'open');return ws;}
 async function exchange(ws,body,binary=false){const next=once(ws,'message');ws.send(body,{binary});return await next;}
 
+for(const terminal of ['response.failed','response.incomplete','error'])test(`3a1 压缩 ${terminal} 先记录终态再清理历史，下一次普通请求配置不变`,async t=>{
+ const {base,wss,routes}=await fixture(t);const received=[];
+ wss.on('connection',ws=>ws.on('message',data=>{const b=JSON.parse(data);received.push(b);ws.send(JSON.stringify({type:terminal,response:{model:b.model}}));}));
+ const ws=await connect(t,base),original=make();await exchange(ws,raw(original));
+ assert.deepEqual(routes.map(r=>r.stage),['request','response']);assert.equal(routes[1].outcome,terminal==='response.incomplete'?'incomplete':'failed');
+ assert.equal(routes[1].fromModel,'gpt-6-astra');assert.equal(routes[1].fromEffort,'medium');
+ const normal=make({input:[]});await exchange(ws,raw(normal));assert.deepEqual(received[1],normal);assert.doesNotMatch(JSON.stringify(routes),/完整输出|保留约束/);
+});
+
 test('HTTP/SSE 流、鉴权与错误状态透传；只改 responses 中的原生触发请求',async t=>{
  const seen=[];
  const {base,routes}=await fixture(t,async(req,res)=>{

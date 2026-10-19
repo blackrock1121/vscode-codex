@@ -19,15 +19,15 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' || String(row.operation ?? '').startsWith('compaction.') || /compact/i.test(String(row.method ?? ''));
     const stage = String(row.stage ?? row.event ?? ''), outcome = String(row.outcome ?? row.status ?? '');
     const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
-      row.success === false || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
+      row.success === false || row.hasError === true || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
     const retry = stage === 'retry' || row.event === 'retry';
     const fallback = /fallback|restore_pending|unavailable/.test(stage) || /unavailable/.test(outcome) || row.type === 'runtime_error' && row.severity === 'warning';
     if (!failed && !retry && !fallback) return;
     // 旧 stderr 脱敏可能留下 ANSI 的 [2m 前缀，不能依赖模块名前的单词边界。
     const telemetry = row.type === 'runtime_error' && /opentelemetry_sdk\b.*\b(?:ExportError|export error)\b/i.test(String(row.message ?? ''));
-    const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' ? '采集完整性' : compaction ? '压缩' : row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
+    const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' || row.event === 'logging_health' ? '采集完整性' : compaction ? '压缩' : row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
-    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.errorType, row.failureEvidence,
+    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
       diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
@@ -50,7 +50,11 @@ export class GeneralAccumulator {
   private readonly counts: GeneralSummary = { errors: 0, warnings: 0, retries: 0, recoveries: 0, compactionErrors: 0, groups: 0, overflow: 0 };
   private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string> }>();
   add(line: string, row: PerformanceRow | undefined, where: LogLocation): void {
-    if (row?.stage === 'recovered') { this.counts.recoveries++; return; }
+    if (row?.stage === 'recovered') {
+      this.counts.recoveries++;
+      if (!(Number(row.lostRecords) > 0)) return;
+      row = { ...row, stage: 'unavailable', failureCategory: 'logging_loss', message: `恢复前有 ${Number(row.lostRecords)} 条记录未交给日志出口` };
+    }
     if (!row && /恢复成功|恢复完成|recovered|retry succeeded|connection restored/i.test(line) && !/失败|异常|error|failed|未能|尚未|没有/i.test(line)) { this.counts.recoveries++; return; }
     const incident = classifyIncident(line, row); if (!incident) return;
     if (incident.severity === 'error') this.counts.errors++; else this.counts.warnings++;

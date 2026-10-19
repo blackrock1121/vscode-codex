@@ -42,7 +42,7 @@ test('03eb 持续磁盘失败最多三次后台重试，反馈不递归且缓冲
  const f=await fixture(t);let calls=0;t.mock.timers.enable({apis:['setTimeout']});
  t.mock.method(fs.promises,'appendFile',async()=>{calls++;throw error('EACCES');});
  f.writer.write('pending');await f.writer.flush();
- for(let i=0;i<12;i++){t.mock.timers.tick(4000);await immediate();}
+ for(let i=0;i<12;i++){t.mock.timers.tick(4000);if(f.writer.flushing)await f.writer.flushing;await immediate();}
  assert.equal(calls,4);assert.equal(f.health.length,1);assert.ok(f.writer.pendingBytes<1024*1024);
 });
 

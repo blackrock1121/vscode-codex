@@ -246,6 +246,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private installedPending?: string;
     private lastUsageAt = 0;
     private lastUsageUpdatedAt = 0;
+    private usageFailureId?: string;
     private usageFails = 0;
     private usageInFlight = false;
     private lastUsage?: ToWebview;
@@ -1028,7 +1029,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (!this.alive(ctx)) throw new Error('修复会话已关闭');
                     this.post(ctx, { kind: 'remote_user', text: prompt });
                     if (!await this.handleSend(ctx, prompt) || !ctx.sessionId) throw new Error('修复消息尚未发送，请检查新会话中的提示后重试。');
-                    void this.store.setCustomTitle(ctx.sessionId, title).then(() => this.refreshSessions()).catch(() => {});
+                    void this.store.setCustomTitle(ctx.sessionId, title).then(() => this.refreshSessions()).catch(error => operationFailure('session.repair.title', error));
                     return ctx.sessionId;
                 })().then(resolve, reject);
             };
@@ -1704,7 +1705,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 ctx.sessionId = undefined;
                 ctx.blank = true;
                 ctx.checkpoints.clear();
-                void this.context.workspaceState.update(LAST_SESSION_KEY, undefined);
+                void this.context.workspaceState.update(LAST_SESSION_KEY, undefined).then(undefined, error => operationFailure('session.lastSelected.save', error));
                 await proc.disposeAndWait();
             }
             if ((ctx.stopSeq ?? -1) < mySeq) this.post(ctx, { kind: "busy", busy: false });
@@ -2530,7 +2531,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.rememberSessionEffort(ctx);
         this.store.notePending(newId, this.store.userTurnLines(newId)[0]?.text || this.store.list().find(s => s.id === oldId)?.title || "派生会话");
         this.renderSessions();
-        void this.context.workspaceState.update(LAST_SESSION_KEY, newId);
+        void this.context.workspaceState.update(LAST_SESSION_KEY, newId).then(undefined, error => operationFailure('session.lastSelected.save', error));
         const det = this.detached.get(oldId);
         if (det) {
             if (det.proc)
@@ -3637,7 +3638,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             return { ok: r.ok, status: r.status, ...(r.ok ? {} : { error: `HTTP ${r.status}` }) };
         }
-        catch {
+        catch (error) {
+            operationFailure('notification.webhook', error);
             return { ok: false, error: "请求超时、网络失败或机器人返回无效响应" };
         }
     }
@@ -3655,8 +3657,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try {
             postWebviewMessage(this.view?.webview, { kind: "running", sessionIds: this.runningIds() } satisfies ToWebview);
         }
-        catch {
-        }
+        catch (error) { operationFailure('panel.running.broadcast', error); }
     }
     private fetchUsage(force = false): void {
         if (this.usageInFlight || (!force && Date.now() - this.lastUsageAt < 90000))
@@ -3666,10 +3667,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         void this.store.read("account/rateLimits/read", { excludeResetCreditDetails: false }).then(r => {
             this.lastUsage = usageView(r.rateLimits, r.rateLimitResetCredits);
             this.lastUsageUpdatedAt = Date.now();
+            if (this.usageFailureId) { operationLog('account.usage', 'recovered', { operationId: this.usageFailureId }); this.usageFailureId = undefined; }
             this.maybeNotifyUsage(this.lastUsage);
             for (const ctx of this.sessions)
                 for (const event of quotaEvents(r.rateLimits, r.rateLimitResetCredits)) this.handleEmit(ctx, event);
-        }).catch(e => this.output.appendLine(`[usage] ${String(e)}`)).finally(() => { this.usageInFlight = false; });
+        }).catch(error => {
+            this.usageFailureId ??= randomUUID();
+            operationFailure('account.usage', error, { operationId: this.usageFailureId, cached: !!this.lastUsage, staleMs: this.lastUsageUpdatedAt ? Date.now() - this.lastUsageUpdatedAt : undefined });
+            if (force) for (const ctx of this.sessions) this.post(ctx, { kind: 'notice', message: '额度刷新失败，保留上次显示；对话仍可继续，稍后可重试。' });
+        }).finally(() => { this.usageInFlight = false; });
     }
     /** 周额度达到阈值后按重置周期和渠道分别记录成功通知；失败允许下次额度刷新重试。 */
     private maybeNotifyUsage(usage: Extract<ToWebview, { kind: "usage" }>): void {
@@ -3758,7 +3764,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.rememberSessionSpeed(ctx);
         this.rememberSessionEffort(ctx);
         ctx.checkpoints.setSession(id);
-        void this.context.workspaceState.update(LAST_SESSION_KEY, id);
+        void this.context.workspaceState.update(LAST_SESSION_KEY, id).then(undefined, error => operationFailure('session.lastSelected.save', error));
         if (!resumed || isNew) {
             this.refreshSessions();
         }
@@ -3975,8 +3981,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 if (fs.statSync(c).isFile())
                     return c;
             }
-            catch {
-            }
+            catch (error) { if (!expectedFileError(error, ['ENOENT', 'ENOTDIR'])) operationFailure('file.resolve.stat', error); }
         }
         // 绝对路径失效时不能退化为工作区中的同名文件，否则会跳错内容。
         if (path.isAbsolute(p)) return undefined;
@@ -3987,7 +3992,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try {
             uris = await vscode.workspace.findFiles(`**/${base}`, "{**/node_modules/**,**/.git/**,**/dist/**,**/build/**,**/target/**,**/out/**}", 12);
         }
-        catch {
+        catch (error) {
+            operationFailure('file.resolve.search', error);
             return undefined;
         }
         if (!uris.length)
@@ -4285,7 +4291,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const BATCH = 48;
         for (let start = 0; start < files.length; start += BATCH) {
             const batch = files.slice(start, start + BATCH);
-            const contents = await Promise.all(batch.map((u) => fs.promises.readFile(u.fsPath, "utf8").catch(() => undefined)));
+            const contents = await Promise.all(batch.map((u) => fs.promises.readFile(u.fsPath, "utf8").catch(error => { if (!expectedFileError(error)) operationFailure('symbol.source.read', error); return undefined; })));
             for (let b = 0; b < batch.length; b++) {
                 const content = contents[b];
                 if (content === undefined || !word.test(content))

@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { LocalTelemetry, TransportDiagnostic } from './telemetry';
 import { diagnosticId, failureCategory } from './performanceTrace';
 import { redactDiagnosticText } from '../diagnostics/redact';
-import { operationFailure, operationLog } from '../operations';
+import { errorFields, operationFailure, operationLog } from '../operations';
 
 export type RpcId = string | number;
 export interface RpcMessage { id?: RpcId; method?: string; params?: any; result?: any; error?: { code: number; message: string }; }
@@ -30,7 +30,7 @@ function isRpcMessage(value: unknown): value is RpcMessage {
 export class CodexRpc extends EventEmitter {
   private child?: ChildProcessWithoutNullStreams;
   private sequence = 0;
-  private pending = new Map<RpcId, { resolve: (v: any) => void; reject: (e: Error) => void; timer: NodeJS.Timeout }>();
+  private pending = new Map<RpcId, { resolve: (v: any) => void; reject: (e: Error) => void; timer: NodeJS.Timeout; method: string; startedAt: number }>();
   private starting?: Promise<void>;
   private closed = false;
   private closeReason?: Error;
@@ -49,6 +49,8 @@ export class CodexRpc extends EventEmitter {
     return { processRunId: this.processRunId, localReceivedMessages: this.receivedMessages,
       localReceivedBytes: this.receivedBytes, localLastMessageAgeMs: this.lastReceivedAt === undefined ? null :
         Math.round(performance.now() - this.lastReceivedAt), localPendingRequests: this.pending.size,
+      oldestPendingRequest: [...this.pending.entries()].slice(0, 1).map(([requestId, p]) => ({ requestId, method: p.method, elapsedMs: Math.round(performance.now() - p.startedAt) }))[0] ?? null,
+      connectionState: this.closed ? 'closed' : this.child ? 'connected' : 'starting',
       maxDecodeMs: Math.round(this.maxDecodeMs), maxHandlerMs: Math.round(this.maxHandlerMs),
       writeBackpressureCount: this.writeBackpressureCount, stdinBufferedBytes: this.child?.stdin.writableLength ?? 0 };
   }
@@ -59,7 +61,10 @@ export class CodexRpc extends EventEmitter {
   get isClosed(): boolean { return this.closed; }
   start(): Promise<void> {
     if (this.closed) return Promise.reject(new Error('Codex 连接已关闭'));
-    return this.starting ??= this.initialize();
+    return this.starting ??= this.initialize().catch(error => {
+      this.fail(error); this.telemetry?.close(); this.telemetry = undefined;
+      throw error;
+    });
   }
   private async initialize(): Promise<void> {
     operationLog('rpc.process', 'start', { operationId: this.processRunId });
@@ -68,7 +73,7 @@ export class CodexRpc extends EventEmitter {
         this.telemetry = await LocalTelemetry.start(row => this.diagnostic(row));
         this.diagnostic({ type: 'telemetry_status', status: 'local_collector_ready',
           serverQueueMs: null, networkTransitMs: null, note: 'backend_timings_only_when_reported' });
-      } catch { this.diagnostic({ type: 'telemetry_status', status: 'unavailable' }); }
+      } catch (error) { operationFailure('rpc.telemetry.start', error, { operationId: this.processRunId }); this.diagnostic({ type: 'telemetry_status', status: 'unavailable' }); }
     }
     if (this.closed) { this.telemetry?.close(); throw new Error('Codex 连接已关闭'); }
     const child = spawn(resolveCodex(this.executable), ['app-server', '--listen', 'stdio://', ...(this.telemetry?.args() ?? [])], {
@@ -122,7 +127,7 @@ export class CodexRpc extends EventEmitter {
         const p = this.pending.get(msg.id);
         if (!p) return;
         clearTimeout(p.timer); this.pending.delete(msg.id);
-        if (msg.error) p.reject(new Error(`${msg.error.message} (${msg.error.code})`)); else p.resolve(msg.result);
+        if (msg.error) p.reject(Object.assign(new Error(`${msg.error.message} (${msg.error.code})`), { rpcCode: msg.error.code })); else p.resolve(msg.result);
       }
       this.maxHandlerMs = Math.max(this.maxHandlerMs, performance.now() - handlingAt);
     };
@@ -163,15 +168,15 @@ export class CodexRpc extends EventEmitter {
     if (this.diagnostics) this.diagnostic({ ...fields, stage: 'start', pendingRequests: this.pending.size });
     const request = new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Codex 请求超时：${method}`)); }, timeout);
-      this.pending.set(id, { resolve, reject, timer });
+      this.pending.set(id, { resolve, reject, timer, method, startedAt });
       try { this.write({ id, method, params }); } catch (e) { clearTimeout(timer); this.pending.delete(id); reject(e); }
     });
     return request.then(value => {
       if (this.diagnostics) this.diagnostic({ ...fields, stage: 'end', outcome: 'completed', durationMs: Math.round(performance.now() - startedAt) });
       return value;
     }, error => {
-      if (this.diagnostics) this.diagnostic({ ...fields, stage: 'end', outcome: 'failed', durationMs: Math.round(performance.now() - startedAt),
-        failureCategory: failureCategory(error instanceof Error ? error.message : '') });
+      if (this.diagnostics) this.diagnostic({ ...fields, stage: 'end', outcome: this.closeReason?.name === 'AbortError' ? 'cancelled' : 'failed', durationMs: Math.round(performance.now() - startedAt),
+        ...errorFields(error) });
       throw error;
     });
   }
@@ -185,7 +190,8 @@ export class CodexRpc extends EventEmitter {
     if (this.closed) return;
     this.closed = true;
     this.closeReason = e;
-    if (e.message !== 'Codex 连接已关闭') operationFailure('rpc.process', e, { operationId: this.processRunId });
+    if (e.name === 'AbortError') operationLog('rpc.process', 'cancelled', { operationId: this.processRunId });
+    else operationFailure('rpc.process', e, { operationId: this.processRunId });
     for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(e); }
     this.pending.clear();
     // 协议损坏时子进程可能仍存活；释放它，避免后续请求复用失效连接。
@@ -197,7 +203,7 @@ export class CodexRpc extends EventEmitter {
     }
   }
   dispose(): void {
-    this.fail(new Error('Codex 连接已关闭'));
+    this.fail(Object.assign(new Error('Codex 连接已关闭'), { name: 'AbortError' }));
     const child = this.child;
     if (!child) return;
     child.stdin.end();
