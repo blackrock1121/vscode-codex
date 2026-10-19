@@ -106,6 +106,7 @@ export function activate(context: vscode.ExtensionContext): void {
         remote.start();
       }
     };
+    provider.remotePublish=(sessionId,event)=>remote?.publish(sessionId,event);
     registerRemote();
     context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(registerRemote),
       vscode.workspace.onDidGrantWorkspaceTrust(registerRemote), { dispose: () => remote?.dispose() });

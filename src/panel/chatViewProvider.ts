@@ -19,6 +19,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { parseCommand, type Command } from "../remote/command";
 import type { RemoteRegistration, RemoteReply } from "../remote/bridgeClient";
 import { transcriptSnapshot, transcriptText, transcriptPage } from "../remote/transcript";
+import { SessionTaskQueue, type QueuedTask } from '../remote/taskQueue';
+import { checkedItem, itemRevision, imageSources, RemoteImageReader, decodeImage, sourceUserIndex } from '../remote/timeline';
 import { remoteImages } from "../remote/images";
 import { questionStateFile, deleteQuestionState, saveQuestionState, CodexProcess, PermissionRequest } from "../codex/process";
 import { usageView, quotaEvents, userView, checkpointTextKey, QUESTION_REPLY_PREFIX } from "../codex/events";
@@ -171,6 +173,10 @@ const LOCAL_SNAPSHOT_EXCLUDES_KEY = "codexChat.localSnapshotExcludes";
 interface SessionCtx {
     sending?: boolean;
     remotePrivate?: boolean;
+    taskQueue?: SessionTaskQueue;
+    remoteNotify?: {deviceId:string;commandId:string};
+    remoteStream?: {id:string;seq:number;text:string;thinking:string;active:boolean};
+    remoteAction?: boolean;
     remoteRead?: Promise<void>;
     remoteReadAt?: number;
     remoteRequestSignature?: string;
@@ -270,6 +276,40 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private notificationRouter?: NotificationRouter;
     private disposed = false;
     private readonly remoteWindowId = randomUUID();
+    private remoteImageReader?:RemoteImageReader;
+    remotePublish?: (sessionId:string,event:Record<string,unknown>)=>void;
+    private queue(ctx:SessionCtx):SessionTaskQueue { return ctx.taskQueue??=new SessionTaskQueue(); }
+    private postQueue(ctx:SessionCtx):void {
+        this.queue(ctx);
+        if(ctx.sessionId)this.remotePublish?.(ctx.sessionId,{kind:'invalidate'});
+    }
+    private async drainTasks(ctx:SessionCtx):Promise<void> {
+        const queue=this.queue(ctx);
+        const available=()=>!ctx.proc?.isBusy&&!ctx.sending&&!ctx.pendingPerm&&!ctx.remoteAction&&!ctx.compacting&&!ctx.compactionPreparing&&!this.restoring.has(ctx)&&!this.forking.has(ctx)
+            &&!(ctx.remoteLimit?.level==='exhausted'&&!ctx.remoteLimit.modelScoped&&(!ctx.remoteLimit.resetsAt||ctx.remoteLimit.resetsAt>Date.now()/1000));
+        await queue.drain(available,async item=>{
+            ctx.remoteNotify=item.deviceId?{deviceId:item.deviceId,commandId:item.commandId!}:undefined;
+            const accepted=await this.handleSend(ctx,item.text,item.context,item.images.length?item.images:undefined,item.files.length?item.files:undefined,
+                ()=>this.sessions.has(ctx)||!!ctx.sessionId&&this.detached.get(ctx.sessionId)===ctx,Date.now()-item.createdAt);
+            if(!accepted)ctx.remoteNotify=undefined;return accepted;
+        });this.postQueue(ctx);
+    }
+    private remoteEvent(ctx:SessionCtx,event:ToWebview):void {
+        if(!ctx.sessionId)return;
+        if(event.kind==='busy'&&event.busy)ctx.remoteStream={id:randomUUID(),seq:0,text:'',thinking:'',active:true};
+        if(event.kind==='text_delta'||event.kind==='thinking_delta') {
+            const stream=ctx.remoteStream??={id:randomUUID(),seq:0,text:'',thinking:'',active:true};
+            const field=event.kind==='text_delta'?'text':'thinking';stream[field]=(stream[field]+event.text).slice(-4000);
+            for(const text of event.text.match(/[\s\S]{1,600}/gu)??[]){stream.seq++;this.remotePublish?.(ctx.sessionId,{kind:'delta',id:stream.id,seq:stream.seq,field,text});}
+        } else if(['result','tool_input','tool_result','permission_request','permission_resolved','compacted','busy'].includes(event.kind)) {
+            if(event.kind==='result'){ctx.remoteReadAt=0;if(ctx.remoteStream)ctx.remoteStream.active=false;}
+            this.remotePublish?.(ctx.sessionId,{kind:'invalidate'});
+        }
+        if(event.kind==='result'&&ctx.remoteNotify){
+            const origin=ctx.remoteNotify;ctx.remoteNotify=undefined;
+            this.remotePublish?.(ctx.sessionId,{kind:'completed',...origin,title:this.remoteTitle(ctx),error:event.isError});
+        }
+    }
     remoteRegistration(): RemoteRegistration | undefined {
         const folders = vscode.workspace.workspaceFolders ?? [];
         if (!vscode.workspace.isTrusted || vscode.env.remoteName || folders.some(f => f.uri.scheme !== 'file')) return;
@@ -302,7 +342,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (op.kind === 'session.list') {
             const all = contexts().filter(c => c.sessionId);
             return { accepted: true, result: { kind: 'session.list', total: all.length,
-                sessions: all.slice(0, 20).map(c => ({ id: c.sessionId, title: this.remoteTitle(c),
+                sessions: all.sort((a,b)=>Number(this.pinnedSet().has(b.sessionId!))-Number(this.pinnedSet().has(a.sessionId!))).slice(0, 20).map(c => ({ id: c.sessionId, title: this.remoteTitle(c), pinned:this.pinnedSet().has(c.sessionId!),
                     busy: !!c.proc?.isBusy || !!c.sending, waiting: c.pendingPerm?.kind === 'permission_request' })) } };
         }
         let ctx = contexts().find(c => c.sessionId === command.target!.sessionId);
@@ -319,8 +359,71 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (sourceId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + sourceId))
             await this.context.workspaceState.update('codexChat.remotePrivate.' + sourceId, true);
         if (!selectedActive()) return denied('TARGET_CHANGED');
+        const idle=()=>!ctx!.proc?.isBusy&&!ctx!.sending&&!ctx!.pendingPerm&&!ctx!.remoteAction&&!this.restoring.has(ctx!)&&!this.forking.has(ctx!)&&!ctx!.compactionPreparing;
+        if(op.kind==='session.rename') {
+            if(!await this.store.setCustomTitle(sourceId!,op.title.trim()))return denied('SESSION_NOT_OPEN');
+            this.refreshSessions();return {accepted:true,result:{kind:op.kind,title:op.title.trim()}};
+        }
+        if(op.kind==='session.pin'){await this.setPinned(sourceId!,op.pinned);return {accepted:true,result:{kind:op.kind,pinned:op.pinned}};}
+        if(op.kind==='session.delete'){
+            if(ctx.remoteAction||ctx.sending||ctx.taskQueue?.sending||this.restoring.has(ctx)||this.forking.has(ctx))return denied('SESSION_BUSY');
+            if(ctx.taskQueue){ctx.taskQueue.paused=true;ctx.taskQueue.items.length=0;}
+            await this.deleteSessions([sourceId!],true);
+            return this.store.list().some(s=>s.id===sourceId)?denied('SESSION_DELETE_FAILED'):{accepted:true,result:{kind:op.kind,sessionId:sourceId}};
+        }
+        if(op.kind==='session.compact'){
+            if(!idle())return denied('SESSION_BUSY');
+            ctx.remoteNotify={deviceId:command.deviceId,commandId:command.commandId};
+            await this.compactSession(ctx,true);
+            if(!ctx.proc?.isBusy){ctx.remoteNotify=undefined;return denied('COMPACTION_NOT_STARTED');}
+            return {accepted:true,result:{kind:op.kind}};
+        }
+        if(op.kind==='queue.remove'){
+            try{this.queue(ctx).remove(op.id);}catch(error){return denied((error as Error).message);}
+            this.postQueue(ctx);return {accepted:true,result:{kind:op.kind}};
+        }
+        if(op.kind==='queue.resume'){this.queue(ctx).paused=false;void this.drainTasks(ctx);return {accepted:true,result:{kind:op.kind}};}
+        if(op.kind==='message.enqueue'){
+            try {
+                const images=remoteImages(command,op.attachmentIds);
+                this.queue(ctx).add({text:op.text,images,files:[],contexts:[],labels:[],imageUris:[],deviceId:command.deviceId,commandId:command.commandId});
+                this.postQueue(ctx);void this.drainTasks(ctx);return {accepted:true,result:{kind:op.kind,queued:true}};
+            }catch(error){return denied((error as Error).message==='QUEUE_FULL'?'QUEUE_FULL':'IMAGE_NOT_AVAILABLE');}
+        }
+        if(['message.read','message.edit','message.regenerate','session.image'].includes(op.kind)) {
+            if(op.kind!=='message.read'&&op.kind!=='message.edit'&&op.kind!=='message.regenerate'&&op.kind!=='session.image')return denied('INVALID_COMMAND');
+            if(op.kind!=='session.image'||op.offset===0)await this.store.hydrate(sourceId!);if(!selectedActive())return denied('TARGET_CHANGED');
+            const items=this.store.load(sourceId!);let item;
+            try{item=checkedItem(items,op.item,op.revision);}catch{return denied('MESSAGE_CHANGED');}
+            if(op.kind==='session.image'){
+                try{return {accepted:true,result:{...await (this.remoteImageReader??=new RemoteImageReader()).read(item,op.index,op.offset,this.cwd()),item:op.item,index:op.index,revision:op.revision}};}catch(error){return denied(['IMAGE_TOO_LARGE','INVALID_OFFSET'].includes((error as Error).message)?(error as Error).message:'IMAGE_NOT_AVAILABLE');}
+            }
+            const index=sourceUserIndex(items,op.item),user=items[index];if(user.type!=='user')return denied('MESSAGE_NOT_EDITABLE');
+            const point=this.checkpointsForView(ctx,sourceId!)[items.slice(0,index).filter(i=>i.type==='user').length];
+            if(!point)return denied('MESSAGE_NOT_EDITABLE');
+            if(op.kind==='message.read'){
+                const offset=op.offset??0,end=Math.min(user.text.length,offset+700);
+                return {accepted:true,result:{kind:op.kind,item:op.item,revision:op.revision,text:user.text.slice(offset,end),offset,next:end,total:user.text.length,
+                    imageCount:user.images?.length??0,synthetic:!!point.synthetic}};
+            }
+            if(ctx.remoteAction||ctx.sending||ctx.answeringQuestion||this.restoring.has(ctx)||this.forking.has(ctx))return denied('SESSION_BUSY');
+            let images;try{images=(user.images??[]).map(decodeImage);}catch{return denied('IMAGE_NOT_AVAILABLE');}
+            ctx.remoteAction=true;ctx.remoteNotify=undefined;this.queue(ctx).paused=true;this.postQueue(ctx);this.restoring.add(ctx);
+            try {
+                if(!selectedActive())return denied('TARGET_CHANGED');
+                if(!await this.editMessageRewind(ctx,point.id))return denied('RESTORE_FAILED');
+                this.post(ctx,{kind:'restored'});
+                if(ctx.sessionId){await this.store.hydrate(ctx.sessionId);this.renderSessionInto(ctx,ctx.sessionId);}else ctx.historyPending=false;
+                ctx.remoteNotify={deviceId:command.deviceId,commandId:command.commandId};
+                const text=op.kind==='message.edit'?op.text:user.text;
+                const accepted=await this.handleSend(ctx,text,user.context,images.length?images:undefined,user.files,()=>active()&&contexts().includes(selected));
+                if(!accepted)ctx.remoteNotify=undefined;
+                return {accepted:true,result:{kind:op.kind,sessionId:ctx.sessionId,title:this.remoteTitle(ctx),sent:accepted}};
+            }finally{ctx.remoteAction=false;this.restoring.delete(ctx);}
+        }
         if(op.kind==='session.controls') {
             const page=op.page??0;
+            if(op.section==='queue')return {accepted:true,result:{kind:'session.controls',section:'queue',...this.queue(ctx).summary(page)}};
             if(op.section==='tool'){
                 const item=this.store.load(sourceId!)[op.item!];if(!item||item.type!=='tool')return denied('TOOL_NOT_AVAILABLE');
                 return {accepted:true,result:transcriptPage(transcriptText([item]),{kind:'session.controls',section:'tool',item:op.item,name:(item.displayName||item.name).slice(0,100)},op,4500)};
@@ -394,7 +497,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const state = { kind: 'session.snapshot', sessionId: sourceId, title: this.remoteTitle(ctx), busy: !!ctx.proc?.isBusy || !!ctx.sending,
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
                 model: this.sessionModel(ctx).slice(0, 120), effort: this.sessionEffort(ctx).slice(0, 40),
-                speed: this.speedMode(ctx), capabilities:{controls:true}, request:this.remoteRequest(ctx), context:ctx.remoteContext??null, limit:ctx.remoteLimit??null, progress:ctx.remoteStatus??null,
+                speed: this.speedMode(ctx), capabilities:{controls:true,actions:true,images:true,queue:true,stream:true}, queueCount:ctx.taskQueue?.items.length??0,queuePaused:ctx.taskQueue?.paused??false,pinned:this.pinnedSet().has(sourceId!),stream:ctx.remoteStream?{...ctx.remoteStream,text:ctx.remoteStream.text.slice(-600),thinking:ctx.remoteStream.thinking.slice(-200),truncated:ctx.remoteStream.text.length>600||ctx.remoteStream.thinking.length>200}:null, request:this.remoteRequest(ctx), context:ctx.remoteContext??null, limit:ctx.remoteLimit??null, progress:ctx.remoteStatus??null,
                 permissionMode:ctx.remoteMode??null, usage: usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
                     weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType, updatedAt: this.lastUsageUpdatedAt } : null };
             return { accepted: true, result: transcriptSnapshot(items, state, op) };
@@ -404,8 +507,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             try { images=remoteImages(command,op.attachmentIds??[]); } catch { return denied('IMAGE_NOT_AVAILABLE'); }
             if (ctx.sending || ctx.proc?.isBusy || ctx.pendingPerm?.kind === 'permission_request' ||
                 this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion || ctx.compactionPreparing) return denied('SESSION_BUSY');
+            if(ctx.remoteAction)return denied('SESSION_BUSY');
+            ctx.remoteNotify={deviceId:command.deviceId,commandId:command.commandId};
             const accepted = await this.handleSend(ctx, op.text, undefined, images.length?images:undefined, undefined, selectedActive);
-            if (!accepted) return denied('MESSAGE_NOT_SENT');
+            if (!accepted){ctx.remoteNotify=undefined;return denied('MESSAGE_NOT_SENT');}
             return { accepted: true, result: { kind: 'message.accepted', sessionId: ctx.sessionId, title: this.remoteTitle(ctx), delivery: 'handed_to_original_session' } };
         }
         if (op.kind === 'turn.stop') {
@@ -870,7 +975,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         const idle = [...this.detached.values()]
             .filter((c) => c.proc && !c.proc.isBusy && c.sessionId && !c.starting && !c.snapshot &&
-                !c.finalizing && !this.restoring.has(c) && !this.forking.has(c) && !c.answeringQuestion && !c.pendingPerm &&
+                !c.finalizing && !c.taskQueue?.items.length && !this.restoring.has(c) && !this.forking.has(c) && !c.answeringQuestion && !c.pendingPerm &&
                 Date.now() - (c.lastEmitAt ?? 0) > 60000)
             .sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0));
         for (const c of idle) {
@@ -1199,7 +1304,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         this.modelCatalog = models;
                         this.post(ctx, { kind: "models", models });
                     }).catch(e => this.post(ctx, { kind: "notice", message: `模型列表读取失败：${String(e)}` }));
-                    this.loadCtxSession(ctx);
+                    this.loadCtxSession(ctx);this.postQueue(ctx);
                     if (!ctx.sessionId) this.maybePrespawn(ctx);
                     this.post(ctx, {
                         kind: "config",
@@ -1233,6 +1338,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.fetchUsage(true);
                     break;
                 case "send":
+                    if(!ctx.proc?.isBusy&&!ctx.sending)ctx.remoteNotify=undefined;
                     await this.handleSend(ctx, m.text, m.context, m.images, m.files, undefined, m.queueMs, m.sendId);
                     break;
                 case "editMessage":
@@ -2856,23 +2962,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         void this.ensureProcess(ctx);
     }
-    private async compactSession(ctx: SessionCtx): Promise<void> {
+    private async compactSession(ctx: SessionCtx, remote=false): Promise<void> {
         if (ctx.compactionPreparing) return;
         if (this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion) {
             this.post(ctx, { kind: "notice", message: "会话操作尚未完成，请稍后压缩。" });
             return;
         }
         ctx.compactionPreparing = true;
-        try { await this.compactSessionPrepared(ctx); }
+        try { await this.compactSessionPrepared(ctx,remote); }
         finally { ctx.compactionPreparing = false; }
     }
-    private async compactSessionPrepared(ctx: SessionCtx): Promise<void> {
+    private async compactSessionPrepared(ctx: SessionCtx, remote=false): Promise<void> {
         const sourceId = ctx.sessionId;
         if (!sourceId) {
             this.post(ctx, { kind: "notice", message: "当前没有可压缩的会话。" });
             return;
         }
-        if (!this.alive(ctx)) {
+        if (!this.alive(ctx) && !(remote && this.detached.get(sourceId) === ctx)) {
             vscode.window.showInformationMessage("该会话的窗口已关闭，请重新打开会话后再压缩。");
             return;
         }
@@ -2895,7 +3001,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         // 刚切换速度后立即压缩，需等本会话设置保存并传入进程，再读取所选档位。
         await this.waitSessionSettings(ctx);
-        if (!this.alive(ctx)) {
+        if (!this.alive(ctx) && !(remote && this.detached.get(sourceId) === ctx)) {
             vscode.window.showInformationMessage("会话窗口已关闭，本次压缩已取消。");
             return;
         }
@@ -3283,6 +3389,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.handleEmitInner(ctx, e);
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview, notifyTurnDone = true): void {
+        this.remoteEvent(ctx,e);
         if(e.kind==='session'&&e.permissionMode)ctx.remoteMode=e.permissionMode;
         if(e.kind==='rate_limit')ctx.remoteLimit=e;
         if(e.kind==='rate_limit_cleared')ctx.remoteLimit=undefined;
@@ -3372,6 +3479,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.refreshSessions();
             this.fetchUsage();
             this.maybeNotifyTurnDone(ctx, e, notifyTurnDone);
+            setTimeout(()=>void this.drainTasks(ctx),0);
         }
     }
     private maybeNotifyTurnDone(ctx: SessionCtx, e: {
@@ -3775,7 +3883,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         ctx.proc = undefined;
         ctx.lastEventAt = undefined;
-        if (!this.alive(ctx) && ctx.sessionId) {
+        if(ctx.remoteNotify)this.remoteEvent(ctx,{kind:'result',isError:true});
+        if(ctx.taskQueue?.items.length){ctx.taskQueue.paused=true;this.postQueue(ctx);}
+        if (!this.alive(ctx) && ctx.sessionId && !ctx.taskQueue?.items.length) {
             this.detached.delete(ctx.sessionId);
         }
         else {
@@ -3784,7 +3894,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.broadcastRunning();
     }
     private deletingSessions = false;
-    private async deleteSessions(ids: string[]): Promise<void> {
+    private async deleteSessions(ids: string[], confirmed=false): Promise<void> {
         if (this.deletingSessions) return;
         ids = [...new Set(Array.isArray(ids) ? ids.filter(id => typeof id === "string" && id.length > 0) : [])];
         this.deletingSessions = true;
@@ -3798,7 +3908,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const detail = (ids.length === 1
                 ? `会话「${titles.get(ids[0]) ?? ids[0]}」将被永久删除。`
                 : `选中的 ${ids.length} 个会话将被永久删除。`) + "关联的子 Agent 会话也会被删除。";
-            const ok = await vscode.window.showWarningMessage("删除会话？此操作不可撤销。", { modal: true, detail }, "删除");
+            const ok = confirmed?"删除":await vscode.window.showWarningMessage("删除会话？此操作不可撤销。", { modal: true, detail }, "删除");
             if (ok !== "删除") return;
             const ordered = this.store.deletionOrder(ids);
             for (const [index, id] of ordered.entries()) {

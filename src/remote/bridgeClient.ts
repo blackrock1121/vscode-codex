@@ -13,6 +13,16 @@ export class RemoteBridgeClient {
     private socket?: net.Socket;
     private retry?: NodeJS.Timeout;
     private disposed = false;
+    private registered = false;
+    private readonly completions = new Map<string,{sessionId:string;event:Record<string,unknown>}>();
+    publish(sessionId:string,event:Record<string,unknown>):void {
+        if(event.kind==='completed'&&typeof event.commandId==='string'){this.completions.set(event.commandId,{sessionId,event});if(this.completions.size>500)this.completions.delete(this.completions.keys().next().value!);}
+        if(!this.registered||!this.socket||this.socket.destroyed)return;
+        const text=JSON.stringify({kind:'event',sessionId,event})+'\n';
+        if(Buffer.byteLength(text)>7000)return;
+        if(this.socket.writableLength>64000){this.socket.destroy();return;}
+        this.socket.write(text);
+    }
     private connectedBefore = false;
     constructor(private readonly directory: string, private readonly registration: RemoteRegistration,
         private readonly execute: (command: Command, active: () => boolean) => Promise<RemoteReply>) {}
@@ -40,7 +50,7 @@ export class RemoteBridgeClient {
             socket.on('connect', () => send({ kind: 'register', version: 1, token: config.token, ...this.registration }));
             socket.on('error', error => operationFailure('remote.connection', error, { operationId }));
             socket.on('close', () => {
-                clearTimeout(deadline);
+                clearTimeout(deadline);this.registered=false;
                 operationLog('remote.connection', this.disposed ? 'cancelled' : 'disconnected', { operationId, registered, pending });
                 if (this.socket === socket) this.socket = undefined;
                 this.schedule();
@@ -48,7 +58,7 @@ export class RemoteBridgeClient {
             const receive = (frame: any) => {
                 if (!registered) {
                     if (frame?.kind !== 'registered' || frame.version !== 1) throw new Error();
-                    registered = true; clearTimeout(deadline); operationLog('remote.connection', this.connectedBefore ? 'recovered' : 'ready', { operationId }); this.connectedBefore = true; return;
+                    registered = true; this.registered=true;for(const value of this.completions.values())this.publish(value.sessionId,value.event);clearTimeout(deadline); operationLog('remote.connection', this.connectedBefore ? 'recovered' : 'ready', { operationId }); this.connectedBefore = true; return;
                 }
                 if (frame?.kind !== 'execute' || typeof frame.id !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(frame.id) || pending >= 16) throw new Error();
                 const command = parseCommand(frame.command, Date.now());

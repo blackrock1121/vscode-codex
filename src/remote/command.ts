@@ -5,7 +5,18 @@ export type Operation =
   | { kind: 'workspace.folders'; path: string; offset?: number }
   | { kind: 'workspace.open'; path: string }
   | { kind: 'session.list' }
-  | { kind: 'session.controls'; section: 'settings' | 'request' | 'changes' | 'tool'; page?: number; item?: number; end?: number; revision?: string }
+  | { kind: 'session.rename'; title: string }
+  | { kind: 'session.pin'; pinned: boolean }
+  | { kind: 'session.delete'; confirmed: true }
+  | { kind: 'session.compact' }
+  | { kind: 'message.read'; item: number; revision: string; offset?: number }
+  | { kind: 'message.edit'; item: number; revision: string; text: string }
+  | { kind: 'message.regenerate'; item: number; revision: string }
+  | { kind: 'message.enqueue'; text: string; attachmentIds: string[] }
+  | { kind: 'queue.remove'; id: string }
+  | { kind: 'queue.resume' }
+  | { kind: 'session.image'; item: number; revision: string; index: number; offset: number }
+  | { kind: 'session.controls'; section: 'settings' | 'request' | 'changes' | 'tool' | 'queue'; page?: number; item?: number; end?: number; revision?: string }
   | { kind: 'session.configure'; key: 'model' | 'effort' | 'speed'; value: string }
   | { kind: 'session.snapshot'; end?: number; revision?: string }
   | { kind: 'session.create'; text: string; attachmentIds?: string[] }
@@ -55,10 +66,19 @@ export function parseCommand(input: unknown, now: number): Command {
     id(t.windowId); id(t.workspaceId);
     if (op.kind === 'session.create' || op.kind === 'session.list') { if (t.sessionId !== '') fail(); } else id(t.sessionId);
     switch (op.kind) {
-      case 'session.list': keys(op, ['kind']); break;
+      case 'session.list': case 'session.compact': case 'queue.resume': keys(op, ['kind']); break;
+      case 'session.rename': keys(op,['kind','title']);text(op.title,80);if(!(op.title as string).trim())fail();break;
+      case 'session.pin': keys(op,['kind','pinned']);if(typeof op.pinned!=='boolean')fail();break;
+      case 'session.delete': keys(op,['kind','confirmed']);if(op.confirmed!==true)fail();break;
+      case 'queue.remove': keys(op,['kind','id']);id(op.id);break;
+      case 'message.read': case 'message.edit': case 'message.regenerate': case 'session.image':
+        keys(op,['kind','item','revision',...(op.kind==='message.edit'?['text']:op.kind==='session.image'?['index','offset']:op.kind==='message.read'&&'offset' in op?['offset']:[])]);
+        integer(op.item);id(op.revision);
+        if('offset' in op)integer(op.offset);if('index' in op)integer(op.index);
+        if(op.kind==='message.edit'){text(op.text,6000);if(!(op.text as string).trim())fail();}break;
       case 'session.controls':
         keys(op,['kind','section',...['page','item','end','revision'].filter(k=>k in op)]);
-        if(!['settings','request','changes','tool'].includes(op.section as string))fail();
+        if(!['settings','request','changes','tool','queue'].includes(op.section as string))fail();
         if('page' in op){integer(op.page);if((op.page as number)>10000)fail();}
         if(op.section==='tool'){integer(op.item);if('end' in op){integer(op.end);if(!('revision' in op))fail();}if('revision' in op)id(op.revision);}
         else if(['item','end','revision'].some(k=>k in op))fail();break;
@@ -73,6 +93,7 @@ export function parseCommand(input: unknown, now: number): Command {
         keys(op, ['kind', 'text', ...('attachmentIds' in op ? ['attachmentIds'] : [])]);text(op.text,6000);
         if('attachmentIds' in op){if(!Array.isArray(op.attachmentIds)||op.attachmentIds.length>4)fail();op.attachmentIds.forEach(id);}
         if(!(op.text as string).trim()&&!(op.attachmentIds as unknown[]|undefined)?.length)fail();break;
+      case 'message.enqueue':
       case 'message.send':
         keys(op, ['kind', 'text', 'attachmentIds']); text(op.text, 6000);
         if (!Array.isArray(op.attachmentIds) || op.attachmentIds.length > 8) fail();
@@ -104,5 +125,5 @@ export function parseCommand(input: unknown, now: number): Command {
 }
 
 export function isReadOperation(operation: Operation): boolean {
-  return ['workspace.list', 'workspace.folders', 'session.list', 'session.snapshot', 'session.controls'].includes(operation.kind);
+  return ['workspace.list', 'workspace.folders', 'session.list', 'session.snapshot', 'session.controls', 'message.read', 'session.image'].includes(operation.kind);
 }

@@ -53,6 +53,8 @@ function maskQuestionReply(text: string): string {
 
 /** 协议边界的兼容映射；未识别的工具仍显示原始类型和结果。 */
 export function toolView(item: any): { name: string; input: Record<string, unknown>; result: string; isError: boolean } {
+  if(item.type==='imageGeneration')return {name:'imageGeneration',input:{...(item.savedPath?{savedPath:item.savedPath}:{})},result:JSON.stringify({result:item.result,status:item.status,failure:item.failure}),isError:!!item.failure||item.status==='failed'};
+  if(item.type==='imageView')return {name:'imageView',input:{path:item.path},result:'已查看图片',isError:false};
   const name = ({ commandExecution: 'Bash', fileChange: 'Edit', webSearch: 'WebSearch', mcpToolCall: `mcp__${item.server}__${item.tool}` } as Record<string, string>)[item.type] ?? item.tool ?? item.type;
   const input = item.type === 'commandExecution' ? { command: item.command, cwd: item.cwd }
     : item.type === 'fileChange' ? { changes: item.changes, file_path: item.changes?.[0]?.path }

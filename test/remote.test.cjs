@@ -25,7 +25,7 @@ function fixture() {
   Object.assign(provider, {
     modelCatalog: [], sessions: new Set([a, b]), detached: new Map(), activeCtx: a, forking: new Set(), restoring: new Set(),
     remoteRegistration: () => ({ windowId: 'window', workspaceId: 'project', label: '假项目' }),
-    context: { workspaceState: { get: key => saved.get(key), update: async (key, value) => saved.set(key, value) } },
+    context: { globalState:{get:key=>saved.get(key),update:async(key,value)=>saved.set(key,value)},workspaceState: { get: key => saved.get(key), update: async (key, value) => saved.set(key, value) } },
     store: { readTurnCount: async () => 0, list: () => [{ id: a.sessionId, title: 'A' }, { id: b.sessionId, title: 'B' }], hydrate: async () => {},
       load: id => [{ type: 'user', text: id }], countLines: () => 0 },
     config: () => ({ get: (key, fallback) => ['autosave', 'snapshotFilesForRestore'].includes(key) ? false : fallback }),
@@ -257,4 +257,17 @@ test('审批内容超长时拒绝手机操作，不能静默裁掉命令再批�
  const result=(await f.provider.executeRemote(command({kind:'session.controls',section:'request'}),()=>true)).result;assert.equal(result.unsupported,true);
  const req=result.request;
  assert.equal((await f.provider.executeRemote(command({kind:'permission.resolve',turnId:req.turnId,requestId:req.requestId,requestVersion:req.requestVersion,decision:'allow'}),()=>true)).error,'REQUEST_TOO_LARGE');assert.equal(calls,0);
+});
+
+test('长中文实时输出快照不超 IPC 帧预算，完成事件强制刷新最终历史',async()=>{
+  const f=fixture();f.b.remoteStream={id:'stream',seq:100,text:'回复'.repeat(4000),thinking:'思考'.repeat(4000),active:true};
+  const reply=await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true);
+  assert.equal(reply.accepted,true);assert.ok(Buffer.byteLength(JSON.stringify(reply.result))<=6500);assert.equal(reply.result.stream.truncated,true);
+  f.b.remoteReadAt=Date.now();f.provider.remoteEvent(f.b,{kind:'result',isError:false});assert.equal(f.b.remoteReadAt,0);assert.equal(f.b.remoteStream.active,false);
+});
+test('生成图片文件已删除时返回明确错误，不能触发 IPC 非法错误码断连',async()=>{
+  const f=fixture(),{itemRevision}=require('../dist/test/remote/timeline.js');const item={type:'tool',name:'imageGeneration',input:{savedPath:'/nonexistent-codex-mobile-picture.png'},result:'{}'};
+  f.provider.store.load=()=>[item];f.provider.cwd=()=>'/tmp';
+  const reply=await f.provider.executeRemote(command({kind:'session.image',item:0,revision:itemRevision(item),index:0,offset:0}),()=>true);
+  assert.equal(reply.accepted,false);assert.equal(reply.error,'IMAGE_NOT_AVAILABLE');
 });

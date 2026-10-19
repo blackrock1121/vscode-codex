@@ -1,3 +1,4 @@
+import { itemRevision, imageSources } from './timeline';
 import { createHash } from 'node:crypto';
 import type { TimelineItem } from '../shared';
 
@@ -5,11 +6,11 @@ import type { TimelineItem } from '../shared';
 export function transcriptText(items: TimelineItem[]): string {
     return items.map(item => {
         switch (item.type) {
-            case 'user': return `你\n${item.text}${item.images?.length ? '\n（图片请在电脑端查看）' : ''}`;
+            case 'user': return `你\n${item.text}${item.images?.length ? `\n[图片 × ${item.images.length}]` : ''}`;
             case 'assistant_text': return `Codex\n${item.text}`;
             case 'thinking': return item.text.trim()?`思考\n${item.text}`:'';
             case 'tool': return `工具 · ${item.displayName || item.name}${item.isError ? ' · 失败' : ''}\n${JSON.stringify(item.input ?? {})}\n${item.result ?? ''}`;
-            case 'image': return '（图片请在电脑端查看）';
+            case 'image': return '[生成的图片]';
             case 'compaction': return '（上下文已压缩）';
             case 'checkpoint': return '';
         }
@@ -39,7 +40,7 @@ export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unk
         else if(tool){const input=item.input??{};const key=['command','cmd','query','pattern','file_path','path'].find(k=>typeof input[k]==='string');
             text=(key?String(input[key]).replace(/\s+/g,' ').slice(0,160):item.displayName||item.name)+(item.isError?' · 失败':'');}
         return {role:plan?'plan':item.type==='user'?'user':item.type==='thinking'?'thinking':tool?'tool':'assistant',
-            text,id:String(index),...(tool?{toolName:(item.displayName||item.name).slice(0,80),detail:true,
+            text,id:String(index),messageRevision:itemRevision(item),imageCount:imageSources(item).length,actionable:item.type==='user'||item.type==='assistant_text',...(tool?{toolName:(item.displayName||item.name).slice(0,80),detail:true,
                 status:item.isError?'failed':item.permission==='pending'?'waiting':item.result!==undefined?'completed':'running'}:{})};
     }).filter(b=>b.text);
     const text=blocks.map(b=>b.text).join('\n\n');
@@ -50,12 +51,12 @@ export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unk
         const page=transcriptPage(text,snapshotState,query,budget);
         if(page.unchanged)return page;
         const visible=page as typeof page & {start:number;end:number};let offset=0;
-        const messages: {role:string;text:string;continued:boolean;id:string;toolName?:string;status?:string;detail?:boolean}[]=[];
+        const messages: {role:string;text:string;continued:boolean;id:string;toolName?:string;status?:string;detail?:boolean;messageRevision:string;imageCount:number;actionable:boolean}[]=[];
         for(const block of blocks) {
             const end=offset+block.text.length,from=Math.max(offset,visible.start),to=Math.min(end,visible.end);
             if(to>from){let body=block.text.slice(from-offset,to-offset);const prefix=block.role==='user'?'你\n':block.role==='thinking'?'思考\n':block.role==='assistant'?'Codex\n':'';
                 if(from===offset&&prefix&&body.startsWith(prefix))body=body.slice(prefix.length);
-                if(body.trim())messages.push({role:block.role,text:body,continued:from>offset,id:block.id,
+                if(body.trim())messages.push({role:block.role,text:body,continued:from>offset,id:block.id,messageRevision:block.messageRevision,imageCount:block.imageCount,actionable:block.actionable,
                     ...(block.toolName?{toolName:block.toolName,status:block.status,detail:block.detail}:{})});}
             offset=end+2;
         }
