@@ -63,10 +63,15 @@ for query in ["", "&", "&&", "session", "session=", "window=hello%26session%3Dfa
     precondition(notificationSession("vscode://blackrock1121.vscode-codex/notification?" + query) == nil)
 }
 print("ownership verified")
-if CommandLine.arguments.count == 3 {
+if CommandLine.arguments.count == 4 {
     let client = NotificationClickClient()
     let done = DispatchSemaphore(value: 0)
-    client.open(CommandLine.arguments[1]) { opened in
+    client.open(CommandLine.arguments[1], activate: { pid, activated in
+        precondition(pid == 12345, "只能激活来源窗口提供的主进程")
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
+            activated(CommandLine.arguments[3] == "true")
+        }
+    }) { opened in
         precondition(opened == (CommandLine.arguments[2] == "true"))
         done.signal()
     }
@@ -79,11 +84,14 @@ if CommandLine.arguments.count == 3 {
   execFileSync('/usr/bin/swiftc', [file, '-o', binary], { timeout: 60000 });
   assert.match(execFileSync(binary, { encoding: 'utf8', timeout: 10000 }), /ownership verified/);
   // 直接运行生产 Swift 点击客户端，验证到 Node 来源宿主的真实 HTTP 请求，不触碰通知中心。
-  const router = new NotificationRouter();
+  const router = new NotificationRouter(12345);
   t.after(() => router.dispose());
   let opened = 0;
   const endpoint = await router.endpoint('source-window', async () => opened++);
-  const click = async (url, expected) => assert.match((await promisify(execFile)(binary, [url, String(expected)], { timeout: 15000 })).stdout, /click verified/);
+  const click = async (url, expected, active = true) => assert.match((await promisify(execFile)(binary,
+    [url, String(expected), String(active)], { timeout: 15000 })).stdout, /click verified/);
+  await click(endpoint, false, false);
+  assert.equal(opened, 0, '应用未进入前台时，不能打开会话或报告成功');
   await click(endpoint, true);
   assert.equal(opened, 1);
   const redirect = http.createServer((req, res) => res.writeHead(307, { Location: endpoint }).end());
@@ -91,6 +99,30 @@ if CommandLine.arguments.count == 3 {
   t.after(() => { redirect.close(); redirect.closeAllConnections(); });
   await click(endpoint.replace(new URL(endpoint).port, String(redirect.address().port)), false);
   assert.equal(opened, 1, '原生客户端不能跟随跳转打开其他窗口');
+  let prepareBody = '{}', focusStatus = 204, focused = 0;
+  const malformed = http.createServer((req, res) => {
+    if (req.headers['x-codex-notification-action'] === 'prepare') res.writeHead(200).end(prepareBody);
+    else { focused++; res.writeHead(focusStatus, { Location: endpoint }).end(); }
+  });
+  await new Promise(resolve => malformed.listen(0, '127.0.0.1', resolve));
+  t.after(() => { malformed.close(); malformed.closeAllConnections(); });
+  const testEndpoint = endpoint.replace(new URL(endpoint).port, String(malformed.address().port));
+  for (const pid of [null, true, -1, 0, 1.5, 2147483648, '12345']) {
+    prepareBody = JSON.stringify({ pid });
+    await click(testEndpoint, false);
+  }
+  assert.equal(focused, 0, '无效激活目标不能进入窗口聚焦阶段');
+  prepareBody = JSON.stringify({ pid: 12345 });
+  focusStatus = 307; await click(testEndpoint, false);
+  assert.equal(opened, 1, '聚焦阶段同样不能跟随跳转');
+  focusStatus = 500; await click(testEndpoint, false);
+  assert.equal(focused, 2, '原窗口聚焦失败不能冒充成功');
+  let legacyClicks = 0;
+  const legacy = http.createServer((req, res) => { legacyClicks++; res.writeHead(204).end(); });
+  await new Promise(resolve => legacy.listen(0, '127.0.0.1', resolve));
+  t.after(() => { legacy.close(); legacy.closeAllConnections(); });
+  await click(endpoint.replace(new URL(endpoint).port, String(legacy.address().port)), true, false);
+  assert.equal(legacyClicks, 1, '未重载的旧宿主已完成点击时，不重开、不误报失败');
   router.dispose();
   await click(endpoint, false);
   assert.doesNotMatch(source, /removeAllDeliveredNotifications|removeAllPendingNotificationRequests|func applicationDidFinishLaunching/);

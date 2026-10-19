@@ -15,7 +15,7 @@ const vscode = {
   Uri: { from: parts => ({ ...parts, toString: () => `${parts.scheme}://${parts.authority}${parts.path}?${encodeURIComponent(parts.query)}` }) },
   env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => vscode.Uri.from({ ...uri, query: uri.query + '&windowId=42' }) },
   workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目' }] },
-  window: { showWarningMessage: text => warnings.push(text) },
+  window: { state: { focused: true }, showWarningMessage: text => warnings.push(text) },
   commands: { executeCommand: async () => {} },
 };
 const originalLoad = Module._load;
@@ -642,6 +642,37 @@ test('通知直连聚焦失败会返回错误，用户再次点击可重试；�
   assert.equal(await closed.sendLocalNotice('迟到通知', '', 'session-A'), false);
   assert.equal(closed.notificationRouter, undefined);
   assert.equal(nativeCalls.length, 1);
+});
+
+test('被遮挡窗口必须实际获得焦点才打开会话；超时明确失败并释放监听，允许再次点击', async t => {
+  const p = provider(), originalState = vscode.window.state, originalSubscribe = vscode.window.onDidChangeWindowState;
+  const listeners = new Set();
+  t.after(() => { vscode.window.state = originalState; vscode.window.onDidChangeWindowState = originalSubscribe; });
+  vscode.window.state = { focused: false };
+  vscode.window.onDidChangeWindowState = listener => {
+    listeners.add(listener);
+    return { dispose: () => listeners.delete(listener) };
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let opened = 0;
+  p.openSession = async () => opened++;
+  const uri = { path: '/notification', query: 'window=window-A&session=session-A' };
+  const pending = p.handleNotificationUri(uri, true);
+  await flush();
+  assert.equal(opened, 0, '聚焦命令返回不代表被遮挡窗口已经进入前台');
+  for (const listener of listeners) listener({ focused: false });
+  assert.equal(opened, 0);
+  vscode.window.state.focused = true;
+  for (const listener of listeners) listener(vscode.window.state);
+  await pending;
+  assert.equal(opened, 1); assert.equal(listeners.size, 0);
+  vscode.window.state.focused = false;
+  const failure = assert.rejects(p.handleNotificationUri(uri, true), /未能切到前台/);
+  await flush(); t.mock.timers.tick(2000); await failure;
+  assert.equal(opened, 1); assert.equal(listeners.size, 0);
+  vscode.window.state.focused = true;
+  await p.handleNotificationUri(uri, true);
+  assert.equal(opened, 2);
 });
 
 test('远程扩展宿主不启动 Mac 通知辅助程序', async () => {

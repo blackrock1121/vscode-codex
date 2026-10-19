@@ -86,6 +86,25 @@ export function localNotificationsSupported(): boolean {
     return process.platform === "darwin" && !vscode.env.remoteName && vscode.env.uiKind === vscode.UIKind.Desktop;
 }
 
+/** 原生程序完成应用激活后，核对来源窗口确实获得焦点，不能仅凭命令返回就应答成功。 */
+export async function focusNotificationWindow(): Promise<void> {
+    await observeOperation('notification.focus', async () => {
+        await vscode.commands.executeCommand("workbench.action.focusWindow");
+        if (vscode.window.state.focused) return;
+        await new Promise<void>((resolve, reject) => {
+            const subscription = vscode.window.onDidChangeWindowState(state => {
+                if (state.focused) { cleanup(); resolve(); }
+            });
+            const timer = setTimeout(() => {
+                cleanup();
+                reject(new Error("通知来源窗口未能切到前台。"));
+            }, 2000);
+            const cleanup = () => { clearTimeout(timer); subscription.dispose(); };
+            if (vscode.window.state.focused) { cleanup(); resolve(); }
+        });
+    });
+}
+
 /** 通过独立 macOS 应用发送系统通知；与 webhook 完全独立，不使用 shell 拼接内容。 */
 export async function sendLocalNotification(extensionPath: string, title: string, body: string, url: string,
     sessionId?: string, createdAt = notificationTime(), clickEndpoint?: string): Promise<void> {

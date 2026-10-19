@@ -1,4 +1,4 @@
-import { observeOperation } from './operations';
+import { observeOperation, operationLog } from './operations';
 import * as http from "node:http";
 import { randomUUID } from "node:crypto";
 
@@ -15,6 +15,21 @@ export class NotificationRouter {
             return;
         }
         req.resume();
+        // 先验证来源窗口仍存活，再把准确的主进程交给通知程序完成 macOS 焦点交接。
+        // 预检不打开会话；旧通知不能仅凭应用名称唤起另一个窗口。
+        const action = req.headers['x-codex-notification-action'];
+        if (action === 'prepare') {
+            if (!Number.isInteger(this.appPid) || this.appPid <= 0 || this.appPid > 0x7fffffff) {
+                operationLog('notification.activate', 'unavailable', { reason: 'missing_app_pid' });
+                res.writeHead(503).end();
+            } else {
+                operationLog('notification.activate', 'prepared');
+                res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' })
+                    .end(JSON.stringify({ pid: this.appPid }));
+            }
+            return;
+        }
+        if (action !== undefined) { res.writeHead(404).end(); return; }
         void Promise.resolve().then(() => {
             if (this.disposed) throw new Error("通知来源窗口已关闭。");
             return observeOperation('notification.click', route.open);
@@ -27,7 +42,7 @@ export class NotificationRouter {
     private cancelStart?: () => void;
     private disposed = false;
 
-    constructor() {
+    constructor(private readonly appPid = Number(process.env.VSCODE_PID)) {
         this.server.requestTimeout = 5000;
         this.server.headersTimeout = 5000;
         this.server.keepAliveTimeout = 1000;

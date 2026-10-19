@@ -74,8 +74,29 @@ final class NotificationClickClient: NSObject, URLSessionTaskDelegate {
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
-    func open(_ value: String, completion: @escaping (Bool) -> Void) {
+    func open(_ value: String, activate: @escaping (Int32, @escaping (Bool) -> Void) -> Void,
+              completion: @escaping (Bool) -> Void) {
         guard let endpoint = notificationClickEndpoint(value) else { completion(false); return }
+        var request = URLRequest(url: endpoint)
+        request.httpMethod = "POST"
+        request.setValue("prepare", forHTTPHeaderField: "X-Codex-Notification-Action")
+        struct Target: Decodable { let pid: Int32 }
+        session.dataTask(with: request) { data, response, error in
+            // 升级后尚未重载的旧宿主会忽略预检标记，直接完成原来的点击操作。
+            // 保留其成功结果，不能再投递一次，也不能弹出失败提示抢走焦点。
+            if error == nil, (response as? HTTPURLResponse)?.statusCode == 204 { completion(true); return }
+            guard error == nil, (response as? HTTPURLResponse)?.statusCode == 200,
+                  let data = data, let target = try? JSONDecoder().decode(Target.self, from: data),
+                  target.pid > 0 else { completion(false); return }
+            activate(target.pid) { activated in
+                guard activated else { completion(false); return }
+                // 应用真正进入前台后，再让来源宿主精确选中窗口与会话。
+                self.focus(endpoint, completion: completion)
+            }
+        }.resume()
+    }
+
+    private func focus(_ endpoint: URL, completion: @escaping (Bool) -> Void) {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         session.dataTask(with: request) { _, response, error in
@@ -99,6 +120,44 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         center.delegate = self
+    }
+
+    // 全部在主线程操作 AppKit。不能把 activate 的返回值当成已进入前台。
+    func activateSource(_ pid: Int32, url: URL, completion: @escaping (Bool) -> Void) {
+        let bundleId = url.scheme == "vscode-insiders" ? "com.microsoft.VSCodeInsiders" : "com.microsoft.VSCode"
+        guard let target = NSRunningApplication(processIdentifier: pid),
+              target.bundleIdentifier == bundleId, !target.isTerminated else { completion(false); return }
+        if target.isActive { completion(true); return }
+        let center = NSWorkspace.shared.notificationCenter
+        var observer: NSObjectProtocol?
+        var timeout: DispatchWorkItem?
+        var completed = false
+        let finish: (Bool) -> Void = { active in
+            guard !completed else { return }
+            completed = true
+            if let observer = observer { center.removeObserver(observer) }
+            observer = nil
+            timeout?.cancel()
+            timeout = nil
+            completion(active)
+        }
+        observer = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification, object: nil, queue: .main) { event in
+            guard let app = event.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication,
+                  app.processIdentifier == pid else { return }
+            finish(true)
+        }
+        let deadline = DispatchWorkItem { finish(target.isActive && !target.isTerminated) }
+        timeout = deadline
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: deadline)
+        let accepted: Bool
+        if #available(macOS 14.0, *) {
+            NSApp.yieldActivation(to: target)
+            accepted = target.activate(from: .current, options: [])
+        } else {
+            accepted = target.activate(options: [.activateIgnoringOtherApps])
+        }
+        if !accepted { finish(false) }
+        else if target.isActive { finish(true) }
     }
 
     func enqueue(_ notice: Notice, finish: @escaping (String?) -> Void) {
@@ -215,13 +274,15 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
            let value = response.notification.request.content.userInfo["url"] as? String,
            let url = callbackURL(value) {
             if let value = response.notification.request.content.userInfo["clickEndpoint"] as? String {
-                clicks.open(value) { opened in
+                clicks.open(value, activate: { pid, activated in
+                    DispatchQueue.main.async { self.activateSource(pid, url: url, completion: activated) }
+                }) { opened in
                     if !opened {
                         // 原窗口已失效时不能退回系统 URI 路由，否则又可能激活无关窗口。
                         DispatchQueue.main.async {
                             let alert = NSAlert()
                             alert.messageText = "未能返回通知来源窗口"
-                            alert.informativeText = "原窗口可能已关闭或重载，请在对应工作区的会话历史中打开任务。"
+                            alert.informativeText = "原窗口可能已关闭或重载，或 macOS 未能将它切到前台。请切回对应工作区，从会话历史打开任务。"
                             alert.addButton(withTitle: "好")
                             NSApp.activate(ignoringOtherApps: true)
                             alert.runModal()

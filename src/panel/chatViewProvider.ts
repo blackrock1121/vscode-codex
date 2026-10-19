@@ -8,7 +8,7 @@ import * as https from "node:https";
 import { performance } from "node:perf_hooks";
 import { parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
-import { formatLocalNotification, localNotificationProject, localNotificationsSupported, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
+import { formatLocalNotification, localNotificationProject, localNotificationsSupported, focusNotificationWindow, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
 import { NotificationRouter } from "../notificationRouter";
 import { diagnosticNotification } from "../diagnostics/notification";
 import type { DiagnosticRecord, NotificationResult } from "../diagnostics/jobs";
@@ -3588,7 +3588,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         try {
             // 在来源扩展宿主执行，直接聚焦对应原生窗口，不再经过有前缀歧义的 URI 路由。
-            if (focusWindow) await vscode.commands.executeCommand("workbench.action.focusWindow");
+            if (focusWindow) await focusNotificationWindow();
             if (diagnosticId) {
                 if (!/^[a-f\d-]{36}$/.test(diagnosticId)) throw new Error("诊断记录编号无效");
                 await vscode.commands.executeCommand("codex-chat.openDiagnostics", diagnosticId);

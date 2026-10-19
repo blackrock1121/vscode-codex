@@ -46,3 +46,24 @@ test('窗口在点击监听启动期间关闭，启动不能留下可用的旧�
   router.dispose();
   await assert.rejects(pending, /已关闭/);
 });
+
+test('激活预检返回来源主进程但不打开会话；拒绝无效进程、网页、未知操作和已关闭窗口', async t => {
+  const router = new NotificationRouter(12345), invalid = new NotificationRouter(NaN);
+  t.after(() => { router.dispose(); invalid.dispose(); });
+  let opened = 0;
+  const url = await router.endpoint('session', async () => opened++);
+  const prepare = { method: 'POST', headers: { 'X-Codex-Notification-Action': 'prepare' } };
+  const response = await fetch(url, prepare);
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { pid: 12345 });
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(opened, 0);
+  assert.equal((await fetch(url, { ...prepare, headers: { ...prepare.headers, Origin: 'https://example.com' } })).status, 404);
+  assert.equal((await fetch(url, { ...prepare, headers: { 'X-Codex-Notification-Action': 'unknown' } })).status, 404);
+  const bad = await invalid.endpoint('session', async () => assert.fail('预检不能打开会话'));
+  assert.equal((await fetch(bad, prepare)).status, 503);
+  assert.equal((await fetch(url, { method: 'POST' })).status, 204);
+  assert.equal(opened, 1);
+  router.dispose();
+  await assert.rejects(fetch(url, prepare), { name: 'TypeError' });
+});
