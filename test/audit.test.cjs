@@ -13,6 +13,32 @@ const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const {quotaEvents}=require('../dist/test/codex/events.js');
 const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 
+test('快照只覆盖已打开的工作区目录，默认工作目录不自动加入；多根目录仍可回滚',async t=>{
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-workspace-scope-'));
+ t.after(()=>fs.rm(dir,{recursive:true,force:true}));
+ const roots=[path.join(dir,'first'),path.join(dir,'second')],outside=path.join(dir,'outside.txt');
+ for(const root of roots){await fs.mkdir(root);await fs.writeFile(path.join(root,'source.txt'),'原文');}
+ await fs.writeFile(outside,'工作区外原文');
+ const previous=vscode.workspace.workspaceFolders;
+ vscode.workspace.workspaceFolders=roots.map(fsPath=>({uri:{fsPath}}));
+ t.after(()=>{vscode.workspace.workspaceFolders=previous;});
+ const provider=Object.create(ChatViewProvider.prototype);
+ provider.cwd=()=>dir;
+ const snapshot=new WorkspaceSnapshot(provider.workspaceDirs());
+ await snapshot.capture();
+ assert.deepEqual([...snapshot.files.keys()].sort(),roots.map(root=>path.join(root,'source.txt')).sort());
+ for(const root of roots)await fs.writeFile(path.join(root,'source.txt'),'修改');
+ await fs.writeFile(outside,'工作区外修改');
+ const cp=new CheckpointManager(path.join(dir,'state'));cp.setSession('scope');
+ const id=cp.beginTurn('修改',0,true);
+ for(const [file,original]of await snapshot.changed())cp.recordSnapshot(file,original);
+ cp.completeSnapshot();
+ assert.equal(cp.restore(id).restoredFiles,2);
+ for(const root of roots)assert.equal(await fs.readFile(path.join(root,'source.txt'),'utf8'),'原文');
+ assert.equal(await fs.readFile(outside,'utf8'),'工作区外修改');
+ cp.flush();
+});
+
 test('手动压缩准备日志覆盖连接复用和失败，准备期间关闭或忙碌不会触发压缩',async()=>{
  for(const mode of ['reuse','cold','failed','closed','busy']){
   const provider=Object.create(ChatViewProvider.prototype),logs=[];

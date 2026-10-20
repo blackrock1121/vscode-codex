@@ -94,6 +94,20 @@ test('提交问题答案时，宿主在预检和实际发送中都转交图片',
  await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'},images);
  assert.equal(calls.length,3);assert.ok(calls.every(value=>value===images));
 });
+test('空工作区提交问题答案不扫描默认目录，仍可完成还原点并重新回答',async t=>{
+ const f=await fixture(t);
+ delete f.provider.workspaceDirs;
+ f.store.threads.set('source',{id:'source',turns:[f.first]});
+ f.ctx.proc={isExited:false,prepareQuestionAnswer:()=>({text:reply('A'),turnId:'ask-turn'}),answerQuestion:()=>true};
+ const readDirectory=t.mock.method(fs,'readdir',async()=>assert.fail('回答问题不能扫描未打开的目录'));
+ await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'});
+ assert.equal(readDirectory.mock.callCount(),0);
+ assert.equal(f.ctx.snapshot.files.size,0);
+ const checkpointId=f.messages.find(m=>m.kind==='question_checkpoint').checkpointId;
+ await f.provider.captureFinalSnapshot(f.ctx);
+ assert.equal(f.checkpoints.restoreBlockReason(checkpointId),undefined);
+ assert.equal(await fs.readFile(f.file,'utf8'),'按旧答案修改后');
+});
 test('成功回复只清理当前真实会话的通知，提交失败不能清理',async t=>{
  for(const accepted of [true,false]){
   const f=await fixture(t),cleared=[];

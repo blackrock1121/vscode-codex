@@ -5,7 +5,12 @@ const os = require('node:os');
 const path = require('node:path');
 const Module = require('node:module');
 const { CodexProcess } = require('../dist/test/codex/process.js');
-const vscode = { workspace: { textDocuments: [], getWorkspaceFolder: () => ({}) } };
+const vscode = {
+  window: {},
+  workspace: { textDocuments: [], getWorkspaceFolder: () => ({}), asRelativePath: p => p,
+    getConfiguration: () => ({ get: (_key, fallback) => fallback }) },
+  Uri: { file: fsPath => ({ scheme: 'file', fsPath }) },
+};
 const originalLoad = Module._load;
 Module._load = function (id, ...args) { return id === 'vscode' ? vscode : originalLoad.call(this, id, ...args); };
 const { ChatViewProvider } = require('../dist/test/panel/chatViewProvider.js');
@@ -38,7 +43,7 @@ async function fixture(t, env = {}, options = {}) {
     output: { appendLine: () => {} }, post: (_, event) => events.push(event),
     store: { readTurnCount: async () => 0, countLines: () => 0, notePending: () => {}, isArchived: () => false }, renderSessions: () => {},
     clearSessionNotification: () => {}, activeCtx: ctx,
-    context: { workspaceState: { get: () => undefined, update: async () => {} } },
+    context: { workspaceState: { get: (_key, fallback) => fallback, update: async () => {} } },
     resetRestoredNotifications: () => {}, postModelConfig: () => {},
     storageDir: () => dir, refreshChangedFiles: () => {}, refreshSessions: () => {},
   });
@@ -53,6 +58,27 @@ async function fixture(t, env = {}, options = {}) {
   };
   return { provider, ctx, create, procs, events, read, dir };
 }
+
+test('空工作区及只打开单个文件时，发送消息不扫描主目录或文件所在目录', async t => {
+  const readDirectory = t.mock.method(fs, 'readdir', async () => assert.fail('空工作区不能扫描目录'));
+  t.after(() => { vscode.workspace.workspaceFolders = undefined; vscode.window.activeTextEditor = undefined; });
+  for (const mode of ['empty-window', 'empty-workspace', 'single-file']) {
+    const f = await fixture(t, {}, { snapshotFilesForRestore: true });
+    vscode.workspace.workspaceFolders = mode === 'empty-window' ? undefined : [];
+    vscode.window.activeTextEditor = mode === 'single-file'
+      ? { document: { uri: vscode.Uri.file(path.join(f.dir, 'note.txt')) } } : undefined;
+    Object.assign(f.provider, { snapshotWarningPaths: new Map(), snapshotWarningSignatures: new Map() });
+    const checkpoints = [];
+    f.ctx.checkpoints.beginTurn = (...args) => { checkpoints.push(args); return 'checkpoint'; };
+    assert.equal(await f.provider.handleSend(f.ctx, '读取文档'), true);
+    await until(() => f.events.some(e => e.kind === 'result'));
+    assert.equal(readDirectory.mock.callCount(), 0, mode);
+    assert.equal(f.ctx.snapshot.files.size, 0);
+    assert.equal((await f.ctx.snapshot.changed()).size, 0);
+    assert.equal(checkpoints[0][2], true, '空范围保留还原点，不因关闭快照阻断重新回答');
+    assert.equal(f.events.some(e => e.kind === 'notice' || e.kind === 'error'), false);
+  }
+});
 
 test('提前连接只执行一次握手与目录读取；发送时使用最新设置且只创建一次会话', async t => {
   const f = await fixture(t), p = f.create();

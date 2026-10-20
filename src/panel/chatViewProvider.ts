@@ -4262,11 +4262,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return start;
     }
     private workspaceDirs(): string[] {
-        const dirs = (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
-        const root = this.cwd();
-        if (root && !dirs.includes(root))
-            dirs.push(root);
-        return dirs;
+        // cwd() 可回退到主目录或单独打开的文件所在目录，它们不属于已打开的工作区。
+        // 空工作区使用空快照范围，保留对话还原点，但不扫描或回滚工作区外文件。
+        return (vscode.workspace.workspaceFolders ?? []).map((f) => f.uri.fsPath);
     }
     private storageDir(): string {
         return this.context.globalStorageUri.fsPath;
