@@ -111,11 +111,25 @@ test('读取失败或扫描上限简短提醒，常规跳过清单变化不重�
  provider.reportSnapshotSkips({},snapshot);
  snapshot.skipReasons.set('/project/image.png','binary');provider.reportSnapshotSkips({},snapshot);
  assert.equal(messages.length,1);assert.equal(messages[0].kind,'notice');
- assert.match(messages[0].message,/2 项读取失败或达到扫描\/容量上限/);
+ assert.match(messages[0].message,/无法读取 1 项，扫描或容量上限 1 项/);
+ assert.match(messages[0].message,/聊天可继续/);
+ assert.equal(messages[0].message.includes('点击排除'),false);
  assert.equal(messages.some(m=>m.kind==='snapshot_skips'),false);
  snapshot.skipReasons.clear();provider.reportSnapshotSkips({},snapshot);
  snapshot.skipReasons.set('/project/unreadable','unreadable');provider.reportSnapshotSkips({},snapshot);
  assert.equal(messages.length,2,'问题消失后再次出现仍需提醒');
+});
+test('大量快照跳过先汇总原因并限制示例数量，真实问题不被日志截断',()=>{
+ const {provider,messages}=exclusionFixture(['/project']),logs=[];
+ provider.output.appendLine=line=>logs.push(line);
+ const skipReasons=new Map(Array.from({length:7000},(_,i)=>[`/project/${'x'.repeat(200)}/${i}.bin`,'binary']));
+ skipReasons.set('/project/zzz-unreadable','unreadable');
+ provider.reportSnapshotSkips({}, {skipReasons});
+ assert.equal(messages.length,1);
+ assert.ok(logs.every(line=>line.length<32768));
+ assert.match(logs[0],/二进制 7000/);
+ assert.match(logs[0],/无法读取 1/);
+ assert.ok(logs.some(line=>line.includes('zzz-unreadable')));
 });
 test('系统元数据及已排除路径不占文件名额，不把恰好达到上限误报成扫描不完整',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-snapshot-cap-'));

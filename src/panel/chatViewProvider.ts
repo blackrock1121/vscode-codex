@@ -1446,16 +1446,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (this.snapshotWarningSignatures.get(key) === signature) return;
         this.snapshotWarningSignatures.set(key, signature);
         const names: Record<string, string> = { large: "超过 2 MB", binary: "二进制", limit: "扫描或容量上限", symlink: "符号链接", unreadable: "无法读取" };
-        const details = entries.map(([file, reason]) => `${vscode.workspace.asRelativePath(file)}（${names[reason]}）`);
-        this.output.appendLine(`[snapshot] 未纳入自动回滚快照 ${entries.length} 项：\n${details.join("\n")}`);
+        const problems = entries.filter(([, reason]) => reason === "limit" || reason === "unreadable");
+        const counts = new Map<string, number>();
+        for (const [, reason] of entries) counts.set(reason, (counts.get(reason) ?? 0) + 1);
+        const summary = [...counts].map(([reason, count]) => `${names[reason]} ${count}`).join("，");
+        // 先写完整分类计数，优先展示真实故障；避免几千个常规跳过项撑爆单条日志。
+        const examples = [...problems, ...entries.filter(([, reason]) => reason !== "limit" && reason !== "unreadable")].slice(0, 20);
+        const details = examples.map(([file, reason]) => `${vscode.workspace.asRelativePath(file).slice(0, 500)}（${names[reason]}）`);
+        this.output.appendLine(`[snapshot] 未纳入自动回滚快照 ${entries.length} 项：${summary}。\n${details.join("\n")}${entries.length > examples.length ? `\n仅展示 ${examples.length} 项示例。` : ""}`);
         // 格式/体积/链接限制是正常跳过，无需用户逐项目点击“排除”。
         // 保留变更检测：被跳过的资源若真被修改，还原时仍应阻止不完整回滚。
-        const problems = entries.filter(([, reason]) => reason === "limit" || reason === "unreadable");
         if (!problems.length) { this.snapshotWarningSignatures.delete(problemKey); return; }
         const problemSignature = JSON.stringify(problems);
         if (this.snapshotWarningSignatures.get(problemKey) === problemSignature) return;
         this.snapshotWarningSignatures.set(problemKey, problemSignature);
-        this.post(ctx, { kind: "notice", message: `工作区快照有 ${problems.length} 项读取失败或达到扫描/容量上限，部分文件可能无法完整回滚。无需逐项点击排除；原因见“输出 → Codex Chat”。` });
+        const problemSummary = ["unreadable", "limit"].filter(reason => counts.has(reason))
+            .map(reason => `${names[reason]} ${counts.get(reason)} 项`).join("，");
+        this.post(ctx, { kind: "notice", message: `工作区文件备份不完整：${problemSummary}。聊天可继续，部分文件可能无法完整回滚；详情见“输出 → Codex Chat”。` });
     }
     private async excludeSnapshotPaths(ctx: SessionCtx, paths?: string[], all?: boolean): Promise<void> {
         const key = this.workspaceDirs().join("\0");
@@ -3217,7 +3224,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 const file = path.isAbsolute(raw) ? path.normalize(raw) : path.resolve(this.cwd(), raw);
                 if (ctx.snapshot.files.has(file))
                     ctx.checkpoints.recordSnapshot(file, ctx.snapshot.files.get(file)!);
-                else
+                // 仅标记确实尝试备份却跳过的路径。范围外/已排除路径不参与回滚，
+                // 范围内新增文件交给最终扫描识别，不能把它们一概当成备份失败。
+                else if (ctx.snapshot.skipped.has(file))
                     ctx.checkpoints.recordUnrestorable([file]);
             }
         }

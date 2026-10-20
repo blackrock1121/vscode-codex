@@ -345,6 +345,24 @@ test('只读取的文件不登记为待回滚改动，不覆盖用户随后自�
  assert.equal(f.checkpoints.restore(id).restoredFiles,0);
  assert.equal(await fs.readFile(f.file,'utf8'),'用户自行修改');
 });
+test('排除文件和工作区外工具路径不污染回滚校验，新建的范围内文件仍登记',async t=>{
+ const f=await fixture(t);f.checkpoints.clear();const id=f.checkpoints.beginTurn(reply('A'),1,true);
+ const ignored=path.join(f.workspace,'debug.log'),outside=path.join(f.dir,'outside.txt'),added=path.join(f.workspace,'new.txt');
+ await fs.writeFile(ignored,'旧日志');await fs.writeFile(outside,'外部原文');
+ f.ctx.snapshot=new WorkspaceSnapshot([f.workspace],20000,['*.log']);await f.ctx.snapshot.capture();
+ for(const file of [ignored,outside,added]){
+  f.provider.handleEmitInner(f.ctx,{kind:'tool_input',toolId:'edit',name:'Edit',input:{file_path:file}});
+  await fs.writeFile(file,'新内容');
+ }
+ f.ctx.mayHaveModifiedWorkspace=true;
+ await f.provider.captureFinalSnapshot(f.ctx);
+ assert.equal(f.checkpoints.restoreBlockReason(id),undefined);
+ assert.deepEqual(f.checkpoints.changedPaths(),[added]);
+ assert.equal(f.checkpoints.restore(id).restoredFiles,1);
+ await assert.rejects(fs.access(added));
+ assert.equal(await fs.readFile(ignored,'utf8'),'新内容');
+ assert.equal(await fs.readFile(outside,'utf8'),'新内容');
+});
 test('问题卡落盘失败时不回滚文件、不切换会话，并清理未完成的新分支',async t=>{
  const f=await fixture(t);const syncFs=require('node:fs');const rename=syncFs.renameSync;
  t.mock.method(syncFs,'renameSync',function(from,to){
