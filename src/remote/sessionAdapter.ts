@@ -152,8 +152,10 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     private accountUsage() {
         this.host.fetchUsage();
         const usage = this.host.lastUsage?.kind === 'usage' ? this.host.lastUsage : undefined;
+        // 逐张明细保留在加密帧预算内，手机会说明剩余张数未返回有效期。
+        const resetCredits = usage?.resetCredits ? {...usage.resetCredits, cards: usage.resetCredits.cards?.slice(0, 8) ?? null} : usage?.resetCredits;
         return usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
-            weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType,
+            weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType, resetCredits,
             updatedAt: this.host.lastUsageUpdatedAt } : null;
     }
     private remoteRequest(ctx: C) {
@@ -292,7 +294,8 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             return {accepted:true,result:Buffer.byteLength(JSON.stringify(details))<=6000?details:{kind:'session.controls',section:op.section,request,unsupported:true}};
         }
         if(op.kind==='session.configure'){
-            if(ctx.sending||ctx.proc?.isBusy||ctx.pendingPerm||ctx.compactionPreparing||this.host.isRestoring(ctx)||this.host.isForking(ctx))return denied('SESSION_BUSY');
+            // 与电脑端相同：进程已固定本轮参数，设置只更新下一轮；准备发送和还原仍互斥。
+            if(ctx.sending||remote.remoteAction||ctx.compactionPreparing||this.host.isRestoring(ctx)||this.host.isForking(ctx))return denied('SESSION_BUSY');
             const selected=this.host.modelCatalog.find(m=>m.id===this.host.sessionModel(ctx))??this.host.modelCatalog.find(m=>m.isDefault);
             if(op.key==='model'){
                 if(op.value&&!this.host.modelCatalog.some(m=>m.id===op.value))return denied('SETTING_NOT_SUPPORTED');
@@ -305,7 +308,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
                 await this.host.setSpeedMode(ctx,op.value as SpeedMode,selectedActive);
             }
             const actual=op.key==='model'?this.host.sessionModel(ctx):op.key==='effort'?this.host.sessionEffort(ctx):this.host.speedMode(ctx);
-            return actual===op.value?{accepted:true,result:{kind:'session.configured',key:op.key,value:actual}}:denied('SETTING_NOT_SAVED');
+            return actual===op.value?{accepted:true,result:{kind:'session.configured',key:op.key,value:actual,appliesTo:'next_turn'}}:denied('SETTING_NOT_SAVED');
         }
         if(op.kind==='permission.resolve'||op.kind==='question.answer'){
             const request=this.remoteRequest(ctx),pending=ctx.pendingPerm;

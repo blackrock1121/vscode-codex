@@ -162,11 +162,11 @@ test('上传图片只能被同设备同目标读取，过期、摘要篡改、�
 
 test('尚无会话时也能读取账号周限额，列表不创建会话且保留真实零值', async()=>{
   const f=fixture();let refreshes=0;f.provider.fetchUsage=()=>refreshes++;
-  f.provider.sessions.clear();f.provider.lastUsage={kind:'usage',weekPct:0,weekResetAt:1900000000,planType:'pro'};
+  f.provider.sessions.clear();f.provider.lastUsage={kind:'usage',weekPct:0,weekResetAt:1900000000,planType:'pro',resetCredits:{availableCount:3,cards:[{title:'周限额重置卡',expiresAt:1900000000}]}};
   f.provider.lastUsageUpdatedAt=1800000000000;
   const result=(await f.provider.executeRemote(command({kind:'session.list'},''),()=>true)).result;
   assert.deepEqual(result.sessions,[]);assert.equal(result.usage.weekPct,0);assert.equal(result.usage.planType,'pro');
-  assert.equal(result.usage.updatedAt,1800000000000);assert.equal(refreshes,1);assert.deepEqual(f.sends,[]);
+  assert.deepEqual(result.usage.resetCredits,f.provider.lastUsage.resetCredits);assert.equal(result.usage.updatedAt,1800000000000);assert.equal(refreshes,1);assert.deepEqual(f.sends,[]);
   f.provider.lastUsage=undefined;
   assert.equal((await f.provider.executeRemote(command({kind:'session.list'},''),()=>true)).result.usage,null);
 });
@@ -178,6 +178,11 @@ test('手机快照与桌面共用当前会话模型、推理与额度，额度�
   f.provider.lastUsage.weekPct=84;
   const next=(await f.provider.executeRemote(command({kind:'session.snapshot',revision:first.revision}),()=>true)).result;
   assert.equal(next.unchanged,false);assert.equal(next.usage.weekPct,84);
+  f.provider.lastUsage.resetCredits={availableCount:0,cards:[]};
+  assert.deepEqual((await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.usage.resetCredits,{availableCount:0,cards:[]});
+  f.provider.lastUsage.resetCredits={availableCount:30,cards:Array.from({length:30},()=>({title:'中文重置卡'.repeat(20),expiresAt:1900000000}))};
+  const bounded=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;
+  assert.equal(bounded.usage.resetCredits.availableCount,30);assert.equal(bounded.usage.resetCredits.cards.length,8);assert.ok(Buffer.byteLength(JSON.stringify(bounded))<6500);
   f.provider.lastUsage=undefined;
   assert.equal((await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result.usage,null);
 });
@@ -224,14 +229,20 @@ test('手机问题按编号映射原始 ID，完整作答走原提问准备与�
   assert.deepEqual(answers,[['question',{'原始 id':['选择 A'],'填写说明':'文字答案'}]]);
 });
 
-test('配置复用原会话保存，不允许未知模型或运行中修改，支持持久化失败与排队期间离线',async()=>{
+test('配置复用原会话保存，运行中允许下一轮生效，保留校验与持久化失败保护',async()=>{
   const f=fixture();delete f.provider.sessionModel;delete f.provider.sessionEffort;delete f.provider.speedMode;
   f.b.model='model-a';f.b.effort='medium';f.b.speedMode='default';
   f.provider.modelCatalog=[{id:'model-a',name:'A',efforts:['medium','high'],speedModes:['default','fast']},{id:'model-b',name:'B',efforts:['low'],speedModes:['default']}];
   const configure=(key,value)=>f.provider.executeRemote(command({kind:'session.configure',key,value}),()=>true);
   assert.equal((await configure('model','missing')).error,'SETTING_NOT_SUPPORTED');
   assert.equal((await configure('effort','high')).accepted,true);assert.equal(f.saved.get('codexChat.sessionEffort.session-b'),'high');
-  f.b.proc.isBusy=true;assert.equal((await configure('model','model-b')).error,'SESSION_BUSY');f.b.proc.isBusy=false;
+  f.b.proc.isBusy=true;
+  assert.equal((await configure('model','model-b')).result.appliesTo,'next_turn');
+  assert.equal(f.b.proc.isBusy,true);assert.equal(f.b.proc.currentTurnId,'turn-1');assert.equal(f.a.model,undefined);
+  assert.equal((await configure('effort','low')).accepted,true);assert.equal(f.saved.get('codexChat.sessionEffort.session-b'),'low');
+  f.b.sending=true;assert.equal((await configure('model','model-a')).error,'SESSION_BUSY');f.b.sending=false;
+  f.provider.restoring.add(f.b);assert.equal((await configure('model','model-a')).error,'SESSION_BUSY');f.provider.restoring.clear();
+  f.b.proc.isBusy=false;await configure('effort','');
   assert.equal((await configure('model','model-b')).accepted,true);assert.equal(f.b.model,'model-b');assert.equal(f.b.effort,'');
   assert.equal((await configure('speed','fast')).error,'SETTING_NOT_SUPPORTED');
   f.provider.context.workspaceState.update=async()=>{throw new Error('disk');};

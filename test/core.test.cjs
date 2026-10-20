@@ -424,14 +424,14 @@ test('模型目录未返回也能完成普通模式启动并发送，不发送�
 });
 test('加速发送等待目录校验，等待期间的设置修改仅影响下一轮',async t=>{
  const {p,events,read}=await fastClient(t,{env:{TEST_DEFER_MODELS:'1'},speedMode:'fast',model:'test-model',effort:'high'});
- p.sendUserMessage('加速');await p.setSpeedMode('default');await p.setEffort('low');
+ p.sendUserMessage('加速');await p.setSpeedMode('default');await p.setEffort('low');await p.setModel('next-model');
  assert.equal((await read()).some(m=>m.method==='turn/start'),false);
  await p.rpc.request('release-models');await waitUntil(()=>events.some(e=>e.kind==='result'));
  const first=(await read()).find(m=>m.method==='turn/start');
- assert.equal(first.params.serviceTier,'priority');assert.equal(first.params.effort,'high');
+ assert.equal(first.params.serviceTier,'priority');assert.equal(first.params.effort,'high');assert.equal(first.params.model,'test-model');
  p.sendUserMessage('下一轮');await waitUntil(()=>events.filter(e=>e.kind==='result').length===2);
  const last=(await read()).filter(m=>m.method==='turn/start').at(-1);
- assert.equal(last.params.serviceTier,'default');assert.equal(last.params.effort,'low');
+ assert.equal(last.params.serviceTier,'default');assert.equal(last.params.effort,'low');assert.equal(last.params.model,'next-model');
 });
 test('等待目录时停止立即完成，目录稍后返回不得复活旧消息或干扰新轮次',async t=>{
  const {p,events,read}=await fastClient(t,{env:{TEST_DEFER_MODELS:'1'},speedMode:'fast'});
