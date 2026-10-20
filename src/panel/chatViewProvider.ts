@@ -1655,7 +1655,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.post(ctx, { kind: "busy", busy: false });
             return false;
         }
-        if (allowed) this.post(ctx, { kind: 'remote_user', text });
+        if (allowed) this.post(ctx, { kind: 'remote_user', text,
+            ...(images?.length ? {images: images.map(image => `data:${image.mediaType};base64,${image.data}`)} : {}) });
         dispatched = true;
         if (!hadSession && ctx.sessionId) {
             this.store.notePending(ctx.sessionId, text || "(图片)");
@@ -3203,7 +3204,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview, notifyTurnDone = true): void {
         this.remoteAdapter?.observe(ctx, e);
-        if (e.kind === "usage") this.maybeNotifyUsage(e);
+        if (e.kind === "usage") {
+            this.lastUsage = e;
+            this.lastUsageUpdatedAt = Date.now();
+            this.maybeNotifyUsage(e);
+        }
         if (e.kind === "models") this.modelCatalog = e.models;
         if (e.kind === "compacting") ctx.compacting = true;
         else if (e.kind === "compacted" || e.kind === "busy" || e.kind === "result" ||

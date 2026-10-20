@@ -541,7 +541,7 @@ export class CodexProcess {
     }
   }
   private block(id: string, type: 'text' | 'thinking') {
-    if (this.activeBlock !== id) { this.activeBlock = id; this.emit({ kind: 'block_start', blockType: type }); }
+    if (this.activeBlock !== id) { this.activeBlock = id; this.emit({ kind: 'block_start', blockType: type, itemId: id }); }
   }
   private rememberEndedTurn(id?: string): void {
     if (!id) return;
@@ -847,6 +847,8 @@ export class CodexProcess {
         this.emit(thinking ? { kind: 'thinking_delta', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n') } : { kind: 'text_delta', text: item.text ?? '' });
       }
       if (done && this.activeBlock === item.id) {
+        // completed 中的正文是权威结果，不能只沿用可能缺块或被修正的 delta。
+        if (this.streamed.has(item.id) && item.type !== 'reasoning' && typeof item.text === 'string') this.emit({kind: 'text_snap', text: item.text});
         this.activeBlock = undefined;
         this.emit({ kind: 'block_end' });
       }

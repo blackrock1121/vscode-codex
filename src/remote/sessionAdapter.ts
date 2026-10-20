@@ -14,7 +14,7 @@ import { ExecutionReceipts } from './executionReceipts';
 interface RemoteState {
     taskQueue?: SessionTaskQueue;
     remoteNotify?: {deviceId: string; commandId: string};
-    remoteStream?: {id: string; seq: number; text: string; thinking: string; active: boolean};
+    remoteStream?: {id: string; seq: number; text: string; thinking: string; active: boolean; itemId?: string};
     remoteAction?: boolean;
     remoteRead?: Promise<void>;
     remoteReadAt?: number;
@@ -113,12 +113,32 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         const remote = this.state(ctx);
         if(!ctx.sessionId)return;
         if(event.kind==='busy'&&event.busy)remote.remoteStream={id:randomUUID(),seq:0,text:'',thinking:'',active:true};
-        if(event.kind==='text_delta'||event.kind==='thinking_delta') {
+        if(event.kind==='block_start') {
+            remote.remoteStream={id:randomUUID(),seq:0,text:'',thinking:'',active:event.blockType!=='tool_use',
+                ...(event.itemId?{itemId:event.itemId}:{})};
+            remote.remoteReadAt=0;
+            this.publish(ctx.sessionId,{kind:'invalidate'});
+        }
+        if(event.kind==='text_snap') {
+            // 用新的流 ID 表示整块替换，旧手机也不会把权威正文追加两次。
+            remote.remoteStream={id:randomUUID(),seq:0,text:'',thinking:'',active:true,
+                ...(remote.remoteStream?.itemId?{itemId:remote.remoteStream.itemId}:{})};
+        }
+        if(event.kind==='text_delta'||event.kind==='thinking_delta'||event.kind==='text_snap') {
             const stream=remote.remoteStream??={id:randomUUID(),seq:0,text:'',thinking:'',active:true};
-            const field=event.kind==='text_delta'?'text':'thinking';stream[field]=(stream[field]+event.text).slice(-4000);
-            for(const text of event.text.match(/[\s\S]{1,600}/gu)??[]){stream.seq++;this.publish(ctx.sessionId,{kind:'delta',id:stream.id,seq:stream.seq,field,text});}
-        } else if(['result','tool_input','tool_result','permission_request','permission_resolved','compacted','busy'].includes(event.kind)) {
-            if(event.kind==='result'){remote.remoteReadAt=0;if(remote.remoteStream)remote.remoteStream.active=false;}
+            const field=event.kind==='thinking_delta'?'thinking':'text';stream[field]=(stream[field]+event.text).slice(-4000);
+            for(const text of event.text.match(/[\s\S]{1,600}/gu)??[]){stream.seq++;this.publish(ctx.sessionId,{kind:'delta',id:stream.id,seq:stream.seq,field,text,
+                ...(stream.itemId?{itemId:stream.itemId}:{})});}
+        } else if(['result','block_end','tool_input','tool_result','permission_request','permission_resolved','compacted','busy','usage'].includes(event.kind)) {
+            if(event.kind==='result'||event.kind==='block_end'){
+                remote.remoteReadAt=0;
+                const stream=remote.remoteStream;
+                if(stream?.active){
+                    stream.active=false;stream.seq++;
+                    this.publish(ctx.sessionId,{kind:'delta',id:stream.id,seq:stream.seq,field:'text',text:'',active:false,
+                        ...(stream.itemId?{itemId:stream.itemId}:{})});
+                }
+            }
             this.publish(ctx.sessionId,{kind:'invalidate'});
         }
         if(event.kind==='result'&&remote.remoteNotify){

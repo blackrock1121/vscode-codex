@@ -1788,3 +1788,20 @@ test('诊断点击防重复，失败或无响应可重试，旧回执不能覆�
  expire();assert.equal(button.disabled,false);assert.match(feedback.textContent,/未收到诊断响应/);
  assert.equal(w.document.getElementById('messages').textContent.includes('报告读取失败'),false);assert.deepEqual(errors,[]);
 });
+
+test('手机发来的图片立即进入桌面消息，正文修正不重复且桌面草稿保留',t=>{
+ const {w,emit,errors}=setup(t),input=w.document.getElementById('input');
+ input.value='电脑尚未发送的草稿';input.focus();
+ const image='data:image/png;base64,iVBORw0KGgo=';
+ emit({kind:'remote_user',text:'手机图片',images:[image]});
+ const user=w.document.querySelector('.msg.user');
+ assert.equal(user.querySelector('img').getAttribute('src'),image);
+ assert.equal(input.value,'电脑尚未发送的草稿');
+ emit({kind:'block_start',blockType:'text',itemId:'answer'});
+ emit({kind:'text_delta',text:'尚未完整'});
+ emit({kind:'text_snap',text:'完整而准确的回答'});
+ emit({kind:'block_end'});
+ const messages=w.document.getElementById('messages').textContent;
+ assert.ok(messages.includes('完整而准确的回答'));assert.ok(!messages.includes('尚未完整'));
+ assert.equal(messages.split('完整而准确的回答').length-1,1);assert.deepEqual(errors,[]);
+});

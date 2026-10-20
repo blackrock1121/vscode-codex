@@ -442,3 +442,16 @@ test('等待目录时停止立即完成，目录稍后返回不得复活旧消�
  const turns=(await read()).filter(m=>m.method==='turn/start');assert.equal(turns.length,1);assert.equal(turns[0].params.input[0].text,'wait');
  assert.equal(p.isBusy,true);await p.interrupt();await waitUntil(()=>!p.isBusy);
 });
+
+test('完成消息以权威正文修正流式草稿，块 ID 与历史一致',()=>{
+ const events=[];
+ const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default',transportDiagnostics:false},
+ {emit:e=>events.push(e),onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});
+ p.busy=true;
+ p.notification({method:'item/agentMessage/delta',params:{itemId:'answer',delta:'不完整'}});
+ p.notification({method:'item/completed',params:{item:{id:'answer',type:'agentMessage',text:'权威最终正文'}}});
+ assert.equal(events.find(e=>e.kind==='block_start').itemId,'answer');
+ assert.equal(events.find(e=>e.kind==='text_snap').text,'权威最终正文');
+ assert.equal(events.at(-1).kind,'block_end');
+ assert.equal(timeline([{items:[{id:'answer',type:'agentMessage',text:'权威最终正文'}]}])[0].sourceId,'answer');
+});

@@ -324,3 +324,33 @@ test('手机排队在关闭接入后停止派发，恢复并明确继续后仅�
   assert.deepEqual(f.sends,[['session-b','手机队列']]);assert.equal(f.provider.remote().hasPending(f.b),false);
   f.provider.remote().dispose();
 });
+
+test('多段流独立编号，正文修正替换而非追加，历史携带同源消息标识',async()=>{
+ const f=fixture(),adapter=f.provider.remote(),events=[];f.provider.remotePublish=(_id,e)=>events.push(e);f.b.proc.isBusy=true;
+ adapter.observe(f.b,{kind:'busy',busy:true});
+ adapter.observe(f.b,{kind:'block_start',blockType:'text',itemId:'message-a'});
+ adapter.observe(f.b,{kind:'text_delta',text:'第一段'});
+ const first=adapter.state(f.b).remoteStream.id;
+ adapter.observe(f.b,{kind:'block_end'});
+ assert.ok(events.some(e=>e.kind==='delta'&&e.id===first&&e.active===false));
+ adapter.observe(f.b,{kind:'block_start',blockType:'text',itemId:'message-b'});
+ adapter.observe(f.b,{kind:'text_delta',text:'第二段草稿'});
+ assert.equal(adapter.state(f.b).remoteStream.text,'第二段草稿');
+ assert.notEqual(adapter.state(f.b).remoteStream.id,first);
+ adapter.observe(f.b,{kind:'text_snap',text:'第二段完整正文'});
+ const current=adapter.state(f.b).remoteStream;
+ assert.equal(current.text,'第二段完整正文');assert.equal(current.itemId,'message-b');
+ f.provider.store.load=()=>[{type:'assistant_text',text:'第一段',sourceId:'message-a'},{type:'assistant_text',text:current.text,sourceId:'message-b'}];
+ const snapshot=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;
+ assert.equal(snapshot.messages[1].sourceId,snapshot.stream.itemId);
+ assert.equal(snapshot.stream.text,'第二段完整正文');
+ adapter.observe(f.b,{kind:'block_end'});
+ assert.equal(adapter.state(f.b).remoteStream.active,false);
+});
+
+test('桌面实时额度更新也成为手机和新会话读取的账号用量',async()=>{
+ const f=fixture();f.provider.lastUsage={kind:'usage',weekPct:1};f.provider.lastUsageUpdatedAt=1;f.provider.maybeNotifyUsage=()=>{};
+ f.provider.handleEmitInner(f.b,{kind:'usage',weekPct:37.5,weekResetAt:1900000000});
+ const result=(await f.provider.executeRemote(command({kind:'session.list'},''),()=>true)).result;
+ assert.equal(result.usage.weekPct,37.5);assert.ok(result.usage.updatedAt>1);
+});

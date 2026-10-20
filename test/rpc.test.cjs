@@ -12,7 +12,7 @@ test('思考和正文从 item/started 即进入活动状态，完成后发出块
   {emit:e=>events.push(e),onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});
  const note=(method,params)=>p.notification({method,params});
  note('item/started',{item:{id:'think',type:'reasoning'}});
- assert.deepEqual(events,[{kind:'block_start',blockType:'thinking'}]);
+ assert.deepEqual(events,[{kind:'block_start',blockType:'thinking',itemId:'think'}]);
  note('item/completed',{item:{id:'think',type:'reasoning',summary:[],content:[]}});
  assert.equal(events.at(-1).kind,'block_end');
  note('item/started',{item:{id:'text',type:'agentMessage'}});
@@ -21,8 +21,9 @@ test('思考和正文从 item/started 即进入活动状态，完成后发出块
  assert.equal(events.at(-1).kind,'block_end');
  assert.equal(events.filter(e=>e.kind==='block_start'&&e.blockType==='text').length,1);
  assert.deepEqual(events.filter(e=>e.kind==='text_delta'),[{kind:'text_delta',text:'阶段说明'}]);
+ assert.deepEqual(events.filter(e=>e.kind==='text_snap'),[{kind:'text_snap',text:'阶段说明'}]);
  note('item/completed',{item:{id:'snapshot',type:'agentMessage',text:'仅有完成事件'}});
- assert.deepEqual(events.slice(-3),[{kind:'block_start',blockType:'text'},{kind:'text_delta',text:'仅有完成事件'},{kind:'block_end'}]);
+ assert.deepEqual(events.slice(-3),[{kind:'block_start',blockType:'text',itemId:'snapshot'},{kind:'text_delta',text:'仅有完成事件'},{kind:'block_end'}]);
 });
 
 async function client(t){

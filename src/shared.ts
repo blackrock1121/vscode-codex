@@ -121,7 +121,7 @@ export function modelChoices(data: any[]): ModelChoice[] {
 
 export type ToWebview =
   | { kind: "performance_report_result"; requestId?: string; ok: boolean; message: string }
-  | { kind: "remote_user"; text: string }
+  | { kind: "remote_user"; text: string; images?: string[] }
   | { kind: "models"; models: ModelChoice[] }
   | { kind: "speed_context"; model?: string; billing?: BillingKind; planType?: string }
   /** 速度保存成功后的短暂反馈，仅显示在按钮附近，不进入聊天记录。 */
@@ -141,7 +141,7 @@ export type ToWebview =
   | { kind: "response_wait"; idleMs: number }
   /** 实际命令输出或子 Agent 活动；不携带输出正文。 */
   | { kind: "activity"; label: string }
-  | { kind: "block_start"; blockType: "text" | "thinking" | "tool_use"; toolId?: string; toolName?: string }
+  | { kind: "block_start"; blockType: "text" | "thinking" | "tool_use"; itemId?: string; toolId?: string; toolName?: string }
   | { kind: "block_end" }
   | { kind: "text_delta"; text: string }
   /** 完整消息与 delta 累计不一致时的权威快照：整块替换当前直播文本。 */
@@ -267,9 +267,9 @@ export const CTX_CLOSE = "</user-attached-context>";
 export type TimelineItem =
   | { type: "user"; text: string; context?: string; images?: string[]; files?: string[] }
   | { type: "image"; src: string } // standalone image (assistant/tool), data: URI
-  | { type: "assistant_text"; text: string }
+  | { type: "assistant_text"; text: string; sourceId?: string }
   /** secs：思考耗时（由相邻 transcript 记录的 timestamp 差估算，可能缺失）。 */
-  | { type: "thinking"; text: string; secs?: number }
+  | { type: "thinking"; text: string; secs?: number; sourceId?: string }
   | {
       type: "tool";
       toolId: string;

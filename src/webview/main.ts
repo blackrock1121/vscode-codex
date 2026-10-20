@@ -1427,7 +1427,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "remote_user":
       finalizeTurn();
-      appendUser(m.text);
+      appendUser(m.text, [], m.images ?? []);
       turnTokens = turnEst = turnThinkTokens = msgTokenBase = lastMsgTokens = 0;
       resetTokenTween();
       setBusy(true);
