@@ -160,6 +160,17 @@ test('上传图片只能被同设备同目标读取，过期、摘要篡改、�
 });
 
 
+test('尚无会话时也能读取账号周限额，列表不创建会话且保留真实零值', async()=>{
+  const f=fixture();let refreshes=0;f.provider.fetchUsage=()=>refreshes++;
+  f.provider.sessions.clear();f.provider.lastUsage={kind:'usage',weekPct:0,weekResetAt:1900000000,planType:'pro'};
+  f.provider.lastUsageUpdatedAt=1800000000000;
+  const result=(await f.provider.executeRemote(command({kind:'session.list'},''),()=>true)).result;
+  assert.deepEqual(result.sessions,[]);assert.equal(result.usage.weekPct,0);assert.equal(result.usage.planType,'pro');
+  assert.equal(result.usage.updatedAt,1800000000000);assert.equal(refreshes,1);assert.deepEqual(f.sends,[]);
+  f.provider.lastUsage=undefined;
+  assert.equal((await f.provider.executeRemote(command({kind:'session.list'},''),()=>true)).result.usage,null);
+});
+
 test('手机快照与桌面共用当前会话模型、推理与额度，额度变化触发新版本', async()=>{
   const f=fixture();f.provider.lastUsage={kind:'usage',weekPct:83,sessionPct:21,weekResetAt:1900000000,sessionResetAt:1800000000};
   const first=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;

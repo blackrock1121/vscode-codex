@@ -129,6 +129,13 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     private remoteTitle(ctx: C): string {
         return (this.host.store.list().find(s => s.id === ctx.sessionId)?.title || ctx.lastUserText || '新会话').replace(/\s+/g, ' ').trim().slice(0, 80);
     }
+    private accountUsage() {
+        this.host.fetchUsage();
+        const usage = this.host.lastUsage?.kind === 'usage' ? this.host.lastUsage : undefined;
+        return usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
+            weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType,
+            updatedAt: this.host.lastUsageUpdatedAt } : null;
+    }
     private remoteRequest(ctx: C) {
         const remote = this.state(ctx);
         const pending=ctx.pendingPerm?.kind==='permission_request'?ctx.pendingPerm:undefined;
@@ -159,7 +166,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         const op = command.operation;
         if (op.kind === 'session.list') {
             const all = contexts().filter(c => c.sessionId);
-            return { accepted: true, result: { kind: 'session.list', total: all.length,
+            return { accepted: true, result: { kind: 'session.list', total: all.length, usage: this.accountUsage(),
                 sessions: all.sort((a,b)=>Number(this.host.pinnedSet().has(b.sessionId!))-Number(this.host.pinnedSet().has(a.sessionId!))).slice(0, 20).map(c => ({ id: c.sessionId, title: this.remoteTitle(c), pinned:this.host.pinnedSet().has(c.sessionId!),
                     busy: !!c.proc?.isBusy || !!c.sending, waiting: c.pendingPerm?.kind === 'permission_request' })) } };
         }
@@ -309,14 +316,11 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             await remote.remoteRead;
             if (!selectedActive()) return denied('TARGET_CHANGED');
             const items = this.host.store.load(sourceId!);
-            this.host.fetchUsage();
-            const usage = this.host.lastUsage?.kind === 'usage' ? this.host.lastUsage : undefined;
             const state = { kind: 'session.snapshot', sessionId: sourceId, title: this.remoteTitle(ctx), busy: !!ctx.proc?.isBusy || !!ctx.sending,
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
                 model: this.host.sessionModel(ctx).slice(0, 120), effort: this.host.sessionEffort(ctx).slice(0, 40),
                 speed: this.host.speedMode(ctx), capabilities:CURRENT_CAPABILITIES, queueCount:remote.taskQueue?.items.length??0,queuePaused:remote.taskQueue?.paused??false,pinned:this.host.pinnedSet().has(sourceId!),stream:remote.remoteStream?{...remote.remoteStream,text:remote.remoteStream.text.slice(-600),thinking:remote.remoteStream.thinking.slice(-200),truncated:remote.remoteStream.text.length>600||remote.remoteStream.thinking.length>200}:null, request:this.remoteRequest(ctx), context:remote.remoteContext??null, limit:remote.remoteLimit??null, progress:remote.remoteStatus??null,
-                permissionMode:remote.remoteMode??null, usage: usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
-                    weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType, updatedAt: this.host.lastUsageUpdatedAt } : null };
+                permissionMode:remote.remoteMode??null, usage: this.accountUsage() };
             return { accepted: true, result: transcriptSnapshot(items, state, op) };
         }
         if (op.kind === 'message.send' || op.kind === 'session.create') {
