@@ -22,7 +22,8 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
       row.success === false || row.hasError === true || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
     const retry = stage === 'retry' || row.event === 'retry';
-    const fallback = /fallback|restore_pending|unavailable|partial/.test(stage) || /unavailable/.test(outcome) || row.type === 'runtime_error' && row.severity === 'warning';
+    const fallback = /fallback|restore_pending|unavailable|partial/.test(stage) || /unavailable/.test(outcome) ||
+      compaction && outcome === 'incomplete' || row.type === 'runtime_error' && row.severity === 'warning';
     if (!failed && !retry && !fallback) return;
     // 旧 stderr 脱敏可能留下 ANSI 的 [2m 前缀，不能依赖模块名前的单词边界。
     const telemetry = row.type === 'runtime_error' && /opentelemetry_sdk\b.*\b(?:ExportError|export error)\b/i.test(String(row.message ?? ''));
@@ -33,7 +34,7 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
-      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'reason', 'scope', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
       Number.isSafeInteger(row.requestId) ? `requestId=${row.requestId}` : undefined, row.message]
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
     return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };

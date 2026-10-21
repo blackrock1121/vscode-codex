@@ -605,6 +605,12 @@ code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; 
 .local-image-placeholder, .local-image-failed {
   display: inline-block; color: var(--vscode-descriptionForeground); font-size: 0.9em;
 }
+.local-image-retry {
+  border: 0; background: transparent; color: var(--vscode-textLink-foreground);
+  padding: 2px 4px; font: inherit; cursor: pointer;
+}
+.local-image-retry:hover { text-decoration: underline; }
+.local-image-retry:focus-visible { outline: 1px solid var(--vscode-focusBorder); }
 
 .md blockquote {
   margin: 11px 0; padding: 8px 12px;

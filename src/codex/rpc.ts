@@ -127,8 +127,8 @@ export class CodexRpc extends EventEmitter {
       if (this.closed) return;
       const decodingAt = performance.now();
       let msg: RpcMessage;
-      try { msg = JSON.parse(line); } catch { this.fail(new Error(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
-      if (!isRpcMessage(msg)) { this.fail(new Error(`Codex 返回了无效协议消息结构（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
+      try { msg = JSON.parse(line); } catch { this.fail(new SyntaxError(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
+      if (!isRpcMessage(msg)) { this.fail(new SyntaxError(`Codex 返回了无效协议消息结构（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       const handlingAt = performance.now(); this.maxDecodeMs = Math.max(this.maxDecodeMs, handlingAt - decodingAt);
       this.receivedMessages++; this.lastReceivedAt = performance.now();
       if (msg.method) {
@@ -202,8 +202,21 @@ export class CodexRpc extends EventEmitter {
   respond(id: RpcId, result: unknown): void { this.write({ id, result }); }
   reject(id: RpcId, message = '客户端不支持此请求'): void { this.write({ id, error: { code: -32601, message } }); }
   private write(msg: RpcMessage): void {
-    if (this.closed || !this.child?.stdin.writable) throw this.closeReason ?? new Error('Codex 连接已断开');
-    if (!this.child.stdin.write(JSON.stringify(msg) + '\n')) this.writeBackpressureCount++;
+    if (this.closed || !this.child) throw this.closeReason ?? new Error('Codex 连接已断开');
+    // 参数序列化错误属于调用方；管道写入失败则立即废弃连接，不能等迟到的 close
+    // 才让只读调用重建连接，也不能让其它挂起请求等满 60 秒。
+    let line: string;
+    try { line = JSON.stringify(msg) + '\n'; }
+    catch (error) {
+      throw Object.assign(new Error('Codex 请求无法序列化'), { name: error instanceof Error ? error.name : 'Error', errorOrigin: 'client' });
+    }
+    try {
+      if (!this.child.stdin.writable) throw Object.assign(new Error('Codex 输入通道已关闭'), { code: 'ERR_STREAM_DESTROYED' });
+      if (!this.child.stdin.write(line)) this.writeBackpressureCount++;
+    } catch (error) {
+      this.fail(error instanceof Error ? error : new Error('Codex 管道写入失败'), 'stdin');
+      throw this.closeReason;
+    }
   }
   private fail(e: Error, phase = 'protocol'): void {
     if (this.closed) return;

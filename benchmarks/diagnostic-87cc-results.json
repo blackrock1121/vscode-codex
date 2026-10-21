@@ -1,0 +1,1931 @@
+{
+  "diagnosticId": "87cc8d0b-9968-4894-82fb-fef2db4a37fc",
+  "baseline": "a97fdd7",
+  "createdAt": "2026-10-21T09:00:44.007Z",
+  "scope": "隔离临时目录、固定全部保留日志的长度快照；基线完整取自0.1.160。只输出计数/哈希/白名单指标。快照试验为本机合成源码文件，不代表真实模型或网络提速。",
+  "baselineSourceHash": "4a34dec6ab4afd74c9d0e009f7716a09cd92ca3bdcd3140b75bc0d4c9ebf1861",
+  "currentSourceHash": "6ac2e64e98f4f710b5834489fce44848171259d558dccb8f95e8ca57c50cd015",
+  "snapshot": [
+    {
+      "mode": "before",
+      "round": 0,
+      "files": 500,
+      "allocatedBytes": 65986000,
+      "captureMs": 24
+    },
+    {
+      "mode": "after",
+      "round": 0,
+      "files": 500,
+      "allocatedBytes": 901000,
+      "captureMs": 22
+    },
+    {
+      "mode": "after",
+      "round": 1,
+      "files": 500,
+      "allocatedBytes": 901000,
+      "captureMs": 18
+    },
+    {
+      "mode": "before",
+      "round": 1,
+      "files": 500,
+      "allocatedBytes": 65986000,
+      "captureMs": 18
+    },
+    {
+      "mode": "before",
+      "round": 2,
+      "files": 500,
+      "allocatedBytes": 65986000,
+      "captureMs": 18
+    },
+    {
+      "mode": "after",
+      "round": 2,
+      "files": 500,
+      "allocatedBytes": 901000,
+      "captureMs": 18
+    },
+    {
+      "mode": "after",
+      "round": 3,
+      "files": 500,
+      "allocatedBytes": 901000,
+      "captureMs": 19
+    },
+    {
+      "mode": "before",
+      "round": 3,
+      "files": 500,
+      "allocatedBytes": 65986000,
+      "captureMs": 17
+    },
+    {
+      "mode": "before",
+      "round": 4,
+      "files": 500,
+      "allocatedBytes": 65986000,
+      "captureMs": 18
+    },
+    {
+      "mode": "after",
+      "round": 4,
+      "files": 500,
+      "allocatedBytes": 901000,
+      "captureMs": 18
+    }
+  ],
+  "rpc": [
+    {
+      "mode": "before",
+      "closed": false,
+      "pendingRequests": 1,
+      "rejectionMs": 0
+    },
+    {
+      "mode": "after",
+      "closed": true,
+      "pendingRequests": 0,
+      "rejectionMs": 0
+    }
+  ],
+  "overflow": [
+    {
+      "mode": "before",
+      "detectedDroppedLines": 0,
+      "unknownTimeLines": 1
+    },
+    {
+      "mode": "after",
+      "detectedDroppedLines": 69,
+      "unknownTimeLines": 0
+    }
+  ],
+  "logSnapshot": [
+    {
+      "file": "codex-chat-2026-10-15.log",
+      "bytes": 11902360,
+      "sha256": "2ddaec3da0da29b84dc3eeb5dc57ef683c8ddd4aec3315b1d80eb4f241297e65"
+    },
+    {
+      "file": "codex-chat-2026-10-16.log",
+      "bytes": 16132798,
+      "sha256": "ec4fa3691830d31584883296c29c70297cb7f04eae8c8c34472bfd34c6766919"
+    },
+    {
+      "file": "codex-chat-2026-10-17.log",
+      "bytes": 2604849,
+      "sha256": "85748773ba25c2bcaaf8ccda16aef7496403e7059c60c7fc8486417c5c825002"
+    },
+    {
+      "file": "codex-chat-2026-10-18.log",
+      "bytes": 2605294,
+      "sha256": "02e2dffa9e74333cd46bb76efafd2830c063482296364124b9129edfea8cc58d"
+    },
+    {
+      "file": "codex-chat-2026-10-19.log",
+      "bytes": 14308952,
+      "sha256": "0c69b244c20e782907552d770887c2a80c9e2ddffc0596e420c395b301f33d8d"
+    },
+    {
+      "file": "codex-chat-2026-10-20.log",
+      "bytes": 12572929,
+      "sha256": "d17b896ae6c82f4b6996ca9fd9e3954a563e95d1bcab7c79b6662b833b28c59c"
+    },
+    {
+      "file": "codex-chat-2026-10-21.log",
+      "bytes": 14401091,
+      "sha256": "52e8858be7e7c81c9e6bce595d2543631815aed03b2fb134709f38c7ba6243b9"
+    }
+  ],
+  "retainedEvidence": {
+    "reportWindowAccount": {
+      "0.1.150:rpc.process:failed:unknown": 825,
+      "0.1.150:session.read:failed:unknown": 825,
+      "0.1.150:account.usage:failed:unknown": 825,
+      "0.1.150:rpc.process:end:127": 828,
+      "0.1.157:rpc.process:end:0": 6,
+      "0.1.156:session.read:failed:-32603": 1,
+      "0.1.156:account.usage:failed:-32603": 1,
+      "0.1.156:account.usage:recovered:unknown": 1,
+      "0.1.159:rpc.process:end:0": 8,
+      "0.1.150:rpc.process:failed:EPIPE": 3,
+      "0.1.150:session.read:failed:EPIPE": 3,
+      "0.1.150:account.usage:failed:EPIPE": 3,
+      "0.1.160:rpc.process:end:0": 3
+    },
+    "trackedTerminals": [
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.159",
+        "atMs": 1792551964690,
+        "traceId": "32deb317-be4f-46e2-bc41-1dc461c1bc1f",
+        "processRunId": "a528f620-7562-42d2-a4de-539c56c4bc45",
+        "event": "turn_summary",
+        "outcome": "completed",
+        "elapsedMs": 177295
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792564466421,
+        "traceId": "d0566cf0-25cb-49a5-935e-992b25804ac7",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "stage": "response",
+        "outcome": "completed"
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792564466457,
+        "traceId": "d0566cf0-25cb-49a5-935e-992b25804ac7",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "stage": "usage_updated",
+        "elapsedMs": 157509
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792564466458,
+        "traceId": "d0566cf0-25cb-49a5-935e-992b25804ac7",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "stage": "end",
+        "outcome": "completed",
+        "elapsedMs": 157511
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792564511211,
+        "traceId": "d0566cf0-25cb-49a5-935e-992b25804ac7",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "event": "turn_summary",
+        "outcome": "completed",
+        "elapsedMs": 579653
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792571962747,
+        "traceId": "6c42e3ee-36bb-444b-a4de-fc18eee01beb",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "stage": "response",
+        "outcome": "completed"
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792571962798,
+        "traceId": "6c42e3ee-36bb-444b-a4de-fc18eee01beb",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "stage": "usage_updated",
+        "elapsedMs": 185175
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792571962800,
+        "traceId": "6c42e3ee-36bb-444b-a4de-fc18eee01beb",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "stage": "end",
+        "outcome": "completed",
+        "elapsedMs": 185177
+      },
+      {
+        "file": "codex-chat-2026-10-21.log",
+        "version": "0.1.160",
+        "atMs": 1792572148436,
+        "traceId": "6c42e3ee-36bb-444b-a4de-fc18eee01beb",
+        "processRunId": "67f5951a-9757-4b28-97d7-79678d5e8989",
+        "event": "turn_summary",
+        "outcome": "completed",
+        "elapsedMs": 370958
+      }
+    ],
+    "rpcFailures": {
+      "0.1.150": 2085
+    },
+    "rpcExitCodes": {
+      "0.1.144:0": 2,
+      "0.1.145:0": 1,
+      "0.1.148:0": 3,
+      "0.1.150:127": 2085,
+      "0.1.152:0": 4,
+      "0.1.153:0": 2,
+      "0.1.156:0": 1,
+      "0.1.157:0": 6,
+      "0.1.159:0": 8,
+      "0.1.160:0": 6
+    },
+    "unknownToolDurations": 0,
+    "zeroToolDurations": 2,
+    "compactionFallbacks": [
+      {
+        "version": "0.1.139",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      },
+      {
+        "version": "0.1.148",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      },
+      {
+        "version": "0.1.151",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      },
+      {
+        "version": "0.1.154",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      },
+      {
+        "version": "0.1.154",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      },
+      {
+        "version": "0.1.159",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      },
+      {
+        "version": "0.1.159",
+        "reason": "startup_budget_expired",
+        "processRunId": null
+      }
+    ],
+    "longestUnknownWaits": [
+      {
+        "version": "0.1.142",
+        "traceId": "e397b76e-7e79-4311-9082-3654d2c2ac21",
+        "unobservedMs": 2114063,
+        "elapsedMs": 2451810
+      },
+      {
+        "version": "0.1.153",
+        "traceId": "0e37f84a-5bb3-4217-ba14-f3c914d7cf9b",
+        "unobservedMs": 1730554,
+        "elapsedMs": 2034213
+      },
+      {
+        "version": "0.1.153",
+        "traceId": "e3a12953-301e-4cfd-962a-5a67b4e00f90",
+        "unobservedMs": 1636820,
+        "elapsedMs": 1810033
+      },
+      {
+        "version": "0.1.145",
+        "traceId": "6f28ad89-0c57-4e85-9f95-b02c6e4cadc8",
+        "unobservedMs": 1601798,
+        "elapsedMs": 1809731
+      },
+      {
+        "version": "0.1.159",
+        "traceId": "b301a6ed-a066-48d4-abea-00b104b44ada",
+        "unobservedMs": 1363074,
+        "elapsedMs": 1747512
+      },
+      {
+        "version": "0.1.148",
+        "traceId": "94123cc2-b3bb-4c7d-89d9-aab0bb50070b",
+        "unobservedMs": 1238300,
+        "elapsedMs": 1547483
+      },
+      {
+        "version": "0.1.156",
+        "traceId": "07784293-3505-4c27-b7d0-d114f634c3d5",
+        "unobservedMs": 1183744,
+        "elapsedMs": 1479293
+      },
+      {
+        "version": "0.1.138",
+        "traceId": "670c796d-8142-4940-939e-93fb2b9e588a",
+        "unobservedMs": 850948,
+        "elapsedMs": 958038
+      }
+    ],
+    "accountPropagation": {
+      "scope": "报告24小时内，同版本/窗口、相邻1秒且错误码一致的疑似传播链；历史无failureId，保留关联局限",
+      "triplets": 828,
+      "loggedFailuresInTriplets": 2484,
+      "exit127": 828,
+      "samples": [
+        {
+          "version": "0.1.150",
+          "windowId": "06d80662-765e-4eb6-bf87-b2e294a466dd",
+          "atMs": 1792485586185,
+          "operationId": "9b7af887-eb0c-4513-bf56-9ef513006f74",
+          "errorCode": null,
+          "operations": [
+            "rpc.process",
+            "session.read",
+            "account.usage"
+          ],
+          "exitCode": 127
+        },
+        {
+          "version": "0.1.150",
+          "windowId": "87382bd9-2d34-4c0b-8036-d15f66b8fae5",
+          "atMs": 1792485586195,
+          "operationId": "2ad6e274-f011-4fd8-8b6a-54db25d2d61b",
+          "errorCode": null,
+          "operations": [
+            "rpc.process",
+            "session.read",
+            "account.usage"
+          ],
+          "exitCode": 127
+        },
+        {
+          "version": "0.1.150",
+          "windowId": "87382bd9-2d34-4c0b-8036-d15f66b8fae5",
+          "atMs": 1792571807310,
+          "operationId": "83a9ca68-ca9a-4c0e-99a9-19e2c3272179",
+          "errorCode": null,
+          "operations": [
+            "rpc.process",
+            "session.read",
+            "account.usage"
+          ],
+          "exitCode": 127
+        }
+      ]
+    }
+  },
+  "before": {
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 74528273,
+      "lines": 163490,
+      "records": 33413,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 18,
+      "sessions": 20,
+      "firstDay": "2026-10-15",
+      "lastDay": "2026-10-21",
+      "sources": [
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "8ff1babe-23bf-4321-b05e-47c9cf8670f0",
+          "hostId": "30870",
+          "records": 1271,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1273
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "22255ee5-6fd9-4c4f-9bad-72b8d9995ecb",
+          "hostId": "31190",
+          "records": 1580,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1582
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "5856c6db-93be-43fc-8dae-cc26baeedfc5",
+          "hostId": "30626",
+          "records": 1272,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1274
+        },
+        {
+          "pluginVersion": "0.1.156",
+          "windowId": "5b75af2a-29c7-44a8-a488-e3231440d55e",
+          "hostId": "29858",
+          "records": 1895,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1897
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "06d80662-765e-4eb6-bf87-b2e294a466dd",
+          "hostId": "14044",
+          "records": 2088,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2090
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "87382bd9-2d34-4c0b-8036-d15f66b8fae5",
+          "hostId": "14045",
+          "records": 2880,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2882
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "6913648a-2288-47c3-aab0-6150412c0fef",
+          "hostId": "86798",
+          "records": 1095,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1097
+        },
+        {
+          "pluginVersion": "0.1.156",
+          "windowId": "2b6d176c-8f25-412c-84eb-ac9de66c3f3c",
+          "hostId": "26820",
+          "records": 946,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 948
+        },
+        {
+          "pluginVersion": "0.1.157",
+          "windowId": "1e6abc60-f545-44f9-9a19-5eb6d237ce6e",
+          "hostId": "45524",
+          "records": 3265,
+          "turns": 16,
+          "tools": 103,
+          "failures": 4,
+          "logLines": 3563
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "024a84ac-ed2b-4425-8806-f6d95468fcb4",
+          "hostId": "29236",
+          "records": 1274,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1276
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "764d1642-2847-42cd-8ad0-360b84502af6",
+          "hostId": "54920",
+          "records": 196,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 202
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "11aafc43-dd52-4598-ad97-af2afabffbfe",
+          "hostId": "55066",
+          "records": 574,
+          "turns": 3,
+          "tools": 34,
+          "failures": 1,
+          "logLines": 649
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "4e54b7d7-4e38-4ac1-ba26-3eba87786a8f",
+          "hostId": "63264",
+          "records": 525,
+          "turns": 4,
+          "tools": 34,
+          "failures": 4,
+          "logLines": 599
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "029f67ad-a8d3-4e0c-ac7a-8e1cf601c746",
+          "hostId": "70867",
+          "records": 9801,
+          "turns": 51,
+          "tools": 773,
+          "failures": 96,
+          "logLines": 10654
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "84ac3943-dcae-40be-b2ae-41b3b8eb008c",
+          "hostId": "72954",
+          "records": 1738,
+          "turns": 1,
+          "tools": 146,
+          "failures": 1,
+          "logLines": 1772
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "8ff80d61-38a2-48ff-9cc5-902db51611a9",
+          "hostId": "79748",
+          "records": 375,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 380
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "120db2fc-7b8a-4e9e-b1ba-66d1e7815f8c",
+          "hostId": "4869",
+          "records": 2575,
+          "turns": 10,
+          "tools": 151,
+          "failures": 15,
+          "logLines": 2781
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "52023c68-5ec9-4cf3-b2a6-f67e6697a8fc",
+          "hostId": "90293",
+          "records": 63,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 68
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1792485528403,
+      "requestedToMs": 1792571928403,
+      "includedLines": 34987,
+      "outsideRangeLines": 126591,
+      "unknownTimeLines": 1912,
+      "fromMs": 1792485550879,
+      "toMs": 1792571928403
+    },
+    "summary": {
+      "turns": 85,
+      "tools": 1241,
+      "failures": 121,
+      "longestTurnMs": 4438782,
+      "versions": [
+        "0.1.151",
+        "0.1.154",
+        "0.1.156",
+        "0.1.150",
+        "0.1.159",
+        "0.1.157",
+        "0.1.160"
+      ]
+    },
+    "general": {
+      "errors": 2618,
+      "warnings": 2,
+      "retries": 0,
+      "recoveries": 1,
+      "compactionErrors": 0,
+      "groups": 38,
+      "overflow": 0,
+      "failureChains": 0
+    },
+    "loggingAudit": {
+      "status": "review-required",
+      "files": 59,
+      "functions": 2075,
+      "operations": 278,
+      "catches": 297,
+      "logSites": 329,
+      "candidates": 700,
+      "unsupported": 1,
+      "version": "0.1.160",
+      "sourceHash": "4a34dec6ab4afd74c9d0e009f7716a09cd92ca3bdcd3140b75bc0d4c9ebf1861"
+    },
+    "performanceFindings": [
+      {
+        "id": "coverage",
+        "evidence": "2 轮符合检查条件。"
+      },
+      {
+        "id": "failure-missing_file",
+        "evidence": "27 次失败；27 次有计时，已观测工具累计耗时 0.3 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-nonzero_exit",
+        "evidence": "64 次失败；64 次有计时，已观测工具累计耗时 438.7 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-unobserved",
+        "evidence": "45 轮出现，最长 1363.1 秒。"
+      },
+      {
+        "id": "phase-compaction",
+        "evidence": "10 轮出现，最长 244.4 秒。"
+      },
+      {
+        "id": "failure-timeout",
+        "evidence": "13 次失败；13 次有计时，已观测工具累计耗时 199.2 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "repeat",
+        "evidence": "5 轮符合检查条件。"
+      },
+      {
+        "id": "failure-missing_dependency",
+        "evidence": "2 次失败；2 次有计时，已观测工具累计耗时 12.9 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-build_or_test",
+        "evidence": "5 次失败；5 次有计时，已观测工具累计耗时 184.5 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-preparation",
+        "evidence": "2 轮出现，最长 7.8 秒。"
+      },
+      {
+        "id": "phase-tools",
+        "evidence": "7 轮出现，最长 274.9 秒。"
+      },
+      {
+        "id": "failure-command_not_found",
+        "evidence": "7 次失败；7 次有计时，已观测工具累计耗时 0.0 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-syntax",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.0 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-unknown",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.6 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-rate_limit",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.5 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      }
+    ]
+  },
+  "after": {
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 74528273,
+      "lines": 163490,
+      "records": 33413,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 18,
+      "sessions": 20,
+      "firstDay": "2026-10-15",
+      "lastDay": "2026-10-21",
+      "sources": [
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "8ff1babe-23bf-4321-b05e-47c9cf8670f0",
+          "hostId": "30870",
+          "records": 1271,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1273
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "22255ee5-6fd9-4c4f-9bad-72b8d9995ecb",
+          "hostId": "31190",
+          "records": 1580,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1582
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "5856c6db-93be-43fc-8dae-cc26baeedfc5",
+          "hostId": "30626",
+          "records": 1272,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1274
+        },
+        {
+          "pluginVersion": "0.1.156",
+          "windowId": "5b75af2a-29c7-44a8-a488-e3231440d55e",
+          "hostId": "29858",
+          "records": 1895,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1897
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "06d80662-765e-4eb6-bf87-b2e294a466dd",
+          "hostId": "14044",
+          "records": 2088,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2090
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "87382bd9-2d34-4c0b-8036-d15f66b8fae5",
+          "hostId": "14045",
+          "records": 2880,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2882
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "6913648a-2288-47c3-aab0-6150412c0fef",
+          "hostId": "86798",
+          "records": 1095,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1097
+        },
+        {
+          "pluginVersion": "0.1.156",
+          "windowId": "2b6d176c-8f25-412c-84eb-ac9de66c3f3c",
+          "hostId": "26820",
+          "records": 946,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 948
+        },
+        {
+          "pluginVersion": "0.1.157",
+          "windowId": "1e6abc60-f545-44f9-9a19-5eb6d237ce6e",
+          "hostId": "45524",
+          "records": 3265,
+          "turns": 16,
+          "tools": 103,
+          "failures": 4,
+          "logLines": 3563
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "024a84ac-ed2b-4425-8806-f6d95468fcb4",
+          "hostId": "29236",
+          "records": 1274,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1276
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "764d1642-2847-42cd-8ad0-360b84502af6",
+          "hostId": "54920",
+          "records": 196,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 202
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "11aafc43-dd52-4598-ad97-af2afabffbfe",
+          "hostId": "55066",
+          "records": 574,
+          "turns": 3,
+          "tools": 34,
+          "failures": 1,
+          "logLines": 649
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "4e54b7d7-4e38-4ac1-ba26-3eba87786a8f",
+          "hostId": "63264",
+          "records": 525,
+          "turns": 4,
+          "tools": 34,
+          "failures": 4,
+          "logLines": 599
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "029f67ad-a8d3-4e0c-ac7a-8e1cf601c746",
+          "hostId": "70867",
+          "records": 9801,
+          "turns": 51,
+          "tools": 773,
+          "failures": 96,
+          "logLines": 10654
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "84ac3943-dcae-40be-b2ae-41b3b8eb008c",
+          "hostId": "72954",
+          "records": 1738,
+          "turns": 1,
+          "tools": 146,
+          "failures": 1,
+          "logLines": 1772
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "8ff80d61-38a2-48ff-9cc5-902db51611a9",
+          "hostId": "79748",
+          "records": 375,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 380
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "120db2fc-7b8a-4e9e-b1ba-66d1e7815f8c",
+          "hostId": "4869",
+          "records": 2575,
+          "turns": 10,
+          "tools": 151,
+          "failures": 15,
+          "logLines": 2781
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "52023c68-5ec9-4cf3-b2a6-f67e6697a8fc",
+          "hostId": "90293",
+          "records": 63,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 68
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1792485528403,
+      "requestedToMs": 1792571928403,
+      "includedLines": 34987,
+      "outsideRangeLines": 126591,
+      "unknownTimeLines": 1912,
+      "fromMs": 1792485550879,
+      "toMs": 1792571928403
+    },
+    "summary": {
+      "turns": 85,
+      "tools": 1241,
+      "failures": 121,
+      "longestTurnMs": 4438782,
+      "versions": [
+        "0.1.151",
+        "0.1.154",
+        "0.1.156",
+        "0.1.150",
+        "0.1.159",
+        "0.1.157",
+        "0.1.160"
+      ]
+    },
+    "general": {
+      "errors": 2618,
+      "warnings": 2,
+      "retries": 0,
+      "recoveries": 1,
+      "compactionErrors": 0,
+      "groups": 38,
+      "overflow": 0,
+      "failureChains": 0
+    },
+    "loggingAudit": {
+      "status": "review-required",
+      "files": 59,
+      "functions": 2081,
+      "operations": 279,
+      "catches": 299,
+      "logSites": 329,
+      "candidates": 704,
+      "unsupported": 1,
+      "version": "0.1.162",
+      "sourceHash": "6ac2e64e98f4f710b5834489fce44848171259d558dccb8f95e8ca57c50cd015"
+    },
+    "performanceFindings": [
+      {
+        "id": "coverage",
+        "evidence": "2 轮符合检查条件。"
+      },
+      {
+        "id": "failure-missing_file",
+        "evidence": "27 次失败；27 次有计时，已观测工具累计耗时 0.3 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-nonzero_exit",
+        "evidence": "64 次失败；64 次有计时，已观测工具累计耗时 438.7 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-unobserved",
+        "evidence": "45 轮出现，最长 1363.1 秒。"
+      },
+      {
+        "id": "phase-compaction",
+        "evidence": "10 轮出现，最长 244.4 秒。"
+      },
+      {
+        "id": "failure-timeout",
+        "evidence": "13 次失败；13 次有计时，已观测工具累计耗时 199.2 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "repeat",
+        "evidence": "5 轮符合检查条件。"
+      },
+      {
+        "id": "failure-missing_dependency",
+        "evidence": "2 次失败；2 次有计时，已观测工具累计耗时 12.9 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-build_or_test",
+        "evidence": "5 次失败；5 次有计时，已观测工具累计耗时 184.5 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-preparation",
+        "evidence": "2 轮出现，最长 7.8 秒。"
+      },
+      {
+        "id": "phase-tools",
+        "evidence": "7 轮出现，最长 274.9 秒。"
+      },
+      {
+        "id": "failure-command_not_found",
+        "evidence": "7 次失败；7 次有计时，已观测工具累计耗时 0.0 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-syntax",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.0 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-unknown",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.6 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-rate_limit",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.5 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      }
+    ]
+  },
+  "allRetained": {
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 74528273,
+      "lines": 163490,
+      "records": 149827,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 71,
+      "sessions": 105,
+      "firstDay": "2026-10-15",
+      "lastDay": "2026-10-21",
+      "sources": [
+        {
+          "pluginVersion": "未标注",
+          "windowId": "未标注",
+          "hostId": "未标注",
+          "records": 13436,
+          "turns": 23,
+          "tools": 260,
+          "failures": 25,
+          "logLines": 13436
+        },
+        {
+          "pluginVersion": "0.1.125",
+          "windowId": "aa5eb810-5107-4141-8bda-f4e475a0eed5",
+          "hostId": "31286",
+          "records": 231,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 235
+        },
+        {
+          "pluginVersion": "0.1.126",
+          "windowId": "0b815063-b30c-4d61-bec5-839e90b159a8",
+          "hostId": "41317",
+          "records": 3021,
+          "turns": 7,
+          "tools": 266,
+          "failures": 23,
+          "logLines": 3151
+        },
+        {
+          "pluginVersion": "0.1.128",
+          "windowId": "3a99fcd3-4267-4df6-83df-8eb1658f9609",
+          "hostId": "71443",
+          "records": 15,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 19
+        },
+        {
+          "pluginVersion": "0.1.132",
+          "windowId": "9fb68ef4-9d47-4943-8c5a-bb7132b20325",
+          "hostId": "21238",
+          "records": 3162,
+          "turns": 19,
+          "tools": 182,
+          "failures": 22,
+          "logLines": 3514
+        },
+        {
+          "pluginVersion": "0.1.134",
+          "windowId": "7edbb856-2882-48ff-9e5d-10f2ec292a86",
+          "hostId": "61344",
+          "records": 416,
+          "turns": 1,
+          "tools": 39,
+          "failures": 4,
+          "logLines": 463
+        },
+        {
+          "pluginVersion": "0.1.135",
+          "windowId": "807da4c9-1cfd-4801-9ec6-35f0e58b7a8e",
+          "hostId": "71793",
+          "records": 449,
+          "turns": 1,
+          "tools": 37,
+          "failures": 0,
+          "logLines": 503
+        },
+        {
+          "pluginVersion": "0.1.136",
+          "windowId": "da26864b-cd0e-4ed5-aacb-88a8c76daa27",
+          "hostId": "84773",
+          "records": 4215,
+          "turns": 15,
+          "tools": 128,
+          "failures": 12,
+          "logLines": 4528
+        },
+        {
+          "pluginVersion": "0.1.136",
+          "windowId": "d615cd43-91b6-4891-a7b6-e54122737a17",
+          "hostId": "29765",
+          "records": 1802,
+          "turns": 6,
+          "tools": 176,
+          "failures": 13,
+          "logLines": 1913
+        },
+        {
+          "pluginVersion": "0.1.137",
+          "windowId": "3cd0f8ab-20b4-426e-b3d1-067367a57980",
+          "hostId": "49624",
+          "records": 38,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 50
+        },
+        {
+          "pluginVersion": "0.1.138",
+          "windowId": "622b3902-547c-40d5-8396-1048447791f3",
+          "hostId": "60796",
+          "records": 976,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 993
+        },
+        {
+          "pluginVersion": "0.1.138",
+          "windowId": "e61a52ad-ec13-4768-95c6-bbdcf138975f",
+          "hostId": "62006",
+          "records": 6555,
+          "turns": 48,
+          "tools": 546,
+          "failures": 42,
+          "logLines": 7399
+        },
+        {
+          "pluginVersion": "0.1.138",
+          "windowId": "591c44c5-fd0f-469a-a7f9-58923839f701",
+          "hostId": "27547",
+          "records": 722,
+          "turns": 1,
+          "tools": 79,
+          "failures": 5,
+          "logLines": 766
+        },
+        {
+          "pluginVersion": "0.1.139",
+          "windowId": "c2aeb38e-5c7b-42a9-8536-a196bb0f93c5",
+          "hostId": "54267",
+          "records": 1683,
+          "turns": 5,
+          "tools": 162,
+          "failures": 17,
+          "logLines": 1813
+        },
+        {
+          "pluginVersion": "0.1.142",
+          "windowId": "e2cc87c3-cb08-4fd2-a98d-36aec97b11f8",
+          "hostId": "86750",
+          "records": 1547,
+          "turns": 2,
+          "tools": 155,
+          "failures": 10,
+          "logLines": 1610
+        },
+        {
+          "pluginVersion": "0.1.144",
+          "windowId": "9dc473c2-2581-49a0-94e3-6d7a7fa24702",
+          "hostId": "23897",
+          "records": 1075,
+          "turns": 2,
+          "tools": 35,
+          "failures": 1,
+          "logLines": 1134
+        },
+        {
+          "pluginVersion": "0.1.144",
+          "windowId": "581ea854-88e8-46ca-af9a-220097b8e4a2",
+          "hostId": "31798",
+          "records": 6177,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6200
+        },
+        {
+          "pluginVersion": "0.1.144",
+          "windowId": "8363d021-7ea9-4a48-b6ae-0403c3901434",
+          "hostId": "39297",
+          "records": 6692,
+          "turns": 9,
+          "tools": 71,
+          "failures": 4,
+          "logLines": 6845
+        },
+        {
+          "pluginVersion": "0.1.145",
+          "windowId": "4717ea62-6a55-4ae6-a477-c2a9252331ec",
+          "hostId": "44481",
+          "records": 2819,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2835
+        },
+        {
+          "pluginVersion": "0.1.145",
+          "windowId": "b07c66e4-e16e-4465-8bfb-b8654379400b",
+          "hostId": "61509",
+          "records": 10261,
+          "turns": 13,
+          "tools": 363,
+          "failures": 24,
+          "logLines": 10500
+        },
+        {
+          "pluginVersion": "0.1.147",
+          "windowId": "9a3a3809-91ed-43df-b9de-a212f8317431",
+          "hostId": "46396",
+          "records": 2,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3
+        },
+        {
+          "pluginVersion": "0.1.147",
+          "windowId": "32aa006a-8c1a-4b4e-ac9a-4989d7e4401a",
+          "hostId": "47331",
+          "records": 1890,
+          "turns": 4,
+          "tools": 110,
+          "failures": 8,
+          "logLines": 1973
+        },
+        {
+          "pluginVersion": "0.1.147",
+          "windowId": "9e52790a-31b0-42f5-8755-95af8d8fb49c",
+          "hostId": "71597",
+          "records": 602,
+          "turns": 1,
+          "tools": 49,
+          "failures": 3,
+          "logLines": 625
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "98f70c21-9b7c-447c-8993-1e5373902fe0",
+          "hostId": "77815",
+          "records": 2014,
+          "turns": 2,
+          "tools": 108,
+          "failures": 3,
+          "logLines": 2080
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "d4309962-be5f-431e-8f42-70e1fd1c2c4c",
+          "hostId": "81835",
+          "records": 2065,
+          "turns": 5,
+          "tools": 122,
+          "failures": 6,
+          "logLines": 2153
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "d96d4c73-a0fa-46dd-a986-aefaff1b8d48",
+          "hostId": "12127",
+          "records": 3903,
+          "turns": 5,
+          "tools": 302,
+          "failures": 22,
+          "logLines": 4023
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "fb4bbba5-d27c-473d-b91c-a34e7cc4e073",
+          "hostId": "20513",
+          "records": 54,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 55
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "bd2646e8-5e87-4194-8552-3ade03e2b8d2",
+          "hostId": "21928",
+          "records": 87,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 96
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "9e4f7f50-8386-40da-a666-5aa11701f5fd",
+          "hostId": "23351",
+          "records": 54,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 55
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "3798c8a1-f71c-4ec3-a22c-d70e1e657dc7",
+          "hostId": "23664",
+          "records": 106,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 111
+        },
+        {
+          "pluginVersion": "0.1.148",
+          "windowId": "ba61f3ce-3a9a-44a8-a4e5-a76d9d042243",
+          "hostId": "24436",
+          "records": 101,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 106
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "e6bb2f6e-8e7f-4319-b19a-1cf19b0771c8",
+          "hostId": "49437",
+          "records": 143,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 155
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "41c3e5d6-ebfe-4d9c-9fbb-940afdc0f686",
+          "hostId": "73038",
+          "records": 56,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 61
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "2aeab9de-7a9c-4d4d-9b2e-44e67fadbc0f",
+          "hostId": "74059",
+          "records": 801,
+          "turns": 3,
+          "tools": 21,
+          "failures": 3,
+          "logLines": 852
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "10497eb5-05e5-427a-8e78-70846370feb2",
+          "hostId": "14043",
+          "records": 39,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 41
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "87382bd9-2d34-4c0b-8036-d15f66b8fae5",
+          "hostId": "14045",
+          "records": 6657,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6663
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "6b1d2177-b3c8-478b-8fc4-ab6f687f52aa",
+          "hostId": "14050",
+          "records": 100,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 117
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "16364a9a-6a88-487d-9e6b-c4086cfd4d24",
+          "hostId": "14049",
+          "records": 50,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 53
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "c9f7c54a-2935-47e0-8122-5e2420b64bfe",
+          "hostId": "14052",
+          "records": 58,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 60
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "06d80662-765e-4eb6-bf87-b2e294a466dd",
+          "hostId": "14044",
+          "records": 5835,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5844
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "eddeab09-69a4-46a5-a4fd-b78d2cb0b0b8",
+          "hostId": "14051",
+          "records": 45,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 48
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "79d9e36f-3622-4df9-8fa7-d3e256b4f22c",
+          "hostId": "14047",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "58e03acf-a4e0-4d63-aba2-d6f4ccf27f1b",
+          "hostId": "14046",
+          "records": 23,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 24
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "12c15c8a-d8c2-487a-89c5-9e60b9a3e74b",
+          "hostId": "22127",
+          "records": 110,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 129
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "082efd06-658c-458b-b890-239955febe34",
+          "hostId": "27178",
+          "records": 1163,
+          "turns": 8,
+          "tools": 112,
+          "failures": 4,
+          "logLines": 1292
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "024a84ac-ed2b-4425-8806-f6d95468fcb4",
+          "hostId": "29236",
+          "records": 2807,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2816
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "5856c6db-93be-43fc-8dae-cc26baeedfc5",
+          "hostId": "30626",
+          "records": 2787,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2797
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "8ff1babe-23bf-4321-b05e-47c9cf8670f0",
+          "hostId": "30870",
+          "records": 2799,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2808
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "4814221b-32df-4f9e-965d-55cb005995ad",
+          "hostId": "31088",
+          "records": 893,
+          "turns": 1,
+          "tools": 92,
+          "failures": 6,
+          "logLines": 919
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "4b8c8bb3-0fb5-4be8-b1c8-9853af1eca01",
+          "hostId": "37126",
+          "records": 987,
+          "turns": 6,
+          "tools": 92,
+          "failures": 12,
+          "logLines": 1093
+        },
+        {
+          "pluginVersion": "0.1.152",
+          "windowId": "78477da4-a1d9-4934-9d61-7b8ddf89e772",
+          "hostId": "56234",
+          "records": 653,
+          "turns": 7,
+          "tools": 32,
+          "failures": 0,
+          "logLines": 799
+        },
+        {
+          "pluginVersion": "0.1.153",
+          "windowId": "28f240a2-ca15-4c4e-aab9-1497536daf64",
+          "hostId": "68085",
+          "records": 1338,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1345
+        },
+        {
+          "pluginVersion": "0.1.153",
+          "windowId": "9f6d8107-ee27-4e6b-b07c-f4435cec9f2e",
+          "hostId": "68621",
+          "records": 1222,
+          "turns": 2,
+          "tools": 116,
+          "failures": 5,
+          "logLines": 1275
+        },
+        {
+          "pluginVersion": "0.1.153",
+          "windowId": "4de1e89f-41ae-4387-9e27-79788134a24f",
+          "hostId": "72432",
+          "records": 2437,
+          "turns": 7,
+          "tools": 241,
+          "failures": 33,
+          "logLines": 2583
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "bb2d578c-e885-4b8e-9a85-05571e4933c3",
+          "hostId": "1264",
+          "records": 2946,
+          "turns": 4,
+          "tools": 160,
+          "failures": 10,
+          "logLines": 3036
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "22255ee5-6fd9-4c4f-9bad-72b8d9995ecb",
+          "hostId": "31190",
+          "records": 3314,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3327
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "f077fb6f-aaca-4204-b294-2f35f3fad0ed",
+          "hostId": "13029",
+          "records": 687,
+          "turns": 7,
+          "tools": 46,
+          "failures": 2,
+          "logLines": 806
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "7631a036-5795-417f-9b14-a0bbd8c631d3",
+          "hostId": "15302",
+          "records": 821,
+          "turns": 3,
+          "tools": 70,
+          "failures": 4,
+          "logLines": 886
+        },
+        {
+          "pluginVersion": "0.1.156",
+          "windowId": "2b6d176c-8f25-412c-84eb-ac9de66c3f3c",
+          "hostId": "26820",
+          "records": 1104,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1111
+        },
+        {
+          "pluginVersion": "0.1.156",
+          "windowId": "5b75af2a-29c7-44a8-a488-e3231440d55e",
+          "hostId": "29858",
+          "records": 9932,
+          "turns": 6,
+          "tools": 353,
+          "failures": 43,
+          "logLines": 10050
+        },
+        {
+          "pluginVersion": "0.1.157",
+          "windowId": "1e6abc60-f545-44f9-9a19-5eb6d237ce6e",
+          "hostId": "45524",
+          "records": 3978,
+          "turns": 23,
+          "tools": 128,
+          "failures": 4,
+          "logLines": 4390
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "b0937f88-1a7f-4ef3-ad4e-ca10050e445b",
+          "hostId": "86663",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "6913648a-2288-47c3-aab0-6150412c0fef",
+          "hostId": "86798",
+          "records": 1666,
+          "turns": 5,
+          "tools": 32,
+          "failures": 3,
+          "logLines": 1753
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "764d1642-2847-42cd-8ad0-360b84502af6",
+          "hostId": "54920",
+          "records": 196,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 202
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "11aafc43-dd52-4598-ad97-af2afabffbfe",
+          "hostId": "55066",
+          "records": 574,
+          "turns": 3,
+          "tools": 34,
+          "failures": 1,
+          "logLines": 649
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "4e54b7d7-4e38-4ac1-ba26-3eba87786a8f",
+          "hostId": "63264",
+          "records": 525,
+          "turns": 4,
+          "tools": 34,
+          "failures": 4,
+          "logLines": 599
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "029f67ad-a8d3-4e0c-ac7a-8e1cf601c746",
+          "hostId": "70867",
+          "records": 9838,
+          "turns": 51,
+          "tools": 773,
+          "failures": 96,
+          "logLines": 10691
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "84ac3943-dcae-40be-b2ae-41b3b8eb008c",
+          "hostId": "72954",
+          "records": 1738,
+          "turns": 1,
+          "tools": 146,
+          "failures": 1,
+          "logLines": 1772
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "8ff80d61-38a2-48ff-9cc5-902db51611a9",
+          "hostId": "79748",
+          "records": 407,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 412
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "120db2fc-7b8a-4e9e-b1ba-66d1e7815f8c",
+          "hostId": "4869",
+          "records": 2973,
+          "turns": 13,
+          "tools": 174,
+          "failures": 15,
+          "logLines": 3215
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "52023c68-5ec9-4cf3-b2a6-f67e6697a8fc",
+          "hostId": "90293",
+          "records": 1324,
+          "turns": 1,
+          "tools": 109,
+          "failures": 4,
+          "logLines": 1383
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "f5c2ec4f-d940-4bba-9de4-e2963a90cad0",
+          "hostId": "97390",
+          "records": 623,
+          "turns": 1,
+          "tools": 49,
+          "failures": 3,
+          "logLines": 664
+        }
+      ],
+      "scanErrors": [],
+      "requestedToMs": 1792573246396,
+      "includedLines": 163490,
+      "outsideRangeLines": 0,
+      "unknownTimeLines": 0,
+      "fromMs": 1791993654553,
+      "toMs": 1792573245122
+    },
+    "summary": {
+      "turns": 325,
+      "tools": 6004,
+      "failures": 497,
+      "longestTurnMs": 52999747,
+      "versions": [
+        "0.1.125",
+        "0.1.126",
+        "0.1.128",
+        "0.1.132",
+        "0.1.134",
+        "0.1.135",
+        "0.1.136",
+        "0.1.137",
+        "0.1.138",
+        "0.1.139",
+        "0.1.142",
+        "0.1.144",
+        "0.1.145",
+        "0.1.147",
+        "0.1.148",
+        "0.1.150",
+        "0.1.151",
+        "0.1.152",
+        "0.1.153",
+        "0.1.154",
+        "0.1.156",
+        "0.1.157",
+        "0.1.159",
+        "0.1.160"
+      ]
+    },
+    "general": {
+      "errors": 7276,
+      "warnings": 15,
+      "retries": 7,
+      "recoveries": 34,
+      "compactionErrors": 0,
+      "groups": 139,
+      "overflow": 0,
+      "correlatedErrors": 2,
+      "failureChains": 1
+    },
+    "loggingAudit": {
+      "status": "review-required",
+      "files": 59,
+      "functions": 2081,
+      "operations": 279,
+      "catches": 299,
+      "logSites": 329,
+      "candidates": 704,
+      "unsupported": 1,
+      "version": "0.1.162",
+      "sourceHash": "6ac2e64e98f4f710b5834489fce44848171259d558dccb8f95e8ca57c50cd015"
+    },
+    "performanceFindings": [
+      {
+        "id": "failure-missing_file",
+        "evidence": "100 次失败；100 次有计时，已观测工具累计耗时 5.1 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-nonzero_exit",
+        "evidence": "253 次失败；253 次有计时，已观测工具累计耗时 2525.6 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-unobserved",
+        "evidence": "171 轮出现，最长 2114.1 秒。"
+      },
+      {
+        "id": "failure-timeout",
+        "evidence": "61 次失败；61 次有计时，已观测工具累计耗时 686.1 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-tools",
+        "evidence": "65 轮出现，最长 1532.0 秒。"
+      },
+      {
+        "id": "repeat",
+        "evidence": "19 轮符合检查条件。"
+      },
+      {
+        "id": "failure-build_or_test",
+        "evidence": "31 次失败；31 次有计时，已观测工具累计耗时 214.3 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-compaction",
+        "evidence": "37 轮出现，最长 328.8 秒。"
+      },
+      {
+        "id": "coverage",
+        "evidence": "26 轮符合检查条件。"
+      },
+      {
+        "id": "failure-rate_limit",
+        "evidence": "4 次失败；4 次有计时，已观测工具累计耗时 7.1 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-permission",
+        "evidence": "7 次失败；7 次有计时，已观测工具累计耗时 0.7 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-command_not_found",
+        "evidence": "12 次失败；12 次有计时，已观测工具累计耗时 0.1 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-network_or_service",
+        "evidence": "4 次失败；4 次有计时，已观测工具累计耗时 4.2 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "phase-preparation",
+        "evidence": "9 轮出现，最长 10.3 秒。"
+      },
+      {
+        "id": "failure-unknown",
+        "evidence": "17 次失败；17 次有计时，已观测工具累计耗时 28.3 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-missing_dependency",
+        "evidence": "3 次失败；3 次有计时，已观测工具累计耗时 12.9 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-dns",
+        "evidence": "2 次失败；2 次有计时，已观测工具累计耗时 14.8 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-authentication",
+        "evidence": "1 次失败；1 次有计时，已观测工具累计耗时 0.0 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      },
+      {
+        "id": "failure-syntax",
+        "evidence": "2 次失败；2 次有计时，已观测工具累计耗时 0.0 秒（可能重叠）；0 次耗时未知，不按 0 秒计算。计时和显示均可能取整。"
+      }
+    ]
+  },
+  "comparison": {
+    "snapshotBeforeMedianMs": 18,
+    "snapshotAfterMedianMs": 18,
+    "snapshotBeforeAllocatedBytes": 65986000,
+    "snapshotAfterAllocatedBytes": 901000,
+    "rpc": [
+      {
+        "mode": "before",
+        "closed": false,
+        "pendingRequests": 1,
+        "rejectionMs": 0
+      },
+      {
+        "mode": "after",
+        "closed": true,
+        "pendingRequests": 0,
+        "rejectionMs": 0
+      }
+    ],
+    "overflow": [
+      {
+        "mode": "before",
+        "detectedDroppedLines": 0,
+        "unknownTimeLines": 1
+      },
+      {
+        "mode": "after",
+        "detectedDroppedLines": 69,
+        "unknownTimeLines": 0
+      }
+    ]
+  },
+  "limitations": [
+    "原始历史失败不因修复而删除；没有failureId的旧记录不擅自推断独立事故数。",
+    "历史最长未知等待、工具阶段及真实压缩耗时没有通过合成测试证明缩短。",
+    "快照实测受本机磁盘缓存和进程负载影响；分配量改进不能外推为模型或后端耗时缩短。",
+    "CLI内部遥测导出队列/重试/最终丢弃没有足够证据，不能宣称已恢复。"
+  ]
+}
