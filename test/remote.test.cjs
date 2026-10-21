@@ -72,6 +72,29 @@ test('本机空窗口和多文件夹工作区均注册；远端、不可信窗�
     vscode.env.remoteName='ssh-remote';assert.equal(p.remoteRegistration(),undefined);
   }finally{vscode.workspace=saved;vscode.env=env;}
 });
+test('二十条长中文或 emoji 标题加重置卡不超帧预算，名称缩略不丢会话和额度', async () => {
+  for (const title of ['长中文会话标题'.repeat(12), '🙂'.repeat(79)+'末尾', '\\"\u0001'.repeat(26)]) {
+    for (const idLength of [36,128]) {
+      const f=fixture(), ids=Array.from({length:20},(_,i)=>String(i).padStart(idLength,'s'));
+      const rows=ids.map((id,i)=>({id,title:i===0?'短标题':title}));
+      f.provider.sessions=new Set(ids.map((sessionId,i)=>({...f.b,sessionId,proc:{...f.b.proc,isBusy:i===1},pendingPerm:i===2?{kind:'permission_request'}:undefined})));
+      f.provider.store.list=()=>rows;f.provider.pinnedSet=()=>new Set([ids[19]]);
+      const usage={kind:'usage',weekPct:0,weekResetAt:1900000000,planType:'pro',resetCredits:{availableCount:8,cards:Array.from({length:8},()=>({title:'中文重置卡'.repeat(20),expiresAt:1900000000}))}};
+      f.provider.lastUsage=usage;const before=JSON.stringify(usage);
+      const reply=await f.provider.executeRemote(command({kind:'session.list'},''),()=>true);
+      assert.equal(reply.accepted,true);assert.ok(Buffer.byteLength(JSON.stringify(reply))<=6500);
+      assert.equal(reply.result.total,20);assert.equal(reply.result.sessions.length,20);
+      assert.deepEqual(new Set(reply.result.sessions.map(s=>s.id)),new Set(ids));
+      assert.equal(reply.result.sessions[0].id,ids[19]);assert.equal(reply.result.sessions[0].pinned,true);
+      assert.equal(reply.result.sessions.find(s=>s.id===ids[1]).busy,true);assert.equal(reply.result.sessions.find(s=>s.id===ids[2]).waiting,true);
+      assert.equal(reply.result.usage.weekPct,0);assert.equal(reply.result.usage.weekResetAt,1900000000);
+      assert.equal(reply.result.usage.resetCredits.availableCount,8);assert.equal(reply.result.usage.resetCredits.cards.length,8);
+      assert.ok(reply.result.usage.resetCredits.cards.every(c=>c.expiresAt===1900000000));
+      assert.ok(reply.result.sessions.every(s=>s.title.length>0&&s.title.isWellFormed()));
+      assert.equal(JSON.stringify(usage),before);assert.equal(rows[1].title,title);
+    }
+  }
+});
 test('手机发送失败不把手机文字写入电脑草稿，保留桌面原输入', async () => {
   const f = fixture(); f.b.draft = '电脑自己的草稿'; f.provider.ensureProcess = async () => undefined;
   assert.equal((await f.provider.executeRemote(command({ kind: 'message.send', text: '手机文字', attachmentIds: [] }), () => true)).error, 'MESSAGE_NOT_SENT');

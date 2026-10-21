@@ -26,6 +26,17 @@ interface RemoteState {
     remoteLimit?: Extract<ToWebview, {kind: 'rate_limit'}>;
 }
 
+/** 保留列表项与额度数据，只在整条回执超预算时缩短展示名称。按码点截取，避免切断 emoji。 */
+function fitTitlePreviews(reply: RemoteReply, items: {title?: string}[]): void {
+    const titles = items.map(item => ({item, chars: Array.from(item.title ?? '')}));
+    const longest = Math.max(0, ...titles.map(({chars}) => chars.length));
+    for (let keep = longest - 1; keep >= 1 && Buffer.byteLength(JSON.stringify(reply)) > 6500; keep--) {
+        for (const {item, chars} of titles) {
+            if (chars.length > keep) item.title = chars.slice(0, keep).join('') + '…';
+        }
+    }
+}
+
 /** v1 兼容接入：命令、手机排队、流与图片状态都不进入电脑聊天上下文。 */
 export class RemoteSessionAdapter<C extends RemoteSession> {
     private readonly states = new WeakMap<C, RemoteState>();
@@ -147,13 +158,13 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         }
     }
     private remoteTitle(ctx: C): string {
-        return (this.host.store.list().find(s => s.id === ctx.sessionId)?.title || ctx.lastUserText || '新会话').replace(/\s+/g, ' ').trim().slice(0, 80);
+        return Array.from((this.host.store.list().find(s => s.id === ctx.sessionId)?.title || ctx.lastUserText || '新会话').replace(/\s+/g, ' ').trim()).slice(0, 80).join('');
     }
     private accountUsage() {
         this.host.fetchUsage();
         const usage = this.host.lastUsage?.kind === 'usage' ? this.host.lastUsage : undefined;
         // 逐张明细保留在加密帧预算内，手机会说明剩余张数未返回有效期。
-        const resetCredits = usage?.resetCredits ? {...usage.resetCredits, cards: usage.resetCredits.cards?.slice(0, 8) ?? null} : usage?.resetCredits;
+        const resetCredits = usage?.resetCredits ? {...usage.resetCredits, cards: usage.resetCredits.cards?.slice(0, 8).map(card => ({...card})) ?? null} : usage?.resetCredits;
         return usage ? { sessionPct: usage.sessionPct, sessionResetAt: usage.sessionResetAt,
             weekPct: usage.weekPct, weekResetAt: usage.weekResetAt, planType: usage.planType, resetCredits,
             updatedAt: this.host.lastUsageUpdatedAt } : null;
@@ -188,9 +199,11 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         const op = command.operation;
         if (op.kind === 'session.list') {
             const all = contexts().filter(c => c.sessionId);
-            return { accepted: true, result: { kind: 'session.list', total: all.length, usage: this.accountUsage(),
+            const reply = { accepted: true as const, result: { kind: 'session.list', total: all.length, usage: this.accountUsage(),
                 sessions: all.sort((a,b)=>Number(this.host.pinnedSet().has(b.sessionId!))-Number(this.host.pinnedSet().has(a.sessionId!))).slice(0, 20).map(c => ({ id: c.sessionId, title: this.remoteTitle(c), pinned:this.host.pinnedSet().has(c.sessionId!),
                     busy: !!c.proc?.isBusy || !!c.sending, waiting: c.pendingPerm?.kind === 'permission_request' })) } };
+            fitTitlePreviews(reply, [...reply.result.sessions, ...reply.result.usage?.resetCredits?.cards ?? []]);
+            return reply;
         }
         let ctx = contexts().find(c => c.sessionId === command.target!.sessionId);
         if (op.kind === 'session.create') {
