@@ -1195,6 +1195,27 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "restored":
       hideRestoring();
       break;
+    case "edit_message_result": {
+      const edit = activeMessageEdit;
+      if (!edit || edit.requestId !== m.requestId) break;
+      if (m.ok) {
+        vscode.setState({ sessionId: m.sessionId });
+        activeMessageEdit = undefined;
+        submitEdit(edit.msg, edit.checkpointId, edit.input.value, false, false, m.requestId);
+      } else {
+        edit.requestId = undefined;
+        edit.input.disabled = false;
+        edit.save.disabled = false;
+        edit.cancel.disabled = false;
+        edit.save.textContent = "保存并重新发送";
+        edit.error.textContent = m.message || "还原未完成，请重试。";
+        queuePausedAfterRestore = true;
+        hideRestoring();
+        setBusy(!!m.busy);
+        edit.input.focus();
+      }
+      break;
+    }
     case "forking":
       if (m.busy) showForking(m.checkpointId, m.label);
       else if (forkingCheckpoint === m.checkpointId) hideForking();
@@ -2649,6 +2670,7 @@ const HISTORY_ITEM_LIMIT = 120; // 工具密集的几轮也可能有上千条记
 let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: string; userText?: string }[] } | null = null;
 
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
+  activeMessageEdit = undefined;
   localSends.clear();
   hideSpeedFeedback();
   hideSpeedTip();
@@ -2704,7 +2726,7 @@ function renderHistory(showAll: boolean) {
   // 改为按身份匹配：还原点存了发起它的那条提问原文（userText），顺序扫描用户
   // 消息找同文本的那条。匹配不上的还原点宁可不画分割线，也绝不错位。
   const userTexts: string[] = [];
-  for (const it of items) if (it.type === "user") userTexts.push((it.text || "").trim());
+  for (const it of items) if (it.type === "user") userTexts.push(it.text.trim() || (it.images?.length ? "(图片)" : ""));
   const userTotal = userTexts.length;
   const cpByOrdinal = new Map<number, { id: string; synthetic?: boolean }>();
   {
@@ -2831,7 +2853,11 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
       const cp = cpByOrdinal.get(userOrdinal);
       if (cp) messagesEl.appendChild(renderCheckpointDivider(cp.id, cp.synthetic, userOrdinal > 0)); // 第一条前也画：还原到它之前 = 清空对话重来
       const m = appendUser(it.text, it.files || [], it.images || [], false);
-      if (cp) m.dataset.checkpointId = cp.id; // link message -> checkpoint (for edit)
+      userAttachments.set(m, { context: it.context, files: it.files, labels: it.files });
+      if (cp) {
+        m.dataset.checkpointId = cp.id;
+        attachMessageEdit(m);
+      }
       const answerCard = m.querySelector<HTMLElement>(".askq-card");
       if (cp && answerCard) attachReanswer(answerCard, cp.id);
     } else if (it.type === "image") {
@@ -3240,6 +3266,7 @@ function onCheckpointMarker(checkpointId: string, sendId?: string) {
   const user = sendId ? localSends.get(sendId)?.node : lastUserEl;
   if (!user?.isConnected || user.dataset.checkpointId) return;
   user.dataset.checkpointId = checkpointId;
+  attachMessageEdit(user);
   if (sendId) localSends.delete(sendId);
   messagesEl.insertBefore(renderCheckpointDivider(checkpointId, undefined,
     Array.from(messagesEl.querySelectorAll(".msg.user")).indexOf(user) > 0), user);
@@ -3310,6 +3337,11 @@ interface QueueItem {
   imageUris: string[];
 }
 const localSends = new Map<string, { node: HTMLElement; payload: QueueItem; cancelled?: boolean }>();
+const userAttachments = new WeakMap<HTMLElement, { context?: string; files?: string[]; labels?: string[] }>();
+let activeMessageEdit: {
+  msg: HTMLElement; checkpointId: string; input: HTMLTextAreaElement;
+  save: HTMLButtonElement; cancel: HTMLButtonElement; error: HTMLElement; requestId?: string;
+} | undefined;
 const taskQueue: QueueItem[] = [];
 const taskQueueEl = $("task-queue");
 
@@ -3578,6 +3610,7 @@ function performSend(p: QueueItem, jumpToLatest: boolean) {
   // first stream event — reopens rendering.
   const sendId = crypto.randomUUID();
   const user = appendUser(p.text, p.labels, p.imageUris, jumpToLatest);
+  userAttachments.set(user, { context: p.context, files: p.files, labels: p.labels });
   user.dataset.sendId = sendId;
   localSends.set(sendId, { node: user, payload: p });
   if (!jumpToLatest) maybeScroll();
@@ -4577,6 +4610,93 @@ function appendUser(text: string, contextLabels: string[] = [], images: string[]
   return msg;
 }
 
+/** 只有已有还原点的普通用户消息可以编辑；问题答案沿用专门的重新回答入口。 */
+function attachMessageEdit(msg: HTMLElement) {
+  if (!msg.dataset.checkpointId || msg.classList.contains("question-reply") || msg.querySelector(".user-edit")) return;
+  const actions = el("div", "user-actions");
+  const button = el("button", "msg-act user-edit") as HTMLButtonElement;
+  button.type = "button";
+  button.innerHTML = `${ICONS.acceptEdits}<span>编辑消息</span>`;
+  button.title = "修改这条消息，并从发送它之前重新继续";
+  button.onclick = () => beginMessageEdit(msg);
+  actions.appendChild(button);
+  msg.querySelector(".msg-body")!.appendChild(actions);
+}
+
+function closeMessageEdit() {
+  const edit = activeMessageEdit;
+  if (!edit || edit.requestId) return;
+  edit.msg.classList.remove("editing");
+  edit.msg.querySelector(".user-editor")?.remove();
+  activeMessageEdit = undefined;
+  edit.msg.querySelector<HTMLButtonElement>(".user-edit")?.focus();
+}
+
+function beginMessageEdit(msg: HTMLElement) {
+  if (restoreInProgress || forkingCheckpoint || historyPending) return;
+  if (activeMessageEdit?.msg === msg) { activeMessageEdit.input.focus(); return; }
+  // 不因点击另一条消息悄悄丢弃已经输入的修改。
+  if (activeMessageEdit?.msg.isConnected) {
+    activeMessageEdit.error.textContent = "请先发送或取消当前编辑，再编辑另一条消息。";
+    activeMessageEdit.input.focus();
+    return;
+  }
+  const checkpointId = msg.dataset.checkpointId;
+  if (!checkpointId) return;
+  const editor = el("div", "user-editor");
+  const input = el("textarea", "user-edit-input") as HTMLTextAreaElement;
+  input.value = msg.dataset.rawText || "";
+  input.rows = Math.min(12, Math.max(3, input.value.split("\n").length));
+  input.setAttribute("aria-label", "编辑消息内容");
+  const hint = el("div", "user-edit-hint", checkpointId.startsWith("turn:")
+    ? "发送后撤回本条及后续对话，上一轮完整保留。此处没有文件快照，文件保持现状。"
+    : "发送后撤回本条及后续对话，并还原此后的文件改动；上一轮完整保留。原会话保留在历史中。");
+  const error = el("div", "user-edit-error");
+  error.setAttribute("role", "alert");
+  const actions = el("div", "user-edit-actions");
+  const cancel = el("button", "user-edit-cancel", "取消") as HTMLButtonElement;
+  const save = el("button", "user-edit-save", "保存并重新发送") as HTMLButtonElement;
+  cancel.type = save.type = "button";
+  cancel.onclick = closeMessageEdit;
+  const edit = activeMessageEdit = { msg, checkpointId, input, save, cancel, error, requestId: undefined as string | undefined };
+  save.onclick = () => {
+    if (edit !== activeMessageEdit || edit.requestId) return;
+    if (rateLimited || restoreInProgress || forkingCheckpoint || historyPending) {
+      error.textContent = rateLimited ? "用量已达上限，请恢复后再发送。" : "会话操作尚未完成，请稍后重新发送。";
+      return;
+    }
+    const pictures = Array.from(msg.querySelectorAll<HTMLImageElement>(".msg-images img"));
+    const images: { mediaType: string; data: string }[] = [];
+    for (const picture of pictures) {
+      const match = /^data:(image\/[^;,]+)(?:;[^;,]+)*;base64,(.+)$/.exec(picture.src);
+      if (!match) { error.textContent = "原消息的图片无法读取，请重新加载会话后再试。"; return; }
+      images.push({ mediaType: match[1], data: match[2] });
+    }
+    if (!input.value.trim() && !images.length) { error.textContent = "请输入消息内容后再发送。"; input.focus(); return; }
+    error.textContent = "";
+    edit.requestId = crypto.randomUUID();
+    input.disabled = save.disabled = cancel.disabled = true;
+    save.textContent = "正在还原并发送…";
+    // 宿主确认回退成功前保留原对话和编辑框，同时拦住排队消息抢先发送。
+    restoringRegen = true;
+    showRestoring();
+    const attachments = userAttachments.get(msg);
+    send({ type: "editMessage", checkpointId, text: input.value,
+      images: images.length ? images : undefined, context: attachments?.context, files: attachments?.files, requestId: edit.requestId });
+  };
+  input.addEventListener("keydown", event => {
+    if (event.isComposing) return;
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMessageEdit(); }
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); save.click(); }
+  });
+  actions.append(cancel, save);
+  editor.append(input, hint, error, actions);
+  msg.querySelector(".msg-body")!.appendChild(editor);
+  msg.classList.add("editing");
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+}
+
 /** The user message that prompted a given assistant turn (walks back past dividers). */
 function precedingUserMsg(aEl: HTMLElement): HTMLElement | null {
   let n = aEl.previousElementSibling as HTMLElement | null;
@@ -4619,7 +4739,7 @@ function buildReplyActions(aEl: HTMLElement): HTMLElement {
 /** Re-run the user message that produced this reply: rewind to before it
  *  (truncate transcript + revert files) and resend the same text. */
 function regenerate(aEl: HTMLElement) {
-  if (isBusy || rateLimited) return;
+  if (isBusy || rateLimited || restoreInProgress || activeMessageEdit?.msg.isConnected) return;
   // 只重新生成最新一条回复：其后若还有别的消息（更晚的对话），拒绝——否则会砍掉
   // 那些对话。CSS 已隐藏旧回复的按钮，这里是兜底。
   let after = aEl.nextElementSibling;
@@ -4639,8 +4759,9 @@ function regenerate(aEl: HTMLElement) {
   submitEdit(userMsg, userMsg.dataset.checkpointId || "", raw, true);
 }
 
-function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, regen = false) {
+function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, regen = false, dispatch = true, sendId?: string) {
   restoringRegen = regen;
+  const attachments = userAttachments.get(msg);
   // Carry the original message's images through the edit/regenerate. Build the
   // shown list and the sent list in ONE pass: filtering only the sent list let
   // the view display images (e.g. https: or `;charset=` data URIs) that were
@@ -4665,6 +4786,7 @@ function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, reg
     node = next;
   }
   msg.remove();
+  for (const [id, entry] of localSends) if (!entry.node.isConnected) localSends.delete(id);
   pruneRailObservers();
   cancelLiveRender();
   // Reset streaming state and re-append the edited message as the new turn.
@@ -4672,7 +4794,21 @@ function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, reg
   liveBlock = null;
   toolCards.clear();
   userMsgCount = messagesEl.querySelectorAll(".msg.user").length;
-  appendUser(newText, [], imageUris);
+  userStopped = false;
+  waitingQuestionId = undefined;
+  questionInteractions.clear();
+  childQuestionIds.clear();
+  const user = appendUser(newText, attachments?.labels || [], imageUris);
+  if (attachments) userAttachments.set(user, attachments);
+  if (sendId) {
+    user.dataset.sendId = sendId;
+    localSends.set(sendId, { node: user, payload: {
+      text: newText, context: attachments?.context,
+      contexts: attachments?.context ? [{ label: "原消息附加上下文", text: attachments.context }] : [],
+      images, files: attachments?.files || [], labels: attachments?.labels || [], imageUris,
+    } });
+  }
+  pushInputHistory(newText);
   finalizeTurn();
   // Enter busy state like performSend — the host rewinds + respawns before the
   // real busy:true arrives; without this the stop button is missing and a
@@ -4688,7 +4824,8 @@ function submitEdit(msg: HTMLElement, checkpointId: string, newText: string, reg
   // stoppingView stays as-is — see performSend; `setBusy(true)` reopens the gate.
   refreshComposerHint();
   showWorking();
-  send({ type: "editMessage", checkpointId, text: newText, images: images.length ? images : undefined });
+  if (dispatch) send({ type: "editMessage", checkpointId, text: newText, images: images.length ? images : undefined,
+    context: attachments?.context, files: attachments?.files });
 }
 
 /** Compact attachment card for images in USER messages: mini thumbnail +

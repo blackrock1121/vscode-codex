@@ -1149,7 +1149,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     await this.handleSend(ctx, m.text, m.context, m.images, m.files, undefined, m.queueMs, m.sendId);
                     break;
                 case "editMessage":
-                    await this.editMessage(ctx, m.checkpointId, m.text, m.images);
+                    await this.editMessage(ctx, m.checkpointId, m.text, m.images, m);
                     break;
                 case "interrupt":
                     await this.stopContext(ctx);
@@ -1684,36 +1684,65 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private async editMessage(ctx: SessionCtx, checkpointId: string, text: string, images?: {
         mediaType: string;
         data: string;
-    }[]): Promise<void> {
-        if (this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion) {
-            this.post(ctx, { kind: "notice", message: "派生、还原或答案提交尚未完成，请稍后重新生成。" });
+    }[], request?: Extract<FromWebview, { type: "editMessage" }>): Promise<void> {
+        const reply = (ok: boolean, message?: string) => {
+            if (request?.requestId) this.post(ctx, { kind: "edit_message_result", requestId: request.requestId,
+                ok, message, sessionId: ctx.sessionId, busy: !!(ctx.proc?.isBusy || ctx.sending) });
+            else if (message) this.post(ctx, { kind: "notice", message });
+        };
+        if (this.forking.has(ctx) || this.restoring.has(ctx) || ctx.answeringQuestion || ctx.sending || ctx.compactionPreparing) {
+            reply(false, "会话操作尚未完成，请稍后重新发送。");
+            return;
+        }
+        if (!text.trim() && !images?.length) {
+            reply(false, "请输入消息内容或保留图片后再发送。");
             return;
         }
         this.restoring.add(ctx);
         let restored = false;
-        try { restored = await this.editMessageRewind(ctx, checkpointId); }
+        const warnings: string[] = [];
+        try { restored = await this.editMessageRewind(ctx, checkpointId, !!request?.requestId, warnings); }
+        catch (error) {
+            operationFailure('message.edit.rewind', error);
+            if (request?.requestId) reply(false, `还原未完成：${String(error)}。编辑内容已保留，请检查后重试。`);
+            else throw error;
+            return;
+        }
         finally { this.restoring.delete(ctx); }
         if (restored) {
+            reply(true);
             // 编辑重发保留前端刚追加的用户气泡，不会通过 load_history 清理还原态。
             // 必须在开始新轮次前显式收尾，否则停止后新消息仍会被当作还原中而排队。
             this.post(ctx, { kind: "restored" });
-            await this.handleSend(ctx, text, undefined, images);
+            for (const message of warnings) this.post(ctx, { kind: "notice", message });
+            try {
+                const sent = await this.handleSend(ctx, text, request?.context, images, request?.files, undefined, undefined, request?.requestId);
+                if (!sent && request?.requestId) {
+                    this.post(ctx, { kind: "send_cancelled", sendId: request.requestId });
+                    this.post(ctx, { kind: "busy", busy: !!ctx.proc?.isBusy });
+                }
+            } catch (error) {
+                if (request?.requestId) this.post(ctx, { kind: "send_cancelled", sendId: request.requestId });
+                throw error;
+            }
+        } else if (request?.requestId) {
+            reply(false, "原会话已切换，编辑内容已保留，请重新选择消息。");
         }
     }
-    private async editMessageRewind(ctx: SessionCtx, checkpointId: string): Promise<boolean> {
+    private async editMessageRewind(ctx: SessionCtx, checkpointId: string, preserveView = false, warnings?: string[]): Promise<boolean> {
         const sourceId = ctx.sessionId;
         const preparation = sourceId && this.cpMeta(ctx, checkpointId)?.truncateLine
             ? this.store.prepareFork() : undefined;
         const startedAt = performance.now();
         try {
-            return await this.editMessageRewindPrepared(ctx, checkpointId, sourceId, preparation);
+            return await this.editMessageRewindPrepared(ctx, checkpointId, sourceId, preparation, preserveView, warnings);
         } finally {
             await preparation?.dispose();
             this.output.appendLine(`[rewind] 全部准备 elapsedMs=${Math.round(performance.now() - startedAt)}`);
         }
     }
     private async editMessageRewindPrepared(ctx: SessionCtx, checkpointId: string, sourceId: string | undefined,
-        preparation?: ForkPreparation): Promise<boolean> {
+        preparation?: ForkPreparation, preserveView = false, warnings?: string[]): Promise<boolean> {
         await ctx.finalizing;
         if (sourceId) await this.store.hydrate(sourceId);
         if (ctx.sessionId !== sourceId) return false;
@@ -1721,6 +1750,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const rewindAt = Date.now();
         const meta = checkpointId ? this.cpMeta(ctx, checkpointId) : undefined;
         if (!meta) {
+            if (preserveView) throw new Error("找不到这条消息的还原点，请重新加载会话后再编辑");
             this.post(ctx, {
                 kind: "error",
                 message: checkpointId ? "找不到该还原点（可能已被清理），无法重新生成。" : "这条消息没有还原点，无法重新生成。",
@@ -1730,6 +1760,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return false;
         }
         if (ctx.sessionId && !this.checkpointAligned(ctx.sessionId, meta)) {
+            if (preserveView) throw new Error("还原点与当前消息不匹配，未回退对话或修改文件");
             this.post(ctx, { kind: "error", message: "还原点与当前对话不匹配，无法重新生成。" });
             this.post(ctx, { kind: "busy", busy: false });
             this.loadCtxSession(ctx);
@@ -1745,9 +1776,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try {
             // 连接已关闭时仍可能保留待整理快照，必须统一收齐。
             await this.captureFinalSnapshot(ctx);
-            await this.forkRewind(ctx, checkpointId, meta.truncateLine, undefined, preparation);
+            const { result } = await this.forkRewind(ctx, checkpointId, meta.truncateLine, undefined, preparation);
+            if (result.skipped.length) {
+                const message = `以下文件缺少可用快照，未能还原：${result.skipped.map(file => path.basename(file)).join("、")}`;
+                if (warnings) warnings.push(message);
+                else this.post(ctx, { kind: "notice", message });
+            }
         }
         catch (err) {
+            if (preserveView) throw err;
             this.output.appendLine(`[restore] 派生失败: ${String(err)}`);
             this.post(ctx, { kind: "error", message: `回退对话失败：${String(err)}` });
             this.post(ctx, { kind: "busy", busy: false });

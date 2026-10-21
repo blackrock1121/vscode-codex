@@ -185,7 +185,7 @@ test('编辑后重新生成与派生、还原、答案提交互斥，失败也�
 test('编辑重新生成先刷新历史和还原点位置，避免用直播中的旧缓存截断',async t=>{
  const f=await fixture(t,0);const steps=[];
  f.ctx.proc=undefined;
- f.provider.forkRewind=async(_ctx,_id,cut)=>{steps.push(cut);};
+ f.provider.forkRewind=async(_ctx,_id,cut)=>{steps.push(cut);return {result:{skipped:[]},rewoundToStart:false};};
  f.provider.refreshChangedFiles=()=>{};
  assert.equal(await f.provider.editMessageRewind(f.ctx,f.id),true);
  assert.equal(f.reads(),1);assert.deepEqual(steps,[1]);
@@ -202,6 +202,7 @@ test('重新生成提前连接且在无进程时仍收齐快照，失败也释�
   f.provider.captureFinalSnapshot=async()=>{steps.push('snapshot');if(fail)throw Error('快照失败');};
   f.provider.forkRewind=async(_ctx,_id,_cut,_branch,prepared)=>{
    assert.equal(prepared,preparation);steps.push('rewind');
+   return {result:{skipped:[]},rewoundToStart:false};
   };
   f.provider.refreshChangedFiles=()=>{};
   f.provider.loadCtxSession=()=>{};

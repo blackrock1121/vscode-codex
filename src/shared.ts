@@ -136,6 +136,8 @@ export type ToWebview =
   | { kind: "restoring" }
   /** 回退已完成，编辑重发即将开始；仅解除还原状态，不代表新轮次空闲。 */
   | { kind: "restored" }
+  /** 编辑重发先确认回退结果，成功后界面才替换旧消息，失败保留编辑草稿。 */
+  | { kind: "edit_message_result"; requestId: string; ok: boolean; sessionId?: string; busy?: boolean; message?: string }
   | { kind: "forking"; checkpointId: string; busy: boolean; label?: string }
   | { kind: "status"; label: string }
   | { kind: "response_wait"; idleMs: number }
@@ -298,7 +300,7 @@ export type FromWebview =
   /** 从 OS（Finder 等）拖入工作区外的文件/目录：webview 拿不到绝对路径，只能读出
    *  内容传给宿主，由宿主镜像写盘后再按普通路径附加。rel 含顶层名（如 "dir/a.ts"）。 */
   | { type: "importDropped"; roots: { name: string; isDir: boolean }[]; files: { rel: string; base64: string }[]; skipped?: number }
-  | { type: "editMessage"; checkpointId: string; text: string; images?: { mediaType: string; data: string }[] }
+  | { type: "editMessage"; checkpointId: string; text: string; images?: { mediaType: string; data: string }[]; context?: string; files?: string[]; requestId?: string }
   | { type: "interrupt" }
   | { type: "compact" }
   /** /clear：丢弃当前会话上下文，在同一个 tab 里开一段全新的会话。

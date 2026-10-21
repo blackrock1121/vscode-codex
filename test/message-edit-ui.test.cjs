@@ -1,0 +1,104 @@
+const {test}=require('node:test');
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const {JSDOM}=require('jsdom');
+function setup(t){
+ const source=fs.readFileSync('src/panel/chatViewProvider.ts','utf8');
+ const section=source.slice(source.indexOf('  private html('));
+ const raw=section.match(/return (?:\/\* html \*\/ )?`([\s\S]*?)`;\s*\n\s+}/)[1];
+ const html=raw.replace(/\$\{[^}]+\}/g,'').replace(/<script[^>]*><\/script>/g,'');
+ const sent=[],errors=[],states=[];
+ const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true,url:'https://webview.test/'});
+ t.after(()=>dom.window.close());const w=dom.window;
+ w.acquireVsCodeApi=()=>({postMessage:m=>sent.push(m),getState:()=>({}),setState:s=>states.push(s)});
+ w.ResizeObserver=class{observe(){}disconnect(){}};w.IntersectionObserver=class{observe(){}disconnect(){}};
+ w.HTMLElement.prototype.scrollIntoView=function(){};w.HTMLElement.prototype.scrollTo=function(){};
+ w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
+ w.document.queryCommandSupported=()=>false;
+ w.addEventListener('error',e=>errors.push(e.message));
+ w.eval(fs.readFileSync('media/webview.js','utf8'));
+ const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
+ const items=['a','b','c'].flatMap(text=>[{type:'user',text},{type:'assistant_text',text:`${text}结束`}]);
+ const checkpoints=['a','b','c'].map(text=>({id:`cp-${text}`,label:text,userText:text}));
+ const load=()=>emit({kind:'load_history',sessionId:'source',items,checkpoints});load();
+ const users=()=>[...w.document.querySelectorAll('.msg.user')].map(n=>n.dataset.rawText);
+ const edit=(index=1)=>{w.document.querySelectorAll('.user-edit')[index].click();return w.document.querySelector('.user-edit-input');};
+ const save=()=>w.document.querySelector('.user-edit-save').click();
+ return {w,sent,errors,emit,items,checkpoints,load,users,edit,save,states};
+}
+test('编辑 b 开始：回退确认前保留全部对话，确认后仅保留 a 完整轮次并发送 B',t=>{
+ const f=setup(t);f.items[2].images=['data:image/png;base64,aGVsbG8='];f.items[2].context='原始选区内容';f.load();
+ const composer=f.w.document.getElementById('input');composer.value='未发送的另一条草稿';
+ const input=f.edit();assert.equal(input.value,'b');input.value='B\n新的方案';
+ assert.deepEqual(f.users(),['a','b','c']);assert.equal(f.sent.some(m=>m.type==='editMessage'),false);
+ input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true,cancelable:true}));f.save();
+ const requests=f.sent.filter(m=>m.type==='editMessage');assert.equal(requests.length,1);
+ const request=requests[0];assert.equal(request.checkpointId,'cp-b');assert.equal(request.text,'B\n新的方案');
+ assert.equal(request.context,'原始选区内容');assert.equal(request.images[0].data,'aGVsbG8=');
+ assert.deepEqual(f.users(),['a','b','c'],'宿主还原成功前不能删掉 b、c');
+ f.emit({kind:'restoring'});f.emit({kind:'edit_message_result',requestId:request.requestId,ok:true,sessionId:'branch'});f.emit({kind:'restored'});
+ assert.deepEqual(f.users(),['a','B\n新的方案']);
+ assert.deepEqual([...f.w.document.querySelectorAll('.msg.assistant .text-seg')].map(n=>n.textContent.trim()),['a结束']);
+ assert.equal(f.w.document.querySelectorAll('.msg.user')[1].querySelector('.msg-images img').src,'data:image/png;base64,aGVsbG8=');
+ assert.equal(composer.value,'未发送的另一条草稿');assert.equal(f.states.at(-1).sessionId,'branch');
+ assert.equal(f.sent.filter(m=>m.type==='editMessage').length,1,'确认成功不能再次发出回退请求');
+ f.emit({kind:'checkpoint_marker',checkpointId:'cp-B',sendId:request.requestId});
+ assert.equal(f.w.document.querySelectorAll('.msg.user')[1].dataset.checkpointId,'cp-B');
+ assert.equal(f.w.document.querySelectorAll('.user-edit').length,2);assert.deepEqual(f.errors,[]);
+});
+test('取消、Escape、空白输入和输入法回车都不会回退或发送',t=>{
+ const f=setup(t);let input=f.edit();input.value='改到一半';
+ input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ assert.equal(f.w.document.querySelector('.user-edit-input'),null);assert.deepEqual(f.users(),['a','b','c']);
+ input=f.edit();assert.equal(input.value,'b');input.value='  \n';f.save();assert.match(f.w.document.querySelector('.user-edit-error').textContent,/请输入/);
+ input.value='输入法';input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,isComposing:true,bubbles:true,cancelable:true}));
+ input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+ assert.equal(f.sent.some(m=>m.type==='editMessage'),false);
+ f.w.document.querySelector('.user-edit-cancel').click();assert.deepEqual(f.users(),['a','b','c']);assert.deepEqual(f.errors,[]);
+});
+test('回退失败保留 B 草稿和 a/b/c，允许修改重试；发送失败后能取回完整内容',t=>{
+ const f=setup(t);const input=f.edit();input.value='B';f.save();const request=f.sent.find(m=>m.type==='editMessage');
+ f.emit({kind:'restoring'});f.emit({kind:'edit_message_result',requestId:request.requestId,ok:false,busy:false,message:'磁盘读取失败'});
+ assert.deepEqual(f.users(),['a','b','c']);assert.equal(input.value,'B');assert.equal(input.disabled,false);
+ assert.match(f.w.document.querySelector('.user-edit-error').textContent,/磁盘读取失败/);
+ input.value='B2';f.save();const retry=f.sent.filter(m=>m.type==='editMessage').at(-1);assert.notEqual(request.requestId,retry.requestId);
+ f.emit({kind:'edit_message_result',requestId:retry.requestId,ok:true,sessionId:'branch'});f.emit({kind:'restored'});
+ f.emit({kind:'send_cancelled',sendId:retry.requestId});f.emit({kind:'busy',busy:false});
+ f.w.document.querySelectorAll('.cp-restore')[1].click();
+ assert.equal(f.w.document.getElementById('input').value,'B2');assert.deepEqual(f.users(),['a']);assert.deepEqual(f.errors,[]);
+});
+test('纯图片消息可编辑；不可读取的图片阻止发送；无还原点不展示编辑入口',t=>{
+ const f=setup(t);f.items[2].text='';f.items[2].images=['data:image/png;base64,aGVsbG8='];f.checkpoints[1].userText='(图片)';f.load();
+ let input=f.edit();assert.equal(input.value,'');f.save();assert.equal(f.sent.find(m=>m.type==='editMessage').images[0].data,'aGVsbG8=');
+ f.items[2].images=['https://example.com/image.png'];f.load();input=f.edit();input.value='B';f.save();
+ assert.match(f.w.document.querySelector('.user-edit-error').textContent,/图片无法读取/);
+ assert.equal(f.sent.filter(m=>m.type==='editMessage').length,1);
+ f.emit({kind:'load_history',items:[{type:'user',text:'没有还原点'}],checkpoints:[]});
+ assert.equal(f.w.document.querySelector('.user-edit'),null);assert.deepEqual(f.errors,[]);
+});
+test('编辑第一条从开头重新开始；无文件快照明确说明仅回退对话',t=>{
+ const f=setup(t);f.checkpoints[0].id='turn:1';f.load();const input=f.edit(0);input.value='A';
+ assert.match(f.w.document.querySelector('.user-edit-hint').textContent,/没有文件快照/);f.save();
+ const request=f.sent.find(m=>m.type==='editMessage');f.emit({kind:'edit_message_result',requestId:request.requestId,ok:true});f.emit({kind:'restored'});
+ assert.deepEqual(f.users(),['A']);assert.equal(f.w.document.querySelector('.msg.assistant .text-seg'),null);
+ assert.equal(f.states.at(-1).sessionId,undefined);assert.deepEqual(f.errors,[]);
+});
+test('回复中可编辑更早消息；还原期间及新回复结束前队列不能抢先发送',async t=>{
+ const f=setup(t);f.emit({kind:'busy',busy:true});const input=f.edit();input.value='B';f.save();
+ const request=f.sent.find(m=>m.type==='editMessage');const composer=f.w.document.getElementById('input');composer.value='下一步';f.w.document.getElementById('btn-send').click();
+ f.emit({kind:'restoring'});f.emit({kind:'busy',busy:false});await new Promise(r=>setTimeout(r,180));
+ assert.equal(f.sent.some(m=>m.type==='send'),false);
+ f.emit({kind:'edit_message_result',requestId:request.requestId,ok:true,sessionId:'branch'});f.emit({kind:'restored'});
+ await new Promise(r=>setTimeout(r,180));assert.equal(f.sent.some(m=>m.type==='send'),false);
+ f.emit({kind:'busy',busy:true});f.emit({kind:'text_delta',text:'B结束'});f.emit({kind:'busy',busy:false});f.emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(r=>setTimeout(r,180));assert.deepEqual(f.sent.filter(m=>m.type==='send').map(m=>m.text),['下一步']);assert.deepEqual(f.errors,[]);
+});
+test('刚发送的消息收到还原点后即可编辑，重发保留文件路径和选区上下文',t=>{
+ const f=setup(t);f.emit({kind:'load_history',items:[],checkpoints:[]});
+ f.emit({kind:'draft',text:'原消息',files:['/project/file.ts'],contexts:[{label:'选区',text:'const original = 1;'}]});
+ f.w.document.getElementById('btn-send').click();const original=f.sent.find(m=>m.type==='send');
+ assert.equal(f.w.document.querySelector('.user-edit'),null);
+ f.emit({kind:'checkpoint_marker',checkpointId:'live-cp',sendId:original.sendId});const input=f.edit(0);input.value='修正后的消息';f.save();
+ const edit=f.sent.find(m=>m.type==='editMessage');assert.equal(edit.checkpointId,'live-cp');assert.equal(edit.context,'const original = 1;');
+ assert.deepEqual(Array.from(edit.files),['/project/file.ts']);assert.deepEqual(f.errors,[]);
+});
