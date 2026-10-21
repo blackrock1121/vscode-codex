@@ -39,8 +39,15 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
   let resolveResult: (value: string) => void, rejectResult: (error: Error) => void;
   const result = new Promise<string>((resolve, reject) => { resolveResult = resolve; rejectResult = reject; });
   void result.catch(() => {});
-  const fail = (message: string) => { if (!settled) { settled = true; failureMessage = message; rejectResult(new Error(message)); lifetime.abort(); void rpc.disposeAndWait().catch(() => {}); } };
-  const abort = () => { fail('诊断已中断'); void rpc.disposeAndWait().catch(() => {}); };
+  let closing: Promise<void> | undefined;
+  const close = () => closing ??= Promise.resolve().then(() => rpc.disposeAndWait())
+    .catch(error => operationFailure('diagnostics.model.dispose', error, { operationId }));
+  const fail = (message: string) => { if (!settled) { settled = true; failureMessage = message; rejectResult(new Error(message)); lifetime.abort(); void close(); } };
+  const abort = () => fail('诊断已中断');
+  const reportProgress = (message: string) => {
+    try { progress(message); }
+    catch (error) { operationFailure('diagnostics.model.progress', error, { operationId }); fail('诊断进度回调失败，已保留本地检查结果'); }
+  };
   const closed = () => fail('模型诊断连接提前关闭');
   const serverRequest = (m: RpcMessage) => { try { rpc.reject(m.id!, '诊断任务不支持工具或用户交互'); } catch {} fail('模型诊断尝试调用工具或交互，已停止'); };
   const notification = (m: RpcMessage) => {
@@ -67,12 +74,12 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
     }
   };
   const timer = setTimeout(() => { fail(`模型诊断超过 ${Math.max(1, Math.ceil(timeoutMs / 60000))} 分钟，已停止；本地检查结果已保留`); }, timeoutMs);
-  const heartbeat = setInterval(() => progress(`模型诊断中：${request.model} / ${request.effort}，已运行 ${Math.floor((Date.now() - started) / 1000)} 秒…`), 15000);
+  const heartbeat = setInterval(() => reportProgress(`模型诊断中：${request.model} / ${request.effort}，已运行 ${Math.floor((Date.now() - started) / 1000)} 秒…`), 15000);
   timer.unref(); heartbeat.unref();
   rpc.on('notification', notification); rpc.on('close', closed); rpc.on('request', serverRequest); signal.addEventListener('abort', abort, { once: true });
   try {
     if (signal.aborted) throw new Error('诊断已中断');
-    progress(`正在连接诊断模型 ${request.model} / ${request.effort}…`);
+    reportProgress(`正在连接诊断模型 ${request.model} / ${request.effort}…`);
     await stage(() => rpc.start());
     const configured = await stage(() => rpc.request('config/read', { includeLayers: false }, 10000));
     const disabledMcp = Object.fromEntries(Object.keys(configured.config?.mcp_servers ?? {}).map(name => [name, { enabled: false }]));
@@ -117,6 +124,6 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
     lifetime.abort();
     rpc.off('notification', notification); rpc.off('close', closed); rpc.off('request', serverRequest);
     if (threadId && turnId && !settled) void rpc.request('turn/interrupt', { threadId, turnId }, 1000).catch(() => {});
-    await rpc.disposeAndWait().catch(error => operationFailure('diagnostics.model.dispose', error));
+    await close();
   }
 }

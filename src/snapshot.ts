@@ -1,4 +1,5 @@
 import { operationFailure, operationLog } from './operations';
+import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { constants } from 'node:fs';
 import * as fs from 'node:fs/promises';
@@ -37,6 +38,7 @@ export class WorkspaceSnapshot {
   private skippedBaseline = new Map<string, string | undefined>();
   private bytes = 0;
   private completeScan = true;
+  private changedDuringRead = 0;
   private readonly roots: string[];
   private readonly excluded: Map<string, RegExp[]>;
   private readonly readConcurrency = 16;
@@ -141,6 +143,9 @@ export class WorkspaceSnapshot {
       try {
         const opened = await handle.stat();
         if (!opened.isFile()) return { reason: 'unreadable' };
+        const same = (a: typeof stat, b: typeof stat) => a.dev === b.dev && a.ino === b.ino &&
+          a.size === b.size && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+        if (!same(stat, opened)) { this.changedDuringRead++; return { reason: 'unreadable' }; }
         if (opened.size > MAX_FILE_BYTES) return { reason: 'large' };
         const chunks: Buffer[] = [];
         let size = 0;
@@ -153,6 +158,11 @@ export class WorkspaceSnapshot {
           const chunk = buffer.subarray(0, bytesRead);
           if (chunk.includes(0)) return { reason: 'binary' };
           chunks.push(chunk);
+        }
+        // 已打开文件在读取期间消失/被替换，属于不稳定读取，不能当作可安全还原的删除。
+        const current = await fs.lstat(file).catch(() => undefined);
+        if (!current || !same(opened, await handle.stat()) || !same(opened, current)) {
+          this.changedDuringRead++; return { reason: 'unreadable' };
         }
         try { return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks, size)) }; }
         catch { return { reason: 'binary' }; }
@@ -187,6 +197,8 @@ export class WorkspaceSnapshot {
     }
   }
   async capture(): Promise<void> {
+    const operationId = randomUUID(), started = Date.now();
+    operationLog('snapshot.capture', 'start', { operationId, roots: this.roots.length });
     for (const root of this.roots) {
       const files = (await this.walk(root)).filter(file => !this.files.has(file) && !this.skipped.has(file));
       await this.readBatch(files, (file, { text, reason, missing }) => {
@@ -199,7 +211,9 @@ export class WorkspaceSnapshot {
     }
     this.skippedBaseline = await this.fingerprints([...this.skipped]);
     const unreadable = [...this.skipReasons.values()].filter(reason => reason === 'unreadable').length;
-    operationLog('snapshot.capture', unreadable ? 'unavailable' : 'completed', { files: this.files.size, skipped: this.skipped.size, unreadable });
+    operationLog('snapshot.capture', !this.roots.length ? 'skipped' : unreadable ? this.files.size ? 'partial' : 'unavailable' : 'completed',
+      { operationId, reason: !this.roots.length ? 'no_workspace' : undefined, files: this.files.size, skipped: this.skipped.size,
+        unreadable, changedDuringRead: this.changedDuringRead, completeScan: this.completeScan, durationMs: Date.now() - started });
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();

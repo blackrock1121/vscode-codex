@@ -1,7 +1,7 @@
 import { operationFailure, operationLog } from '../operations';
 import * as http from 'node:http';
 import * as https from 'node:https';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { WebSocket, WebSocketServer, RawData } from 'ws';
 import { getProxyForUrl } from 'proxy-from-env';
 import * as path from 'node:path';
@@ -19,11 +19,14 @@ const MAX_PAYLOAD = 128 * 1024 * 1024;
 const MAX_REWRITE = 32 * 1024 * 1024;
 import { CompactionSelector } from './compactionPolicy';
 export interface CompactionRoute {
-  stage: 'request' | 'response';
+  stage: 'request' | 'response' | 'transport_end';
+  routeId?: string;
   threadId?: string;
   fromModel: string;
   fromEffort?: string;
-  outcome?: 'completed' | 'failed' | 'incomplete';
+  outcome?: 'completed' | 'failed' | 'incomplete' | 'cancelled';
+  reason?: string;
+  httpStatusCode?: number;
   toModel: string;
   effort: string;
   serviceTier: string | null;
@@ -89,6 +92,7 @@ export class CompactionRelay {
   private readonly prefix = '/' + randomBytes(32).toString('hex');
   private agent?: http.Agent;
   private closed = false;
+  private ready = false;
   private constructor(private readonly upstream: string, private readonly select: CompactionSelector,
     private readonly onRoute: (route: CompactionRoute) => void, private readonly options: RelayOptions) {
     const target = new URL(upstream);
@@ -101,6 +105,9 @@ export class CompactionRelay {
       this.wss.handleUpgrade(req, socket, head, client => this.websocket(req, target, client));
     });
     this.server.on('clientError', (_error, socket) => socket.destroy());
+    // listen 成功后仍可能发生服务器错误，不能留下无监听的 error 事件。
+    this.server.on('error', error => { if (this.ready && !this.closed) operationFailure('compaction.server', error); });
+    this.wss.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.server', error); });
   }
   static async start(upstream: string, select: CompactionSelector,
     onRoute: (route: CompactionRoute) => void, options: RelayOptions = {}): Promise<CompactionRelay> {
@@ -114,7 +121,7 @@ export class CompactionRelay {
       }
       await new Promise<void>((resolve, reject) => {
         relay.server.once('error', reject);
-        relay.server.listen(0, '127.0.0.1', () => { relay.server.off('error', reject); resolve(); });
+        relay.server.listen(0, '127.0.0.1', () => { relay.server.off('error', reject); relay.ready = true; resolve(); });
       });
       return relay;
     } catch (e) { relay.close(); throw e; }
@@ -160,7 +167,7 @@ export class CompactionRelay {
     }
     if (this.options.constrain) result.body = this.options.constrain(result.body);
     if (result.route) {
-      const route: CompactionRoute = { ...result.route, threadId, transport, stage: 'request' };
+      const route: CompactionRoute = { ...result.route, routeId: randomUUID(), threadId, transport, stage: 'request' };
       this.report(route);
       return { body: result.body, route };
     }
@@ -179,21 +186,31 @@ export class CompactionRelay {
     const controller = new AbortController();
     let writes = Promise.resolve(), pendingBytes = 0;
     const responses: (CompactionRoute | undefined)[] = [];
+    const incomplete = (reason: string) => {
+      for (const route of responses.splice(0)) if (route) this.report({ ...route, stage: 'response',
+        outcome: this.closed ? 'cancelled' : 'incomplete', reason });
+    };
     client.on('message', (data, binary) => {
       const original = bytes(data); pendingBytes += original.length; client.pause();
       if (pendingBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
       writes = writes.then(async () => {
         if (this.closed || client.readyState !== WebSocket.OPEN) return;
         const routed = binary ? { body: original } : await this.rewrite(original, req, target, 'websocket', controller.signal, history);
-        if (this.closed || client.readyState !== WebSocket.OPEN) return;
+        if (this.closed || client.readyState !== WebSocket.OPEN) {
+          if (routed.route) this.report({ ...routed.route, stage: 'response', outcome: 'cancelled', reason: 'closed_before_send' });
+          return;
+        }
         const body = routed.body;
         if (!binary) {
           try {
             const request = JSON.parse(body.toString()); history.request(request);
-            if (!history.isReliable) responses.length = 0;
+            if (!history.isReliable) {
+              incomplete('history_unavailable');
+              if (routed.route) this.report({ ...routed.route, stage: 'response', outcome: 'incomplete', reason: 'history_unavailable' });
+            }
             else if (request.type === 'response.create') responses.push(routed.route);
-          } catch { history.clear(); responses.length = 0; /* 无法识别的帧仅转发 */ }
-        } else { history.clear(); responses.length = 0; }
+          } catch { history.clear(); incomplete('unrecognized_frame'); /* 无法识别的帧仅转发 */ }
+        } else { history.clear(); incomplete('binary_frame'); }
         if (upstream.readyState === WebSocket.CONNECTING) {
           queuedBytes += body.length;
           if (queuedBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
@@ -219,22 +236,22 @@ export class CompactionRelay {
           const terminal = ['response.completed', 'response.failed', 'response.incomplete', 'error'].includes(event.type);
           const route = terminal ? responses.shift() : undefined;
           history.event(event);
-          if (!history.isReliable) responses.length = 0;
+          if (!history.isReliable) incomplete('history_unavailable');
           if (route) {
             const model = event.response?.model;
             this.report({ ...route, stage: 'response', outcome: event.type === 'response.completed' ? 'completed' : event.type === 'response.incomplete' ? 'incomplete' : 'failed',
               servedModel: typeof model === 'string' && /^[\w.-]{1,100}$/.test(model) ? model : undefined });
           }
-        } catch { history.clear(); responses.length = 0; /* 上游原文只转发，不写日志 */ }
-      } else { history.clear(); responses.length = 0; }
+        } catch { history.clear(); incomplete('unrecognized_frame'); /* 上游原文只转发，不写日志 */ }
+      } else { history.clear(); incomplete('binary_frame'); }
       upstream.pause(); client.send(data, { binary }, error => { if (error) upstream.terminate(); else upstream.resume(); });
     });
     const closePeer = (peer: WebSocket, code: number, reason: Buffer) => {
       if (peer.readyState === WebSocket.CONNECTING || code === 1006) peer.terminate();
       else if (peer.readyState === WebSocket.OPEN) peer.close(code === 1005 ? 1000 : code, reason);
     };
-    client.on('close', (code, reason) => { controller.abort(); this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
-    upstream.on('close', (code, reason) => { controller.abort(); this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
+    client.on('close', (code, reason) => { incomplete('client_closed'); controller.abort(); this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
+    upstream.on('close', (code, reason) => { incomplete('upstream_closed'); controller.abort(); this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
     client.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.client', error); controller.abort(); upstream.terminate(); });
     upstream.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.upstream', error); controller.abort(); client.terminate(); });
   }
@@ -251,19 +268,30 @@ export class CompactionRelay {
       chunks.push(chunk);
     }
     const original = Buffer.concat(chunks);
-    const body = req.method === 'POST' ? (await this.rewrite(original, req, target, 'http', controller.signal)).body : original;
-    if (this.closed || res.destroyed || req.aborted) { res.destroy(); return; }
+    const routed = req.method === 'POST' ? await this.rewrite(original, req, target, 'http', controller.signal) : { body: original };
+    const body = routed.body;
+    let ended = false, httpStatusCode: number | undefined;
+    // HTTP 只观察传输终态，不把 2xx/SSE 结束冒充压缩语义成功。
+    const finish = (outcome: CompactionRoute['outcome'], reason: string) => {
+      if (ended || !routed.route) return;
+      ended = true;
+      this.report({ ...routed.route, stage: 'transport_end', outcome, reason, httpStatusCode });
+    };
+    if (this.closed || res.destroyed || req.aborted) { finish('cancelled', 'closed_before_send'); res.destroy(); return; }
+    res.once('close', () => finish(this.closed ? 'cancelled' : 'incomplete', 'client_closed'));
     const headers = forwardedHeaders(req.headers, false);
     if (body.length || req.headers['content-length']) headers['content-length'] = body.length;
     const upstream = (target.protocol === 'https:' ? https : http).request(target, {
       method: req.method, headers, agent: this.agent,
     }, response => {
+      httpStatusCode = response.statusCode;
       res.writeHead(response.statusCode ?? 502, forwardedHeaders(response.headers, false));
-      response.on('error', error => { operationFailure('compaction.http.response', error); res.destroy(); }); response.pipe(res);
+      response.on('end', () => finish(httpStatusCode && httpStatusCode >= 400 ? 'failed' : undefined, 'http_stream_ended'));
+      response.on('error', error => { finish('failed', 'response_error'); operationFailure('compaction.http.response', error); res.destroy(); }); response.pipe(res);
     });
     this.requests.add(upstream);
     upstream.on('close', () => this.requests.delete(upstream));
-    upstream.on('error', error => { if (!controller.signal.aborted) operationFailure('compaction.http.upstream', error); if (!res.headersSent) res.writeHead(502); res.end(); });
+    upstream.on('error', error => { finish(controller.signal.aborted ? 'cancelled' : 'failed', 'upstream_error'); if (!controller.signal.aborted) operationFailure('compaction.http.upstream', error); if (!res.headersSent) res.writeHead(502); res.end(); });
     req.on('aborted', () => upstream.destroy());
     res.on('close', () => { if (!res.writableEnded) upstream.destroy(); });
     upstream.end(body);

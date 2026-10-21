@@ -1,4 +1,4 @@
-import { observeOperation, operationLog } from './operations';
+import { observeOperation, operationLog, operationFailure } from './operations';
 import * as http from "node:http";
 import { randomUUID } from "node:crypto";
 
@@ -47,6 +47,7 @@ export class NotificationRouter {
         this.server.headersTimeout = 5000;
         this.server.keepAliveTimeout = 1000;
         this.server.unref();
+        this.server.on('error', error => { if (this.server.listening && !this.disposed) operationFailure('notification.server', error); });
     }
 
     async endpoint(key: string, open: () => Promise<void>): Promise<string> {
@@ -55,6 +56,7 @@ export class NotificationRouter {
             this.cancelStart = () => reject(new Error("通知来源窗口已关闭。"));
             this.server.once("error", reject);
             this.server.listen(0, "127.0.0.1", () => {
+                this.server.off('error', reject);
                 this.cancelStart = undefined;
                 if (this.disposed) { this.server.close(); reject(new Error("通知来源窗口已关闭。")); return; }
                 const address = this.server.address() as import("node:net").AddressInfo;

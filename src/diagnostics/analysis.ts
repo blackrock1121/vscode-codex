@@ -36,16 +36,17 @@ const special: [string, string, (r: PerformanceRow) => boolean, string][] = [
   ['host', '扩展宿主出现延迟', r => n(r.maxEventLoopDelayMs) > 500 || n(r.maxHandlerMs) > 100 || n(r.maxDecodeMs) > 100,
     '检查扩展宿主的消息处理、JSON 解码、渲染和其他扩展活动，测量后定位阻塞点。共享宿主指标不等于本插件独占耗时。'],
 ];
-interface Group { count: number; totalMs: number; maxMs: number; traceIds: Set<string> }
+interface Group { count: number; totalMs: number; maxMs: number; unknownDurations: number; traceIds: Set<string> }
 
 /** 逐条累计全部记录，仅保留每类问题的计数和有限示例，不在内存堆积整份历史日志。 */
 export class PerformanceAccumulator {
   private turns = 0; private tools = 0; private failures = 0; private longestTurnMs = 0;
   private readonly versions = new Set<string>();
   private readonly groups = new Map<string, Group>();
-  private group(id: string, row: PerformanceRow, ms = 0): void {
-    const group = this.groups.get(id) ?? { count: 0, totalMs: 0, maxMs: 0, traceIds: new Set<string>() };
-    group.count++; group.totalMs += ms; group.maxMs = Math.max(group.maxMs, ms);
+  private group(id: string, row: PerformanceRow, ms?: number): void {
+    const group = this.groups.get(id) ?? { count: 0, totalMs: 0, maxMs: 0, unknownDurations: 0, traceIds: new Set<string>() };
+    group.count++; group.totalMs += ms ?? 0; group.maxMs = Math.max(group.maxMs, ms ?? 0);
+    if (ms === undefined) group.unknownDurations++;
     if (typeof row.traceId === 'string' && group.traceIds.size < 8) group.traceIds.add(row.traceId);
     this.groups.set(id, group);
   }
@@ -57,7 +58,7 @@ export class PerformanceAccumulator {
         this.failures++;
         // 类别来自采集白名单；异常旧日志不允许生成无限种类别。
         const category = typeof row.failureCategory === 'string' && failureCategories.has(row.failureCategory) ? row.failureCategory : 'unknown';
-        this.group(`failure-${category}`, row, n(row.durationMs));
+        this.group(`failure-${category}`, row, typeof row.durationMs === 'number' && Number.isFinite(row.durationMs) && row.durationMs >= 0 ? row.durationMs : undefined);
       }
     }
     if (row.event !== 'turn_summary') return;
@@ -73,7 +74,7 @@ export class PerformanceAccumulator {
     for (const [id, group] of this.groups) {
       const base = { id, traceIds: [...group.traceIds] };
       if (id.startsWith('failure-')) findings.push({ ...base, title: `工具失败：${id.slice(8)}`, severity: group.count > 1 ? 'error' : 'warning',
-        evidence: `${group.count} 次失败，工具累计耗时 ${seconds(group.totalMs)}（可能重叠）。`,
+        evidence: `${group.count} 次失败；${group.count - group.unknownDurations} 次有计时，已观测工具累计耗时 ${group.unknownDurations === group.count ? '未观测' : seconds(group.totalMs)}（可能重叠）；${group.unknownDurations} 次耗时未知，不按 0 秒计算。计时和显示均可能取整。`,
         recommendation: '先按任务和工具 ID 核对失败条件，区分环境依赖、参数、网络和代码问题；验证后修复共性原因，避免原样重跑。' });
       else if (id.startsWith('phase-')) {
         const rule = phases[id.slice(6)]; findings.push({ ...base, title: rule.title, severity: 'warning',

@@ -3964,8 +3964,9 @@ $<HTMLButtonElement>("lb-copy").onclick = async (e) => {
     btn.textContent = "已复制 ✓";
     setTimeout(() => (btn.innerHTML = `${ICON.copy} 复制`), 1200);
     void old;
-  } catch {
+  } catch (error) {
     btn.textContent = "复制失败，请用「保存」";
+    reportWebviewError('webview.image.copy', error);
     setTimeout(() => (btn.innerHTML = `${ICON.copy} 复制`), 2000);
   }
 };

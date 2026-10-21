@@ -1,12 +1,12 @@
 import { setOperationLogSink, observeOperation, operationLog, operationFailure } from './operations';
-import { checkLoggingConfiguration } from './diagnostics/loggingAudit';
+import { checkLoggingConfiguration, checkLogFlush } from './diagnostics/loggingAudit';
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { randomUUID, createHash } from "node:crypto";
 import { ChatViewProvider } from "./panel/chatViewProvider";
-import { DailyLogWriter, LogIdentity } from "./logging";
+import { DailyLogWriter, LogIdentity, flushLogWriters } from "./logging";
 import { RemoteBridgeClient } from "./remote/bridgeClient";
 import { DiagnosticJobs, workerRunner } from "./diagnostics/jobs";
 import { DiagnosticsPage } from "./diagnostics/page";
@@ -64,10 +64,8 @@ export function activate(context: vscode.ExtensionContext): void {
     workspaceName: vscode.workspace.name ?? vscode.workspace.workspaceFolders?.[0]?.name ?? '未命名工作区',
   }, async (progress, signal, request) => {
     progress('正在保存最新诊断日志…');
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    try { await Promise.race([Promise.all([...logWriters].map(writer => writer.flush())), new Promise<void>(resolve => { timer = setTimeout(resolve, 1500); })]); }
-    finally { clearTimeout(timer); }
-    const scanned = await runner(progress, signal, request);
+    const flushState = await flushLogWriters([...logWriters]);
+    const scanned = checkLogFlush(await runner(progress, signal, request), flushState);
     const result = request?.kind === 'general' ? checkLoggingConfiguration(scanned,
       vscode.workspace.getConfiguration('codexChat').get<boolean>('transportDiagnostics', true)) : scanned;
     if (request?.engine !== 'model') return result;

@@ -24,6 +24,27 @@ export async function pruneLogs(dir: string, now = new Date(), failure: (error: 
 }
 
 export interface LogIdentity { pluginVersion: string; windowId: string; hostId: string }
+export interface LogFlushState {
+  status: 'completed' | 'incomplete' | 'timeout'; pendingBytes: number; pendingLines: number;
+  pendingWriters: number; failedWriters: number; droppedLines: number;
+}
+
+/** 预算只限制扫描前的等待；不能把超时或仍未写入的批次当作刷新成功。 */
+export async function flushLogWriters(writers: DailyLogWriter[], budgetMs = 1500): Promise<LogFlushState> {
+  let timer: NodeJS.Timeout | undefined, timedOut = false;
+  try {
+    await Promise.race([Promise.all(writers.map(async writer => {
+      await writer.flush();
+      if (!writer.healthSnapshot().failed) await writer.flush(); // 包含恢复健康记录。
+    })), new Promise<void>(resolve => { timer = setTimeout(() => { timedOut = true; resolve(); }, budgetMs); })]);
+  } finally { clearTimeout(timer); }
+  const states = writers.map(writer => writer.healthSnapshot());
+  const sum = (key: 'pendingBytes' | 'pendingLines' | 'droppedLines') => states.reduce((n, state) => n + state[key], 0);
+  const pendingWriters = states.filter(state => state.pendingBytes || state.flushing || state.droppedLines).length;
+  const failedWriters = states.filter(state => state.failed).length;
+  return { status: timedOut ? 'timeout' : pendingWriters || failedWriters ? 'incomplete' : 'completed',
+    pendingWriters, failedWriters, pendingBytes: sum('pendingBytes'), pendingLines: sum('pendingLines'), droppedLines: sum('droppedLines') };
+}
 
 export class DailyLogWriter {
   private pending = new Map<string, string[]>();
@@ -37,6 +58,9 @@ export class DailyLogWriter {
   private pruning?: Promise<void>;
   private readonly operationId = randomUUID();
   private writeFailures = 0;
+  private inFlightBytes = 0;
+  private inFlightLines = 0;
+  private inFlightDropped = 0;
   private healthFailures = new Set<string>();
   private readonly identityPrefix: string;
 
@@ -44,6 +68,11 @@ export class DailyLogWriter {
     private readonly onHealth: (text: string) => void = text => console.warn(text)) {
     const safe = (value: string) => /^[\w.-]{1,160}$/.test(value) ? value : 'unknown';
     this.identityPrefix = identity ? `[pluginVersion=${safe(identity.pluginVersion)} windowId=${safe(identity.windowId)} hostId=${safe(identity.hostId)}] ` : '';
+  }
+  healthSnapshot() {
+    return { pendingBytes: this.pendingBytes + this.inFlightBytes,
+      pendingLines: [...this.pending.values()].reduce((n, rows) => n + rows.length, 0) + this.inFlightLines,
+      flushing: !!this.flushing, failed: this.writeFailures > 0, droppedLines: this.dropped + this.inFlightDropped };
   }
   private health(operation: string, error?: unknown): void {
     if (error && this.healthFailures.has(operation)) return;
@@ -94,14 +123,16 @@ export class DailyLogWriter {
       return;
     }
     if (!this.pending.size && !this.dropped) return;
-    const batches = this.pending; this.pending = new Map(); this.pendingBytes = 0;
-    const date = this.latestDate, dropped = this.dropped; this.dropped = 0;
+    const batches = this.pending; this.inFlightBytes = this.pendingBytes; this.pending = new Map(); this.pendingBytes = 0;
+    this.inFlightLines = [...batches.values()].reduce((n, rows) => n + rows.length, 0);
+    const date = this.latestDate, dropped = this.dropped; this.inFlightDropped = dropped; this.dropped = 0;
     this.flushing = (async () => {
       try {
         await fs.promises.mkdir(this.dir, { recursive: true });
         for (const [day, rows] of batches) {
           const text = rows.join('');
           await fs.promises.appendFile(path.join(this.dir, `codex-chat-${day}.log`), text, 'utf8');
+          this.inFlightBytes -= Buffer.byteLength(text); this.inFlightLines -= rows.length;
           batches.delete(day); // 部分成功后重试不能把已落盘的日期重放。
           try { this.onBatch?.(text); this.health('output'); } catch (error) { this.health('output', error); }
         }
@@ -124,7 +155,7 @@ export class DailyLogWriter {
         }
       }
     })();
-    try { await this.flushing; } finally { this.flushing = undefined; }
+    try { await this.flushing; } finally { this.flushing = undefined; this.inFlightBytes = 0; this.inFlightLines = 0; this.inFlightDropped = 0; }
   }
   async dispose(): Promise<void> { this.closed = true; await this.flush(); }
 }

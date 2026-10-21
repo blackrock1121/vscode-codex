@@ -1,5 +1,15 @@
 import type { DiagnosticFinding, DiagnosticOutput } from './analysis';
 import manifest from './loggingAuditData';
+import type { LogFlushState } from '../logging';
+
+export function checkLogFlush(output: DiagnosticOutput, state: LogFlushState): DiagnosticOutput {
+  if (state.status === 'completed') return output;
+  const finding: DiagnosticFinding = { id: 'logging-flush-incomplete', category: '采集完整性', severity: 'warning', traceIds: [],
+    title: '扫描前日志尚未全部落盘',
+    evidence: `本窗口刷新状态 ${state.status}；${state.pendingWriters} 个日志写入器仍有待写数据，${state.failedWriters} 个写入器失败；待写 ${state.pendingLines} 行、${state.pendingBytes} 字节，另有 ${state.droppedLines} 行丢弃计数尚未落盘。磁盘扫描不能覆盖这些记录；此状态不代表其他窗口。`,
+    recommendation: '检查日志目录与独立日志健康反馈，恢复写入后重新诊断。此次扫描结果保留，但不能据此断言生产日志完整。' };
+  return { ...output, findings: [...output.findings, finding], report: `${output.report}\n\n## 日志刷新覆盖缺口\n\n${finding.evidence}\n\n${finding.recommendation}\n` };
+}
 
 type CandidateKind = 'catch-unlogged' | 'error-propagated' | 'handler-delegated' | 'operation-unlogged' | 'branch-unlogged' | 'entry-unlogged';
 interface Candidate { line: number; symbol: string; kind: CandidateKind }

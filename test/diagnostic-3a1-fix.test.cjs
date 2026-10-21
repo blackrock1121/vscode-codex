@@ -79,7 +79,7 @@ test('3a1 页面上报通道失效后补发一次，图片失败可见且无正�
  const report=api.installWebviewErrors(s=>{if(fail)throw fault('EPIPE');sent.push(s);});
  report('webview.runtime',new TypeError('PRIVATE'));report('webview.runtime',new TypeError('PRIVATE'));assert.equal(warnings.length,1);
  fail=false;window.dispatchEvent(new window.MessageEvent('message'));report('webview.runtime',new TypeError('PRIVATE'));assert.deepEqual(sent,['webview.runtime: TypeError']);
- window.document.querySelector('img').dispatchEvent(new window.Event('error'));assert.equal(sent[1],'webview.image.load: Error');assert.equal(warnings.length,2);assert.doesNotMatch(JSON.stringify({sent,warnings}),/PRIVATE|private.invalid/);
+ window.document.querySelector('img').dispatchEvent(new window.Event('error'));assert.equal(sent[1],'webview.image.load.remote: Error');assert.equal(warnings.length,2);assert.doesNotMatch(JSON.stringify({sent,warnings}),/PRIVATE|private.invalid/);
 });
 
 test('3a1 损坏诊断记录显示列表不完整，修复后清除警告',async t=>{

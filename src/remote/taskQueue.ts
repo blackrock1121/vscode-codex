@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { operationFailure, operationLog } from '../operations';
 
 export interface QueuedTask {
     id: string; text: string; context?: string; images: { mediaType: string; data: string }[]; files: string[];
@@ -25,10 +26,20 @@ export class SessionTaskQueue {
     async drain(available: () => boolean, send: (item: QueuedTask) => Promise<boolean>): Promise<void> {
         if (this.paused || this.sending || !this.items.length || !available()) return;
         const item = this.items[0]; this.sending = item.id;
+        const started = Date.now(), fields = { operationId: item.id };
+        operationLog('queue.dispatch', 'start', { ...fields, queueMs: started - item.createdAt });
         try {
-            if (await send(item)) {const index=this.items.findIndex(value=>value.id===item.id);if(index>=0)this.items.splice(index,1);}
-            else this.paused = true;
-        } catch { this.paused = true; }
+            if (await send(item)) {
+                const index=this.items.findIndex(value=>value.id===item.id);if(index>=0)this.items.splice(index,1);
+                operationLog('queue.dispatch', 'dispatched', { ...fields, durationMs: Date.now() - started });
+            } else {
+                this.paused = true;
+                operationLog('queue.dispatch', 'paused', { ...fields, reason: 'not_accepted', durationMs: Date.now() - started });
+            }
+        } catch (error) {
+            this.paused = true;
+            operationFailure('queue.dispatch', error, { ...fields, retained: true, durationMs: Date.now() - started });
+        }
         finally { this.sending = undefined; }
     }
     summary(page = 0) {

@@ -122,10 +122,11 @@ export class SessionStore {
     const rpc = await this.connection();
     try { return await rpc.request<T>(method, params); }
     catch (error) {
-      if (!rpc.isClosed) throw error;
-      operationLog('session.read', 'retry', { method });
-      const result = await (await this.connection()).request<T>(method, params);
-      operationLog('session.read', 'recovered', { method });
+      if (!rpc.isClosed || this.disposed) throw error;
+      operationLog('session.read', 'retry', { method, processRunId: rpc.runId });
+      const next = await this.connection();
+      const result = await next.request<T>(method, params);
+      operationLog('session.read', 'recovered', { method, previousProcessRunId: rpc.runId, processRunId: next.runId });
       return result;
     }
   }
@@ -175,9 +176,10 @@ export class SessionStore {
       try { await this.hydrateWith(rpc, id); }
       catch (error) {
         if (!rpc.isClosed || this.disposed) throw error;
-        operationLog('session.hydrate', 'retry', { reason: 'connection_closed' });
-        await this.hydrateWith(await this.connection(), id);
-        operationLog('session.hydrate', 'recovered');
+        operationLog('session.hydrate', 'retry', { reason: 'connection_closed', processRunId: rpc.runId });
+        const next = await this.connection();
+        await this.hydrateWith(next, id);
+        operationLog('session.hydrate', 'recovered', { previousProcessRunId: rpc.runId, processRunId: next.runId });
       }
     }, { threadId: id });
     this.hydrating.set(id, work);

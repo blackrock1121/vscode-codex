@@ -128,6 +128,7 @@ export function transportDiagnostics(payload: any): TransportDiagnostic[] {
 export class LocalTelemetry {
   private readonly route = `/${randomUUID()}`;
   private readonly server: http.Server;
+  private ready = false;
   private constructor(private readonly receive: (row: TransportDiagnostic) => void) {
     this.server = http.createServer((req, res) => {
       // 不提供 CORS，不接受任意路径，也不对外网监听。
@@ -158,13 +159,15 @@ export class LocalTelemetry {
     this.server.requestTimeout = 5000;
     this.server.headersTimeout = 5000;
     this.server.maxConnections = 8;
+    this.server.on('error', error => { if (this.ready) operationFailure('telemetry.server', error); });
   }
   static async start(receive: (row: TransportDiagnostic) => void): Promise<LocalTelemetry> {
     const local = new LocalTelemetry(receive);
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => { local.close(); reject(new Error('telemetry_listen_timeout')); }, 1000);
-      local.server.once('error', () => { clearTimeout(timer); local.close(); reject(new Error('telemetry_listen_failed')); });
-      local.server.listen(0, '127.0.0.1', () => { clearTimeout(timer); local.server.unref(); resolve(); });
+      const failed = () => { clearTimeout(timer); local.close(); reject(new Error('telemetry_listen_failed')); };
+      local.server.once('error', failed);
+      local.server.listen(0, '127.0.0.1', () => { clearTimeout(timer); local.server.off('error', failed); local.ready = true; local.server.unref(); resolve(); });
     });
     return local;
   }
@@ -178,5 +181,5 @@ export class LocalTelemetry {
     return ['-c', `otel.exporter=${exporter('logs')}`, '-c', `otel.metrics_exporter=${exporter('metrics')}`,
       '-c', 'otel.log_user_prompt=false'];
   }
-  close(): void { this.server.close(); this.server.closeAllConnections(); }
+  close(): void { this.ready = false; this.server.close(); this.server.closeAllConnections(); }
 }

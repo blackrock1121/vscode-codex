@@ -13,6 +13,7 @@ import { NotificationRouter } from "../notificationRouter";
 import { diagnosticNotification } from "../diagnostics/notification";
 import type { DiagnosticRecord, NotificationResult } from "../diagnostics/jobs";
 import { WorkspaceSnapshot } from "../snapshot";
+import { readImageFile } from '../imageFile';
 import { QuestionImages } from "../questionImages";
 import { diffCounts, readDiffFile } from "../diff";
 import { createHash, randomUUID } from "node:crypto";
@@ -1580,6 +1581,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         // Existing threads can reconnect while the local snapshot is captured.
         // Keep new-thread creation after the snapshot so Stop can still cancel it.
         const processReady = hadSession ? stage("connection", () => this.ensureProcess(ctx)) : undefined;
+        // 快照可能耗时数秒；立即观察连接失败，原 Promise 稍后仍负责传播失败。
+        // 否则连接先失败会触发未处理拒绝，停止发送时甚至永远不会 await 它。
+        void processReady?.catch(() => {});
         const historyAt = Date.now();
         const historySessionId = ctx.sessionId;
         const historyReady = hadSession && historySessionId ? stage("history", () => this.store.readTurnCount(historySessionId)).finally(() => {
@@ -1597,7 +1601,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.output.appendLine(`[${new Date().toISOString()}] [snapshot] 基线 ${snapshot.files.size} 文件，跳过 ${snapshot.skipped.size} 项，耗时 ${Date.now() - snapshotAt}ms`);
             this.reportSnapshotSkips(ctx, snapshot);
         })();
-        const [lineBefore] = await Promise.all([historyReady, snapshotReady]);
+        const prepared = await Promise.allSettled([historyReady, snapshotReady]);
+        // 必须收齐两项终态；历史先失败时不能让旧快照在下一次发送后才改写 ctx。
+        for (const result of prepared) if (result.status === 'rejected') throw result.reason;
+        const lineBefore = (prepared[0] as PromiseFulfilledResult<number>).value;
         if ((ctx.stopSeq ?? -1) >= mySeq || (allowed && !allowed())) {
             if ((ctx.stopSeq ?? -1) < mySeq) this.post(ctx, { kind: "busy", busy: false });
             return false;
@@ -3983,20 +3990,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return !!(await this.resolveWorkspaceFile(p, false));
     }
     private async loadLocalImage(ref: string): Promise<string | undefined> {
+        const operationId = randomUUID(), started = Date.now();
+        const record = (stage: string, reason?: string) => operationLog('webview.image.read', stage,
+            { operationId, reason, resourceType: 'local', durationMs: Date.now() - started });
+        record('start');
         try {
             const imagePath = await this.resolveWorkspaceFile(ref, false);
-            if (!imagePath) return undefined;
+            if (!imagePath) { record('unavailable', 'missing_or_unresolved'); return undefined; }
             const mime: Record<string, string> = {
                 ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
                 ".gif": "image/gif", ".webp": "image/webp", ".avif": "image/avif",
                 ".bmp": "image/bmp", ".svg": "image/svg+xml",
             };
             const type = mime[path.extname(imagePath).toLowerCase()];
-            if (!type || (await fs.promises.stat(imagePath)).size > 4 * 1024 * 1024) return undefined;
-            return `data:${type};base64,${(await fs.promises.readFile(imagePath)).toString("base64")}`;
+            if (!type) { record('unavailable', 'unsupported_format'); return undefined; }
+            const bytes = await readImageFile(imagePath, 4 * 1024 * 1024);
+            record('completed');
+            return `data:${type};base64,${bytes.toString("base64")}`;
         }
         catch (err) {
-            this.output.appendLine(`[loadLocalImage] ${ref} 读取失败: ${String((err as Error)?.message ?? err)}`);
+            operationFailure('webview.image.read', err, { operationId, resourceType: 'local', durationMs: Date.now() - started });
             return undefined;
         }
     }

@@ -43,6 +43,8 @@ export class CodexRpc extends EventEmitter {
   private maxDecodeMs = 0;
   private maxHandlerMs = 0;
   private writeBackpressureCount = 0;
+  private readonly createdAt = performance.now();
+  private closePhase?: string;
   constructor(private readonly executable: string, private readonly cwd: string, private readonly env?: NodeJS.ProcessEnv,
     private readonly diagnostics = false) { super(); }
   transportSnapshot() {
@@ -59,15 +61,16 @@ export class CodexRpc extends EventEmitter {
     catch (error) { operationFailure('rpc.diagnostic.receiver', error, { operationId: this.processRunId }); }
   }
   get isClosed(): boolean { return this.closed; }
+  get runId(): string { return this.processRunId; }
   start(): Promise<void> {
-    if (this.closed) return Promise.reject(new Error('Codex 连接已关闭'));
+    if (this.closed) return Promise.reject(this.closeReason ?? new Error('Codex 连接已关闭'));
     return this.starting ??= this.initialize().catch(error => {
-      this.fail(error); this.telemetry?.close(); this.telemetry = undefined;
-      throw error;
+      this.fail(error, 'initialize'); this.telemetry?.close(); this.telemetry = undefined;
+      throw this.closeReason ?? error;
     });
   }
   private async initialize(): Promise<void> {
-    operationLog('rpc.process', 'start', { operationId: this.processRunId });
+    operationLog('rpc.process', 'start', { operationId: this.processRunId, processRunId: this.processRunId });
     if (this.diagnostics) {
       try {
         this.telemetry = await LocalTelemetry.start(row => this.diagnostic(row));
@@ -81,9 +84,10 @@ export class CodexRpc extends EventEmitter {
       cwd: this.cwd, env: codexSpawnEnvironment(executable, { ...process.env, ...this.env }), stdio: 'pipe', windowsHide: true,
     });
     this.child = child;
-    child.on('error', e => this.fail(e));
-    child.stdin.on('error', e => this.fail(e));
-    child.stdout.on('error', e => this.fail(e));
+    child.on('error', e => this.fail(e, 'spawn'));
+    child.stdin.on('error', e => this.fail(e, 'stdin'));
+    child.stdout.on('error', e => this.fail(e, 'stdout'));
+    child.stderr.on('error', e => this.fail(e, 'stderr'));
     // 只留有界、脱敏后的错误/警告线索；普通输出和整份 stderr 不落盘。
     let stderrTail = '', stderrWindow = Date.now(), stderrCount = 0;
     let startupFailure: Error | undefined;
@@ -107,9 +111,11 @@ export class CodexRpc extends EventEmitter {
     });
     child.stderr.on('end', () => { if (stderrTail) stderrLine(stderrTail); stderrTail = ''; });
     child.once('close', (code, signal) => {
-      operationLog('rpc.process', 'end', { operationId: this.processRunId, exitCode: code, signal });
       this.telemetry?.close(); this.telemetry = undefined;
-      this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`));
+      this.fail(new Error(`Codex 进程已退出 (${code ?? 'signal'})`), 'process_exit');
+      operationLog('rpc.process', 'end', { ...errorFields(this.closeReason), operationId: this.processRunId,
+        processRunId: this.processRunId, exitCode: code, signal, phase: this.closePhase,
+        outcome: this.closeReason?.name === 'AbortError' ? 'cancelled' : 'failed', durationMs: Math.round(performance.now() - this.createdAt) });
       clearTimeout(this.killTimer);
       this.emit('close', code, this.closeReason);
     });
@@ -156,49 +162,60 @@ export class CodexRpc extends EventEmitter {
       if (fragments.length) receiveLine(fragments.join(''));
       fragments = [];
       if (stderrTail) stderrLine(stderrTail);
-      this.fail(startupFailure ?? new Error('Codex 输出通道已关闭'));
+      this.fail(startupFailure ?? new Error('Codex 输出通道已关闭'), startupFailure ? 'runtime_dependency' : 'stdout_end');
     });
     const initialized = await this.request('initialize', { clientInfo: { name: 'vscode_codex_copilot', title: 'Codex Copilot', version: '0.1.0' }, capabilities: { experimentalApi: true } });
     if (this.diagnostics) this.diagnostic({ type: 'cli_info', version:
       typeof initialized?.userAgent === 'string' ? initialized.userAgent.match(/\b\d+\.\d+\.\d+(?:-[\w.-]+)?\b/)?.[0] ?? null : null });
     this.write({ method: 'initialized' });
-    operationLog('rpc.process', 'ready', { operationId: this.processRunId });
+    operationLog('rpc.process', 'ready', { operationId: this.processRunId, processRunId: this.processRunId, durationMs: Math.round(performance.now() - this.createdAt) });
   }
   request<T = any>(method: string, params: unknown = {}, timeout = 60_000): Promise<T> {
-    if (this.closed || !this.child) return Promise.reject(new Error('Codex 尚未连接'));
+    if (this.closed || !this.child) return Promise.reject(this.closeReason ?? new Error('Codex 尚未连接'));
     const id = ++this.sequence;
     const startedAt = performance.now(), sourceTimeMs = Date.now();
     const p = params as { threadId?: unknown; turnId?: unknown } | null;
     const fields = { type: 'rpc', method, requestId: id, sourceTimeMs,
       threadId: diagnosticId(p?.threadId) ?? null, turnId: diagnosticId(p?.turnId) ?? null };
-    if (this.diagnostics) this.diagnostic({ ...fields, stage: 'start', pendingRequests: this.pending.size });
+    const record = (stage: string, extra: TransportDiagnostic = {}) => {
+      if (this.diagnostics) this.diagnostic({ ...fields, stage, ...extra });
+      else operationLog('rpc.request', stage, { processRunId: this.processRunId, requestId: id, method, ...extra });
+    };
+    record('start', { pendingRequests: this.pending.size });
     const request = new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`Codex 请求超时：${method}`)); }, timeout);
+      const timer = setTimeout(() => { this.pending.delete(id); reject(Object.assign(new Error(`Codex 请求超时：${method}`), { errorOrigin: 'timeout' })); }, timeout);
       this.pending.set(id, { resolve, reject, timer, method, startedAt });
       try { this.write({ id, method, params }); } catch (e) { clearTimeout(timer); this.pending.delete(id); reject(e); }
     });
     return request.then(value => {
-      if (this.diagnostics) this.diagnostic({ ...fields, stage: 'end', outcome: 'completed', durationMs: Math.round(performance.now() - startedAt) });
+      record('end', { outcome: 'completed', durationMs: Math.round(performance.now() - startedAt) });
       return value;
     }, error => {
-      if (this.diagnostics) this.diagnostic({ ...fields, stage: 'end', outcome: this.closeReason?.name === 'AbortError' ? 'cancelled' : 'failed', durationMs: Math.round(performance.now() - startedAt),
-        ...errorFields(error) });
-      throw error;
+      // 进程关闭错误由多个请求共享，复制关联字段，不能让并发请求互相覆盖编号。
+      const failure = Object.assign(new Error(error.message), { name: error.name, code: error.code, rpcCode: error.rpcCode,
+        processRunId: this.processRunId, requestId: id, failureId: error.failureId ?? randomUUID(),
+        errorOrigin: error.errorOrigin ?? (Number.isInteger(error.rpcCode) ? 'backend' : 'transport') });
+      record('end', { ...errorFields(failure), outcome: failure.name === 'AbortError' ? 'cancelled' : 'failed', durationMs: Math.round(performance.now() - startedAt) });
+      throw failure;
     });
   }
   respond(id: RpcId, result: unknown): void { this.write({ id, result }); }
   reject(id: RpcId, message = '客户端不支持此请求'): void { this.write({ id, error: { code: -32601, message } }); }
   private write(msg: RpcMessage): void {
-    if (this.closed || !this.child?.stdin.writable) throw new Error('Codex 连接已断开');
+    if (this.closed || !this.child?.stdin.writable) throw this.closeReason ?? new Error('Codex 连接已断开');
     if (!this.child.stdin.write(JSON.stringify(msg) + '\n')) this.writeBackpressureCount++;
   }
-  private fail(e: Error): void {
+  private fail(e: Error, phase = 'protocol'): void {
     if (this.closed) return;
     this.closed = true;
-    this.closeReason = e;
-    if (e.name === 'AbortError') operationLog('rpc.process', 'cancelled', { operationId: this.processRunId });
-    else operationFailure('rpc.process', e, { operationId: this.processRunId });
-    for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(e); }
+    this.closePhase = phase;
+    const cause = errorFields(e);
+    this.closeReason = Object.assign(e, { processRunId: this.processRunId,
+      failureId: cause.failureId ?? randomUUID(), errorOrigin: cause.errorOrigin ?? 'transport' });
+    const fields = { operationId: this.processRunId, processRunId: this.processRunId, phase, pendingRequests: this.pending.size };
+    if (e.name === 'AbortError') operationLog('rpc.process', 'cancelled', fields);
+    else operationFailure('rpc.process', e, fields);
+    for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(this.closeReason); }
     this.pending.clear();
     // 协议损坏时子进程可能仍存活；释放它，避免后续请求复用失效连接。
     const child = this.child;
@@ -209,7 +226,7 @@ export class CodexRpc extends EventEmitter {
     }
   }
   dispose(): void {
-    this.fail(Object.assign(new Error('Codex 连接已关闭'), { name: 'AbortError' }));
+    this.fail(Object.assign(new Error('Codex 连接已关闭'), { name: 'AbortError' }), 'dispose');
     const child = this.child;
     if (!child) return;
     child.stdin.end();

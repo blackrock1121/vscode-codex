@@ -26,10 +26,10 @@ const alive = (pid: number) => { try { process.kill(pid, 0); return true; } catc
 
 export function workerRunner(workerPath: string, logDir: string, timeoutMs = 5 * 60_000): DiagnosticRunner {
   return (progress, signal, request) => new Promise((resolve, reject) => {
-    if (signal.aborted) { reject(new Error('诊断已中断')); return; }
+    if (signal.aborted) { reject(Object.assign(new Error('诊断已中断'), { name: 'AbortError' })); return; }
     const worker = new Worker(workerPath, { workerData: { logDir, request }, resourceLimits: { maxOldGenerationSizeMb: 192 } });
     let settled = false;
-    const abort = () => finish(new Error('诊断已中断'));
+    const abort = () => finish(Object.assign(new Error('诊断已中断'), { name: 'AbortError' }));
     const finish = (error?: Error, result?: DiagnosticOutput) => {
       if (settled) return; settled = true; clearTimeout(deadline); signal.removeEventListener('abort', abort);
       void worker.terminate().catch(error => operationFailure('diagnostics.worker.terminate', error));
@@ -39,12 +39,17 @@ export function workerRunner(workerPath: string, logDir: string, timeoutMs = 5 *
     deadline.unref();
     signal.addEventListener('abort', abort, { once: true });
     worker.on('message', message => {
+      if (settled) return;
       if (message?.type === 'diagnostic') operationLog('diagnostics.worker', 'failed', message.fields);
       else if (message?.type === 'progress') { try { progress(String(message.message).slice(0, 200)); } catch (error) { finish(error instanceof Error ? error : new Error('诊断进度回调失败')); } }
       else if (message?.type === 'result') finish(undefined, message.result);
       else if (message?.type === 'error') finish(new Error(message.message));
     });
-    worker.once('error', () => finish(new Error('后台诊断进程异常退出，请重试。')));
+    worker.once('error', error => {
+      if (settled) return;
+      operationFailure('diagnostics.worker', error);
+      finish(new Error('后台诊断进程异常退出，请重试。'));
+    });
     worker.once('exit', code => { if (!settled) finish(new Error(`后台诊断未完成（${code}），请重试。`)); });
   });
 }
@@ -151,17 +156,31 @@ export class DiagnosticJobs extends EventEmitter {
   private async execute(record: DiagnosticRecord, signal: AbortSignal): Promise<void> {
     const fields = { diagnosticId: record.id, operationId: record.id };
     operationLog('diagnostics.execute', 'start', fields);
+    // 进度只是最新状态；慢磁盘时不让大量过时进度阻塞完成/取消的落盘。
+    let latest: string | undefined, saving: Promise<void> | undefined, accepting = true;
+    const progress = (message: string) => {
+      if (!accepting || signal.aborted) return;
+      latest = message;
+      if (saving) return;
+      saving = (async () => {
+        while (latest !== undefined && accepting && !signal.aborted) {
+          const message = latest; latest = undefined;
+          await this.update(record.id, row => { if (row.status === 'running') row.progress = message; });
+        }
+      })().catch(error => operationFailure('diagnostics.progress.save', error, fields)).finally(() => { saving = undefined; });
+    };
     try {
-      const result = await this.run(message => { void this.update(record.id, row => { if (row.status === 'running') row.progress = message; })
-        .catch(error => operationFailure('diagnostics.progress.save', error, fields)); }, signal, record.options);
+      const result = await this.run(progress, signal, record.options);
+      accepting = false; latest = undefined; await saving;
       if (signal.aborted) throw new Error('诊断已中断');
       const report = this.file(record.id, '.report.md'), temp = report + '.' + randomUUID() + '.tmp';
       try { await fs.writeFile(temp, result.report, { mode: 0o600 }); await fs.rename(temp, report); }
       finally { await fs.unlink(temp).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.report.cleanup', error, fields); }); }
-      await this.update(record.id, row => { row.status = 'completed'; row.progress = result.modelAnalysis?.status === 'failed' ? '本地检查完成，模型诊断失败' : result.coverage && (result.coverage.unreadableFiles || result.coverage.invalidLines || result.coverage.oversizedLines || result.coverage.droppedLines) ? '诊断部分完成，存在证据缺口' : '诊断完成'; row.finishedAt = Date.now();
+      await this.update(record.id, row => { row.status = 'completed'; row.progress = result.modelAnalysis?.status === 'failed' ? '本地检查完成，模型诊断失败' : result.findings.some(f => f.id === 'logging-flush-incomplete') || result.coverage && (result.coverage.unreadableFiles || result.coverage.invalidLines || result.coverage.oversizedLines || result.coverage.droppedLines) ? '诊断部分完成，存在证据缺口' : '诊断完成'; row.finishedAt = Date.now();
         row.findings = result.findings; row.summary = result.summary; row.sourceNote = result.sourceNote; row.coverage = result.coverage; row.general = result.general; row.loggingAudit = result.loggingAudit; row.modelAnalysis = result.modelAnalysis; });
       operationLog('diagnostics.execute', 'completed', fields);
     } catch (error) {
+      accepting = false; latest = undefined; await saving;
       if (signal.aborted) operationLog('diagnostics.execute', 'cancelled', fields);
       else operationFailure('diagnostics.execute', error, fields);
       await this.update(record.id, row => { row.status = signal.aborted ? 'interrupted' : 'failed'; row.finishedAt = Date.now();

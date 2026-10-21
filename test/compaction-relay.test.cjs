@@ -79,7 +79,8 @@ test('HTTP/SSE 流、鉴权与错误状态透传；只改 responses 中的原生
  await request(base+'/responses',raw(make()));assert.equal(JSON.parse(seen[1].body).model,'gpt-6.1-sol');
  await request(base+'/responses/compact',raw(make()));assert.equal(JSON.parse(seen[2].body).model,'gpt-6-astra');
  await request(base+'/responses',raw(make()),{'content-encoding':'gzip'});assert.equal(JSON.parse(seen[3].body).model,'gpt-6-astra');
- assert.equal((await request(base+'/error','')).status,429);assert.equal(routes.length,1);
+ assert.equal((await request(base+'/error','')).status,429);assert.equal(routes.length,2);
+ assert.equal(routes[1].stage,'transport_end');assert.equal(routes[1].outcome,undefined);assert.equal(routes[1].routeId,routes[0].routeId);
  assert.doesNotMatch(JSON.stringify(routes),/fixture-not-a-key|完整输出|保留约束/);
 });
 
@@ -102,10 +103,11 @@ test('同一 WebSocket 中普通→自动压缩→续答，响应模型关联正
 });
 
 test('WS 上游异常不自行重发，关闭转发器会关闭所有连接',async t=>{
- const {base,wss,relay}=await fixture(t);let requests=0;
+ const {base,wss,relay,routes}=await fixture(t);let requests=0;
  wss.on('connection',ws=>ws.on('message',()=>{requests++;ws.close(1011,'fixture');}));
- const ws=await connect(t,base),closed=once(ws,'close');ws.send(raw(make()));
+ const ws=await connect(t,base),closed=once(ws,'close');ws.send(raw(make()),{binary:false});
  const [code]=await closed;assert.equal(code,1011);assert.equal(requests,1);
+ assert.deepEqual(routes.map(r=>r.stage),['request','response']);assert.equal(routes[1].outcome,'incomplete');assert.equal(routes[1].routeId,routes[0].routeId);
  const ws2=await connect(t,base),closed2=once(ws2,'close');relay.close();await closed2;
  await assert.rejects(request(base+'/responses',''));
 });

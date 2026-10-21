@@ -3,6 +3,12 @@ export function webviewErrorCategory(error: unknown): string {
   const name = (error as { name?: unknown })?.name;
   return typeof name === 'string' && ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ReferenceError', 'URIError', 'AbortError'].includes(name) ? name : 'Error';
 }
+export function imageErrorOperation(element: Element): string {
+  const src = element.getAttribute('src') ?? '';
+  const type = element.hasAttribute('data-local-src') || /^file:/i.test(src) ? 'local' :
+    /^https?:/i.test(src) ? 'remote' : /^data:/i.test(src) ? 'inline' : src ? 'resource' : undefined;
+  return `webview.image.load${type ? '.' + type : ''}`;
+}
 export function installWebviewErrors(send: (message: string) => void): (operation: string, error?: unknown) => void {
   const reported = new Map<string, number>();
   const pending = new Map<string, number>();
@@ -31,7 +37,7 @@ export function installWebviewErrors(send: (message: string) => void): (operatio
   // 宿主下一次来信说明通道重新活动；不盲目重放用户操作，只补发脱敏错误摘要。
   window.addEventListener('message', flush);
   window.addEventListener('error', event => report(
-    (event.target as Element | null)?.tagName === 'IMG' ? 'webview.image.load' :
+    (event.target as Element | null)?.tagName === 'IMG' ? imageErrorOperation(event.target as Element) :
     /^ResizeObserver loop (?:completed with undelivered notifications\.|limit exceeded)$/.test(event.message) ? 'ResizeObserver loop completed with undelivered notifications.' : 'webview.runtime', event.error), true);
   window.addEventListener('unhandledrejection', event => report('webview.unhandledrejection', event.reason));
   return report;

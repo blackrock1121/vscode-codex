@@ -161,6 +161,7 @@ export class CodexProcess {
     this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
     this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
+      this.cancelCompactionRestore();
       this.cancelCompactionValidation();
       this.latency.finish('connection_closed');
       this.compactionRelay?.close(); this.compactionRelay = undefined;
@@ -291,7 +292,7 @@ export class CodexProcess {
       if (this.exited || this.disposed) return;
       if (!prepared || prepared === budgetExpired) {
         this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify({ stage: 'fallback',
-          reason: prepared === budgetExpired ? 'startup_budget_expired' : 'settings_unavailable', scope: 'native' })}` });
+          processRunId: this.rpc.runId, reason: prepared === budgetExpired ? 'startup_budget_expired' : 'settings_unavailable', scope: 'native' })}` });
         return;
       }
       const { settings, identity } = prepared;
@@ -305,14 +306,14 @@ export class CodexProcess {
       });
       if (this.exited || this.disposed) { relay.close(); return; }
       this.compactionRelay = relay; this.compactionUpstreamUrl = upstream;
-      this.emit({ kind: 'diag', message: '[compaction_route] {"stage":"ready","scope":"manual_and_auto"}' });
+      this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify({ stage: 'ready', scope: 'manual_and_auto', processRunId: this.rpc.runId })}` });
     } catch (error) {
       operationLog('compaction.relay.prepare', 'fallback', { ...errorFields(error), scope: 'native' });
       this.emit({ kind: 'notice', message: '自动压缩优化连接未启用，当前连接继续使用 CLI 原生压缩。' });
     } finally { clearTimeout(timer); }
   }
   private compactionRouted(route: CompactionRoute): void {
-    this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify(route)}` });
+    this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify({ ...route, processRunId: this.rpc.runId, traceId: this.latency.currentTraceId })}` });
     const trace = this.compactionTrace;
     if (route.stage === 'request' && trace && route.threadId === trace.threadId) {
       trace.model = route.toModel; trace.effort = route.effort; trace.modelSource = 'transport_override';

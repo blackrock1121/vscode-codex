@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import * as fs from 'node:fs/promises';
+import { readImageFile } from '../imageFile';
 import * as path from 'node:path';
 import type { TimelineItem } from '../shared';
 
@@ -75,7 +75,8 @@ export class RemoteImageReader {
                 if(/^[a-z][a-z\d+.-]*:/i.test(source)||source.includes('\0'))throw new Error('IMAGE_NOT_AVAILABLE');
                 const file=path.resolve(cwd,source),mime:Record<string,string>={'.png':'png','.jpg':'jpeg','.jpeg':'jpeg','.gif':'gif','.webp':'webp'};
                 const type=mime[path.extname(file).toLowerCase()];if(!type)throw new Error('IMAGE_NOT_AVAILABLE');
-                const handle=await fs.open(file,'r');try{const stat=await handle.stat();if(!stat.isFile()||stat.size>20971520)throw new Error('IMAGE_TOO_LARGE');source=`data:image/${type};base64,${(await handle.readFile()).toString('base64')}`;}finally{await handle.close();}
+                try { source=`data:image/${type};base64,${(await readImageFile(file,20971520)).toString('base64')}`; }
+                catch (error) { if ((error as NodeJS.ErrnoException).code === 'EFBIG') throw new Error('IMAGE_TOO_LARGE'); throw error; }
             }
             const decoded=decodeImage(source),bytes=Buffer.from(decoded.data,'base64');value={bytes,mime:decoded.mediaType,hash:createHash('sha256').update(bytes).digest('hex'),at:Date.now()};
             while(this.cache.size>=2)this.cache.delete(this.cache.keys().next().value!);this.cache.set(key,value);
