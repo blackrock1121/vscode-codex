@@ -111,13 +111,23 @@ export class DiagnosticJobs extends EventEmitter {
         try {
           let record = await this.get(name.slice(0, -5));
           if (record.status === 'running' && !alive(record.ownerPid)) {
-            record = await this.update(record.id, row => { row.status = 'interrupted'; row.progress = '来源窗口已退出，诊断中断，可重新诊断'; row.finishedAt = Date.now(); });
+            record = await this.update(record.id, row => {
+              // 列表读取与获得跨窗口写锁之间，另一窗口可能已经更新终态。
+              if (row.status !== 'running' || alive(row.ownerPid)) return;
+              row.status = 'interrupted'; row.progress = '来源窗口已退出，诊断中断，可重新诊断'; row.finishedAt = Date.now();
+            });
           }
           if (record.notification.status === 'sending' && record.notification.ownerPid && !alive(record.notification.ownerPid)) {
-            record = await this.update(record.id, row => { row.notification = { status: 'failed', message: '来源窗口退出，尚未确认通知发送结果，可重试通知' }; });
+            record = await this.update(record.id, row => {
+              if (row.notification.status !== 'sending' || !row.notification.ownerPid || alive(row.notification.ownerPid)) return;
+              row.notification = { status: 'failed', message: '来源窗口退出，尚未确认通知发送结果，可重试通知' };
+            });
           }
           if (record.repair?.status === 'creating' && record.repair.ownerPid && !alive(record.repair.ownerPid)) {
-            record = await this.update(record.id, row => { row.repair = { status: 'failed', message: '创建修复会话的窗口已退出，请检查历史会话后重试。' }; });
+            record = await this.update(record.id, row => {
+              if (row.repair?.status !== 'creating' || !row.repair.ownerPid || alive(row.repair.ownerPid)) return;
+              row.repair = { status: 'failed', message: '创建修复会话的窗口已退出，请检查历史会话后重试。' };
+            });
           }
           return record;
         } catch (error) { unreadable++; operationFailure('diagnostics.record.read', error, { diagnosticId: name.slice(0, -5) }); return undefined; }

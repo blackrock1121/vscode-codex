@@ -1805,3 +1805,22 @@ test('手机发来的图片立即进入桌面消息，正文修正不重复且�
  assert.ok(messages.includes('完整而准确的回答'));assert.ok(!messages.includes('尚未完整'));
  assert.equal(messages.split('完整而准确的回答').length-1,1);assert.deepEqual(errors,[]);
 });
+
+test('87cc 缺失图片可手动重载，损坏图片恢复后不影响其它消息',t=>{
+ const {w,sent,emit,errors}=setup(t),imagePath='/tmp/recovered.jpg';
+ emit({kind:'load_history',sessionId:'image-recovery',items:[{type:'assistant_text',text:`保留正文 ![图片](${imagePath})`}],checkpoints:[]});
+ emit({kind:'local_image',path:imagePath});assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,1);
+ w.document.querySelector('.local-image-retry').click();assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,2);
+ emit({kind:'local_image',path:imagePath,dataUri:'data:image/jpeg;base64,YQ=='});
+ w.document.querySelector('img[data-local-src]').dispatchEvent(new w.Event('error'));
+ assert.ok(w.document.querySelector('.local-image-retry'));assert.match(w.document.getElementById('messages').textContent,/保留正文/);
+ w.document.querySelector('.local-image-retry').click();assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,3);
+ emit({kind:'local_image',path:imagePath,dataUri:'data:image/jpeg;base64,Yg=='});
+ w.document.querySelector('img[data-local-src]').dispatchEvent(new w.Event('load'));
+ assert.equal(w.document.querySelector('.local-image-failed,.local-image-placeholder'),null);assert.deepEqual(errors,[]);
+});
+test('87cc 历史重新载入会重新读取此前失败的图片',t=>{
+ const {w,sent,emit,errors}=setup(t),history={kind:'load_history',sessionId:'reload-image',items:[{type:'assistant_text',text:'![图片](/tmp/reload.jpg)'}],checkpoints:[]};
+ emit(history);emit({kind:'local_image',path:'/tmp/reload.jpg'});emit(history);
+ assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,2);assert.ok(w.document.querySelector('.local-image-placeholder'));assert.deepEqual(errors,[]);
+});

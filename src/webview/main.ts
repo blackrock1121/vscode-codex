@@ -1418,6 +1418,9 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       showHistoryStatus(m.error);
       break;
     case "load_history":
+      // 文件可能在失败后恢复或被重新生成；重新载入历史必须重新读取图片。
+      localImageCache.clear();
+      localImagePending.clear();
       historyPending = false;
       hideForking();
       loadHistory(m.items, m.checkpoints, m.sessionId);
@@ -2973,6 +2976,25 @@ function showLocalImage(img: HTMLImageElement, dataUri?: string) {
   const label = img.alt || img.dataset.localSrc || "图片";
   if (!dataUri) {
     const failed = el("span", "local-image-failed", `图片无法加载：${label}`);
+    const imagePath = img.dataset.localSrc;
+    if (imagePath) {
+      // 失败也缓存到本次渲染结束，避免流式重绘不断重试同一缺失图片。
+      localImageCache.set(imagePath, null);
+      const retry = el("button", "local-image-retry", "重新加载");
+      retry.type = "button";
+      retry.onclick = event => {
+        event.preventDefault(); event.stopPropagation();
+        img.removeAttribute("src"); img.classList.add("local-image-pending");
+        failed.replaceWith(img);
+        img.before(el("span", "local-image-placeholder", `加载图片：${label}`));
+        localImageCache.delete(imagePath);
+        if (!localImagePending.has(imagePath)) {
+          localImagePending.add(imagePath);
+          send({ type: "loadLocalImage", path: imagePath });
+        }
+      };
+      failed.append(" ", retry);
+    }
     img.replaceWith(failed);
     if (placeholder?.classList.contains("local-image-placeholder")) placeholder.remove();
     return;

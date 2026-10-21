@@ -136,7 +136,9 @@ export class DailyLogWriter {
           batches.delete(day); // 部分成功后重试不能把已落盘的日期重放。
           try { this.onBatch?.(text); this.health('output'); } catch (error) { this.health('output', error); }
         }
-        if (dropped) await fs.promises.appendFile(path.join(this.dir, `codex-chat-${logDay(date)}.log`), `${this.identityPrefix}[logging] droppedLines=${dropped} reason=buffer_or_write_limit\n`, 'utf8');
+        // 丢弃汇总也必须有时间；否则带时间窗的诊断会把它排入 unknownTimeLines，
+        // 从而在明明丢失日志时仍显示 droppedLines=0。保留旧格式兼容历史读取器。
+        if (dropped) await fs.promises.appendFile(path.join(this.dir, `codex-chat-${logDay(date)}.log`), `[${new Date().toISOString()}] ${this.identityPrefix}[logging] droppedLines=${dropped} reason=buffer_or_write_limit\n`, 'utf8');
         this.writeFailures = 0; this.health('write');
         // 先完成跨天批次再清理，避免把过期批次重新创建出来。
         if (this.prunedDay !== logDay(date)) { await this.prune(date); this.prunedDay = logDay(date); }

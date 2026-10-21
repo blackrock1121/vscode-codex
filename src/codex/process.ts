@@ -90,6 +90,7 @@ export class CodexProcess {
   private activeEffort?: string;
   private compactionRestore?: { operationId?: string; model: string; effort: string; pending: boolean; isError: boolean };
   private compactionRelay?: CompactionRelay;
+  private readonly compactionRoutes = new Map<string, { traceId?: string; compactionId?: number }>();
   private compactionPreparation?: Promise<{ settings: any; identity: any } | undefined>;
   private autoCompactionsWithoutProgress = 0;
   private readonly compactionStore: CompactionValidationStore;
@@ -313,7 +314,17 @@ export class CodexProcess {
     } finally { clearTimeout(timer); }
   }
   private compactionRouted(route: CompactionRoute): void {
-    this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify({ ...route, processRunId: this.rpc.runId, traceId: this.latency.currentTraceId })}` });
+    if (route.stage === 'request' && route.routeId) {
+      if (this.compactionRoutes.size >= 64) this.compactionRoutes.delete(this.compactionRoutes.keys().next().value!);
+      this.compactionRoutes.set(route.routeId, { traceId: route.threadId === this.sessionId ? this.latency.currentTraceId : undefined,
+        compactionId: route.threadId === this.compactionTrace?.threadId ? this.compactionTrace?.id : undefined });
+    }
+    const correlation = route.routeId ? this.compactionRoutes.get(route.routeId) : undefined;
+    // 迟到的响应属于发起它的轮次；没有关联时保持未知，不能借用当前轮次。
+    this.emit({ kind: 'diag', message: `[compaction_route] ${JSON.stringify({ ...route, atMs: Date.now(), processRunId: this.rpc.runId,
+      traceId: correlation?.traceId ?? null, compactionId: correlation?.compactionId ?? null,
+      configurationScope: 'request_only', sessionConfigurationChanged: false })}` });
+    if (route.stage !== 'request' && route.routeId) this.compactionRoutes.delete(route.routeId);
     const trace = this.compactionTrace;
     if (route.stage === 'request' && trace && route.threadId === trace.threadId) {
       trace.model = route.toModel; trace.effort = route.effort; trace.modelSource = 'transport_override';
@@ -1095,21 +1106,25 @@ export class CodexProcess {
       if (restore.pending) return;
       restore.pending = true;
       const operationId = restore.operationId = randomUUID();
+      const serviceTier = speedServiceTier(this.opts.speedMode ?? 'default');
       this.latency.start('compaction_restore', 'pretool');
-      operationLog('compaction.restore', 'start', { operationId, traceId: this.latency.currentTraceId, model: restore.model, effort: restore.effort });
+      operationLog('compaction.restore', 'start', { operationId, processRunId: this.rpc.runId, traceId: this.latency.currentTraceId,
+        model: restore.model, effort: restore.effort, serviceTier });
       this.emit({ kind: 'status', label: '正在恢复会话模型设置…' });
       void this.rpc.request('thread/settings/update', {
         threadId: this.sessionId, model: restore.model, effort: restore.effort,
-        serviceTier: speedServiceTier(this.opts.speedMode ?? 'default'),
+        serviceTier,
       }).then(() => {
         if (this.disposed || this.compactionRestore !== restore) return;
         this.latency.end('compaction_restore');
-        operationLog('compaction.restore', 'completed', { operationId, traceId: this.latency.currentTraceId, model: restore.model, effort: restore.effort });
+        operationLog('compaction.restore', 'completed', { operationId, processRunId: this.rpc.runId, traceId: this.latency.currentTraceId,
+          model: restore.model, effort: restore.effort, serviceTier });
         this.compactionRestore = undefined;
         this.finish(restore.isError);
       }).catch(error => {
         if (this.disposed || this.compactionRestore !== restore) return;
-        operationFailure('compaction.restore', error, { operationId, traceId: this.latency.currentTraceId });
+        operationFailure('compaction.restore', error, { operationId, processRunId: this.rpc.runId, traceId: this.latency.currentTraceId,
+          model: restore.model, effort: restore.effort, serviceTier });
         this.latency.end('compaction_restore', 'failed');
         this.compactionRestore = undefined;
         this.error('压缩后的会话设置恢复失败，已关闭连接；下一条消息会按会话配置重新连接。');

@@ -39,6 +39,7 @@ export class WorkspaceSnapshot {
   private bytes = 0;
   private completeScan = true;
   private changedDuringRead = 0;
+  private readonly timings = { inventoryMs: 0, directoryMs: 0, readMs: 0, fingerprintMs: 0 };
   private readonly roots: string[];
   private readonly excluded: Map<string, RegExp[]>;
   private readonly readConcurrency = 16;
@@ -99,7 +100,9 @@ export class WorkspaceSnapshot {
   private async walk(root: string): Promise<string[]> {
     const out: string[] = [];
     const excluded = new Set(['.git', 'node_modules', '.venv', 'venv', 'dist', 'build', 'target', '.next', '.codex', '.idea']);
+    const inventoryAt = performance.now();
     const inventory = await this.gitInventory(root);
+    this.timings.inventoryMs += performance.now() - inventoryAt;
     // Git 将子模块列为目录，继续按原规则扫描其内容；不跟随符号链接。
     const submodules: string[] = [];
     let dirs = [root];
@@ -107,7 +110,9 @@ export class WorkspaceSnapshot {
       const next: string[] = [];
       for (let i = 0; i < dirs.length; i += this.readConcurrency) {
         const batch = dirs.slice(i, i + this.readConcurrency);
+        const directoryAt = performance.now();
         const listed = await Promise.all(batch.map(dir => fs.readdir(dir, { withFileTypes: true }).catch(() => undefined)));
+        this.timings.directoryMs += performance.now() - directoryAt;
         for (let j = 0; j < batch.length; j++) {
           const dir = batch[j], entries = listed[j];
           if (!entries) { this.skip(dir, 'unreadable'); this.completeScan = false; continue; }
@@ -150,7 +155,11 @@ export class WorkspaceSnapshot {
         const chunks: Buffer[] = [];
         let size = 0;
         while (size <= MAX_FILE_BYTES) {
-          const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, MAX_FILE_BYTES + 1 - size));
+          // 小源码文件和 EOF 探测不必各分配 64KiB；仍多读一字节并保留前后
+          // inode/时间/大小校验，文件增长时也不会把混合内容当成可靠基线。
+          // 若已经观察到增长，恢复有界块读取以判断是否超出大小上限，不能逐字节循环。
+          const remaining = size > opened.size ? 64 * 1024 : Math.max(1, opened.size + 1 - size);
+          const buffer = Buffer.allocUnsafe(Math.min(64 * 1024, remaining, MAX_FILE_BYTES + 1 - size));
           const { bytesRead } = await handle.read(buffer, 0, buffer.length, null);
           if (!bytesRead) break;
           size += bytesRead;
@@ -159,6 +168,7 @@ export class WorkspaceSnapshot {
           if (chunk.includes(0)) return { reason: 'binary' };
           chunks.push(chunk);
         }
+        if (size !== opened.size) { this.changedDuringRead++; return { reason: 'unreadable' }; }
         // 已打开文件在读取期间消失/被替换，属于不稳定读取，不能当作可安全还原的删除。
         const current = await fs.lstat(file).catch(() => undefined);
         if (!current || !same(opened, await handle.stat()) || !same(opened, current)) {
@@ -201,6 +211,7 @@ export class WorkspaceSnapshot {
     operationLog('snapshot.capture', 'start', { operationId, roots: this.roots.length });
     for (const root of this.roots) {
       const files = (await this.walk(root)).filter(file => !this.files.has(file) && !this.skipped.has(file));
+      const readAt = performance.now();
       await this.readBatch(files, (file, { text, reason, missing }) => {
         if (missing) return;
         if (text === undefined) { this.skip(file, reason ?? 'unreadable'); return; }
@@ -208,12 +219,16 @@ export class WorkspaceSnapshot {
         if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); return; }
         this.files.set(file, text); this.bytes += size;
       });
+      this.timings.readMs += performance.now() - readAt;
     }
+    const fingerprintAt = performance.now();
     this.skippedBaseline = await this.fingerprints([...this.skipped]);
+    this.timings.fingerprintMs += performance.now() - fingerprintAt;
     const unreadable = [...this.skipReasons.values()].filter(reason => reason === 'unreadable').length;
     operationLog('snapshot.capture', !this.roots.length ? 'skipped' : unreadable ? this.files.size ? 'partial' : 'unavailable' : 'completed',
       { operationId, reason: !this.roots.length ? 'no_workspace' : undefined, files: this.files.size, skipped: this.skipped.size,
-        unreadable, changedDuringRead: this.changedDuringRead, completeScan: this.completeScan, durationMs: Date.now() - started });
+        unreadable, changedDuringRead: this.changedDuringRead, completeScan: this.completeScan, durationMs: Date.now() - started,
+        ...Object.fromEntries(Object.entries(this.timings).map(([key, ms]) => [key, Math.round(ms)])) });
   }
   async changed(): Promise<Map<string, string | null>> {
     const changes = new Map<string, string | null>();
