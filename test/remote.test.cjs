@@ -406,3 +406,17 @@ test('桌面实时额度更新也成为手机和新会话读取的账号用量',
  const result=(await f.provider.executeRemote(command({kind:'session.list'},''),()=>true)).result;
  assert.equal(result.usage.weekPct,37.5);assert.ok(result.usage.updatedAt>1);
 });
+
+test('手机在任务启动后才连接，仍读取电脑原始开始时间；轮询时钟不打破快照缓存',async()=>{
+ const f=fixture(),adapter=f.provider.remote();adapter.observe(f.b,{kind:'busy',busy:true});f.b.proc.isBusy=true;
+ adapter.observe(f.b,{kind:'tokens',output:16200});adapter.observe(f.b,{kind:'block_end'});
+ const first=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;
+ assert.ok(first.run.startedAt<=first.serverTime);assert.equal(first.run.tokens,16200);assert.equal(first.run.progress,'模型阶段完成');
+ const next=(await f.provider.executeRemote(command({kind:'session.snapshot',revision:first.revision}),()=>true)).result;
+ assert.equal(next.unchanged,true);assert.equal(next.run.id,first.run.id);assert.equal(next.run.startedAt,first.run.startedAt);assert.ok(next.serverTime>=first.serverTime);
+ const other=(await f.provider.executeRemote(command({kind:'session.snapshot'},'session-a'),()=>true)).result;assert.equal(other.run,null);
+ adapter.observe(f.b,{kind:'result',isError:false});adapter.observe(f.b,{kind:'busy',busy:false});f.b.proc.isBusy=false;
+ const final=(await f.provider.executeRemote(command({kind:'session.snapshot'}),()=>true)).result;assert.ok(final.run.finishedAt>=final.run.startedAt);
+ f.b.sessionId='rebound-session';const rebound=(await f.provider.executeRemote(command({kind:'session.snapshot'},'rebound-session'),()=>true)).result;assert.equal(rebound.run,null);
+ adapter.dispose();
+});

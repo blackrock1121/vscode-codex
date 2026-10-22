@@ -10,8 +10,11 @@ import { checkedItem, RemoteImageReader, decodeImage, sourceUserIndex } from './
 import { remoteImages } from './images';
 import { CURRENT_CAPABILITIES } from './contract';
 import { ExecutionReceipts } from './executionReceipts';
+import { RunProgress } from './runProgress';
 
 interface RemoteState {
+    run?: RunProgress;
+    runSession?: string;
     desktopQueue?: Extract<FromWebview, {type: 'desktopQueue'}>;
     taskQueue?: SessionTaskQueue;
     remoteNotify?: {deviceId: string; commandId: string};
@@ -62,8 +65,11 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         try { this.host.publish(id, event); } catch (error) { this.failure(error); }
     }
     observe(ctx: C, e: ToWebview): void {
-        if (this.disabled) return;
         try {
+            const state = this.state(ctx);
+            if (state.runSession !== ctx.sessionId) { state.run = new RunProgress(); state.runSession = ctx.sessionId; }
+            (state.run ??= new RunProgress()).observe(e);
+            if (this.disabled) return;
             if(e.kind==='session'&&e.permissionMode)this.state(ctx).remoteMode=e.permissionMode;
             if(e.kind==='rate_limit')this.state(ctx).remoteLimit=e;
             if(e.kind==='rate_limit_cleared')this.state(ctx).remoteLimit=undefined;
@@ -95,6 +101,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     closed(ctx: C): void {
         try {
             const state = this.states.get(ctx);
+            state?.run?.observe({kind: 'busy', busy: false});
             if (state?.remoteNotify) this.remoteEvent(ctx, {kind: 'result', isError: true});
             if (state?.taskQueue?.items.length) { state.taskQueue.paused = true; this.postQueue(ctx); }
         } catch (error) { this.failure(error); }
@@ -386,8 +393,8 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
                 model: this.host.sessionModel(ctx).slice(0, 120), effort: this.host.sessionEffort(ctx).slice(0, 40),
                 speed: this.host.speedMode(ctx), capabilities:CURRENT_CAPABILITIES, queueCount:(remote.taskQueue?.items.length??0)+desktopQueueCount,desktopQueueCount,queuePaused:remote.taskQueue?.paused??false,pinned:this.host.pinnedSet().has(sourceId!),stream:remote.remoteStream?{...remote.remoteStream,text:remote.remoteStream.text.slice(-600),thinking:remote.remoteStream.thinking.slice(-200),truncated:remote.remoteStream.text.length>600||remote.remoteStream.thinking.length>200}:null, request:this.remoteRequest(ctx), context:remote.remoteContext??null, limit:remote.remoteLimit??null, progress:remote.remoteStatus??null,
-                permissionMode:remote.remoteMode??null, usage: this.accountUsage() };
-            return { accepted: true, result: transcriptSnapshot(items, state, op) };
+                run:remote.runSession===ctx.sessionId?remote.run?.snapshot()??null:null, permissionMode:remote.remoteMode??null, usage: this.accountUsage() };
+            return { accepted: true, result: {...transcriptSnapshot(items, state, op), serverTime: Date.now()} };
         }
         if (op.kind === 'message.send' || op.kind === 'session.create') {
             let images: {mediaType:string;data:string}[];

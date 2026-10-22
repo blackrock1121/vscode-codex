@@ -5,12 +5,19 @@ export interface RequestSummary {
 export interface ChatMessage {
   id: string; role: string; text: string; imageCount?: number; actionable?: boolean; messageRevision?: string;
 }
+/** 时间戳来自电脑；Token 与桌面展示同口径，estimated 表示流式字符估算。 */
+export interface RunProgressSummary {
+  id: string; startedAt: number; lastProgressAt: number; finishedAt?: number;
+  progress: string; phase: 'model' | 'tools' | 'waiting' | 'compacting' | 'finished' | 'failed';
+  tokens: number; estimated: boolean;
+}
 export interface SessionSnapshot {
   kind?: 'session.snapshot'; sessionId?: string; title?: string; busy?: boolean; waiting?: boolean;
   turnId?: string | null; text?: string; messages?: ChatMessage[]; revision?: string;
   start?: number; end?: number; total?: number; unchanged?: boolean; reset?: boolean;
   capabilities?: Record<string, boolean>; request?: RequestSummary | null;
   queueCount?: number; queuePaused?: boolean; queueReason?: string;
+  run?: RunProgressSummary | null; serverTime?: number;
 }
 export interface ExecutionStatus { kind: 'command.status'; commandId: string; state: 'accepted' | 'rejected' | 'unknown'; sessionId?: string }
 export interface PluginResults {
