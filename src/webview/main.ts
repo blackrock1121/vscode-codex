@@ -18,6 +18,19 @@ declare function acquireVsCodeApi(): {
 };
 const vscode = acquireVsCodeApi();
 const send = (m: FromWebview) => vscode.postMessage(m);
+// 发送前先写 VS Code 的页面持久状态。宿主内存和聊天气泡都不能跨窗口重载。
+const savedState = (vscode.getState() ?? {}) as { sessionId?: string; recovery?: {
+  sends?: SavedSend[]; queue?: QueueItem[]; draft?: QueueItem;
+} };
+let persistedSessionId = savedState.sessionId;
+interface SavedSend { id: string; payload: QueueItem; userIndex: number; turnId?: string; cancelled?: boolean }
+const recoverySends = new Map<string, SavedSend>();
+let nextUserIndex = 0;
+let currentSendId: string | undefined;
+let receiveTimer = 0;
+let stopFeedbackTimer = 0;
+let stopUnconfirmed = false;
+let recoveryPending = false;
 
 const reportWebviewError = installWebviewErrors(message => vscode.postMessage({ type: 'webviewError', message }));
 
@@ -1168,7 +1181,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       }
       // Persist the tab↔session binding so a window reload restores THIS tab to
       // THIS conversation (and never two tabs onto one session = two processes).
-      if (m.sessionId) vscode.setState({ sessionId: m.sessionId });
+      if (m.sessionId) bindSessionState(m.sessionId);
       break;
     case "busy":
       if (!m.busy && m.restoring === false && restoreInProgress) hideRestoring();
@@ -1177,6 +1190,8 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "finalizing":
       turnFinalizing = true;
       stopPending = false;
+      clearTimeout(stopFeedbackTimer);
+      stopUnconfirmed = false;
       removeWorking();
       statusLine.textContent = userStopped ? "已停止 · 正在整理文件还原点…" : "回复已结束 · 正在整理文件还原点…";
       refreshComposerHint();
@@ -1199,7 +1214,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       const edit = activeMessageEdit;
       if (!edit || edit.requestId !== m.requestId) break;
       if (m.ok) {
-        vscode.setState({ sessionId: m.sessionId });
+        bindSessionState(m.sessionId);
         activeMessageEdit = undefined;
         submitEdit(edit.msg, edit.checkpointId, edit.input.value, false, false, m.requestId);
       } else {
@@ -1344,6 +1359,10 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       }
       break;
     case "result":
+      if (!m.isError && !userStopped && currentSendId && recoverySends.get(currentSendId)?.turnId) {
+        recoverySends.delete(currentSendId);
+        persistRecovery();
+      }
       // A turn the user cancelled is not a failure: no red rim.
       if (userStopped) setGlow("idle");
       else setGlow(m.isError ? "error" : "done");
@@ -1435,7 +1454,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       inputEl.dispatchEvent(new Event("input"));
       break;
     case "history_status":
-      vscode.setState({ sessionId: m.sessionId });
+      bindSessionState(m.sessionId);
       showHistoryStatus(m.error);
       break;
     case "load_history":
@@ -1460,8 +1479,21 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       onCheckpointMarker(m.checkpointId, m.sendId);
       break;
     case "send_cancelled":
+      if (localSends.has(m.sendId) && recoverySends.has(m.sendId)) {
+        recoverySends.get(m.sendId)!.cancelled = true;
+        persistRecovery();
+      }
       onSendCancelled(m.sendId);
       break;
+    case "send_received":
+      if (m.sendId === currentSendId) clearTimeout(receiveTimer);
+      break;
+    case "send_accepted": {
+      const entry = recoverySends.get(m.sendId);
+      if (entry) { entry.turnId = m.turnId; persistRecovery(); }
+      if (m.sendId === currentSendId) clearTimeout(receiveTimer);
+      break;
+    }
     case "speed_context":
       if (m.model !== undefined) actualSpeedModel = m.model;
       if (m.billing !== undefined) speedBilling = m.billing;
@@ -2673,6 +2705,7 @@ const HISTORY_ITEM_LIMIT = 120; // 工具密集的几轮也可能有上千条记
 let historyState: { items: TimelineItem[]; checkpoints: { id: string; label: string; userText?: string }[] } | null = null;
 
 function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: string; userText?: string }[], sessionId?: string) {
+  if (restoreInProgress || (!sessionId && !recoveryPending)) recoverySends.clear();
   activeMessageEdit = undefined;
   localSends.clear();
   hideSpeedFeedback();
@@ -2684,7 +2717,8 @@ function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: s
   historyState = { items, checkpoints: checkpoints || [] };
   seedInputHistory(items); // ↑ 能调回本会话之前发过的消息
   // 空历史也必须解除旧绑定，避免 /clear 或还原到开头后重载又复活旧会话。
-  vscode.setState({ sessionId });
+  bindSessionState(sessionId);
+  nextUserIndex = items.filter(item => item.type === "user").length;
   // 整页重载是从 transcript 权威重建，绝不能带出合成标记：还原过渡那几秒里用
   // 户若又点了停止，残留的 userStopped 会让 renderHistory 收尾的 finalizeTurn
   // 给最后一轮错盖「[Request interrupted by user]」。
@@ -2702,6 +2736,7 @@ function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: s
     }
   }
   renderHistory(false);
+  if (recoveryPending) { recoveryPending = false; recoverMissingSends(items); }
 }
 
 function renderHistory(showAll: boolean) {
@@ -3337,6 +3372,8 @@ function onSendCancelled(sendId: string) {
     userMsgCount = messagesEl.querySelectorAll(".msg.user").length;
     userStopped = false;
     recallQueuedItem(entry.payload);
+    recoverySends.delete(sendId);
+    persistRecovery();
     updateQuestionBar();
     updateEmptyState();
   };
@@ -3366,6 +3403,73 @@ let activeMessageEdit: {
 } | undefined;
 const taskQueue: QueueItem[] = [];
 const taskQueueEl = $("task-queue");
+
+function validRecoveryPayload(value: any): value is QueueItem {
+  return !!value && typeof value.text === "string" &&
+    ["files", "labels", "imageUris"].every(key => Array.isArray(value[key]) && value[key].every((x: unknown) => typeof x === "string")) &&
+    Array.isArray(value.images) && value.images.every((x: any) => typeof x?.mediaType === "string" && typeof x?.data === "string") &&
+    Array.isArray(value.contexts) && value.contexts.every((x: any) => typeof x?.label === "string" && typeof x?.text === "string") &&
+    (value.context === undefined || typeof value.context === "string");
+}
+
+function persistRecovery() {
+  const draft = readComposer();
+  const sends = [...recoverySends.values()];
+  vscode.setState({ sessionId: persistedSessionId,
+    ...(sends.length || taskQueue.length || draft ? { recovery: {
+      sends, queue: taskQueue, ...(draft ? { draft } : {}),
+    } } : {}),
+  });
+}
+
+function bindSessionState(sessionId?: string) {
+  if (persistedSessionId && persistedSessionId !== sessionId) recoverySends.clear();
+  persistedSessionId = sessionId;
+  persistRecovery();
+}
+
+function recoverMissingSends(items: TimelineItem[]) {
+  const users = items.filter((item): item is Extract<TimelineItem, { type: "user" }> => item.type === "user");
+  for (const [id, entry] of recoverySends) {
+    const user = entry.turnId ? users.find(user => user.turnId === entry.turnId) : users[entry.userIndex];
+    // 未收到回执时只比对发送位置，不能用历史中更早的同文消息冒充本次已送达。
+    const matches = user && (entry.turnId || (user.text.trim() === entry.payload.text.trim() &&
+      JSON.stringify(user.images ?? []) === JSON.stringify(entry.payload.imageUris)));
+    if (!entry.cancelled && matches) { recoverySends.delete(id); continue; }
+    const card = el("div", "recovered-send");
+    card.append(el("div", "notice", entry.cancelled ? "已保留上次未发送的消息" :
+      "这条消息未在会话历史中确认，原文和附件已保留；请核对执行结果后再发送。"));
+    const userNode = appendUser(entry.payload.text, entry.payload.labels, entry.payload.imageUris, false);
+    userNode.before(card);
+    const restore = el("button", "cp-restore", "取回到输入框");
+    restore.onclick = () => {
+      recallQueuedItem(entry.payload);
+      recoverySends.delete(id);
+      persistRecovery();
+      card.remove(); userNode.remove();
+    };
+    card.append(restore);
+  }
+  persistRecovery();
+}
+
+function restoreRecoveryState() {
+  if (savedState.sessionId && initialSessionId && savedState.sessionId !== initialSessionId) return;
+  for (const entry of Array.isArray(savedState.recovery?.sends) ? savedState.recovery.sends : []) {
+    if (typeof entry?.id === "string" && Number.isInteger(entry.userIndex) && entry.userIndex >= 0 && validRecoveryPayload(entry.payload))
+      recoverySends.set(entry.id, entry);
+  }
+  // 重载后不能自动重发。尚未执行的队列也变为可手动取回的消息。
+  for (const payload of Array.isArray(savedState.recovery?.queue) ? savedState.recovery.queue : []) {
+    if (!validRecoveryPayload(payload)) continue;
+    const id = crypto.randomUUID();
+    recoverySends.set(id, { id, payload, userIndex: 0, cancelled: true });
+  }
+  if (validRecoveryPayload(savedState.recovery?.draft)) recallQueuedItem(savedState.recovery.draft);
+  recoveryPending = recoverySends.size > 0;
+  // 空白标签也会随后收到宿主的空历史，保留待恢复标记直到该次加载完成。
+  if (!initialSessionId) recoverMissingSends([]);
+}
 
 /** Snapshot the composer into a sendable payload (null if nothing to send). */
 function readComposer(): QueueItem | null {
@@ -3565,6 +3669,7 @@ function handleSlashCommand(payload: QueueItem): boolean {
       cancelLiveRender();
       historyState = null;
       localSends.clear();
+      recoverySends.clear();
       lastUserEl = null;
       assistantEl = null;
       liveBlock = null;
@@ -3631,6 +3736,14 @@ function performSend(p: QueueItem, jumpToLatest: boolean) {
   // Only `setBusy(true)` — which the host always emits before the new turn's
   // first stream event — reopens rendering.
   const sendId = crypto.randomUUID();
+  currentSendId = sendId;
+  recoverySends.set(sendId, { id: sendId, payload: p, userIndex: nextUserIndex++ });
+  persistRecovery();
+  clearTimeout(receiveTimer);
+  receiveTimer = window.setTimeout(() => {
+    if (currentSendId !== sendId || !isBusy || stopPending) return;
+    appendNotice("尚未收到插件的发送确认，原文和附件已保留。若持续无响应，可重载窗口后取回消息。", "error");
+  }, 10000);
   const user = appendUser(p.text, p.labels, p.imageUris, jumpToLatest);
   userAttachments.set(user, { context: p.context, files: p.files, labels: p.labels });
   user.dataset.sendId = sendId;
@@ -3689,9 +3802,11 @@ function recallQueuedItem(item: QueueItem) {
   for (const path of item.files) addFile(path);
   refreshComposerHint();
   inputEl.focus();
+  persistRecovery();
 }
 
 function renderQueue() {
+  persistRecovery();
   if (!taskQueue.length) {
     taskQueueEl.classList.add("hidden");
     taskQueueEl.innerHTML = "";
@@ -3815,6 +3930,16 @@ stopBtn.onclick = () => {
   }
   // 显示立刻停止，但保留发送锁，直到宿主确认后台真正结束。
   stopPending = true;
+  stopUnconfirmed = false;
+  clearTimeout(receiveTimer);
+  clearTimeout(stopFeedbackTimer);
+  stopFeedbackTimer = window.setTimeout(() => {
+    if (!stopPending) return;
+    stopUnconfirmed = true;
+    appendNotice("尚未确认后台停止，已保留本次消息和排队内容。可以再次点击停止；若仍无响应，请重载窗口，恢复后先核对执行结果。", "error");
+    refreshComposerHint();
+  }, 12000);
+  persistRecovery();
   send({ type: "interrupt" });
   refreshComposerHint();
 };
@@ -3827,7 +3952,7 @@ let modEnterToSend = false;
 let draftTimer = 0;
 inputEl.addEventListener("input", () => {
   clearTimeout(draftTimer);
-  draftTimer = window.setTimeout(() => send({ type: "draft", text: inputEl.value }), 500);
+  draftTimer = window.setTimeout(() => { persistRecovery(); send({ type: "draft", text: inputEl.value }); }, 500);
 });
 
 inputEl.addEventListener("keydown", (e) => {
@@ -3865,7 +3990,8 @@ inputEl.addEventListener("input", () => {
  *  toggle send/stop buttons accordingly. */
 function refreshComposerHint() {
   const hasContent = inputEl.value.trim().length > 0 || pendingImages.length > 0;
-  stopBtn.disabled = stopPending || turnFinalizing;
+  stopBtn.disabled = (stopPending && !stopUnconfirmed) || turnFinalizing;
+  stopBtn.title = stopUnconfirmed ? "尚未确认停止，点击重试" : "停止当前轮次";
   // A permanently-filled send button next to an empty box is a call to action
   // with nothing behind it — keep it quiet until there is content.
   sendBtn.classList.toggle("ready", hasContent);
@@ -3888,7 +4014,7 @@ function refreshComposerHint() {
     stopBtn.classList.remove("hidden");
     sendBtn.classList.toggle("hidden", !hasContent); // clickable "add to queue" when there's content
     sendBtn.title = "加入等待队列";
-    inputEl.placeholder = turnFinalizing ? (userStopped ? "已停止 · 正在整理文件还原点" : "回复已结束 · 正在整理文件还原点") : stopPending ? "正在停止 · 新消息暂存队列" : waitingQuestionId ? "已暂停 · 请在问题卡片提交答案；新任务可排队" : PLACEHOLDER_BUSY;
+    inputEl.placeholder = turnFinalizing ? (userStopped ? "已停止 · 正在整理文件还原点" : "回复已结束 · 正在整理文件还原点") : stopPending ? (stopUnconfirmed ? "停止未确认 · 可重试停止或重载窗口" : "正在停止 · 新消息暂存队列") : waitingQuestionId ? "已暂停 · 请在问题卡片提交答案；新任务可排队" : PLACEHOLDER_BUSY;
     queueHint.textContent = turnFinalizing ? "正在整理文件还原点 · 完成后处理队列" : stopPending ? "正在停止 · 确认停止后处理队列" : waitingQuestionId ? "等待回答 · 提交问题答案后继续，排队任务暂不执行" : PLACEHOLDER_BUSY;
     queueHint.classList.toggle("hidden", !hasContent);
   } else {
@@ -5076,6 +5202,9 @@ function setBusy(busy: boolean) {
   if (!busy) turnStartedAt = null;
   isBusy = busy;
   stopPending = false;
+  clearTimeout(stopFeedbackTimer);
+  stopUnconfirmed = false;
+  if (!busy) clearTimeout(receiveTimer);
   turnFinalizing = false;
   if (!busy) { waitingQuestionId = undefined; childQuestionIds.clear(); }
   // Only light UP here. Turning the glow off is the job of whoever ends the turn
@@ -5308,8 +5437,9 @@ window.addEventListener("keydown", (e) => {
 }, true);
 
 // ---------------------------------------------------------------------------
+restoreRecoveryState();
 if (initialSessionId) {
-  vscode.setState({ sessionId: initialSessionId });
+  bindSessionState(initialSessionId);
   showHistoryStatus();
 }
 send({ type: "ready" });

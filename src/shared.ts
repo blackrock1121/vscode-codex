@@ -210,6 +210,9 @@ export type ToWebview =
   | { kind: "checkpoint_marker"; checkpointId: string; userText: string; sendId?: string }
   /** 准备阶段终止，消息尚未交给 Codex，可从界面取回原始输入。 */
   | { kind: "send_cancelled"; sendId: string }
+  /** 宿主收到发送请求；与后台接受轮次分开确认，便于发现页面通道断开。 */
+  | { kind: "send_received"; sendId: string }
+  | { kind: "send_accepted"; sendId: string; turnId: string }
   /** modEnterToSend：Cmd/Ctrl+Enter 发送、Enter 换行（默认 Enter 发送）。 */
   | { kind: "config"; permissionMode: string; model: string; effort: string; speedMode?: SpeedMode; modEnterToSend?: boolean }
   | { kind: "context_added"; label: string; text: string }
@@ -267,7 +270,7 @@ export const CTX_CLOSE = "</user-attached-context>";
 
 /** A persisted/rehydratable timeline item (used when reloading a session). */
 export type TimelineItem =
-  | { type: "user"; text: string; context?: string; images?: string[]; files?: string[] }
+  | { type: "user"; text: string; context?: string; images?: string[]; files?: string[]; turnId?: string }
   | { type: "image"; src: string } // standalone image (assistant/tool), data: URI
   | { type: "assistant_text"; text: string; sourceId?: string }
   /** secs：思考耗时（由相邻 transcript 记录的 timestamp 差估算，可能缺失）。 */

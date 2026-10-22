@@ -3,11 +3,12 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {JSDOM}=require('jsdom');
 const source=fs.readFileSync('src/panel/chatViewProvider.ts','utf8');
-function setup(t,sessionId){
+function setup(t,sessionId,initialState){
  const section=source.slice(source.indexOf('  private html('));
  const raw=section.match(/return (?:\/\* html \*\/ )?`([\s\S]*?)`;\s*\n\s+}/)[1];
  const html=raw.replace(/\$\{[^}]+\}/g,'').replace(/<script[^>]*><\/script>/g,'');
  const sent=[],errors=[],states=[],resizeObservers=[];
+ if(initialState)states.push(JSON.parse(JSON.stringify(initialState)));
  const dom=new JSDOM(html,{runScripts:'outside-only',pretendToBeVisual:true,url:'https://webview.test/'});
  t.after(()=>dom.window.close());
  const w=dom.window; w.acquireVsCodeApi=()=>({postMessage:m=>sent.push(m),getState:()=>states.at(-1)??{},setState:s=>states.push(JSON.parse(JSON.stringify(s)))});
@@ -33,6 +34,85 @@ function scrollFixture(w){
  return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
+
+test('发送未到宿主且停止无回执：重载仍保留消息，取回草稿后再次重载也不丢失',t=>{
+ const first=setup(t,'recovery');
+ first.emit({kind:'load_history',sessionId:'recovery',items:[{type:'user',text:'相同正文'}],checkpoints:[]});
+ first.w.document.getElementById('input').value='相同正文';
+ first.w.document.getElementById('btn-send').click();
+ first.w.document.getElementById('btn-stop').click();
+ const state=first.states.at(-1);
+ assert.equal(state.recovery.sends.length,1);
+ const second=setup(t,'recovery',state);
+ second.emit({kind:'load_history',sessionId:'recovery',items:[{type:'user',text:'相同正文'}],checkpoints:[]});
+ assert.equal(second.w.document.querySelectorAll('.recovered-send').length,1,'更早的同文消息不能冒充本次消息');
+ assert.equal(second.sent.some(m=>m.type==='send'),false);
+ second.w.document.querySelector('.recovered-send button').click();
+ assert.equal(second.w.document.getElementById('input').value,'相同正文');
+ const third=setup(t,'recovery',second.states.at(-1));
+ assert.equal(third.w.document.getElementById('input').value,'相同正文');
+ assert.deepEqual([...first.errors,...second.errors,...third.errors],[]);
+});
+
+test('本地还原点不等于后台接受；真实轮次历史到达后移除恢复备份且不重复显示',t=>{
+ const first=setup(t,'recovery');
+ first.emit({kind:'load_history',sessionId:'recovery',items:[],checkpoints:[]});
+ first.w.document.getElementById('input').value='待确认的消息';first.w.document.getElementById('btn-send').click();
+ const {sendId}=first.sent.find(m=>m.type==='send');
+ first.emit({kind:'checkpoint_marker',checkpointId:'cp',userText:'待确认的消息',sendId});
+ assert.equal(first.states.at(-1).recovery.sends.length,1);
+ first.emit({kind:'send_accepted',sendId,turnId:'accepted-turn'});
+ const second=setup(t,'recovery',first.states.at(-1));
+ second.emit({kind:'load_history',sessionId:'recovery',items:[{type:'user',text:'待确认的消息',turnId:'accepted-turn'}],checkpoints:[]});
+ assert.equal(second.w.document.querySelectorAll('.msg.user').length,1);
+ assert.equal(second.w.document.querySelector('.recovered-send'),null);
+ assert.equal(second.states.at(-1).recovery,undefined);
+});
+
+test('首条消息尚未建立会话就重载，宿主随后下发空历史也不会清掉恢复内容',t=>{
+ const first=setup(t);
+ first.w.document.getElementById('input').value='尚未建立会话';first.w.document.getElementById('btn-send').click();
+ const second=setup(t,undefined,first.states.at(-1));
+ assert.equal(second.w.document.querySelectorAll('.recovered-send').length,1);
+ second.emit({kind:'load_history',items:[],checkpoints:[]});
+ assert.equal(second.w.document.querySelectorAll('.recovered-send').length,1);
+ assert.equal(second.states.at(-1).recovery.sends[0].payload.text,'尚未建立会话');
+ second.emit({kind:'load_history',items:[],checkpoints:[]});
+ assert.equal(second.w.document.querySelector('.recovered-send'),null,'之后主动清空不能复活恢复消息');
+ assert.equal(second.states.at(-1).recovery,undefined);
+});
+
+test('重载保留原消息图片、文件、上下文和队列，全部等待手动取回',t=>{
+ const first=setup(t,'attachments');
+ first.emit({kind:'load_history',sessionId:'attachments',items:[],checkpoints:[]});
+ first.emit({kind:'draft',text:'有附件',images:[{mediaType:'image/png',data:'dGVzdA=='}],files:['/tmp/a.txt'],contexts:[{label:'选中代码',text:'const n = 1;'}]});
+ first.w.document.getElementById('btn-send').click();
+ first.w.document.getElementById('input').value='排队内容';first.w.document.getElementById('btn-send').click();
+ const second=setup(t,'attachments',first.states.at(-1));
+ second.emit({kind:'load_history',sessionId:'attachments',items:[],checkpoints:[]});
+ assert.equal(second.w.document.querySelectorAll('.recovered-send').length,2);
+ assert.equal(second.sent.some(m=>m.type==='send'),false);
+ second.w.document.querySelector('.recovered-send button').click();
+ const draft=second.states.at(-1).recovery.draft;
+ assert.equal(draft.text,'有附件');assert.equal(draft.images[0].data,'dGVzdA==');
+ assert.deepEqual(draft.files,['/tmp/a.txt']);assert.equal(draft.contexts[0].text,'const n = 1;');
+ assert.deepEqual([...first.errors,...second.errors],[]);
+});
+
+test('停止反馈超时后可重试，仍保留忙碌锁且不自动派发队列',t=>{
+ const f=setup(t),timers=[];
+ f.w.setTimeout=(callback,delay)=>{timers.push({callback,delay});return timers.length;};
+ f.w.clearTimeout=()=>{};
+ f.w.document.getElementById('input').value='卡住';f.w.document.getElementById('btn-send').click();
+ const stop=f.w.document.getElementById('btn-stop');stop.click();assert.equal(stop.disabled,true);
+ timers.find(timer=>timer.delay===12000).callback();
+ assert.equal(stop.disabled,false);
+ assert.match(f.w.document.getElementById('input').placeholder,/停止未确认/);
+ stop.click();assert.equal(f.sent.filter(m=>m.type==='interrupt').length,2);
+ f.w.document.getElementById('input').value='继续排队';f.w.document.getElementById('btn-send').click();
+ assert.equal(f.sent.filter(m=>m.type==='send').length,1);
+ assert.equal(f.states.at(-1).recovery.queue.length,1);
+});
 async function imageReady(predicate){
  for(let n=0;n<100;n++){if(predicate())return;await new Promise(r=>setTimeout(r,10));}
  assert.fail('图片读取未完成');

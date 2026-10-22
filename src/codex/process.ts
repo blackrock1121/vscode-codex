@@ -129,6 +129,7 @@ export class CodexProcess {
   private readonly recentCompactions: NonNullable<CodexProcess['compactionTrace']>[] = [];
   private compactionTimer?: NodeJS.Timeout;
   private stopTimer?: NodeJS.Timeout;
+  private stopSettled?: () => void;
   private readonly pending = new Map<string, { id: RpcId; method: string; params: any }>();
   private pausedQuestion?: { request: PermissionRequest; turnId?: string; ready: boolean; timer?: NodeJS.Timeout };
   private readonly streamed = new Set<string>();
@@ -168,6 +169,7 @@ export class CodexProcess {
       this.compactionRelay?.close(); this.compactionRelay = undefined;
       this.endCompactionTrace('connection_closed');
       clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer);
+      this.stopSettled?.(); this.stopSettled = undefined;
       this.clearChildState();
       if (this.busy && !this.disposed) this.error(reason);
       this.exited = true; this.busy = false; this.hooks.onClose(code);
@@ -404,7 +406,7 @@ export class CodexProcess {
     this.emit({ kind: 'busy', busy: true });
     this.showPermission(request);
   }
-  sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[], traceContext?: PerformanceContext): boolean {
+  sendUserMessage(text: string, context?: string, images?: { mediaType: string; data: string }[], traceContext?: PerformanceContext, sendId?: string): boolean {
     if (!this.sessionId || this.exited || this.busy) return false;
     this.autoCompactionsWithoutProgress = 0;
     this.hasWorked = true; clearTimeout(this.validationTimer); this.validationTimer = undefined;
@@ -441,6 +443,7 @@ export class CodexProcess {
     };
     this.startingTurn = dispatch().then(r => {
       if (!r || sequence !== this.dispatchSequence) return;
+      if (sendId) this.emit({ kind: 'send_accepted', sendId, turnId: r.turn.id });
       this.activeModel = model; this.activeEffort = params.effort ?? this.activeEffort;
       this.emit({ kind: "speed_context", model });
       if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id;
@@ -1077,19 +1080,31 @@ export class CodexProcess {
       ++this.dispatchSequence; this.waitingForCatalog = false; this.startingTurn = undefined;
     }
     clearTimeout(this.pausedQuestion?.timer); this.pausedQuestion = undefined;
-    this.stopTimer = setTimeout(() => {
-      this.exited = true; this.rpc.dispose();
-      this.clearChildState();
-      this.error('未能确认本轮停止，已关闭连接。下一条消息会重新连接。'); this.finish(true);
-    }, 10000);
-    this.stopTimer.unref();
-    await this.startingTurn;
-    const childStops = this.children.activeTurns().map(child => this.interruptChild(child.threadId));
-    const rootStop = this.turnId && this.busy ? this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId }) : undefined;
-    if (!rootStop) this.rootCompletion ??= { isError: false };
-    if (!rootStop && this.compacting) { this.dispose(); return; }
-    await Promise.all([...childStops, rootStop]);
-    this.finishTreeIfReady();
+    const sequence = this.dispatchSequence;
+    const timeout = new Promise<void>(resolve => {
+      this.stopSettled = resolve;
+      this.stopTimer = setTimeout(() => {
+        this.cancelCompactionRestore();
+        this.exited = true; this.rpc.dispose();
+        this.clearChildState();
+        this.error('未能确认本轮停止，已关闭连接。下一条消息会重新连接。'); this.finish(true);
+        resolve();
+      }, 10000);
+      this.stopTimer.unref();
+    });
+    const stop = async () => {
+      // turn/started 可能先于 turn/start 回执。已有真实轮次 ID 就立即中断，
+      // 不能被迟到或缺失的发送回执挡住。超时后旧异步流程不得操作下一轮。
+      if (!this.turnId) await this.startingTurn;
+      if (this.exited || !this.stoppingTree || sequence !== this.dispatchSequence) return;
+      const childStops = this.children.activeTurns().map(child => this.interruptChild(child.threadId));
+      const rootStop = this.turnId && this.busy ? this.rpc.request('turn/interrupt', { threadId: this.sessionId, turnId: this.turnId }) : undefined;
+      if (!rootStop) this.rootCompletion ??= { isError: false };
+      if (!rootStop && this.compacting) { this.dispose(); return; }
+      await Promise.all([...childStops, rootStop]);
+      if (!this.exited && sequence === this.dispatchSequence) this.finishTreeIfReady();
+    };
+    await Promise.race([stop(), timeout]);
   }
   async setPermissionMode(mode: string) { permissions(mode, []); this.opts.permissionMode = mode; }
   async setModel(model: string) { this.opts.model = model; this.emit({ kind: "speed_context", model: this.modelForNextTurn }); }
@@ -1138,6 +1153,7 @@ export class CodexProcess {
     try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
     clearTimeout(this.pausedQuestion?.timer);
     clearTimeout(this.stopTimer); this.stopTimer = undefined;
+    this.stopSettled?.(); this.stopSettled = undefined;
     this.busy = false; this.compacting = false; this.turnId = undefined; this.pausedQuestion = undefined;
     this.rootCompletion = undefined; this.stoppingTree = false; this.childQuestions.clear();
     for (const key of this.pending.keys()) this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
@@ -1152,6 +1168,6 @@ export class CodexProcess {
     }
     this.compactionRestore = undefined;
   }
-  dispose() { this.cancelCompactionRestore(); this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
-  async disposeAndWait() { this.cancelCompactionRestore(); this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
+  dispose() { this.cancelCompactionRestore(); this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); this.stopSettled?.(); this.stopSettled = undefined; clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); this.rpc.dispose(); }
+  async disposeAndWait() { this.cancelCompactionRestore(); this.cancelCompactionValidation(); this.latency.finish('disposed'); this.compactionRelay?.close(); this.compactionRelay = undefined; this.endCompactionTrace('disposed'); clearTimeout(this.stopTimer); this.stopSettled?.(); this.stopSettled = undefined; clearTimeout(this.pausedQuestion?.timer); this.disposed = true; this.exited = true; this.clearChildState(); await this.rpc.disposeAndWait(); }
 }

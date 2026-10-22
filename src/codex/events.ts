@@ -85,7 +85,7 @@ export function timeline(turns: any[]): TimelineItem[] {
   const out: TimelineItem[] = [];
   for (const turn of turns) for (const item of turn.items ?? []) {
     const questions = asyncQuestions(item);
-    if (item.type === 'userMessage') out.push(userView(item.content ?? []));
+    if (item.type === 'userMessage') out.push({ ...userView(item.content ?? []), ...(turn.id ? { turnId: turn.id } : {}) });
     else if (questions) out.push({ type: 'tool', toolId: item.id, name: 'AskUserQuestion', input: { questions }, result: item.text || questions.map(q => q.question).join('\n') });
     else if (item.type === 'agentMessage' || item.type === 'plan') out.push({ type: 'assistant_text', text: item.text ?? '', ...(item.id ? {sourceId: item.id} : {}) });
     else if (item.type === 'reasoning') out.push({ type: 'thinking', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n'), ...(item.id ? {sourceId: item.id} : {}) });

@@ -1145,6 +1145,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     this.fetchUsage(true);
                     break;
                 case "send":
+                    if (m.sendId) this.post(ctx, { kind: "send_received", sendId: m.sendId });
                     this.remoteAdapter?.localSend(ctx);
                     await this.handleSend(ctx, m.text, m.context, m.images, m.files, undefined, m.queueMs, m.sendId);
                     break;
@@ -1650,7 +1651,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (ctx.remotePrivate && ctx.sessionId && !this.context.workspaceState.get<boolean>('codexChat.remotePrivate.' + ctx.sessionId))
             await this.context.workspaceState.update('codexChat.remotePrivate.' + ctx.sessionId, true);
         if (allowed && (!allowed() || ctx.proc !== proc || proc.isBusy)) return false;
-        if (!proc.sendUserMessage(text, attached, images, trace)) {
+        if (!proc.sendUserMessage(text, attached, images, trace, sendId)) {
             this.output.appendLine("[codex] send dropped: process not writable (exited mid-send)");
             if (ctx.proc === proc)
                 ctx.proc = undefined;
