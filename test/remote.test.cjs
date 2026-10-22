@@ -38,6 +38,24 @@ function fixture() {
   return { provider, a, b, saved, events, sends };
 }
 
+test('电脑队列通过原面板同步，分页只读展示；与手机队列共存且不会被手机调度重复发送',async()=>{
+ const f=fixture(),adapter=f.provider.remote(),items=Array.from({length:7},(_,i)=>({id:'local-'+i,text:'电脑任务'+i,imageCount:i===0?2:0,fileCount:1}));
+ await f.provider.onPanelMessage(f.b,{type:'desktopQueue',sessionId:f.b.sessionId,paused:true,items});
+ const run=op=>f.provider.executeRemote(command(op),()=>true);
+ let snap=(await run({kind:'session.snapshot'})).result;assert.equal(snap.queueCount,7);assert.equal(snap.desktopQueueCount,7);
+ assert.equal((await f.provider.executeRemote(command({kind:'session.snapshot'},'session-a'),()=>true)).result.queueCount,0);
+ await run({kind:'message.enqueue',text:'手机队列',attachmentIds:[]});await adapter.drainTasks(f.b);assert.equal(f.sends.length,0);
+ const page=(await run({kind:'session.controls',section:'queue',page:1})).result;
+ assert.equal(page.total,8);assert.deepEqual(page.items.map(m=>m.text),['电脑任务5','电脑任务6','手机队列']);
+ assert.ok(page.items.slice(0,2).every(m=>m.readOnly&&m.paused&&m.source==='电脑'));
+ assert.equal((await run({kind:'queue.remove',id:page.items[0].id})).error,'QUEUE_READ_ONLY');
+ assert.equal((await run({kind:'message.send',text:'不得抢先',attachmentIds:[]})).error,'SESSION_BUSY');
+ await f.provider.onPanelMessage(f.b,{type:'desktopQueue',sessionId:'session-a',paused:false,items:[]});
+ assert.equal((await run({kind:'session.snapshot'})).result.desktopQueueCount,7);
+ adapter.clearDesktopQueue(f.b);assert.equal((await run({kind:'session.snapshot'})).result.desktopQueueCount,0);
+ await adapter.drainTasks(f.b);assert.deepEqual(f.sends,[['session-b','手机队列']]);adapter.dispose();
+});
+
 test('手机指定 B 时只调用 B 原进程，桌面焦点 A 不改变；同一发送路径显示用户消息', async () => {
   const f = fixture();
   f.b.draft = '电脑未发送草稿'; f.b.draftImages = [{ mediaType: 'image/png', data: 'test' }];

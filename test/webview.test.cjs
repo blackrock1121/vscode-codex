@@ -35,6 +35,20 @@ function scrollFixture(w){
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
 
+test('电脑排队内容同步宿主，撤回后更新；不把图片数据或输入草稿发进镜像',t=>{
+ const f=setup(t,'queue-session'),input=f.w.document.getElementById('input');
+ f.emit({kind:'load_history',sessionId:'queue-session',items:[],checkpoints:[]});
+ f.emit({kind:'busy',busy:true});
+ input.value='电脑排队一';f.w.document.getElementById('btn-send').click();
+ input.value='电脑排队二';f.w.document.getElementById('btn-send').click();
+ const queue=()=>f.sent.filter(m=>m.type==='desktopQueue').at(-1);
+ assert.equal(queue().sessionId,'queue-session');assert.deepEqual(Array.from(queue().items,m=>m.text),['电脑排队一','电脑排队二']);
+ assert.ok(queue().items.every(m=>m.id&&!('images' in m)));const secondId=queue().items[1].id;
+ f.w.document.querySelector('.tq-del').click();assert.equal(queue().items.length,1);assert.equal(queue().items[0].id,secondId);
+ f.w.document.querySelector('.tq-recall').click();assert.equal(queue().items.length,0);assert.equal(input.value,'电脑排队二');
+ assert.equal(f.sent.some(m=>m.type==='send'),false);assert.deepEqual(f.errors,[]);
+});
+
 test('发送未到宿主且停止无回执：重载仍保留消息，取回草稿后再次重载也不丢失',t=>{
  const first=setup(t,'recovery');
  first.emit({kind:'load_history',sessionId:'recovery',items:[{type:'user',text:'相同正文'}],checkpoints:[]});

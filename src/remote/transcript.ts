@@ -40,7 +40,7 @@ export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unk
         else if(tool){const input=item.input??{};const key=['command','cmd','query','pattern','file_path','path'].find(k=>typeof input[k]==='string');
             text=(key?String(input[key]).replace(/\s+/g,' ').slice(0,160):item.displayName||item.name)+(item.isError?' · 失败':'');}
         return {role:plan?'plan':item.type==='user'?'user':item.type==='thinking'?'thinking':tool?'tool':'assistant',
-            text,id:String(index),...('sourceId' in item&&item.sourceId?{sourceId:item.sourceId}:{}),messageRevision:itemRevision(item),imageCount:imageSources(item).length,actionable:item.type==='user'||item.type==='assistant_text',...(tool?{toolName:(item.displayName||item.name).slice(0,80),detail:true,
+            text,id:String(index),...('sourceId' in item&&item.sourceId?{sourceId:item.sourceId}:{}),messageRevision:itemRevision(item),imageCount:imageSources(item).length,actionable:!state.busy&&!state.waiting&&(item.type==='user'||item.type==='assistant_text'),...(tool?{toolName:(item.displayName||item.name).slice(0,80),detail:true,
                 status:item.isError?'failed':item.permission==='pending'?'waiting':item.result!==undefined?'completed':'running'}:{})};
     }).filter(b=>b.text);
     const text=blocks.map(b=>b.text).join('\n\n');

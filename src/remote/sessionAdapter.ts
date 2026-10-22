@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { operationFailure } from '../operations';
-import type { SpeedMode, ToWebview } from '../shared';
+import type { FromWebview, SpeedMode, ToWebview } from '../shared';
 import { parseCommand, type Command } from './command';
 import type { RemoteReply } from './bridgeClient';
 import type { RemoteSession, RemoteSessionHost } from './host';
@@ -12,6 +12,7 @@ import { CURRENT_CAPABILITIES } from './contract';
 import { ExecutionReceipts } from './executionReceipts';
 
 interface RemoteState {
+    desktopQueue?: Extract<FromWebview, {type: 'desktopQueue'}>;
     taskQueue?: SessionTaskQueue;
     remoteNotify?: {deviceId: string; commandId: string};
     remoteStream?: {id: string; seq: number; text: string; thinking: string; active: boolean; itemId?: string};
@@ -104,6 +105,33 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     }
     dispose(): void { this.setEnabled(false); }
     private queue(ctx:C):SessionTaskQueue { return this.state(ctx).taskQueue??=new SessionTaskQueue(); }
+    updateDesktopQueue(ctx: C, value: Extract<FromWebview, {type: 'desktopQueue'}>): void {
+        if (value.sessionId !== ctx.sessionId || !Array.isArray(value.items) || typeof value.paused !== 'boolean') return;
+        if (value.items.some(item => !item || typeof item.id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(item.id)
+            || typeof item.text !== 'string' || !Number.isSafeInteger(item.imageCount) || item.imageCount < 0
+            || !Number.isSafeInteger(item.fileCount) || item.fileCount < 0)) return;
+        this.state(ctx).desktopQueue = {...value, items: value.items.map(item => ({id: item.id,
+            text: Array.from(item.text).slice(0, 240).join(''), imageCount: item.imageCount, fileCount: item.fileCount}))};
+        if (ctx.sessionId) this.publish(ctx.sessionId, {kind: 'invalidate'});
+    }
+    clearDesktopQueue(ctx: C): void {
+        const state = this.states.get(ctx);
+        if (state?.desktopQueue) { state.desktopQueue = undefined; if (ctx.sessionId) this.publish(ctx.sessionId, {kind: 'invalidate'}); }
+    }
+    private desktopQueue(ctx: C) {
+        const value = this.state(ctx).desktopQueue;
+        return value?.sessionId === ctx.sessionId ? value : undefined;
+    }
+    private queueSummary(ctx: C, page = 0) {
+        const desktop = this.desktopQueue(ctx), queue = this.queue(ctx), start = page * 5;
+        const desktopItems = desktop?.items ?? [], desktopCount = desktopItems.length;
+        const items: Record<string, unknown>[] = desktopItems.slice(start, start + 5).map(item => ({...item,
+            id: 'desktop-' + item.id, source: '电脑', readOnly: true, paused: desktop?.paused ?? false}));
+        const offset = Math.max(0, start - desktopCount);
+        const native = [...queue.summary(Math.floor(offset / 5)).items, ...queue.summary(Math.floor(offset / 5) + 1).items];
+        items.push(...native.slice(offset % 5, offset % 5 + 5 - items.length));
+        return {page, total: desktopCount + queue.items.length, paused: queue.paused, items};
+    }
     private postQueue(ctx:C):void {
         this.queue(ctx);
         if(ctx.sessionId)this.publish(ctx.sessionId,{kind:'invalidate'});
@@ -111,7 +139,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     async drainTasks(ctx:C):Promise<void> {
         const remote = this.state(ctx);
         const queue=this.queue(ctx);
-        const available=()=>!this.disabled&&!this.host.disposed&&this.host.contexts().includes(ctx)&&!ctx.proc?.isBusy&&!ctx.sending&&!ctx.pendingPerm&&!remote.remoteAction&&!ctx.compacting&&!ctx.compactionPreparing&&!this.host.isRestoring(ctx)&&!this.host.isForking(ctx)
+        const available=()=>!this.disabled&&!this.host.disposed&&this.host.contexts().includes(ctx)&&!this.desktopQueue(ctx)?.items.length&&!ctx.proc?.isBusy&&!ctx.sending&&!ctx.pendingPerm&&!remote.remoteAction&&!ctx.compacting&&!ctx.compactionPreparing&&!this.host.isRestoring(ctx)&&!this.host.isForking(ctx)
             &&!(remote.remoteLimit?.level==='exhausted'&&!remote.remoteLimit.modelScoped&&(!remote.remoteLimit.resetsAt||remote.remoteLimit.resetsAt>Date.now()/1000));
         await queue.drain(available,async item=>{
             remote.remoteNotify=item.deviceId?{deviceId:item.deviceId,commandId:item.commandId!}:undefined;
@@ -238,6 +266,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             return {accepted:true,result:{kind:op.kind}};
         }
         if(op.kind==='queue.remove'){
+            if(op.id.startsWith('desktop-'))return denied('QUEUE_READ_ONLY');
             try{this.queue(ctx).remove(op.id);}catch(error){return denied((error as Error).message);}
             this.postQueue(ctx);return {accepted:true,result:{kind:op.kind}};
         }
@@ -282,7 +311,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         }
         if(op.kind==='session.controls') {
             const page=op.page??0;
-            if(op.section==='queue')return {accepted:true,result:{kind:'session.controls',section:'queue',...this.queue(ctx).summary(page)}};
+            if(op.section==='queue')return {accepted:true,result:{kind:'session.controls',section:'queue',...this.queueSummary(ctx,page)}};
             if(op.section==='tool'){
                 const item=this.host.store.load(sourceId!)[op.item!];if(!item||item.type!=='tool')return denied('TOOL_NOT_AVAILABLE');
                 return {accepted:true,result:transcriptPage(transcriptText([item]),{kind:'session.controls',section:'tool',item:op.item,name:(item.displayName||item.name).slice(0,100)},op,4500)};
@@ -352,17 +381,18 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             await remote.remoteRead;
             if (!selectedActive()) return denied('TARGET_CHANGED');
             const items = this.host.store.load(sourceId!);
+            const desktopQueueCount = this.desktopQueue(ctx)?.items.length ?? 0;
             const state = { kind: 'session.snapshot', sessionId: sourceId, title: this.remoteTitle(ctx), busy: !!ctx.proc?.isBusy || !!ctx.sending,
                 turnId: ctx.proc?.currentTurnId ?? null, waiting: ctx.pendingPerm?.kind === 'permission_request',
                 model: this.host.sessionModel(ctx).slice(0, 120), effort: this.host.sessionEffort(ctx).slice(0, 40),
-                speed: this.host.speedMode(ctx), capabilities:CURRENT_CAPABILITIES, queueCount:remote.taskQueue?.items.length??0,queuePaused:remote.taskQueue?.paused??false,pinned:this.host.pinnedSet().has(sourceId!),stream:remote.remoteStream?{...remote.remoteStream,text:remote.remoteStream.text.slice(-600),thinking:remote.remoteStream.thinking.slice(-200),truncated:remote.remoteStream.text.length>600||remote.remoteStream.thinking.length>200}:null, request:this.remoteRequest(ctx), context:remote.remoteContext??null, limit:remote.remoteLimit??null, progress:remote.remoteStatus??null,
+                speed: this.host.speedMode(ctx), capabilities:CURRENT_CAPABILITIES, queueCount:(remote.taskQueue?.items.length??0)+desktopQueueCount,desktopQueueCount,queuePaused:remote.taskQueue?.paused??false,pinned:this.host.pinnedSet().has(sourceId!),stream:remote.remoteStream?{...remote.remoteStream,text:remote.remoteStream.text.slice(-600),thinking:remote.remoteStream.thinking.slice(-200),truncated:remote.remoteStream.text.length>600||remote.remoteStream.thinking.length>200}:null, request:this.remoteRequest(ctx), context:remote.remoteContext??null, limit:remote.remoteLimit??null, progress:remote.remoteStatus??null,
                 permissionMode:remote.remoteMode??null, usage: this.accountUsage() };
             return { accepted: true, result: transcriptSnapshot(items, state, op) };
         }
         if (op.kind === 'message.send' || op.kind === 'session.create') {
             let images: {mediaType:string;data:string}[];
             try { images=remoteImages(command,op.attachmentIds??[]); } catch { return denied('IMAGE_NOT_AVAILABLE'); }
-            if (ctx.sending || ctx.proc?.isBusy || ctx.pendingPerm?.kind === 'permission_request' ||
+            if (this.desktopQueue(ctx)?.items.length || ctx.sending || ctx.proc?.isBusy || ctx.pendingPerm?.kind === 'permission_request' ||
                 this.host.isForking(ctx) || this.host.isRestoring(ctx) || ctx.answeringQuestion || ctx.compactionPreparing) return denied('SESSION_BUSY');
             if(remote.remoteAction)return denied('SESSION_BUSY');
             remote.remoteNotify={deviceId:command.deviceId,commandId:command.commandId};

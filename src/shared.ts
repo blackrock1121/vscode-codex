@@ -291,6 +291,7 @@ export type TimelineItem =
 // ---- Webview -> extension host --------------------------------------------
 
 export type FromWebview =
+  | { type: "desktopQueue"; sessionId?: string; paused: boolean; items: { id: string; text: string; imageCount: number; fileCount: number }[] }
   | { type: "ready" }
   | { type: "reloadHistory" }
   /** fromBanner：点侧边栏「发现新版本」横幅触发，此时才弹安装确认；

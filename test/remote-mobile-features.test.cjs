@@ -33,6 +33,12 @@ test('消息按钮携带准确索引与指纹，图片不进入普通快照，�
  assert.ok(!JSON.stringify(result).includes('base64'));assert.ok(Buffer.byteLength(JSON.stringify(result))<=6500);
 });
 
+test('中间回复与工具执行中的快照不可重新生成，整轮结束才恢复操作',()=>{
+ const items=[{type:'user',text:'开始工作'},{type:'assistant_text',text:'我先检查'},{type:'tool',name:'Bash',input:{command:'test'}}];
+ for(const state of [{busy:true},{busy:false,waiting:true}])assert.ok(transcriptSnapshot(items,state,{}).messages.every(m=>!m.actionable));
+ assert.equal(transcriptSnapshot(items,{busy:false,waiting:false},{}).messages.find(m=>m.role==='assistant').actionable,true);
+});
+
 test('模型生成图片和工具内嵌图片可读取，只接受历史引用的图片文件',async t=>{
  const fs=require('node:fs'),os=require('node:os'),path=require('node:path');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'generated-image-'));t.after(()=>fs.rmSync(dir,{recursive:true,force:true}));
  const png=Buffer.concat([Buffer.from('89504e470d0a1a0a','hex'),Buffer.alloc(7000)]);fs.writeFileSync(path.join(dir,'picture.png'),png);fs.writeFileSync(path.join(dir,'fake.png'),'not a picture');

@@ -754,6 +754,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         void this.openSession(id);
     }
     private onPanelClosed(ctx: SessionCtx): void {
+        this.remoteAdapter?.clearDesktopQueue(ctx);
         ctx.pendingDiagnosticRepair?.cancel();
         this.sessions.delete(ctx);
         // 关闭标签清理当前提醒，并使关闭前仍在排队的旧提醒失效。
@@ -1069,6 +1070,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.missedPings = 0;
         try {
             switch (m.type) {
+                case "desktopQueue":
+                    this.remote().updateDesktopQueue(ctx, m);
+                    break;
                 case "performanceReport": {
                     try {
                         await vscode.commands.executeCommand("codex-chat.performanceReport");
@@ -1102,6 +1106,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "ready":
                     ctx.ready = true;
+                    this.remoteAdapter?.clearDesktopQueue(ctx);
                     void this.store.readAccountInfo().then(r => {
                         this.post(ctx, { kind: "speed_context", billing: billingKind(r.account?.type),
                             planType: r.account?.type === "chatgpt" ? r.account.planType : undefined });

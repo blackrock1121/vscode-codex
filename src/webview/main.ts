@@ -3386,6 +3386,7 @@ function onSendCancelled(sendId: string) {
 // Composer
 // ---------------------------------------------------------------------------
 interface QueueItem {
+  queueId?: string;
   queuedAt?: number;
   text: string;
   context?: string;
@@ -3403,6 +3404,16 @@ let activeMessageEdit: {
 } | undefined;
 const taskQueue: QueueItem[] = [];
 const taskQueueEl = $("task-queue");
+let desktopQueueSignature = "";
+
+function syncDesktopQueue() {
+  const message = { type: "desktopQueue" as const, sessionId: persistedSessionId,
+    paused: queuePausedAfterRestore || restoreInProgress || rateLimited || historyPending,
+    items: taskQueue.map(item => ({ id: item.queueId ??= crypto.randomUUID(),
+      text: Array.from(item.text).slice(0, 240).join(""), imageCount: item.images.length, fileCount: item.files.length })) };
+  const signature = JSON.stringify(message);
+  if (signature !== desktopQueueSignature) { desktopQueueSignature = signature; send(message); }
+}
 
 function validRecoveryPayload(value: any): value is QueueItem {
   return !!value && typeof value.text === "string" &&
@@ -3413,6 +3424,7 @@ function validRecoveryPayload(value: any): value is QueueItem {
 }
 
 function persistRecovery() {
+  syncDesktopQueue();
   const draft = readComposer();
   const sends = [...recoverySends.values()];
   vscode.setState({ sessionId: persistedSessionId,
@@ -3989,6 +4001,7 @@ inputEl.addEventListener("input", () => {
 /** While a turn is running, hint that typing + Enter queues the message; also
  *  toggle send/stop buttons accordingly. */
 function refreshComposerHint() {
+  syncDesktopQueue();
   const hasContent = inputEl.value.trim().length > 0 || pendingImages.length > 0;
   stopBtn.disabled = (stopPending && !stopUnconfirmed) || turnFinalizing;
   stopBtn.title = stopUnconfirmed ? "尚未确认停止，点击重试" : "停止当前轮次";
