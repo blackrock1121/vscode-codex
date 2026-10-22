@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
  * 随机路径只交给本机通知程序；不按项目目录、窗口标题或会话历史猜测来源。
  */
 export class NotificationRouter {
-    private readonly routes = new Map<string, { path: string; open: () => Promise<void> }>();
+    private readonly routes = new Map<string, { path: string; open: () => Promise<void>; running?: Promise<void> }>();
     private readonly server = http.createServer((req, res) => {
         const route = [...this.routes.values()].find(route => route.path === req.url);
         if (req.method !== "POST" || req.headers.origin || !route || this.disposed) {
@@ -31,8 +31,14 @@ export class NotificationRouter {
         }
         if (action !== undefined) { res.writeHead(404).end(); return; }
         void Promise.resolve().then(() => {
-            if (this.disposed) throw new Error("通知来源窗口已关闭。");
-            return observeOperation('notification.click', route.open);
+            if (!route.running) {
+                const running = observeOperation('notification.click', () => {
+                    if (this.disposed) throw Object.assign(new Error("通知来源窗口已关闭。"), { name: 'AbortError' });
+                    return route.open();
+                });
+                route.running = running.finally(() => { route.running = undefined; });
+            }
+            return route.running;
         }).then(
             () => res.writeHead(204).end(),
             () => res.writeHead(500).end(),

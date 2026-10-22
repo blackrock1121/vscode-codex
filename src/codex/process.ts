@@ -160,8 +160,8 @@ export class CodexProcess {
           thread === t.threadId && source >= t.startedWallMs && source <= (t.endedWallMs ?? Date.now())) : undefined;
       this.emit({ kind: 'diag', message: `[transport] ${JSON.stringify({ ...row, backendTraceId: row.traceId ?? null, traceId: this.latency.associate(row), compactionId: trace?.id ?? null })}` });
     });
-    this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.error(e); } });
-    this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => { try { this.rpc.reject(m.id!, String(e)); } catch {} this.error(e); }); });
+    this.rpc.on('notification', (m: RpcMessage) => { try { this.notification(m); } catch (e) { this.handlerFailed('process.notification', e); } });
+    this.rpc.on('request', (m: RpcMessage) => { void this.request(m).catch(e => this.handlerFailed('process.request', e)); });
     this.rpc.on('close', (code: number | null, reason: Error) => {
       this.cancelCompactionRestore();
       this.cancelCompactionValidation();
@@ -201,6 +201,17 @@ export class CodexProcess {
     finally { this.latency.end(`pretool:${key}`); }
   }
   private error(e: unknown) { this.emit({ kind: 'error', message: String(e instanceof Error ? e.message : e) }); }
+  private handlerFailed(operation: string, error: unknown): void {
+    // 委派到 error() 只会通知页面，无法落盘，也不会释放内部 busy/pending。
+    // 状态处理异常后不能继续复用半更新的进程；不重放用户工具或生成请求。
+    operationFailure(operation, error, { processRunId: this.rpc.runId, traceId: this.latency.currentTraceId });
+    this.latency.finish('failed');
+    this.endCompactionTrace('failed');
+    this.exited = true; this.busy = false;
+    try { this.error(error); }
+    catch (deliveryError) { operationFailure('process.error.delivery', deliveryError, { processRunId: this.rpc.runId }); }
+    finally { this.rpc.dispose(); }
+  }
   private async timedRequest(method: string, params: unknown = {}): Promise<any> {
     const at = Date.now();
     try { return await this.rpc.request(method, params); }

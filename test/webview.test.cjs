@@ -1980,3 +1980,14 @@ test('87cc 历史重新载入会重新读取此前失败的图片',t=>{
  emit(history);emit({kind:'local_image',path:'/tmp/reload.jpg'});emit(history);
  assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,2);assert.ok(w.document.querySelector('.local-image-placeholder'));assert.deepEqual(errors,[]);
 });
+test('3a562940 关闭预览取消图片资源，反复重开不会用空 src 请求当前页面',t=>{
+ const {w,sent,emit,errors}=setup(t),img=w.document.getElementById('lightbox-img');
+ const descriptor=Object.getOwnPropertyDescriptor(w.HTMLImageElement.prototype,'src');let emptyRequests=0;
+ Object.defineProperty(img,'src',{get(){return descriptor.get.call(this);},set(value){if(value==='')emptyRequests++;descriptor.set.call(this,value);}});
+ emit({kind:'draft',text:'',images:[{mediaType:'image/png',data:'aGVsbG8='}]});
+ for(let i=0;i<3;i++){
+  w.document.querySelector('#image-previews img').click();assert.equal(img.hasAttribute('src'),true);
+  w.document.getElementById('lb-close').click();assert.equal(img.hasAttribute('src'),false);
+ }
+ assert.equal(emptyRequests,0);assert.deepEqual(errors,[]);assert.equal(sent.some(m=>m.type==='webviewError'),false);
+});

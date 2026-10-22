@@ -4,14 +4,14 @@ import type { DiagnosticFinding } from './analysis';
 import { redactDiagnosticText } from './redact';
 
 export interface GeneralSummary { errors: number; warnings: number; retries: number; recoveries: number; compactionErrors: number; groups: number; overflow: number;
-  correlatedErrors?: number; failureChains?: number; correlationOverflow?: number }
+  correlatedErrors?: number; failureChains?: number; correlationOverflow?: number; correlatedToolErrors?: number; toolFailureChains?: number }
 export interface LogLocation { file: string; line: number; atMs?: number; pluginVersion?: string; windowId?: string; traceId?: string }
 interface Incident { category: string; severity: 'warning' | 'error'; title: string; message: string }
 const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|(?:\b(?:ok|success)|"(?:ok|success)")\s*[:=]\s*false\b|(?:\bisError|"isError")\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应|(?:脚本|运行时)错误/i;
 const warning = /\b(?:warn(?:ing)?|retry|fallback|reconnect(?:ing)?)\b|重试|降级|警告|重连/i;
 const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '压缩' : /webview|脚本|渲染|布局/i.test(line) ? '页面脚本' :
   /snapshot|checkpoint|快照|还原点/i.test(line) ? '快照与还原点' : /restore|resume|恢复/i.test(line) ? '会话恢复' :
-  /rpc|transport|connection|连接|CLI|进程|stderr/i.test(line) ? '连接与进程' : /notify|webhook|通知/i.test(line) ? '通知' :
+  /notification|notify|webhook|通知/i.test(line) ? '通知' : /rpc|transport|connection|连接|\bCLI\b|进程|stderr/i.test(line) ? '连接与进程' :
   /sessionSettings|config|设置|配置/i.test(line) ? '配置' : /tool|bash|command|工具|命令/i.test(line) ? '工具执行' : '插件运行';
 
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
@@ -53,6 +53,7 @@ export class GeneralAccumulator {
   private readonly counts: GeneralSummary = { errors: 0, warnings: 0, retries: 0, recoveries: 0, compactionErrors: 0, groups: 0, overflow: 0 };
   private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string> }>();
   private readonly failureChains = new Set<string>();
+  private readonly toolFailures = new Set<string>();
   add(line: string, row: PerformanceRow | undefined, where: LogLocation): void {
     if (row?.stage === 'recovered') {
       this.counts.recoveries++;
@@ -67,6 +68,16 @@ export class GeneralAccumulator {
       if (this.failureChains.has(key) || this.failureChains.size < 20000) {
         this.failureChains.add(key); this.counts.correlatedErrors = (this.counts.correlatedErrors ?? 0) + 1;
       } else this.counts.correlationOverflow = (this.counts.correlationOverflow ?? 0) + 1;
+    } else if (incident.severity === 'error' && incident.category === '工具执行' && row && where.windowId) {
+      const call = diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId);
+      // 性能/传输双观测必须有同一窗口及轮次（或进程）；不同父子调用编号绝不猜测合并。
+      const scope = diagnosticId(row.traceId ?? where.traceId) ?? diagnosticId(row.processRunId);
+      if (call && scope) {
+        const key = `${where.windowId}:${scope}:${call}`;
+        if (this.toolFailures.has(key) || this.toolFailures.size < 20000) {
+          this.toolFailures.add(key); this.counts.correlatedToolErrors = (this.counts.correlatedToolErrors ?? 0) + 1;
+        } else this.counts.correlationOverflow = (this.counts.correlationOverflow ?? 0) + 1;
+      }
     }
     if (/retry|重试/i.test(String(row?.stage ?? row?.event ?? line))) this.counts.retries++;
     if (incident.category === '压缩' && incident.severity === 'error') this.counts.compactionErrors++;
@@ -101,13 +112,15 @@ export class GeneralAccumulator {
   result(): { summary: GeneralSummary; findings: DiagnosticFinding[]; report: string } {
     this.counts.groups = this.groups.size;
     this.counts.failureChains = this.failureChains.size;
+    this.counts.toolFailureChains = this.toolFailures.size;
     const findings: DiagnosticFinding[] = [...this.groups].sort(([, a], [, b]) => (a.incident.severity === 'error' ? 0 : 1) - (b.incident.severity === 'error' ? 0 : 1) || b.count - a.count)
       .map(([id, group]) => ({ id: `log-${id}`, category: group.incident.category, origin: 'rule', occurrences: group.count,
         title: group.incident.title, severity: group.incident.severity, evidence: `${group.count} 条异常/警告日志。\n${group.examples.join('\n')}`,
         recommendation: group.incident.category === '遥测采集' ? '此记录来自遥测导出链路，可能造成诊断数据缺失；不能据此认定主对话连接中断。请另行核对同一进程的 RPC、轮次和进程退出事件。' : '按文件和行号核对前后事件，确认是否恢复、是否影响用户和实际根因；区分插件故障、环境依赖、后端服务和预期取消，再实施修复。', traceIds: [...group.traces] }));
     const report = ['# 最近日志异常检查', '', `错误 ${this.counts.errors} 条，警告 ${this.counts.warnings} 条；压缩错误 ${this.counts.compactionErrors} 条，重试 ${this.counts.retries} 条，明确恢复 ${this.counts.recoveries} 条。`,
       '以上为日志事件数，同一次故障可能产生多条记录；恢复记录不代表所有错误都已恢复。',
-      `其中 ${this.counts.correlatedErrors ?? 0} 条错误通过明确 failureId 关联为 ${this.failureChains.size} 条故障链；其余 ${this.counts.errors - (this.counts.correlatedErrors ?? 0)} 条缺少完整关联或超过上限，不能按事件数推算独立事故。关联上限未纳入 ${this.counts.correlationOverflow ?? 0} 条。`,
+      `其中 ${this.counts.correlatedErrors ?? 0} 条错误通过明确 failureId 关联为 ${this.failureChains.size} 条故障链；另有 ${this.counts.correlatedToolErrors ?? 0} 条工具错误观测按同窗口、轮次或进程及 callId 关联为 ${this.toolFailures.size} 个失败调用。不同编号的嵌套调用不强行合并。`,
+      `其余 ${this.counts.errors - (this.counts.correlatedErrors ?? 0) - (this.counts.correlatedToolErrors ?? 0)} 条缺少完整关联或超过上限，不能按事件数推算独立事故。关联上限未纳入 ${this.counts.correlationOverflow ?? 0} 条。`,
       `异常分组 ${this.counts.groups} 个；超过分组上限的事件 ${this.counts.overflow} 条仍计入错误/警告总数。`, '',
       ...findings.flatMap(f => [`## ${f.title} · ${f.id}`, '', f.evidence, '', f.recommendation, ''])].join('\n');
     return { summary: { ...this.counts }, findings, report };

@@ -47,7 +47,8 @@ export class SessionStore {
   private metadata = new Map<string, { expiresAt: number; result: Promise<any> }>();
   private metadataRevision = 0;
   private disposed = false;
-  constructor(private readonly cwd: string, private readonly executable: () => string) {}
+  constructor(private readonly cwd: string, private readonly executable: () => string,
+    private readonly accountChanged?: () => void) {}
   private resetClosedConnection(): void {
     if (!this.rpc?.isClosed) return;
     this.invalidateMetadata(); this.rpc = undefined; this.connecting = undefined;
@@ -60,7 +61,11 @@ export class SessionStore {
     this.rpc = rpc;
     rpc.on('request', m => { try { rpc.reject(m.id, '管理连接不执行工具'); } catch {} });
     rpc.on('notification', m => {
-      if (this.rpc === rpc && m.method === 'account/updated') this.invalidateMetadata();
+      if (this.rpc === rpc && (m.method === 'account/updated' ||
+          m.method === 'account/login/completed' && m.params?.success === true)) {
+        this.invalidateMetadata();
+        this.accountChanged?.();
+      }
     });
     rpc.on('close', () => { if (this.rpc === rpc) { this.invalidateMetadata(); this.rpc = undefined; this.connecting = undefined; } });
     this.connecting = rpc.start().then(() => rpc).catch(e => {

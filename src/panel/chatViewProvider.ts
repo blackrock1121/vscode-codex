@@ -1,5 +1,5 @@
 import { postWebviewMessage } from '../webviewDelivery';
-import { expectedFileError, operationFailure, operationLog } from '../operations';
+import { errorFields, expectedFileError, operationFailure, operationLog } from '../operations';
 import * as vscode from "vscode";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -240,6 +240,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private lastUsageUpdatedAt = 0;
     private usageFailureId?: string;
     private usageFails = 0;
+    private usageRetryAt = 0;
+    private usageBlockedCategory?: string;
+    private usageEpoch = 0;
+    private usageRefreshPending = false;
+    private usageFailureFields?: ReturnType<typeof errorFields>;
     private usageInFlight = false;
     private lastUsage?: ToWebview;
     private usageAlertPending = new Set<string>();
@@ -339,7 +344,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(event => {
             if (event.affectsConfiguration("codexChat.notifyFeishuQuietHours") || event.affectsConfiguration("codexChat.notifyLocal")) configureCalendar();
         }));
-        this.store = new SessionStore(this.cwd(), () => this.config().get<string>("codexPath", "codex"));
+        this.store = new SessionStore(this.cwd(), () => this.config().get<string>("codexPath", "codex"), () => this.resetUsagePolling());
         const origChanged = this.origChanged;
         const sessions = this.sessions;
         this.context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider(ORIG_SCHEME, {
@@ -895,7 +900,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 rpc.off("notification", onNotification);
                 if (m.params.success) {
                     void vscode.window.showInformationMessage("Codex 登录成功");
-                    this.fetchUsage(true);
+                    // SessionStore 的账号事件统一清缓存并恢复额度查询。
                 }
                 else
                     void vscode.window.showErrorMessage(`Codex 登录失败：${m.params.error ?? "请重试"}`);
@@ -3577,8 +3582,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 void vscode.window.showWarningMessage("该通知对应的会话已不在当前项目的历史中。");
             }
         } catch (error) {
-            this.output.appendLine(`[notify] click_error session=${sessionId ?? "none"} errorType=${error instanceof Error ? error.name : typeof error}`);
             if (focusWindow) throw error; // 原生点击由辅助程序提示失败，避免成功应答后实际未聚焦。
+            operationFailure('notification.click', error);
             void vscode.window.showWarningMessage("未能打开通知对应的会话，请从会话历史重试。");
         }
     }
@@ -3628,23 +3633,63 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         catch (error) { operationFailure('panel.running.broadcast', error); }
     }
+    private resetUsagePolling(): void {
+        if (this.disposed) return;
+        this.usageEpoch = (this.usageEpoch ?? 0) + 1;
+        this.lastUsage = undefined;
+        this.lastUsageUpdatedAt = 0;
+        this.usageFails = 0;
+        this.usageRetryAt = 0;
+        this.usageBlockedCategory = undefined;
+        if (this.usageFailureId) operationLog('account.usage', 'resumed', { operationId: this.usageFailureId, reason: 'account_changed' });
+        for (const ctx of this.sessions) this.post(ctx, { kind: 'usage' });
+        if (this.usageInFlight) this.usageRefreshPending = true;
+        else this.fetchUsage(true);
+    }
     private fetchUsage(force = false): void {
-        if (this.usageInFlight || (!force && Date.now() - this.lastUsageAt < 90000))
+        if (this.disposed || this.usageInFlight || (!force && (this.usageBlockedCategory || Date.now() < (this.usageRetryAt ?? 0) || Date.now() - this.lastUsageAt < 90000)))
             return;
         this.usageInFlight = true;
         this.lastUsageAt = Date.now();
+        const epoch = this.usageEpoch ?? 0, operationId = randomUUID(), startedAt = performance.now();
+        const current = () => !this.disposed && epoch === (this.usageEpoch ?? 0);
+        operationLog('account.usage', 'start', { operationId, manual: force });
         void this.store.read("account/rateLimits/read", { excludeResetCreditDetails: false }).then(r => {
+            if (!current()) { operationLog('account.usage', 'cancelled', { operationId, reason: 'superseded_or_disposed' }); return; }
             this.lastUsage = usageView(r.rateLimits, r.rateLimitResetCredits);
             this.lastUsageUpdatedAt = Date.now();
-            if (this.usageFailureId) { operationLog('account.usage', 'recovered', { operationId: this.usageFailureId }); this.usageFailureId = undefined; }
+            this.usageFails = 0; this.usageRetryAt = 0; this.usageBlockedCategory = undefined;
             this.maybeNotifyUsage(this.lastUsage);
             for (const ctx of this.sessions)
                 for (const event of quotaEvents(r.rateLimits, r.rateLimitResetCredits)) this.handleEmit(ctx, event);
+            operationLog('account.usage', 'completed', { operationId, durationMs: Math.round(performance.now() - startedAt) });
+            if (this.usageFailureId) {
+                operationLog('account.usage', 'recovered', { operationId: this.usageFailureId, ...this.usageFailureFields });
+                this.usageFailureId = undefined; this.usageFailureFields = undefined;
+            }
         }).catch(error => {
-            this.usageFailureId ??= randomUUID();
-            operationFailure('account.usage', error, { operationId: this.usageFailureId, cached: !!this.lastUsage, staleMs: this.lastUsageUpdatedAt ? Date.now() - this.lastUsageUpdatedAt : undefined });
-            if (force) for (const ctx of this.sessions) this.post(ctx, { kind: 'notice', message: '额度刷新失败，保留上次显示；对话仍可继续，稍后可重试。' });
-        }).finally(() => { this.usageInFlight = false; });
+            if (!current()) { operationLog('account.usage', 'cancelled', { operationId, reason: 'superseded_or_disposed' }); return; }
+            const details = errorFields(error), category = String(details.failureCategory);
+            if (category === 'cancelled') { operationLog('account.usage', 'cancelled', { operationId, ...details }); return; }
+            this.usageFailureId ??= operationId;
+            this.usageFails = Math.min((this.usageFails ?? 0) + 1, 5);
+            const blocked = category === 'authentication' || category === 'permission';
+            const newlyBlocked = blocked && this.usageBlockedCategory !== category;
+            this.usageBlockedCategory = blocked ? category : undefined;
+            const retryAfterMs = blocked ? undefined : Math.min(30 * 60000, 3 * 60000 * 2 ** (this.usageFails - 1));
+            this.usageRetryAt = retryAfterMs === undefined ? 0 : Date.now() + retryAfterMs;
+            operationFailure('account.usage', error, { operationId, cached: !!this.lastUsage,
+                staleMs: this.lastUsageUpdatedAt ? Date.now() - this.lastUsageUpdatedAt : undefined,
+                durationMs: Math.round(performance.now() - startedAt), consecutiveFailures: this.usageFails, retryAfterMs, pollingPaused: blocked });
+            this.usageFailureFields = errorFields(error);
+            if (force || newlyBlocked) for (const ctx of this.sessions) this.post(ctx, { kind: 'notice', message: blocked
+                ? category === 'authentication' ? '额度刷新失败：账号认证被拒绝，已暂停自动查询。请检查登录状态；登录成功后会恢复，也可手动刷新。'
+                    : '额度刷新失败：访问被拒绝，已暂停自动查询。请检查账号或本机访问权限；处理后可手动刷新。'
+                : '额度刷新失败，保留上次显示；对话仍可继续，将延后自动重试，也可手动刷新。' });
+        }).finally(() => {
+            this.usageInFlight = false;
+            if (this.usageRefreshPending) { this.usageRefreshPending = false; this.fetchUsage(true); }
+        });
     }
     /** 周额度达到阈值后按重置周期和渠道分别记录成功通知；失败允许下次额度刷新重试。 */
     private maybeNotifyUsage(usage: Extract<ToWebview, { kind: "usage" }>): void {

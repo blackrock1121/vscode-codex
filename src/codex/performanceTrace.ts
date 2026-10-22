@@ -44,8 +44,9 @@ export function failureCategory(value: unknown, exitCode?: number | null): strin
   if (/\btimed?[ \t]+out\b|\bETIMEDOUT\b|\b\w*Timeout(?:Error|Exception)\b|请求超时|^\s*timeout[.!]?\s*$/i.test(text)) return 'timeout';
   if (/\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?|response code)[ :="']+429\b|\b429[ :]+Too Many Requests\b|\brate[ -]limit(?:ed|ing)?\b|\brate_limit_exceeded\b|\btoo many requests\b/i.test(text)) return 'rate_limit';
   if (/ENOTFOUND|EAI_AGAIN|could not resolve|name resolution/i.test(text)) return 'dns';
+  if (/\b(?:HTTP(?:\/\d(?:\.\d)?)?\s+403|403 Forbidden)\b/i.test(text)) return 'permission';
+  if (/\bHTTP(?:\/\d(?:\.\d)?)?\s+401\b|401 Unauthorized|authentication failed|unauthorized/i.test(text)) return 'authentication';
   if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|error sending request|fetch failed|network unreachable|ENETUNREACH|EHOSTUNREACH|502 Bad Gateway|503 Service/i.test(text)) return 'network_or_service';
-  if (/401 Unauthorized|403 Forbidden|authentication failed|unauthorized/i.test(text)) return 'authentication';
   if (/syntax error|SyntaxError|unexpected token|unterminated/i.test(text)) return 'syntax';
   if (/\berror TS\d+\b|\b(?:compilation|build) failed\b|\btests? (?:\d+ )?failed\b|(?:^|\n)[ \t]*(?:[✗✘×❌ℹ]\uFE0F?[ \t]*)?(?:FAIL(?:ED)?(?![ \t]+(?:0|false|to)\b)[ \t]+|not ok \d+\b)/i.test(text)) return 'build_or_test';
   if (/No such file or directory|ENOENT/i.test(text)) return 'missing_file';

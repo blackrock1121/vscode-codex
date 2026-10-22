@@ -47,6 +47,8 @@ function fields(a: Record<string, unknown>): TransportDiagnostic {
   else if (a.success === 'true' || a.success === 'false') out.success = a.success === 'true';
   // 错误正文不写盘；只保留是否存在，具体类别由 app-server 的结构化错误补充。
   if (typeof a['error.message'] === 'string') out.hasError = a['error.message'].length > 0;
+  const httpStatus = out['http.response.status_code'] ?? out.status_code;
+  if (typeof httpStatus === 'number' && httpStatus >= 400 && httpStatus <= 599) out.hasError = true;
   if (typeof a['auth.connection_reused'] === 'boolean') out.connectionReused = a['auth.connection_reused'];
   for (const key of ['decision', 'source']) {
     const allowed = ['approved', 'denied', 'accept', 'decline', 'abort', 'user', 'config', 'configuration', 'automatic', 'session'];
@@ -57,10 +59,10 @@ function fields(a: Record<string, unknown>): TransportDiagnostic {
   if (out.success === false || out.hasError === true) {
     const error = typeof a['error.message'] === 'string' && a['error.message'].length ? a['error.message'] : undefined;
     const output = typeof a.output === 'string' && a.output.length ? a.output : undefined;
-    out.failureCategory = failureCategory(error ?? output, out.exitCode as number | undefined);
+    out.failureCategory = httpStatus === 403 ? 'permission' : httpStatus === 401 ? 'authentication' : failureCategory(error ?? output, out.exitCode as number | undefined);
     const errorType = failureType(error ?? output);
     if (errorType) out.errorType = errorType;
-    out.failureEvidence = error !== undefined ? 'error_message' : output !== undefined ? 'tool_output' : out.exitCode !== undefined ? 'exit_code' : 'unavailable';
+    out.failureEvidence = httpStatus === 401 || httpStatus === 403 ? 'http_status' : error !== undefined ? 'error_message' : output !== undefined ? 'tool_output' : out.exitCode !== undefined ? 'exit_code' : 'unavailable';
   }
   // 只保存已知 API 路由，不保存主机、查询参数或任意 URL。
   if (typeof a.endpoint === 'string') {

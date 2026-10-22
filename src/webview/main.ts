@@ -4133,7 +4133,8 @@ function openLightbox(src: string) {
 }
 function closeLightbox() {
   lightbox.classList.add("hidden");
-  lightboxImg.src = "";
+  // 空 src 会启动一次无效图片加载并触发全局 error；移除属性才是取消资源。
+  lightboxImg.removeAttribute("src");
 }
 lightbox.onclick = closeLightbox; // click outside the image closes
 lightboxImg.onclick = (e) => e.stopPropagation(); // clicking the image itself doesn't
