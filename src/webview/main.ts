@@ -2335,6 +2335,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
 
   const sel = questions.map(() => new Set<string>()); // chosen built-in labels per question
   const custom = questions.map(() => ""); // custom answer text per question
+  const secrets = questions.map(() => ""); // 与说明分开保存，翻页或重试时不能把凭据显示到文本框。
   const pictures: AnswerImage[][] = questions.map(q => q.isSecret || m.agentLabel ? [] : [...(m.initialImages?.[q.id || q.question] ?? [])]);
   questions.forEach((q, i) => {
     if (q.isSecret) return; // 秘密答案必须重新填写，不回填遮蔽占位文字。
@@ -2376,7 +2377,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   card.append(submitError);
   wrap.append(card);
 
-  const answered = (qi: number) => sel[qi].size > 0 || custom[qi].trim().length > 0 || pictures[qi].length > 0;
+  const answered = (qi: number) => sel[qi].size > 0 || custom[qi].trim().length > 0 || secrets[qi].trim().length > 0 || pictures[qi].length > 0;
   const imagePayload = (): QuestionImages => Object.fromEntries(questions.flatMap((q, qi) => pictures[qi].length ? [[q.id || q.question, pictures[qi]]] : []));
   async function addPictures(files: File[], qi: number) {
     if (done || submitting || questions[qi].isSecret || m.agentLabel || !files.length) return;
@@ -2477,6 +2478,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     optsBox.innerHTML = "";
     const opts = q.options || [];
     const rows: HTMLElement[] = [];
+    const answerInputs: { input: HTMLInputElement | HTMLTextAreaElement; row: HTMLElement; values: string[]; grow: () => void }[] = [];
     opts.forEach((o, i) => {
       const row = el("button", "askp-opt" + (q.multiSelect ? " multi" : ""));
       if (sel[cur].has(o.label)) row.classList.add("on");
@@ -2504,12 +2506,14 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
         } else {
           sel[cur].clear();
           sel[cur].add(o.label);
-          custom[cur] = "";
           rows.forEach((r) => r.classList.remove("on"));
           row.classList.add("on");
-          customInput.value = "";
-          growCustom();
-          customRow.classList.remove("on");
+          answerInputs.forEach(({ input, row, values, grow }) => {
+            values[cur] = "";
+            input.value = "";
+            grow();
+            row.classList.remove("on");
+          });
           updateFoot();
           // Single-select: auto-advance after a brief beat so the ✓ is visible.
           advance(cur, 120);
@@ -2519,46 +2523,53 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
       optsBox.append(row);
     });
 
-    const customRow = el("div", "askp-opt askp-custom");
-    customRow.append(el("span", "askp-n", String(opts.length + 1)));
-    // 用 textarea 而不是 input：单行 input 粘贴多行文本会被浏览器把换行吃掉，
-    // 贴一段日志/代码进来就粘成一行。随内容增高，超出上限内部滚动。
-    const customInput = el(q.isSecret ? "input" : "textarea", "askp-input") as HTMLInputElement | HTMLTextAreaElement;
-    if (customInput instanceof HTMLTextAreaElement) customInput.rows = 1;
-    else customInput.type = "password";
-    customInput.placeholder = q.isSecret ? "输入私密答案" : m.agentLabel ? "自定义回答（⇧↵ 换行）" : "自定义回答，也可粘贴图片（⇧↵ 换行）";
-    customInput.value = custom[cur];
-    const growCustom = () => {
-      // 没进文档时 scrollHeight 恒为 0，量出来会把输入框压成 0 高——首次 paint()
-      // 正是在 wrap 挂到消息区之前跑的，所以这里必须挡住。
-      if (!customInput.isConnected || q.isSecret) return;
-      customInput.style.height = "auto";
-      customInput.style.height = Math.min(customInput.scrollHeight, 132) + "px";
+    const addAnswerInput = (secret: boolean) => {
+      const values = secret ? secrets : custom;
+      const row = el("div", "askp-opt askp-custom" + (secret ? " askp-secret" : ""));
+      row.append(el("span", "askp-n", String(opts.length + answerInputs.length + 1)));
+      // 密码框可能禁用 macOS 中文输入法；说明始终使用独立 textarea，支持中文和多行。
+      const input = el(secret ? "input" : "textarea", "askp-input") as HTMLInputElement | HTMLTextAreaElement;
+      if (input instanceof HTMLTextAreaElement) input.rows = 1;
+      else { input.type = "password"; input.autocomplete = "off"; }
+      input.placeholder = secret ? "输入私密答案" : q.isSecret ? "自定义回答（可用中文说明或纠正问题）"
+        : m.agentLabel ? "自定义回答（⇧↵ 换行）" : "自定义回答，也可粘贴图片（⇧↵ 换行）";
+      input.setAttribute("aria-label", secret ? "私密答案" : "自定义回答");
+      if (q.isSecret && !secret) input.title = "无需填写私密答案，可直接说明情况或纠正问题；Shift+Enter 换行";
+      input.value = values[cur];
+      const grow = () => {
+        // 首次 paint 时还没挂载，等进入文档后再量高。
+        if (!input.isConnected || secret) return;
+        input.style.height = "auto";
+        input.style.height = Math.min(input.scrollHeight, 132) + "px";
+      };
+      if (values[cur].trim()) row.classList.add("on");
+      input.oninput = () => {
+        values[cur] = input.value;
+        grow();
+        if (input.value.trim()) {
+          // 私密答案和说明二选一，纠正问题时不夹带先前填写的凭据。
+          answerInputs.filter(other => other.input !== input).forEach(other => {
+            other.values[cur] = ""; other.input.value = ""; other.row.classList.remove("on"); other.grow();
+          });
+          if (!q.multiSelect) { sel[cur].clear(); rows.forEach(r => r.classList.remove("on")); }
+        }
+        row.classList.toggle("on", input.value.trim().length > 0);
+        updateFoot();
+      };
+      input.onkeydown = e => {
+        // 只拦 Enter/Escape；Cmd+V/C/X/A 需要冒泡到 VS Code 的快捷键监听器。
+        if (e.key === "Enter" || e.key === "Escape") e.stopPropagation();
+        if (e.key !== "Enter" || e.shiftKey || e.isComposing || e.keyCode === 229) return;
+        e.preventDefault();
+        if (answered(cur)) advance(cur, 120, true);
+      };
+      row.append(input);
+      optsBox.append(row);
+      answerInputs.push({ input, row, values, grow });
+      requestAnimationFrame(grow);
     };
-    if (custom[cur].trim()) customRow.classList.add("on");
-    customInput.oninput = () => {
-      custom[cur] = customInput.value;
-      growCustom();
-      if (!q.multiSelect && customInput.value.trim()) {
-        sel[cur].clear();
-        rows.forEach((r) => r.classList.remove("on"));
-      }
-      customRow.classList.toggle("on", customInput.value.trim().length > 0);
-      updateFoot();
-    };
-    customInput.onkeydown = (e) => {
-      // 只挡 Enter/Escape 别漏给后面的聊天输入框。绝不能对所有键 stopPropagation：
-      // VS Code webview 里 Cmd+V/C/X/A 不是浏览器原生动作，是 window 级监听器转给
-      // VS Code 再派发回来的——在这截断，快捷键就全哑了（之前粘不进就是这个原因）。
-      if (e.key === "Enter" || e.key === "Escape") e.stopPropagation();
-      if (e.key !== "Enter" || e.shiftKey || e.isComposing || (e as KeyboardEvent).keyCode === 229) return;
-      e.preventDefault();
-      if (!answered(cur)) return;
-      // Enter = "I'm done with this question" → next page, or submit on the last.
-      advance(cur, 120, true);
-    };
-    customRow.append(customInput);
-    if (q.isOther !== false || !opts.length) optsBox.append(customRow);
+    if (q.isSecret) addAnswerInput(true);
+    if (q.isSecret || q.isOther !== false || !opts.length) addAnswerInput(false);
     if (!q.isSecret && !m.agentLabel) {
       const tools = el("div", "askp-image-tools");
       const add = el("button", "askp-add-image", "添加图片") as HTMLButtonElement;
@@ -2582,7 +2593,6 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
       });
       optsBox.append(previews);
     }
-    requestAnimationFrame(growCustom); // 首次 paint 时节点还没入文档，量高要等挂载
     updateFoot();
   }
 
@@ -2629,6 +2639,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
     const answers: Record<string, string | string[]> = {};
     questions.forEach((q, qi) => {
       const picks = [...sel[qi]];
+      if (secrets[qi].trim()) picks.push(secrets[qi].trim());
       if (custom[qi].trim()) picks.push(custom[qi].trim());
       if (!picks.length && pictures[qi].length) picks.push(QUESTION_IMAGE_ANSWER);
       answers[q.id || q.question] = q.multiSelect ? picks : picks[0] || "";

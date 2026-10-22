@@ -1164,6 +1164,68 @@ test('派生点击立即加载、防重复、阶段更新和收尾均不干扰�
 test('关闭问题只停止本轮，不提交空答案',t=>{const {w,sent,emit}=setup(t);emit({kind:'permission_request',requestId:'19',toolName:'AskUserQuestion',input:{questions:[{id:'detail',question:'提供详情',options:[]}]},suggestions:[]});const picker=w.document.querySelector('.askp');assert.ok(picker.querySelector('.askp-submit').disabled);picker.querySelector('.askp-x').click();assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);});
 test('无效提问停止本轮，不自动空答放行',t=>{const {sent,emit,errors}=setup(t);emit({kind:'permission_request',requestId:'20',toolName:'AskUserQuestion',input:{questions:[]},suggestions:[]});assert.ok(sent.some(m=>m.type==='interrupt'));assert.equal(sent.some(m=>m.type==='answerQuestion'),false);assert.deepEqual(errors,[]);});
 
+test('私密问题可只提交中文多行说明，输入法选词和换行不会误提交',async t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'permission_request',requestId:'secret-correction',toolName:'AskUserQuestion',input:{questions:[{id:'credentials',question:'请提供账号密码',isSecret:true,options:[]}]},suggestions:[]});
+ const picker=w.document.querySelector('.askp'),secret=picker.querySelector('input[type="password"]'),custom=picker.querySelector('textarea');
+ assert.ok(secret);assert.ok(custom);assert.match(custom.placeholder,/自定义回答.*中文/);
+ assert.equal(picker.querySelector('.askp-submit').disabled,true);
+ const correction='我现在不提供账号密码。\n问题描述有误：请先核实组织信息（编号 123），不要登录。';
+ custom.value=correction;custom.dispatchEvent(new w.Event('input'));
+ for(const options of [{isComposing:true},{keyCode:229},{shiftKey:true}]){
+  const event=new w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true,...options});
+  custom.dispatchEvent(event);assert.equal(event.defaultPrevented,false);
+ }
+ let shortcutBubbled=false;w.addEventListener('keydown',()=>{shortcutBubbled=true;},{once:true});
+ custom.dispatchEvent(new w.KeyboardEvent('keydown',{key:'v',metaKey:true,bubbles:true}));
+ assert.equal(shortcutBubbled,true);
+ await new Promise(r=>setTimeout(r,180));
+ assert.equal(sent.some(m=>m.type==='answerQuestion'),false);assert.equal(secret.value,'');
+ assert.equal(picker.querySelector('.askp-submit').disabled,false);
+ picker.querySelector('.askp-submit').click();
+ assert.deepEqual(JSON.parse(JSON.stringify(sent.find(m=>m.type==='answerQuestion').answers)),{credentials:correction});
+ assert.deepEqual(errors,[]);
+});
+
+test('私密答案和自定义说明互斥，翻页及提交重试不把凭据显示到说明框',t=>{
+ const {w,sent,emit,states,errors}=setup(t);
+ emit({kind:'permission_request',requestId:'secret-pages',toolName:'AskUserQuestion',input:{questions:[
+  {id:'secret',question:'账号密码',isSecret:true,options:[]},{id:'detail',question:'补充说明',options:[]},
+ ]},suggestions:[]});
+ const picker=w.document.querySelector('.askp');
+ const set=(selector,value)=>{const input=picker.querySelector(selector);input.value=value;input.dispatchEvent(new w.Event('input'));};
+ const secret=()=>picker.querySelector('input[type="password"]'),custom=()=>picker.querySelector('textarea');
+ set('input[type="password"]','PRIVATE-123');assert.equal(custom().value,'');
+ picker.querySelectorAll('.askp-nav')[1].click();set('textarea','稍后处理');picker.querySelectorAll('.askp-nav')[0].click();
+ assert.equal(secret().value,'PRIVATE-123');assert.equal(custom().value,'');
+ picker.querySelector('.askp-submit').click();assert.equal(sent.filter(m=>m.type==='answerQuestion').at(-1).answers.secret,'PRIVATE-123');
+ emit({kind:'question_answer_rejected',requestId:'secret-pages',message:'请重试'});
+ assert.equal(secret().value,'PRIVATE-123');assert.equal(custom().value,'');
+ set('textarea','问题描述需要修改');assert.equal(secret().value,'');
+ set('input[type="password"]','PRIVATE-456');assert.equal(custom().value,'');
+ set('textarea','先纠正问题，不提供凭据');assert.equal(secret().value,'');
+ picker.querySelectorAll('.askp-nav')[1].click();picker.querySelectorAll('.askp-nav')[0].click();
+ assert.equal(secret().value,'');assert.equal(custom().value,'先纠正问题，不提供凭据');
+ picker.querySelector('.askp-submit').click();
+ assert.equal(sent.filter(m=>m.type==='answerQuestion').at(-1).answers.secret,'先纠正问题，不提供凭据');
+ emit({kind:'permission_resolved',requestId:'secret-pages',behavior:'allow'});
+ assert.doesNotMatch(w.document.getElementById('messages').textContent,/PRIVATE-/);
+ assert.doesNotMatch(JSON.stringify(states),/PRIVATE-/);assert.deepEqual(errors,[]);
+});
+
+test('私密问题即使禁用其他选项也保留自定义说明，选项和两种输入正确切换',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'permission_request',requestId:'secret-options',toolName:'AskUserQuestion',input:{questions:[{id:'q',question:'提供凭据',isSecret:true,isOther:false,options:[{label:'稍后提供'}]}]},suggestions:[]});
+ const picker=w.document.querySelector('.askp'),secret=picker.querySelector('input[type="password"]'),custom=picker.querySelector('textarea');
+ assert.ok(custom);
+ secret.value='PRIVATE';secret.dispatchEvent(new w.Event('input'));
+ picker.querySelector('button.askp-opt').click();assert.equal(secret.value,'');assert.equal(custom.value,'');
+ custom.value='请先修正问题';custom.dispatchEvent(new w.Event('input'));
+ assert.equal(picker.querySelector('button.askp-opt.on'),null);assert.equal(secret.value,'');
+ picker.querySelector('.askp-submit').click();assert.equal(sent.find(m=>m.type==='answerQuestion').answers.q,'请先修正问题');
+ assert.deepEqual(errors,[]);
+});
+
 test('提交答案等待宿主确认，失败保留选择与自由文本并允许重试',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'busy',busy:true});
