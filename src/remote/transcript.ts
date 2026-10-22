@@ -45,22 +45,37 @@ export function transcriptSnapshot(items: TimelineItem[],state:Record<string,unk
     }).filter(b=>b.text);
     const text=blocks.map(b=>b.text).join('\n\n');
     const snapshotState={...state,timelineRevision:createHash('sha256').update(JSON.stringify(blocks.map(b=>[b.id,b.toolName,b.status]))).digest('hex')};
+    // 历史游标只绑定边界之前的正文和身份。后续追加、耗时、Token、额度更新不使旧页失效。
+    const cursor = (end: number) => {
+        let offset = 0;
+        const hash = createHash('sha256');
+        for (const block of blocks) {
+            if (offset >= end) break;
+            hash.update(JSON.stringify([block.id, block.role, block.sourceId ?? '', block.text.slice(0, Math.max(0, end - offset))]));
+            offset += block.text.length + 2;
+        }
+        return hash.update(String(end)).digest('hex');
+    };
+    const currentRevision = createHash('sha256').update(text).update(JSON.stringify(snapshotState)).digest('hex');
+    const pageQuery = query.end !== undefined && query.end <= text.length && query.revision === cursor(query.end)
+        ? {...query, revision: currentRevision} : query;
     // 文字、消息元数据与旧版兼容正文都算入 IPC 预算；大量短工具不能撑破 7000 B 帧。
     let budget=2300;
     for (;;) {
-        const page=transcriptPage(text,snapshotState,query,budget);
+        const page=transcriptPage(text,snapshotState,pageQuery,budget);
         if(page.unchanged)return page;
         const visible=page as typeof page & {start:number;end:number};let offset=0;
-        const messages: {role:string;text:string;continued:boolean;id:string;toolName?:string;status?:string;detail?:boolean;messageRevision:string;imageCount:number;actionable:boolean}[]=[];
+        const messages: {role:string;text:string;sliceStart:number;sliceEnd:number;sliceTotal:number;continued:boolean;id:string;toolName?:string;status?:string;detail?:boolean;messageRevision:string;imageCount:number;actionable:boolean}[]=[];
         for(const block of blocks) {
             const end=offset+block.text.length,from=Math.max(offset,visible.start),to=Math.min(end,visible.end);
-            if(to>from){let body=block.text.slice(from-offset,to-offset);const prefix=block.role==='user'?'你\n':block.role==='thinking'?'思考\n':block.role==='assistant'?'Codex\n':'';
-                if(from===offset&&prefix&&body.startsWith(prefix))body=body.slice(prefix.length);
-                if(body.trim())messages.push({role:block.role,text:body,continued:from>offset,id:block.id,...(block.sourceId?{sourceId:block.sourceId}:{}),messageRevision:block.messageRevision,imageCount:block.imageCount,actionable:block.actionable,
+            if(to>from){const prefix=block.role==='user'?'你\n':block.role==='thinking'?'思考\n':block.role==='assistant'?'Codex\n':'';
+                const skip=prefix&&block.text.startsWith(prefix)?prefix.length:0, begin=Math.max(from,offset+skip);
+                const body=block.text.slice(begin-offset,to-offset);
+                if(body.length)messages.push({role:block.role,text:body,sliceStart:begin-offset-skip,sliceEnd:to-offset-skip,sliceTotal:block.text.length-skip,continued:begin>offset+skip,id:block.id,...(block.sourceId?{sourceId:block.sourceId}:{}),messageRevision:block.messageRevision,imageCount:block.imageCount,actionable:block.actionable,
                     ...(block.toolName?{toolName:block.toolName,toolKind:block.toolKind,status:block.status,detail:block.detail}:{})});}
             offset=end+2;
         }
-        const result={...page,messages};
+        const result={...page,messages,historyCursor:cursor(visible.start)};
         if(Buffer.byteLength(JSON.stringify(result))<=6400 || budget<=64)return result;
         budget=Math.max(64,Math.floor(budget*0.7));
     }

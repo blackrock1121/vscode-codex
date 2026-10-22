@@ -3,7 +3,7 @@ export interface RequestSummary {
   requestId: string; requestVersion: number; turnId: string | null; question: boolean; title: string;
 }
 export interface ChatMessage {
-  id: string; role: string; text: string; imageCount?: number; actionable?: boolean; messageRevision?: string;
+  id: string; role: string; text: string; sliceStart?: number; sliceEnd?: number; sliceTotal?: number; imageCount?: number; actionable?: boolean; messageRevision?: string;
 }
 /** 时间戳来自电脑；Token 与桌面展示同口径，estimated 表示流式字符估算。 */
 export interface RunProgressSummary {
@@ -17,7 +17,7 @@ export interface SessionSnapshot {
   start?: number; end?: number; total?: number; unchanged?: boolean; reset?: boolean;
   capabilities?: Record<string, boolean>; request?: RequestSummary | null;
   queueCount?: number; queuePaused?: boolean; queueReason?: string;
-  run?: RunProgressSummary | null; serverTime?: number;
+  run?: RunProgressSummary | null; serverTime?: number; historyCursor?: string;
 }
 export interface ExecutionStatus { kind: 'command.status'; commandId: string; state: 'accepted' | 'rejected' | 'unknown'; sessionId?: string }
 export interface PluginResults {
