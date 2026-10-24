@@ -1,6 +1,6 @@
 const {test}=require('node:test');
 const assert=require('node:assert/strict');
-const {CodexProcess}=require('../dist/test/codex/process.js');
+const {CodexProcess,shouldUseCompactionRelay}=require('../dist/test/codex/process.js');
 const flush=()=>new Promise(resolve=>setImmediate(resolve));
 
 function fixture(t){
@@ -326,6 +326,13 @@ test('已接入转发时手动压缩只同步收费档位，不临时切换主�
  assert.deepEqual(calls,[{method:'thread/settings/update',params:{threadId:'test-session',serviceTier:'default'}},{method:'thread/compact/start',params:{threadId:'test-session'}}]);
  note('item/completed',{item});note('turn/completed',{turn:{id:'manual',status:'completed'}});await flush();
  assert.equal(calls.length,2);assert.equal(p.compactionRestore,undefined);
+});
+
+test('Windows 保留 Codex CLI 原生网络代理，不启用本机压缩转发器',()=>{
+ assert.equal(shouldUseCompactionRelay('win32',undefined,{},{}),false);
+ assert.equal(shouldUseCompactionRelay('darwin',undefined,{},{}),true);
+ assert.equal(shouldUseCompactionRelay('darwin','session',{},{}),false);
+ assert.equal(shouldUseCompactionRelay('darwin',undefined,{}, {HTTPS_PROXY:'http://127.0.0.1:9'}),false);
 });
 
 test('自动优化只覆盖本线程连接配置；模型/档位按账号能力检查；退出关闭端口',async t=>{

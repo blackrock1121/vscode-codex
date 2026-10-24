@@ -82,6 +82,13 @@ function safeCompactionError(error: any): { errorCategory: string; httpStatusCod
   const code = category && typeof info === 'object' ? info[category]?.httpStatusCode : undefined;
   return { errorCategory: category ?? 'unknown', httpStatusCode: Number.isInteger(code) && code >= 100 && code <= 599 ? code : null };
 }
+export function shouldUseCompactionRelay(platform: NodeJS.Platform, compactionMode: CodexProcessOptions['compactionMode'], processEnv: NodeJS.ProcessEnv, childEnv?: NodeJS.ProcessEnv): boolean {
+  if (platform === 'win32' || compactionMode === 'session') return false;
+  const env = { ...processEnv, ...childEnv };
+  // 不覆盖环境指定的网关，也不让子进程专属代理设置在转发时丢失。
+  return !env.OPENAI_BASE_URL && !Object.entries(childEnv ?? {}).some(([key, value]) =>
+    /^(https?_proxy|all_proxy|no_proxy|ssl_cert_file|ssl_cert_dir|node_extra_ca_certs)$/i.test(key) && value !== processEnv[key]);
+}
 export class CodexProcess {
   private readonly rpc: CodexRpc;
   private readonly latency: PerformanceTrace;
@@ -279,11 +286,7 @@ export class CodexProcess {
     } catch (e) { this.compactionRelay?.close(); this.compactionRelay = undefined; this.exited = true; this.rpc.dispose(); throw e; }
   }
   private canPrepareCompactionRelay(): boolean {
-    if (this.opts.compactionMode === 'session') return false;
-    const env = { ...process.env, ...this.opts.env };
-    // 不覆盖环境指定的网关，也不让子进程专属代理设置在转发时丢失。
-    return !env.OPENAI_BASE_URL && !Object.entries(this.opts.env ?? {}).some(([key, value]) =>
-      /^(https?_proxy|all_proxy|no_proxy|ssl_cert_file|ssl_cert_dir|node_extra_ca_certs)$/i.test(key) && value !== process.env[key]);
+    return shouldUseCompactionRelay(process.platform, this.opts.compactionMode, process.env, this.opts.env);
   }
   private prefetchCompactionSettings(): void {
     if (!this.canPrepareCompactionRelay() || this.compactionPreparation || this.exited || this.disposed) return;
