@@ -708,6 +708,42 @@ test('配置面板保存两个独立渠道，测试本机不会触发飞书测�
   assert.equal(sent.some(m => m.type === 'notifyTest'), false);
 });
 
+test('Windows 推送配置只展示飞书渠道并关闭本机通知入口', t => {
+  const dom = new JSDOM(provider().notifyHtml(), { runScripts: 'outside-only' });
+  t.after(() => dom.window.close());
+  const w = dom.window, sent = [];
+  w.acquireVsCodeApi = () => ({ postMessage: message => sent.push(message), setState: () => {} });
+  w.eval(w.document.querySelector('script').textContent);
+  w.dispatchEvent(new w.MessageEvent('message', { data: {
+    kind: 'notify_config', platform: 'win32', webhook: 'https://open.feishu.cn/hook/test', minSec: 60,
+    local: false, localSupported: false, usageLocal: false,
+  } }));
+  assert.equal(w.document.querySelector('#platformhint').hidden, false);
+  assert.match(w.document.querySelector('#platformhint').textContent, /Windows.*飞书.*本机系统通知已关闭/);
+  for (const id of ['localcontrols', 'quietcontrols', 'testlocal', 'usagelocalrow'])
+    assert.equal(w.document.querySelector(`#${id}`).hidden, true, id);
+  assert.equal(w.document.querySelector('#webhook').disabled, false, '飞书 Webhook 仍可配置');
+  assert.equal(w.document.querySelector('#test').disabled, false, '飞书推送仍可测试');
+});
+
+test('Windows 即使同步了本机通知设置也只分发飞书，且本机入口拒绝执行', async () => {
+  const originalPlatform = Object.getOwnPropertyDescriptor(process, 'platform');
+  Object.defineProperty(process, 'platform', { ...originalPlatform, value: 'win32' });
+  try {
+    config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyLocal: true };
+    const p = provider(); let remote = 0, local = 0;
+    p.sendWebhook = async () => { remote++; return { ok: true, status: 200 }; };
+    const sendLocalNotice = p.sendLocalNotice;
+    p.sendLocalNotice = async () => { local++; return true; };
+    await p.dispatchNotification({}, '任务完成', { isError: false });
+    assert.equal(remote, 1);
+    assert.equal(local, 0, 'Windows 分发层完全跳过本机通知');
+    await assert.rejects(sendLocalNotice.call(p, '测试', '正文'), /仅支持本机 macOS/);
+  } finally {
+    Object.defineProperty(process, 'platform', originalPlatform);
+  }
+});
+
 test('每周用量预警按阈值和重置周期分别发送飞书与本机通知，重启后不重复', async () => {
   config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/test', notifyUsageThresholdPct: 98,
     notifyUsageFeishu: true, notifyUsageLocal: true };

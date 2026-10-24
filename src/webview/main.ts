@@ -2,7 +2,7 @@ import { installWebviewErrors } from './errors';
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
 import { latestModelChoices, modelDescription } from "./modelPicker";
-import { parseFileRef } from "../fileRef";
+import { fileUriToPath, hasUriScheme, parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
 import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits, ChangedFile } from "../shared";
@@ -3001,7 +3001,7 @@ const FILE_EXT = new Set([
 
 function parseCodeRef(s: string): { path: string; line?: number; endLine?: number } | null {
   const ref = parseFileRef(s);
-  const m = /^([~\w./\\@\-+ ()]+\.[A-Za-z0-9]{1,10})$/.exec(ref.path);
+  const m = /^((?:[a-z]:[\\/])?[~\w./\\@\-+ ()]+\.[A-Za-z0-9]{1,10})$/i.exec(ref.path);
   if (!m) return null;
   const ext = (m[1].split(".").pop() || "").toLowerCase();
   if (!FILE_EXT.has(ext)) return null;
@@ -3009,7 +3009,7 @@ function parseCodeRef(s: string): { path: string; line?: number; endLine?: numbe
 }
 
 const REF_RE =
-  /\/?(?:[~\w.\-@+]+[/\\])+[\w.\-@+]*\.[A-Za-z0-9]{1,10}(?::\d+(?:[:-]\d+)?)?|[\w.\-@+]+\.[A-Za-z0-9]{1,10}:\d+(?:[:-]\d+)?/g;
+  /(?:[a-z]:[/\\])?\/?(?:[~\w.\-@+]+[/\\])+[\w.\-@+]*\.[A-Za-z0-9]{1,10}(?::\d+(?:[:-]\d+)?)?|[\w.\-@+]+\.[A-Za-z0-9]{1,10}:\d+(?:[:-]\d+)?/gi;
 
 function makeRef(text: string, ref: { path: string; line?: number; endLine?: number }): HTMLElement {
   const span = document.createElement("span");
@@ -3084,8 +3084,8 @@ function hydrateLocalImages(container: HTMLElement) {
   container.querySelectorAll<HTMLImageElement>("img[src]").forEach((img) => {
     const src = img.getAttribute("src") || "";
     if (/^(https?:|data:)/i.test(src)) return;
-    if (/^[a-z][a-z\d+.-]*:/i.test(src) && !/^file:\/\//i.test(src)) return;
-    let imagePath = src;
+    if (hasUriScheme(src) && !/^file:\/\//i.test(src)) return;
+    let imagePath = /^file:/i.test(src) ? (fileUriToPath(src) ?? src) : src;
     if (!/^file:/i.test(src)) {
       try { imagePath = decodeURIComponent(src); } catch { /* 保留原路径 */ }
     }
@@ -3111,7 +3111,7 @@ function linkifyRefs(container: HTMLElement, validate = true) {
   container.querySelectorAll("a").forEach((a) => {
     const href = a.getAttribute("href") || "";
     const ref = parseFileRef(href);
-    const scheme = /^([a-z][a-z\d+.-]*):/i.exec(ref.path)?.[1].toLowerCase();
+    const scheme = hasUriScheme(ref.path) ? /^([a-z][a-z\d+.-]*):/i.exec(ref.path)?.[1].toLowerCase() : undefined;
     if (scheme === "http" || scheme === "https" || scheme === "mailto") return;
     const span = document.createElement("span");
     span.textContent = a.textContent || href;
@@ -4261,25 +4261,25 @@ window.addEventListener(
     // 进来（里面恰好有 /etc/hosts 这样的行）不能被吞成附件。
     const plainLines = plain.split(/[\r\n]+/).map((s) => s.trim()).filter(Boolean);
     const plainIsPathList =
-      plainLines.length > 0 && plainLines.length <= 5 && plainLines.every((s) => /^(file:\/\/|\/)\S+$/.test(s));
+      plainLines.length > 0 && plainLines.length <= 5 && plainLines.every((s) => /^(file:\/\/|\/|[a-z]:[\\/])\S+$/i.test(s));
     const raw = uriRaw || (plainIsPathList ? plain : "");
     for (const line of raw.split(/[\r\n]+/)) {
       const s = line.trim();
       if (!s || s.startsWith("#")) continue;
+      if (/^[a-z]:[\\/]/i.test(s)) {
+        addFile(s);
+        added++;
+        continue;
+      }
       try {
         const u = new URL(s);
         if (u.protocol === "file:") {
-          let p = u.pathname;
-          try {
-            p = decodeURIComponent(u.pathname);
-          } catch {
-            /* keep raw */
-          }
+          const p = fileUriToPath(u) ?? u.pathname;
           addFile(p);
           added++;
         }
       } catch {
-        if (s.startsWith("/")) {
+        if (s.startsWith("/") || /^[a-z]:[\\/]/i.test(s)) {
           addFile(s);
           added++;
         }

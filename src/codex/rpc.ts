@@ -271,9 +271,15 @@ export function resolveCodex(configured: string): string {
   if (configured && configured !== 'codex') return configured;
   const binary = process.platform === 'win32' ? 'codex.exe' : 'codex';
   const dirs = [...(process.env.PATH ?? '').split(path.delimiter), '/opt/homebrew/bin', '/usr/local/bin', path.join(os.homedir(), '.local/bin')];
+  if (process.platform === 'win32' && process.env.LOCALAPPDATA)
+    dirs.unshift(path.join(process.env.LOCALAPPDATA, 'Programs', 'OpenAI', 'Codex', 'bin'));
   for (const dir of dirs) {
     const file = path.join(dir, binary);
     try { fs.accessSync(file, fs.constants.X_OK); return file; } catch { /* 下一个位置 */ }
+  }
+  if (process.platform === 'win32') {
+    const offline = findWindowsOfflineCodex(os.homedir(), binary);
+    if (offline) return offline;
   }
   const nvm = path.join(os.homedir(), '.nvm/versions/node');
   try {
@@ -283,4 +289,19 @@ export function resolveCodex(configured: string): string {
     }
   } catch { /* 可选安装目录 */ }
   return configured || 'codex';
+}
+
+/** 离线解压版常见布局：%USERPROFILE%\\CodexCLI-<版本>\\bin\\codex.exe。 */
+export function findWindowsOfflineCodex(profileDirectory: string, binary = 'codex.exe'): string | undefined {
+  try {
+    const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    const installs = fs.readdirSync(profileDirectory, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && /^CodexCLI-.+$/i.test(entry.name))
+      .map(entry => entry.name).sort((a, b) => collator.compare(b, a));
+    for (const install of installs) {
+      const file = path.join(profileDirectory, install, 'bin', binary);
+      try { fs.accessSync(file, fs.constants.X_OK); return file; } catch { /* 下一个离线安装目录 */ }
+    }
+  } catch { /* 可选的版本化离线安装目录 */ }
+  return undefined;
 }

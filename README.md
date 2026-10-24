@@ -94,7 +94,7 @@ CLI 可提供的事件与指标依据：[官方 OpenTelemetry 配置](https://le
 
 ## 安装
 
-要求 VS Code 1.90+，本机已安装 Codex CLI。当前协议与真实集成测试基于 **codex-cli 0.156.1**；旧版本可能缺少分页历史、指定轮次派生及删除接口，请先升级。
+要求 VS Code 1.90+，本机已安装 Codex CLI。Windows 会优先从 PATH 查找，也会自动查找 `%USERPROFILE%\CodexCLI-*\bin\codex.exe` 等安装位置；可在 `codexChat.codexPath` 中指定路径。Windows 版仅支持飞书等远程推送，不发送本机系统通知。当前协议与真实集成测试基于 **codex-cli 0.156.1**；旧版本可能缺少分页历史、指定轮次派生及删除接口，请先升级。
 
 ```bash
 code --install-extension release/vscode-codex.vsix --force

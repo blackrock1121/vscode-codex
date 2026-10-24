@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.169",
+  "version": "0.1.170",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -211,7 +211,7 @@
         "codexChat.codexPath": {
           "type": "string",
           "default": "codex",
-          "description": "Codex CLI 路径；默认从 PATH、Homebrew、~/.local/bin 和 nvm 安装位置查找。"
+          "description": "Codex CLI 路径；默认从 PATH、Homebrew、~/.local/bin、nvm，以及 Windows 的 %USERPROFILE%\\CodexCLI-*\\bin 和标准安装目录查找。"
         },
         "codexChat.model": {
           "type": "string",
@@ -357,7 +357,7 @@
         "codexChat.notifyLocal": {
           "type": "boolean",
           "default": false,
-          "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话或诊断记录。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主。"
+          "description": "额外发送 macOS 本机系统通知，点击返回对应 VS Code 窗口和 Codex 会话或诊断记录。默认关闭；与飞书等 webhook 推送独立，不会替代或关闭飞书提醒。首次使用需允许系统通知；仅支持本机 macOS 扩展宿主，Windows 仅支持飞书等远程推送。"
         },
         "codexChat.notifyUsageThresholdPct": {
           "type": "number",

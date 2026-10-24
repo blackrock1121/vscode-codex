@@ -6,7 +6,7 @@ import * as path from "node:path";
 import * as fs from "node:fs";
 import * as https from "node:https";
 import { performance } from "node:perf_hooks";
-import { parseFileRef } from "../fileRef";
+import { fileUriToPath, hasUriScheme, parseFileRef } from "../fileRef";
 import { DEFAULT_QUIET_HOURS, isFeishuWebhook, parseQuietHours, WorkdayCalendar } from "../workdayCalendar";
 import { formatLocalNotification, localNotificationProject, localNotificationsSupported, focusNotificationWindow, sendLocalNotification, clearLocalNotification, clearPreviousLocalNotifications, queueSessionNotification, notificationTime } from "../notifications";
 import { NotificationRouter } from "../notificationRouter";
@@ -3012,6 +3012,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const cfg = vscode.workspace.getConfiguration("codexChat");
         postWebviewMessage(this.notifyPanel?.webview, {
             kind: "notify_config",
+            platform: process.platform,
             quietHours: parseQuietHours(cfg.get("notifyFeishuQuietHours")) ?? DEFAULT_QUIET_HOURS,
             local: cfg.get<boolean>("notifyLocal") ?? false,
             localSupported: localNotificationsSupported(),
@@ -3060,10 +3061,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 <div class="wrap">
   <h2>🔔 任务推送</h2>
   <div class="sub">长任务跑完时向 webhook 推一条通知：任务耗时达到阈值即推送。Codex 停下来等你输入（工具授权 / 选项提问）且你离开超过同一阈值时，也会推一条「等你输入」。诊断通知共用这里的渠道、耗时阈值和静默设置。</div>
+  <div class="sub" id="platformhint" hidden></div>
   <label class="f"><span>飞书等远程推送 Webhook 地址（主要提醒渠道）</span><input id="webhook" type="text" spellcheck="false" placeholder="飞书/企业微信/钉钉群机器人的 webhook，或任意接收 JSON 的地址" /></label>
   <label class="f"><span>耗时阈值（秒）</span><input id="minsec" type="number" min="0" step="10" placeholder="60" /></label>
-  <label><input id="local" type="checkbox" /> 同时开启本机通知（可选）</label>
-  <div class="sub" id="localhint">默认关闭，不影响飞书提醒。开启后，点击本机通知回到对应 VS Code 窗口和会话；首次使用请允许 macOS 通知。窗口关闭或重载后，旧通知可能失效。</div>
+  <div id="localcontrols">
+    <label><input id="local" type="checkbox" /> 同时开启本机通知（可选）</label>
+    <div class="sub" id="localhint">默认关闭，不影响飞书提醒。开启后，点击本机通知回到对应 VS Code 窗口和会话；首次使用请允许 macOS 通知。窗口关闭或重载后，旧通知可能失效。</div>
+  </div>
+  <div id="quietcontrols">
   <label><input id="quiet" type="checkbox" /> 工作日的工作时间内暂停飞书推送（可选）</label>
   <div class="sub" id="quiethint">需先开启本机通知；关闭本机通知后，飞书照常推送。</div>
   <div class="acts">
@@ -3074,10 +3079,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   <div class="sub">启用后每天联网更新日历，断网最多使用七天内缓存；无有效日历时照常推送。请保持本机通知开启，以便上班时收到提醒。</div>
   <div class="sub" id="calendarstatus">日历尚未加载。</div>
   <button id="refreshcalendar" class="btn">立即更新节假日与调休日历</button>
+  </div>
   <h3>每周用量预警</h3>
   <label class="f"><span>已使用达到（%）</span><input id="usagethreshold" type="number" min="1" max="100" step="1" placeholder="98" /></label>
   <label><input id="usagefeishu" type="checkbox" /> 飞书通知（使用上方 Webhook 地址）</label>
-  <label><input id="usagelocal" type="checkbox" /> 本机通知</label>
+  <label id="usagelocalrow"><input id="usagelocal" type="checkbox" /> 本机通知</label>
   <div class="sub" id="usagehint">达到阈值后，每个重置周期、每个勾选渠道只提醒一次；两个渠道可以同时勾选。飞书通知需填写上方 Webhook。用量预警不受任务耗时阈值和工作时间静默设置影响。</div>
   <div id="status" class="status hidden"></div>
   <div class="acts">
@@ -3118,7 +3124,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       $("local").disabled = !m.localSupported;
       $("testlocal").disabled = !m.localSupported;
       $("usagelocal").disabled = !m.localSupported;
-      if (!m.localSupported) $("localhint").textContent = "本机通知目前仅支持本机 macOS 的 VS Code。SSH、容器、浏览器及其他系统请继续使用飞书等远程推送。";
+      $("localcontrols").hidden = !m.localSupported;
+      $("quietcontrols").hidden = !m.localSupported;
+      $("testlocal").hidden = !m.localSupported;
+      $("usagelocalrow").hidden = !m.localSupported;
+      $("platformhint").hidden = m.localSupported;
+      if (!m.localSupported) $("platformhint").textContent = m.platform === "win32"
+        ? "Windows 版仅支持飞书等远程推送；本机系统通知已关闭。"
+        : "当前运行环境不支持本机系统通知，请使用飞书等远程推送。";
     } else if (m.kind === "notify_calendar") {
       $("calendarstatus").textContent = m.message;
       $("refreshcalendar").disabled = false;
@@ -3434,7 +3447,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const privateSession = ctx.remotePrivate || (sessionId && this.context.workspaceState?.get<boolean>('codexChat.remotePrivate.' + sessionId));
         const url = privateSession ? '' : (cfg.get<string>("notifyWebhook") || "").trim();
         const event = extra.waiting === true ? "waiting" : extra.isError === true ? "error" : "complete";
-        const localEnabled = cfg.get<boolean>("notifyLocal") === true;
+        const localEnabled = cfg.get<boolean>("notifyLocal") === true && localNotificationsSupported();
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
         let muted = false;
         if (localEnabled && localNotificationsSupported() && isFeishuWebhook(url) && quiet?.enabled) {
@@ -3487,6 +3500,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }));
     }
     private async sendLocalNotice(title: string, body: string, sessionId?: string, diagnosticId?: string): Promise<boolean> {
+        if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
         const createdAt = notificationTime();
         const epoch = this.notificationVersion(sessionId);
         // 地址解析不占据原生操作队列，用户回复后的清理无需等旧解析完成。
@@ -3983,11 +3997,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async resolveWorkspaceFile(p: string, interactive: boolean): Promise<string | undefined> {
         if (/^file:/i.test(p)) {
-            try { p = vscode.Uri.parse(p).fsPath; }
+            try { p = fileUriToPath(p) ?? vscode.Uri.parse(p).fsPath; }
             catch { return undefined; }
         }
         if (p.startsWith("~/")) p = path.join(os.homedir(), p.slice(2));
-        if (!p || /^[a-z][a-z\d+.-]*:/i.test(p)) return undefined;
+        if (!p || hasUriScheme(p)) return undefined;
         const direct = path.isAbsolute(p)
             ? [p]
             : [path.join(this.cwd(), p), ...this.workspaceDirs().map((d) => path.join(d, p))];

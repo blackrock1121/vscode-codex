@@ -1009,6 +1009,22 @@ test('重置时间在左，额度和百分比相邻；重置卡列出各自有�
 });
 test('搜索结果只渲染 http(s) 链接',t=>{const {w,emit,errors}=setup(t);emit({kind:'tool_input',toolId:'search',name:'WebSearch',input:{query:'test'}});emit({kind:'tool_result',toolUseId:'search',content:'Links: [{"title":"正常","url":"https://example.com/a"},{"title":"危险","url":"javascript:alert(1)"}]',isError:false});const links=[...w.document.querySelectorAll('.search-hit')];assert.equal(links.length,1);assert.equal(links[0].href,'https://example.com/a');assert.deepEqual(errors,[]);});
 test('回复中的网页、相对路径、绝对路径和文件 URI 分别走正确跳转',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'load_history',sessionId:'links',items:[{type:'assistant_text',text:'[网站](https://example.com/a?q=1) [邮箱](mailto:a@example.com) [相对](docs/guide.md#L8) [绝对](/tmp/a%20b.txt#L12) [文件 URI](file:///tmp/a%20b.pdf) [文档](/tmp/report.docx) [命令](command:workbench.action.files.openFile)'}],checkpoints:[]});const messages=w.document.getElementById('messages');const click=e=>e.dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));const site=messages.querySelector('a[href="https://example.com/a?q=1"]');assert.ok(site);click(site);assert.ok(sent.some(m=>m.type==='openExternalLink'&&m.url==='https://example.com/a?q=1'));click(messages.querySelector('a[href^="mailto:"]'));assert.ok(sent.some(m=>m.type==='openExternalLink'&&m.url==='mailto:a@example.com'));for(const [label,p,line]of [['相对','docs/guide.md',8],['绝对','/tmp/a b.txt',12],['文件 URI','file:///tmp/a%20b.pdf',undefined],['文档','/tmp/report.docx',undefined]]){const ref=[...messages.querySelectorAll('.code-ref[data-action="open"]')].find(e=>e.textContent===label);assert.ok(ref,label);click(ref);assert.ok(sent.some(m=>m.type==='openFile'&&m.path===p&&m.line===line),label);}assert.equal([...messages.querySelectorAll('a,.code-ref')].some(e=>e.textContent==='命令'),false);assert.deepEqual(errors,[]);});
+test('Windows 盘符路径的 Markdown 和正文引用可点击并保留盘符',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ const refs=[
+  ['C:/Users/lin/project/src/main.ts:12','C:/Users/lin/project/src/main.ts',12],
+  ['D:\\work\\repo\\src\\app.ts:27','D:\\work\\repo\\src\\app.ts',27],
+ ];
+ emit({kind:'load_history',sessionId:'windows-paths',items:[{type:'assistant_text',text:`[C盘](C:/Users/lin/project/src/main.ts#L12)\n${refs[1][0]}`}],checkpoints:[]});
+ const messages=w.document.getElementById('messages');
+ const markdown=[...messages.querySelectorAll('.code-ref[data-action="open"]')].find(e=>e.textContent==='C盘');
+ assert.ok(markdown); assert.equal(markdown.dataset.path,refs[0][1]);
+ markdown.click();
+ const plain=[...messages.querySelectorAll('.code-ref[data-action="open"]')].find(e=>e.dataset.path===refs[1][1]);
+ assert.ok(plain); plain.click();
+ assert.deepEqual(sent.filter(m=>m.type==='openFile').map(m=>[m.path,m.line]),refs.map(([,path,line])=>[path,line]));
+ assert.deepEqual(errors,[]);
+});
 test('调用代码链接在历史和流式回复中分离路径与行号',t=>{
  const {w,sent,emit,errors}=setup(t);
  const java='/Users/duodian/IdeaProjects/game-server/src/main/java/com/game/service/impl/PlugServiceImpl.java';
