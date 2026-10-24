@@ -26,3 +26,17 @@ test('原生可执行文件、不可读路径与现有 PATH 不被替换，用�
  assert.equal(codexSpawnEnvironment(path.join(dir,'missing'),env),env);
  assert.equal(codexSpawnEnvironment('custom-codex',env),env);
 });
+test('Windows Codex 子进程绕过代理访问插件自己的 loopback 服务且不修改调用方环境',t=>{
+ const env={HTTPS_PROXY:'http://proxy.example:8080',no_proxy:'example.com',KEEP_SETTING:'unchanged'};
+ const launch=codexSpawnEnvironment(process.execPath,env,'win32');
+ assert.equal(launch.no_proxy,'example.com,127.0.0.1,localhost');
+ assert.equal(launch.NO_PROXY,undefined);
+ assert.equal(launch.HTTPS_PROXY,env.HTTPS_PROXY);
+ assert.equal(launch.KEEP_SETTING,env.KEEP_SETTING);
+ assert.equal(env.no_proxy,'example.com');
+ assert.notEqual(launch,env);
+ const alreadyConfigured={NO_PROXY:'127.0.0.1,localhost'};
+ assert.equal(codexSpawnEnvironment(process.execPath,alreadyConfigured,'win32'),alreadyConfigured);
+ const wildcard={NO_PROXY:'*'};
+ assert.equal(codexSpawnEnvironment(process.execPath,wildcard,'win32'),wildcard);
+});

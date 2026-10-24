@@ -251,19 +251,36 @@ export class CodexRpc extends EventEmitter {
   }
 }
 
+/** 子进程访问插件绑定的回环服务时，不应绕到用户配置的 HTTP 代理。 */
+function bypassLoopbackProxy(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const keys = Object.keys(env).filter(key => key.toLowerCase() === 'no_proxy');
+  const values = keys.map(key => env[key]).filter((value): value is string => typeof value === 'string' && value.length > 0);
+  const current = values.join(',');
+  const entries = new Set(current.split(/[;,]/).map(value => value.trim().toLowerCase()).filter(Boolean));
+  if (entries.has('*')) return env;
+  const missing = ['127.0.0.1', 'localhost'].filter(host => !entries.has(host));
+  if (!missing.length && keys.length <= 1) return env;
+  const key = keys.find(existing => existing === 'NO_PROXY') ?? keys[0] ?? 'NO_PROXY';
+  const result = { ...env };
+  for (const existing of keys) if (existing !== key) delete result[existing];
+  result[key] = [current, ...missing].filter(Boolean).join(',');
+  return result;
+}
+
 /** npm 的 Codex 启动器使用 /usr/bin/env node；GUI 更新后可能没有加载 nvm 的 PATH。 */
-export function codexSpawnEnvironment(executable: string, env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function codexSpawnEnvironment(executable: string, env: NodeJS.ProcessEnv, platform = process.platform): NodeJS.ProcessEnv {
+  let launchEnv = platform === 'win32' ? bypassLoopbackProxy(env) : env;
   let fd: number | undefined;
   try {
-    if (!path.isAbsolute(executable)) return env;
+    if (!path.isAbsolute(executable)) return launchEnv;
     fd = fs.openSync(executable, 'r');
     const header = Buffer.alloc(128), bytes = fs.readSync(fd, header, 0, header.length, 0);
-    if (!/^#![^\r\n]*\benv(?:\s+-S)?\s+node(?:\s|$)/.test(header.toString('utf8', 0, bytes))) return env;
+    if (!/^#![^\r\n]*\benv(?:\s+-S)?\s+node(?:\s|$)/.test(header.toString('utf8', 0, bytes))) return launchEnv;
     const directory = path.dirname(executable);
-    fs.accessSync(path.join(directory, process.platform === 'win32' ? 'node.exe' : 'node'), fs.constants.X_OK);
-    if ((env.PATH ?? '').split(path.delimiter).includes(directory)) return env;
-    return { ...env, PATH: [directory, env.PATH].filter(Boolean).join(path.delimiter) };
-  } catch { return env; /* 可选探测失败仍交给 spawn 的统一错误处理，不替换用户选择的 CLI。 */ }
+    fs.accessSync(path.join(directory, platform === 'win32' ? 'node.exe' : 'node'), fs.constants.X_OK);
+    if ((launchEnv.PATH ?? '').split(path.delimiter).includes(directory)) return launchEnv;
+    return { ...launchEnv, PATH: [directory, launchEnv.PATH].filter(Boolean).join(path.delimiter) };
+  } catch { return launchEnv; /* 可选探测失败仍交给 spawn 的统一错误处理，不替换用户选择的 CLI。 */ }
   finally { if (fd !== undefined) fs.closeSync(fd); }
 }
 
