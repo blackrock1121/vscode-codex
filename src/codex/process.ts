@@ -4,9 +4,9 @@ import * as path from 'node:path';
 import * as os from 'node:os';
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
-import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview } from '../shared';
+import { CTX_OPEN, CTX_CLOSE, modelChoices, ModelChoice, SpeedMode, speedServiceTier, speedLabel, supportsSpeed, isSpeedMode, billingKind, PermissionSuggestionView, ToWebview, QuestionAnswerModes } from '../shared';
 import { CodexRpc, RpcMessage, RpcId } from './rpc';
-import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents } from './events';
+import { QUESTION_REPLY_PREFIX, asyncQuestions, normalizeQuestions, toolView, quotaEvents, questionAnswerMetadata } from './events';
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, validateQuestionImages } from '../questionImages';
 import { TransportDiagnostic } from './telemetry';
 import { PerformanceTrace, PerformanceContext } from './performanceTrace';
@@ -46,6 +46,7 @@ export interface PermissionRequest {
   agentLabel?: string;
   input: Record<string, unknown>; description?: string; suggestions: PermissionSuggestionView[];
   initialAnswers?: Record<string, string | string[]>;
+  initialAnswerModes?: QuestionAnswerModes;
   initialImages?: QuestionImages;
 }
 export interface CodexProcessHooks {
@@ -984,7 +985,7 @@ export class CodexProcess {
   }
   isChildQuestion(key: string): boolean { return this.childQuestions.has(key); }
   /** 子任务的阻塞问题由原 RPC 恢复，不创建根会话用户轮次/还原点。 */
-  answerChildQuestion(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}): boolean {
+  answerChildQuestion(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}, answerModes: QuestionAnswerModes = {}): boolean {
     const pending = this.pending.get(key), questions = this.childQuestions.get(key);
     if (!pending || !questions || this.exited || this.disposed || this.stoppingTree ||
         !this.children.isCurrent(pending.params.threadId, pending.params.turnId)) return false;
@@ -996,7 +997,8 @@ export class CodexProcess {
       const raw = answers[question.id] ?? answers[question.question] ?? answers[String(index)];
       const values = Array.isArray(raw) ? [...raw] : [raw];
       if (!values.length || values.some(value => typeof value !== 'string' || !value.trim())) return false;
-      mapped[question.id] = { answers: values as string[] };
+      mapped[question.id] = { answers: values as string[], ...(pending.method === 'item/tool/call' && answerModes[question.id]
+        ? questionAnswerMetadata(question, answerModes[question.id]) : {}) };
     }
     const response = { answers: mapped };
     this.rpc.respond(pending.id, pending.method === 'item/tool/call' ? {
@@ -1039,7 +1041,7 @@ export class CodexProcess {
     this.rpc.respond(p.id, result); this.pending.delete(key); this.emit({ kind: 'permission_resolved', requestId: key, behavior: decision.behavior });
     return true;
   }
-  prepareQuestionAnswer(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}): { text: string; turnId: string; images: AnswerImage[] } | undefined {
+  prepareQuestionAnswer(key: string, answers: Record<string, string | string[]>, images: QuestionImages = {}, answerModes: QuestionAnswerModes = {}): { text: string; turnId: string; images: AnswerImage[] } | undefined {
     if (this.exited || this.disposed || !this.busy) return;
     const p = this.pending.get(key);
     if (!p || !['item/tool/call', 'item/tool/requestUserInput', 'tool/requestUserInput'].includes(p.method)) return;
@@ -1069,13 +1071,13 @@ export class CodexProcess {
       const id = q.id || q.question || String(index), pictures = images[id] ?? [];
       const imageNumbers = pictures.map((_, i) => attached.length + i + 1);
       attached.push(...pictures);
-      return { question: q.question, ...(q.isSecret ? { isSecret: true } : {}), answers: mapped[id].answers,
+      return { question: q.question, ...questionAnswerMetadata(q, answerModes[id]), answers: mapped[id].answers,
         ...(pictures.length ? { imageCount: pictures.length, imageNumbers } : {}) };
     });
     return { text: `${QUESTION_REPLY_PREFIX}${JSON.stringify(reply)}`, turnId: paused.turnId, images: attached };
   }
-  answerQuestion(key: string, answers: Record<string, string | string[]>, images?: QuestionImages): boolean {
-    const answer = this.prepareQuestionAnswer(key, answers, images);
+  answerQuestion(key: string, answers: Record<string, string | string[]>, images?: QuestionImages, answerModes?: QuestionAnswerModes): boolean {
+    const answer = this.prepareQuestionAnswer(key, answers, images, answerModes);
     if (!answer) return false;
     // 原工具请求随中断失效。用真实用户消息恢复同一会话，绝不向旧 RPC 伪造成功。
     this.clearSavedQuestion();

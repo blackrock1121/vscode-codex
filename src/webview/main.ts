@@ -5,7 +5,7 @@ import { latestModelChoices, modelDescription } from "./modelPicker";
 import { fileUriToPath, hasUriScheme, parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
-import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits, ChangedFile } from "../shared";
+import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits, ChangedFile, QuestionAnswerModes } from "../shared";
 import { ICONS as ICON, GPT_LOGO, speedLabel, speedCost, speedGain, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
@@ -2307,7 +2307,10 @@ function attachReanswer(card: HTMLElement, checkpointId: string) {
 /** Render a previously-answered AskUserQuestion (from history) as a clean node,
  *  instead of the raw "Your questions have been answered: …" tool output. */
 function renderAnsweredQuestion(parent: HTMLElement, result: string) {
-  const pairs: [string, string][] = [...result.matchAll(/"([^"]+)"\s*=\s*"([^"]*)"/g)].map((mm) => [mm[1], mm[2]]);
+  const pairs: [string, string][] = [...result.matchAll(/("(?:\\.|[^"\\])*")\s*=\s*("(?:\\.|[^"\\])*")/g)].flatMap(mm => {
+    try { return [[JSON.parse(mm[1]), JSON.parse(mm[2])] as [string, string]]; }
+    catch { return []; }
+  });
   parent.appendChild(askQuestionNode(pairs, pairs.length ? "" : truncateText(result, 1000)));
   maybeScroll();
 }
@@ -2338,12 +2341,13 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   const secrets = questions.map(() => ""); // 与说明分开保存，翻页或重试时不能把凭据显示到文本框。
   const pictures: AnswerImage[][] = questions.map(q => q.isSecret || m.agentLabel ? [] : [...(m.initialImages?.[q.id || q.question] ?? [])]);
   questions.forEach((q, i) => {
-    if (q.isSecret) return; // 秘密答案必须重新填写，不回填遮蔽占位文字。
+    const mode = m.initialAnswerModes?.[q.id || q.question];
+    if (mode === 'secret' || (q.isSecret && mode !== 'custom' && mode !== 'option')) return; // 秘密答案和来源不明的旧答案必须重新填写。
     const value = m.initialAnswers?.[q.id || q.question];
     if (value == null) return;
     const values = Array.isArray(value) ? value : [value];
     for (const answer of values) {
-      if (q.options?.some(option => option.label === answer)) sel[i].add(answer);
+      if (mode !== 'custom' && q.options?.some(option => option.label === answer)) sel[i].add(answer);
       else custom[i] = custom[i] ? `${custom[i]}、${answer}` : answer;
     }
   });
@@ -2352,6 +2356,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   let submitting = false;
   let readingImages = 0;
   let submittedAnswers: Record<string, string | string[]> | undefined;
+  let submittedAnswerModes: QuestionAnswerModes = {};
 
   const wrap = el("div", "askp");
   wrap.dataset.requestId = m.requestId;
@@ -2604,7 +2609,7 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
       const pairs = questions
         .map((q): [string, string] => {
           const v = answers[q.id || q.question];
-          return [q.header || q.question, q.isSecret && v ? "（已填写）" : Array.isArray(v) ? v.join("、") : v || ""];
+          return [q.header || q.question, submittedAnswerModes[q.id || q.question] === 'secret' && v ? "（已填写）" : Array.isArray(v) ? v.join("、") : v || ""];
         })
         .filter(([, a]) => a);
       const answered = askQuestionNode(pairs);
@@ -2637,20 +2642,23 @@ function renderQuestion(m: Extract<ToWebview, { kind: "permission_request" }>) {
   submit.onclick = () => {
     if (done || submitting || readingImages || !questions.every((_, qi) => answered(qi))) return;
     const answers: Record<string, string | string[]> = {};
+    const answerModes: QuestionAnswerModes = {};
     questions.forEach((q, qi) => {
       const picks = [...sel[qi]];
       if (secrets[qi].trim()) picks.push(secrets[qi].trim());
       if (custom[qi].trim()) picks.push(custom[qi].trim());
       if (!picks.length && pictures[qi].length) picks.push(QUESTION_IMAGE_ANSWER);
       answers[q.id || q.question] = q.multiSelect ? picks : picks[0] || "";
+      answerModes[q.id || q.question] = secrets[qi].trim() ? 'secret' : custom[qi].trim() || pictures[qi].length ? 'custom' : 'option';
     });
     submitting = true;
     submittedAnswers = answers;
+    submittedAnswerModes = answerModes;
     submitError.classList.add("hidden");
     wrap.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLTextAreaElement>("button, input, textarea").forEach(control => control.disabled = true);
     submit.textContent = "提交中…";
     const images = imagePayload();
-    send({ type: "answerQuestion", requestId: m.requestId, answers, ...(Object.keys(images).length ? { images } : {}) });
+    send({ type: "answerQuestion", requestId: m.requestId, answers, answerModes, ...(Object.keys(images).length ? { images } : {}) });
   };
   xBtn.onclick = () => {
     stopPending = true;

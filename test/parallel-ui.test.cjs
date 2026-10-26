@@ -49,7 +49,11 @@ test('子问题答案直达原进程，不读取根历史、不建立新还原�
   provider.waitSessionSettings = () => { throw new Error('不应等待根设置'); };
   provider.store = { hydrate: () => { throw new Error('不应读取根历史'); } };
   await provider.submitQuestionAnswer(ctx, 'child', { q: '选择一' });
-  assert.deepEqual(replies, [['child', { q: '选择一' }, undefined]]);
+  await provider.submitQuestionAnswer(ctx, 'child', { q: '先修正问题' }, undefined, undefined, { q: 'custom' });
+  assert.deepEqual(replies, [
+    ['child', { q: '选择一' }, undefined, undefined],
+    ['child', { q: '先修正问题' }, undefined, { q: 'custom' }],
+  ]);
 });
 
 test('真实工具活动更新静默时钟，诊断与重试提示不冒充进展', () => {

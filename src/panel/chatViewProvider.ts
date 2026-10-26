@@ -26,7 +26,7 @@ import { performanceContext } from "../codex/performanceTrace";
 import { executionMode } from "../codex/executionPolicy";
 import { SessionStore, sessionTabTitle, ForkPreparation } from "../codex/session";
 import { CheckpointManager, shortLabel } from "../checkpoints";
-import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SpeedMode, configuredSpeedMode, isSpeedMode, speedLabel, supportsSpeed, billingKind, SessionSummary, ToWebview } from "../shared";
+import { ChangedFile, CheckpointSummary, contextWindowFor, CTX_OPEN, CTX_CLOSE, FromWebview, ICONS, modelChoices, ModelChoice, SpeedMode, configuredSpeedMode, isSpeedMode, speedLabel, supportsSpeed, billingKind, SessionSummary, ToWebview, QuestionAnswerModes } from "../shared";
 const FILE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 function stripHeredocs(cmd: string): string {
     const lines = cmd.split("\n");
@@ -1181,7 +1181,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     const answerStartedAt = performance.now();
                     const answerSessionId = ctx.sessionId ?? "none";
                     try {
-                        await this.submitQuestionAnswer(ctx, m.requestId, m.answers, m.images);
+                        await this.submitQuestionAnswer(ctx, m.requestId, m.answers, m.images, undefined, m.answerModes);
                     } catch (err) {
                         this.output.appendLine(`[question] rejected session=${answerSessionId} elapsedMs=${Math.round(performance.now() - answerStartedAt)} errorType=${err instanceof Error ? err.name : typeof err}`);
                         this.post(ctx, { kind: "question_answer_rejected", requestId: m.requestId, message: String((err as Error)?.message ?? err) });
@@ -2517,12 +2517,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[restore] ${oldId.slice(0, 8)} → 派生 ${newId.slice(0, 8)}（原会话保留，回退点 ${leaf.slice(0, 8)}，还原点 ${ctx.checkpoints.list().length} 个）`);
         return { result, rewoundToStart: false };
     }
-    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages, allowed?:()=>boolean): Promise<void> {
+    private async submitQuestionAnswer(ctx: SessionCtx, requestId: string, answers: Record<string, string | string[]>, images?: QuestionImages, allowed?:()=>boolean, answerModes?: QuestionAnswerModes): Promise<void> {
         if(allowed&&!allowed())throw new Error("远程请求已失效，答案未提交。");
         const startedAt = performance.now();
         // 子 Agent 的阻塞提问答回原请求，不能为根会话派生新轮次或重建文件快照。
         if (ctx.proc?.isChildQuestion?.(requestId)) {
-            if (!await ctx.proc.answerChildQuestion(requestId, answers, images))
+            if (!await ctx.proc.answerChildQuestion(requestId, answers, images, answerModes))
                 throw new Error("子 Agent 问题已失效，答案未提交。");
             void this.clearSessionNotification(ctx.sessionId, "question_answer");
             return;
@@ -2535,7 +2535,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             throw new Error("答案提交已取消。");
         }
         const sourceId = ctx.sessionId;
-        const answer = proc?.prepareQuestionAnswer(requestId, answers, images);
+        const answer = proc?.prepareQuestionAnswer(requestId, answers, images, answerModes);
         if (!sourceId || !proc || !answer) throw new Error("答案未提交，问题可能已失效，请重新打开会话后重试。");
         this.output.appendLine(`[question] preparing session=${sourceId}`);
         await this.store.hydrate(sourceId);
@@ -2554,12 +2554,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         this.output.appendLine(`[question] snapshot_ready session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}`);
         await this.waitSessionSettings(ctx);
-        if ((allowed&&!allowed()) || ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images)) throw new Error("提交已取消，原问题或会话状态已变化。");
+        if ((allowed&&!allowed()) || ctx.questionAnswerSeq !== seq || ctx.proc !== proc || ctx.sessionId !== sourceId || !proc.prepareQuestionAnswer(requestId, answers, images, answerModes)) throw new Error("提交已取消，原问题或会话状态已变化。");
         const displayText = userView([{ type: "text", text: answer.text }]).text;
         const checkpointId = ctx.checkpoints.beginTurn(displayText, cut, !!snapshot);
         ctx.snapshot = snapshot;
         try {
-            if (!proc.answerQuestion(requestId, answers, images)) throw new Error("问题已失效，答案未提交。");
+            if (!proc.answerQuestion(requestId, answers, images, answerModes)) throw new Error("问题已失效，答案未提交。");
         } catch (err) {
             ctx.checkpoints.discardEmpty(checkpointId);
             throw err;
@@ -3753,6 +3753,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             agentLabel: req.agentLabel,
             input: req.input,
             initialAnswers: req.initialAnswers,
+            initialAnswerModes: req.initialAnswerModes,
             initialImages: req.initialImages,
             description: req.description,
             suggestions: req.suggestions,
