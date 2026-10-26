@@ -220,6 +220,24 @@ test('私密回答保留给模型但历史及用户消息视图遮蔽，并保�
  assert.doesNotMatch(JSON.stringify(result),/PRIVATE/);assert.match(result[0].text,/公开答案/);
 });
 
+test('私密问题的自定义回答原文传给模型和历史，缺失或无效来源仍遮蔽',async t=>{
+ const {p,events,requests}=await client(t);p.sendUserMessage('secret-question');await waitUntil(()=>requests.length);
+ const key=requests[0].requestId,text='生产支付配置暂未启用。\n请先检查“测试环境”，不要付款。';
+ for(const mode of ['secret','custom','option',undefined,'unknown']){
+  const prepared=p.prepareQuestionAnswer(key,{choice:text},undefined,mode?{choice:mode}:undefined);
+  const raw=JSON.parse(prepared.text.split('\n')[1])[0];
+  assert.deepEqual(raw.answers,[text]);
+  const secret=mode!=='custom'&&mode!=='option';
+  assert.equal(!!raw.isSecret,secret);
+  const visible=timeline([{items:[{type:'userMessage',content:[{type:'text',text:prepared.text}]}]}]);
+  assert.deepEqual(JSON.parse(visible[0].text.split('\n')[1])[0].answers,[secret?'（已填写）':text]);
+ }
+ assert.equal(p.answerQuestion(key,{choice:text},undefined,{choice:'custom'}),true);
+ await waitUntil(()=>events.some(e=>e.kind==='result'));
+ const reply=JSON.parse(events.find(e=>e.kind==='tool_result').content).text;
+ assert.deepEqual(JSON.parse(reply.split('\n')[1]),[{question:'选择什么？',answerMode:'custom',answers:[text]}]);
+});
+
 test('提问续轮不受旧轮次迟到的完成、文字和工具事件影响',async t=>{
  const {p,events,requests}=await client(t,{env:{TEST_HOLD_REPLY:'1'}});
  p.sendUserMessage('async-question');await waitUntil(()=>requests.length);

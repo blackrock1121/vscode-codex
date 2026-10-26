@@ -1,4 +1,4 @@
-import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview, ResetCredits } from '../shared';
+import { CTX_OPEN, CTX_CLOSE, TimelineItem, ToWebview, ResetCredits, QuestionAnswerMode } from '../shared';
 
 export const QUESTION_REPLY_PREFIX = '用户已回答刚才的问题，请根据以下答案继续原任务：\n';
 
@@ -8,7 +8,14 @@ export function checkpointTextKey(text: string): string {
   return text.startsWith(QUESTION_REPLY_PREFIX) ? normalized : normalized.slice(0, 80);
 }
 
-export interface QuestionReply { question: string; isSecret?: boolean; answers: string[]; imageCount?: number }
+/** 旧客户端未记录回答来源时，继续按原问题遮蔽，不能猜测历史凭据是否公开。 */
+export function questionAnswerMetadata(question: { isSecret?: boolean }, mode: unknown): { isSecret?: boolean; answerMode?: QuestionAnswerMode } {
+  const answerMode = mode === 'secret' || mode === 'custom' || mode === 'option' ? mode : undefined;
+  const isSecret = answerMode === 'secret' || (!!question.isSecret && answerMode !== 'custom' && answerMode !== 'option');
+  return { ...(isSecret ? { isSecret: true } : {}), ...(answerMode ? { answerMode } : {}) };
+}
+
+export interface QuestionReply { question: string; isSecret?: boolean; answerMode?: QuestionAnswerMode; answers: string[]; imageCount?: number }
 /** 只接受插件实际提交的结构化回答，不把普通消息当作可还原的问题。 */
 export function parseQuestionReply(text: string): QuestionReply[] | undefined {
   if (!text.startsWith(QUESTION_REPLY_PREFIX)) return;
@@ -16,7 +23,9 @@ export function parseQuestionReply(text: string): QuestionReply[] | undefined {
     const value = JSON.parse(text.slice(QUESTION_REPLY_PREFIX.length));
     if (!Array.isArray(value) || !value.length || value.some(r => !r || typeof r.question !== 'string' || !r.question.trim() ||
         !Array.isArray(r.answers) || !r.answers.length || r.answers.some((a: unknown) => typeof a !== 'string' || !a.trim()))) return;
-    return value.map(r => ({ question: r.question, isSecret: r.isSecret === true, answers: r.isSecret ? ['（已填写）'] : r.answers,
+    return value.map(r => ({ question: r.question, isSecret: !!r.isSecret || r.answerMode === 'secret',
+      ...(questionAnswerMetadata({}, r.answerMode).answerMode ? { answerMode: r.answerMode } : {}),
+      answers: r.isSecret || r.answerMode === 'secret' ? ['（已填写）'] : r.answers,
       ...(Number.isInteger(r.imageCount) && r.imageCount > 0 && r.imageCount <= 10 ? { imageCount: r.imageCount } : {}) }));
   } catch { return; }
 }
@@ -46,7 +55,7 @@ function maskQuestionReply(text: string): string {
   try {
     const replies = JSON.parse(text.slice(QUESTION_REPLY_PREFIX.length));
     if (!Array.isArray(replies)) return '已提交问题回答';
-    return QUESTION_REPLY_PREFIX + JSON.stringify(replies.map(reply => reply?.isSecret
+    return QUESTION_REPLY_PREFIX + JSON.stringify(replies.map(reply => reply?.isSecret || reply?.answerMode === 'secret'
       ? { question: reply.question, isSecret: true, answers: ['（已填写）'] } : reply));
   } catch { return '已提交问题回答（内容无法解析）'; }
 }
@@ -64,8 +73,10 @@ export function toolView(item: any): { name: string; input: Record<string, unkno
       const output = item.contentItems?.find((x: any) => x.type === 'inputText')?.text;
       const answers = JSON.parse(output).answers;
       const pairs = (item.arguments?.questions ?? []).map((q: any, i: number) => {
-        const value = answers[q.id || q.question || String(i)]?.answers ?? [];
-        return `${JSON.stringify(q.header || q.question)} = ${JSON.stringify(q.isSecret ? '（已填写）' : value.join('、'))}`;
+        const answer = answers[q.id || q.question || String(i)];
+        const value = answer?.answers ?? [];
+        const secret = answer?.isSecret || questionAnswerMetadata(q, answer?.answerMode).isSecret;
+        return `${JSON.stringify(q.header || q.question)} = ${JSON.stringify(secret ? '（已填写）' : value.join('、'))}`;
       });
       return { name, input, result: pairs.join('\n'), isError: false };
     } catch { /* 保留原始结果供排错 */ }

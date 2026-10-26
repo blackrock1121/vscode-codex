@@ -86,13 +86,37 @@ test('带图回答还原后按问题回填图片，落盘和宿主消息都保�
  const saved=JSON.parse(await fs.readFile(questionStateFile(f.dir,'branch'),'utf8'));
  assert.deepEqual(saved.request.initialImages,{source:[picture]});
 });
-test('提交问题答案时，宿主在预检和实际发送中都转交图片',async t=>{
+test('提交问题答案时，宿主在预检和实际发送中都转交图片及回答来源',async t=>{
  const f=await fixture(t);f.store.threads.set('source',{id:'source',turns:[f.first]});const calls=[];
  const images={source:[{mediaType:'image/png',data:'aGVsbG8='}]};
- f.ctx.proc={isExited:false,prepareQuestionAnswer:(key,answers,pictures)=>{calls.push(pictures);return {text:reply('A'),turnId:'ask-turn'};},
- answerQuestion:(key,answers,pictures)=>{calls.push(pictures);return true;}};
- await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'},images);
- assert.equal(calls.length,3);assert.ok(calls.every(value=>value===images));
+ const answerModes={source:'custom'};
+ f.ctx.proc={isExited:false,prepareQuestionAnswer:(key,answers,pictures,modes)=>{calls.push({pictures,modes});return {text:reply('A'),turnId:'ask-turn'};},
+ answerQuestion:(key,answers,pictures,modes)=>{calls.push({pictures,modes});return true;}};
+ await f.provider.submitQuestionAnswer(f.ctx,'request',{source:'A'},images,undefined,answerModes);
+ assert.equal(calls.length,3);assert.ok(calls.every(value=>value.pictures===images&&value.modes===answerModes));
+});
+
+test('私密问题的公开回答重新回答时保留来源并落盘，旧私密答案不能回填',async t=>{
+ const f=await fixture(t);
+ f.first.items[1].arguments.questions[0].isSecret=true;
+ for(const mode of ['custom','option','secret',undefined]){
+  const text=QUESTION_REPLY_PREFIX+JSON.stringify([{question:'安装来源',...(mode?{answerMode:mode}:{}),
+   ...(mode==='secret'||!mode?{isSecret:true}:{}),answers:['A']}]);
+  f.turns[1].items=[user(text)];
+  const question=f.store.questionBeforeAnswer('source',1);
+  assert.equal(question.input.questions[0].isSecret,true);
+  const publicAnswer=mode==='custom'||mode==='option';
+  assert.deepEqual(question.initialAnswers,publicAnswer?{source:'A'}:{});
+  assert.deepEqual(question.initialAnswerModes,publicAnswer?{source:mode}:undefined);
+ }
+ const text=QUESTION_REPLY_PREFIX+JSON.stringify([{question:'安装来源',answerMode:'custom',answers:['A']}]);
+ f.turns[1].items=[user(text)];
+ f.checkpoints.clear();const id=f.checkpoints.beginTurn(text,1,true);f.checkpoints.completeSnapshot();
+ await f.provider.restoreCheckpoint(f.ctx,id,true);
+ const request=f.messages.find(m=>m.kind==='permission_request');
+ assert.deepEqual(request.initialAnswers,{source:'A'});assert.deepEqual(request.initialAnswerModes,{source:'custom'});
+ const saved=JSON.parse(await fs.readFile(questionStateFile(f.dir,'branch'),'utf8'));
+ assert.deepEqual(saved.request.initialAnswerModes,{source:'custom'});
 });
 test('空工作区提交问题答案不扫描默认目录，仍可完成还原点并重新回答',async t=>{
  const f=await fixture(t);

@@ -112,6 +112,19 @@ test('两个子问题各自等待并答原 RPC，图片或空答案不解除等�
   assert.equal(f.calls.some(c => ['turn/start', 'turn/interrupt'].includes(c.method)), false);
 });
 
+test('子任务私密问题的回答来源写入工具结果，历史只遮蔽私密输入',async t=>{
+ const {timeline}=require('../dist/test/codex/events.js');
+ for(const mode of ['custom','option','secret',undefined]){
+  const f=fixture(t);f.add('child');
+  const questions=[{id:'q',question:'生产支付配置',isSecret:true,options:[]}];
+  await f.p.request({id:10,method:'item/tool/call',params:{threadId:'child',turnId:'child-turn',callId:'q',tool:'AskUserQuestion',arguments:{questions}}});
+  assert.equal(f.p.answerChildQuestion('10',{q:'稍后提供'},undefined,mode?{q:mode}:undefined),true);
+  const result=f.responses[0].result;
+  const view=timeline([{items:[{id:'q',type:'dynamicToolCall',tool:'AskUserQuestion',arguments:{questions},...result}]}]);
+  assert.equal(view[0].result,`"生产支付配置" = "${mode==='custom'||mode==='option'?'稍后提供':'（已填写）'}"`);
+ }
+});
+
 test('子非致命错误保留根 busy，异步问题只停止发问子线程', async t => {
   const f = fixture(t); f.add();
   f.note('error', 'child', { turnId: 'child-turn', error: { message: 'child failed' } });

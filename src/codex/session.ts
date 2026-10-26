@@ -1,7 +1,7 @@
 import { observeOperation, operationLog } from '../operations';
 import { CodexRpc } from './rpc';
 import { timeline, userView, parseQuestionReply, normalizeQuestions } from './events';
-import { SessionSummary, TimelineItem } from '../shared';
+import { SessionSummary, TimelineItem, QuestionAnswerModes } from '../shared';
 import { QuestionImages, QUESTION_IMAGE_ANSWER } from '../questionImages';
 
 export interface ForkPreparation {
@@ -270,7 +270,7 @@ export class SessionStore {
     });
   }
   rewindLeafFor(id: string, count: number): string | undefined { return this.threads.get(id)?.turns?.[count - 1]?.id; }
-  questionBeforeAnswer(id: string, count: number): { input: Record<string, unknown>; initialAnswers: Record<string, string | string[]>; initialImages?: QuestionImages } | undefined {
+  questionBeforeAnswer(id: string, count: number): { input: Record<string, unknown>; initialAnswers: Record<string, string | string[]>; initialAnswerModes?: QuestionAnswerModes; initialImages?: QuestionImages } | undefined {
     const turns = this.threads.get(id)?.turns;
     if (!Number.isInteger(count) || count < 1 || !turns?.[count] || !['completed', 'interrupted'].includes(turns[count - 1]?.status)) return;
     const answer = this.firstUserTurnAfter(id, count);
@@ -284,19 +284,23 @@ export class SessionStore {
     const original = source?.type === 'tool' ? normalizeQuestions(source.input?.questions) : undefined;
     const questions = original ?? reply.map((r, i) => ({ id: String(i), question: r.question, isSecret: r.isSecret, options: [] }));
     const initialAnswers: Record<string, string | string[]> = {};
+    const initialAnswerModes: QuestionAnswerModes = {};
     const initialImages: QuestionImages = {};
     let offset = 0;
     questions.forEach((q, i) => {
       const imageCount = reply[i].imageCount ?? 0;
       const pictures = answer?.images.slice(offset, offset + imageCount) ?? [];
       offset += imageCount;
-      if (q.isSecret || reply[i].isSecret) q.isSecret = true;
+      const mode = reply[i].answerMode;
+      if (reply[i].isSecret || (q.isSecret && mode !== 'custom' && mode !== 'option')) q.isSecret = true;
       else {
         initialAnswers[q.id] = imageCount && reply[i].answers.length === 1 && reply[i].answers[0] === QUESTION_IMAGE_ANSWER ? '' : reply[i].answers.join('、');
+        if (mode) initialAnswerModes[q.id] = mode;
         if (pictures.length) initialImages[q.id] = pictures;
       }
     });
-    return { input: { questions }, initialAnswers, ...(Object.keys(initialImages).length ? { initialImages } : {}) };
+    return { input: { questions }, initialAnswers, ...(Object.keys(initialAnswerModes).length ? { initialAnswerModes } : {}),
+      ...(Object.keys(initialImages).length ? { initialImages } : {}) };
   }
   /** 仅识别末尾确实已中断、且连用户消息都未落盘的空轮次。 */
   isEmptyInterruptedTail(id: string, count: number): boolean {

@@ -1184,6 +1184,9 @@ test('私密问题可只提交中文多行说明，输入法选词和换行不�
  assert.equal(picker.querySelector('.askp-submit').disabled,false);
  picker.querySelector('.askp-submit').click();
  assert.deepEqual(JSON.parse(JSON.stringify(sent.find(m=>m.type==='answerQuestion').answers)),{credentials:correction});
+ assert.equal(sent.find(m=>m.type==='answerQuestion').answerModes.credentials,'custom');
+ emit({kind:'permission_resolved',requestId:'secret-correction',behavior:'allow'});
+ assert.equal(w.document.querySelector('.askq-a').textContent,correction);
  assert.deepEqual(errors,[]);
 });
 
@@ -1199,6 +1202,7 @@ test('私密答案和自定义说明互斥，翻页及提交重试不把凭据�
  picker.querySelectorAll('.askp-nav')[1].click();set('textarea','稍后处理');picker.querySelectorAll('.askp-nav')[0].click();
  assert.equal(secret().value,'PRIVATE-123');assert.equal(custom().value,'');
  picker.querySelector('.askp-submit').click();assert.equal(sent.filter(m=>m.type==='answerQuestion').at(-1).answers.secret,'PRIVATE-123');
+ assert.equal(sent.filter(m=>m.type==='answerQuestion').at(-1).answerModes.secret,'secret');
  emit({kind:'question_answer_rejected',requestId:'secret-pages',message:'请重试'});
  assert.equal(secret().value,'PRIVATE-123');assert.equal(custom().value,'');
  set('textarea','问题描述需要修改');assert.equal(secret().value,'');
@@ -1208,7 +1212,9 @@ test('私密答案和自定义说明互斥，翻页及提交重试不把凭据�
  assert.equal(secret().value,'');assert.equal(custom().value,'先纠正问题，不提供凭据');
  picker.querySelector('.askp-submit').click();
  assert.equal(sent.filter(m=>m.type==='answerQuestion').at(-1).answers.secret,'先纠正问题，不提供凭据');
+ assert.equal(sent.filter(m=>m.type==='answerQuestion').at(-1).answerModes.secret,'custom');
  emit({kind:'permission_resolved',requestId:'secret-pages',behavior:'allow'});
+ assert.equal(w.document.querySelector('.askq-a').textContent,'先纠正问题，不提供凭据');
  assert.doesNotMatch(w.document.getElementById('messages').textContent,/PRIVATE-/);
  assert.doesNotMatch(JSON.stringify(states),/PRIVATE-/);assert.deepEqual(errors,[]);
 });
@@ -1224,6 +1230,50 @@ test('私密问题即使禁用其他选项也保留自定义说明，选项和�
  assert.equal(picker.querySelector('button.askp-opt.on'),null);assert.equal(secret.value,'');
  picker.querySelector('.askp-submit').click();assert.equal(sent.find(m=>m.type==='answerQuestion').answers.q,'请先修正问题');
  assert.deepEqual(errors,[]);
+});
+
+for(const mode of ['secret','custom','option'])test(`私密问题按回答来源显示摘要，刷新历史保持一致：${mode}`,t=>{
+ const {w,sent,emit,errors}=setup(t),text='稍后提供',requestId='answer-mode';
+ emit({kind:'permission_request',requestId,toolName:'AskUserQuestion',input:{questions:[
+  {id:'q',question:'生产支付配置',isSecret:true,options:[{label:text}]},
+ ]},suggestions:[]});
+ const picker=w.document.querySelector('.askp');
+ if(mode==='option')picker.querySelector('button.askp-opt').click();
+ else{const input=picker.querySelector(mode==='secret'?'input[type="password"]':'textarea');input.value=text;input.dispatchEvent(new w.Event('input'));}
+ picker.querySelector('.askp-submit').click();
+ assert.equal(sent.find(m=>m.type==='answerQuestion').answerModes.q,mode);
+ emit({kind:'permission_resolved',requestId,behavior:'allow'});
+ const expected=mode==='secret'?'（已填写）':text;
+ assert.equal(w.document.querySelector('.askq-a').textContent,expected);
+ const reply='用户已回答刚才的问题，请根据以下答案继续原任务：\n'+JSON.stringify([
+  {question:'生产支付配置',answerMode:mode,isSecret:mode==='secret',answers:[text]},
+ ]);
+ emit({kind:'load_history',sessionId:'answer-modes',items:[{type:'user',text:reply}],checkpoints:[]});
+ assert.equal(w.document.querySelector('.askq-a').textContent,expected);
+ assert.deepEqual(errors,[]);
+});
+
+test('工具历史中的自定义答案完整显示引号、换行和反斜杠，不执行 HTML',t=>{
+ const {w,emit,errors}=setup(t),question='生产"支付"配置',answer='请改用 "测试环境"\n配置路径 C:\\temp\\config <img src=x>';
+ emit({kind:'load_history',items:[{type:'tool',toolId:'q',name:'AskUserQuestion',input:{questions:[{question,isSecret:true}]},
+  result:JSON.stringify(question)+' = '+JSON.stringify(answer),isError:false}],checkpoints:[]});
+ assert.equal(w.document.querySelector('.askq-q').textContent,question);
+ assert.equal(w.document.querySelector('.askq-a').textContent,answer);
+ assert.equal(w.document.querySelector('.askq-card img'),null);assert.deepEqual(errors,[]);
+});
+
+for(const mode of ['custom','option'])test(`重新回答私密问题时回填公开答案的原输入位置：${mode}`,t=>{
+ const {w,sent,emit}=setup(t),text='稍后提供';
+ emit({kind:'permission_request',requestId:'public-restore',toolName:'AskUserQuestion',input:{questions:[
+  {id:'q',question:'生产支付配置',isSecret:true,options:[{label:text}]},
+ ]},initialAnswers:{q:text},initialAnswerModes:{q:mode},suggestions:[]});
+ const picker=w.document.querySelector('.askp');
+ assert.equal(picker.querySelector('input[type="password"]').value,'');
+ assert.equal(picker.querySelector('textarea').value,mode==='custom'?text:'');
+ assert.equal(!!picker.querySelector('button.askp-opt.on'),mode==='option');
+ assert.equal(sent.some(m=>m.type==='answerQuestion'),false);
+ picker.querySelector('.askp-submit').click();
+ assert.equal(sent.find(m=>m.type==='answerQuestion').answerModes.q,mode);
 });
 
 test('提交答案等待宿主确认，失败保留选择与自由文本并允许重试',t=>{
