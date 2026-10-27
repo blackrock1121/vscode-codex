@@ -4762,7 +4762,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       </div>
       <img id="lightbox-img" alt="预览" />
     </div>
-    <div id="messages" class="messages"></div>
+    <!-- 保留拖选时的焦点，避免 VS Code 复制前聚焦回输入框并清空文字选区。 -->
+    <div id="messages" class="messages" tabindex="-1"></div>
     <footer id="composer">
       <div id="changed-files" class="changed-files hidden collapsed">
         <div class="cf-header" id="cf-header">
