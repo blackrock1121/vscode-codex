@@ -1,5 +1,6 @@
 let listWarning: string | undefined;
 import { installWebviewErrors } from './errors';
+import { preserveTextSelection } from './selection';
 import MarkdownIt from 'markdown-it';
 import type { DiagnosticRecord } from '../diagnostics/jobs';
 import { kindLabel, DiagnosticOptions } from '../diagnostics/options';
@@ -60,7 +61,15 @@ for (const id of ['diagnostic-kind', 'diagnostic-hours', 'diagnostic-engine', 'd
   if (settings.engine === 'rules' || settings.model && settings.effort) api.postMessage({ type: 'configure', options: settings });
   if (id === 'diagnostic-engine' && settings.engine === 'model' && !models.length) send('reloadModels');
 };
+let renderedState = '';
 function render() {
+  const state = JSON.stringify([records, selectedId, workspaceId, pendingRepair, ($('search') as HTMLInputElement).value, reports.get(selectedId ?? '')]);
+  if (state === renderedState) return;
+  const restoreSelection = preserveTextSelection($('detail'));
+  try { renderContent(); renderedState = state; }
+  finally { restoreSelection(); }
+}
+function renderContent() {
   const detail = $('detail'), previous = detail.dataset.recordId, oldDetails = detail.querySelector('details');
   if (previous && oldDetails) { if (oldDetails.open) expandedReports.add(previous); else expandedReports.delete(previous); }
   const query = ($('search') as HTMLInputElement).value.trim().toLowerCase();

@@ -2041,3 +2041,100 @@ test('3a562940 关闭预览取消图片资源，反复重开不会用空 src 请
  }
  assert.equal(emptyRequests,0);assert.deepEqual(errors,[]);assert.equal(sent.some(m=>m.type==='webviewError'),false);
 });
+
+test('拖选文件、符号和网页链接只选择文字，普通点击仍打开目标',t=>{
+ const {w,emit,sent,errors}=setup(t);
+ emit({kind:'load_history',items:[{type:'assistant_text',text:'`src/app.ts:7`、`CustomService`、[网页](https://example.test)'}],checkpoints:[]});
+ for(const [selector,type] of [['[data-action="open"]','openFile'],['[data-action="symbol"]','openSymbol'],['a[href]','openExternalLink']]){
+  const node=w.document.querySelector(selector),range=w.document.createRange();range.selectNodeContents(node);
+  const selection=w.getSelection();selection.removeAllRanges();selection.addRange(range);
+  node.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true,cancelable:true}));
+  assert.equal(sent.some(m=>m.type===type),false,type);
+  selection.removeAllRanges();node.dispatchEvent(new w.MouseEvent('click',{detail:1,bubbles:true,cancelable:true}));
+  assert.equal(sent.filter(m=>m.type===type).length,1,type);
+ }
+ assert.deepEqual(errors,[]);
+});
+
+test('持续输出与最终排版保留文字选区，正文更正时不错误选中其它内容',t=>{
+ const {w,emit,errors}=setup(t),flush=manualFrames(w);
+ emit({kind:'busy',busy:true});emit({kind:'text_delta',text:'已经可以复制的内容'});
+ const text=w.document.querySelector('.live-committed p').firstChild,selection=w.getSelection();
+ selection.setBaseAndExtent(text,8,text,0);const selected=selection.toString();
+ emit({kind:'text_delta',text:'，后续还在继续输出。'});flush();assert.equal(selection.toString(),selected);
+ assert.equal(selection.anchorOffset,8,'反向选择也保留方向');
+ emit({kind:'result',isError:false,numTurns:1});assert.equal(selection.toString(),selected);
+ emit({kind:'block_start',blockType:'text'});emit({kind:'text_delta',text:'旧段落文字'});
+ const previous=w.document.querySelector('.live-committed p').firstChild;selection.setBaseAndExtent(previous,0,previous,3);
+ emit({kind:'text_snap',text:'完全不同的新内容'});flush();assert.equal(selection.toString(),'');
+ assert.deepEqual(errors,[]);
+});
+
+test('图片预览限制焦点在弹层内，Esc 关闭并恢复原输入；中文取消组字不关闭预览',t=>{
+ const {w,emit,sent,errors}=setup(t),input=w.document.getElementById('input');
+ emit({kind:'draft',text:'未发送草稿',images:[{mediaType:'image/png',data:'aGVsbG8='}]});input.focus();
+ w.document.querySelector('#image-previews img').click();
+ const box=w.document.getElementById('lightbox'),close=w.document.getElementById('lb-close');
+ assert.equal(w.document.activeElement,close);assert.equal(w.document.getElementById('composer').inert,true);
+ const key=(key,options={})=>w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown',{key,bubbles:true,cancelable:true,...options}));
+ key('Tab');assert.equal(w.document.activeElement.id,'lb-copy');key('Tab',{shiftKey:true});assert.equal(w.document.activeElement,close);
+ key('Escape',{isComposing:true});assert.equal(box.classList.contains('hidden'),false);
+ key('Escape');assert.equal(box.classList.contains('hidden'),true);assert.equal(w.document.activeElement,input);
+ assert.notEqual(w.document.getElementById('composer').inert,true);assert.equal(input.value,'未发送草稿');assert.equal(sent.some(m=>m.type==='send'),false);assert.deepEqual(errors,[]);
+});
+
+test('查找关闭回到原编辑框且不取消编辑，输入法按键不被拦截',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[{type:'user',text:'原始问题'},{type:'assistant_text',text:'可查找文字'}],checkpoints:[{id:'cp-a',label:'原始问题',userText:'原始问题'}]});
+ w.document.querySelector('.user-edit').click();const editor=w.document.querySelector('.user-edit-input');editor.value='修改中的草稿';
+ editor.dispatchEvent(new w.KeyboardEvent('keydown',{key:'f',metaKey:true,bubbles:true,cancelable:true}));
+ const find=w.document.querySelector('.find-input');assert.equal(w.document.activeElement,find);
+ for(const key of ['Enter','Escape','ArrowUp','ArrowDown']){
+  const event=new w.KeyboardEvent('keydown',{key,isComposing:true,bubbles:true,cancelable:true});find.dispatchEvent(event);assert.equal(event.defaultPrevented,false,key);
+ }
+ find.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ assert.equal(w.document.activeElement,editor);assert.equal(editor.value,'修改中的草稿');assert.equal(editor.isConnected,true);assert.deepEqual(errors,[]);
+});
+
+test('查找随历史与新输出刷新计数，不修改输入框和操作按钮',async t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[{type:'assistant_text',text:'目标文字'}],checkpoints:[]});
+ w.document.getElementById('input').dispatchEvent(new w.KeyboardEvent('keydown',{key:'f',metaKey:true,bubbles:true,cancelable:true}));
+ const find=w.document.querySelector('.find-input');find.value='目标';find.dispatchEvent(new w.Event('input'));
+ assert.equal(w.document.querySelector('.find-count').textContent,'1 / 1');
+ emit({kind:'load_history',items:[{type:'assistant_text',text:'没有匹配的内容'}],checkpoints:[]});
+ await new Promise(resolve=>setTimeout(resolve,180));assert.equal(w.document.querySelector('.find-count').textContent,'0 / 0');
+ emit({kind:'text_delta',text:'新的目标'});await new Promise(resolve=>setTimeout(resolve,180));
+ assert.equal(w.document.querySelector('.find-count').textContent,'1 / 1');
+ find.value='复制';find.dispatchEvent(new w.Event('input'));assert.equal(w.document.querySelector('.find-count').textContent,'0 / 0');
+ assert.equal(w.document.querySelector('button mark'),null);assert.equal(w.document.querySelector('textarea mark'),null);assert.deepEqual(errors,[]);
+});
+
+test('轮次结束冻结全部问题输入，迟到的自动翻题不能恢复已结束卡片',async t=>{
+ const {w,emit,sent,errors}=setup(t);
+ emit({kind:'permission_request',requestId:'ended-question',toolName:'AskUserQuestion',input:{questions:[
+  {id:'first',question:'第一题',options:[{label:'选项一'}]},
+  {id:'second',question:'私密问题',isSecret:true,options:[]}
+ ]},suggestions:[]});
+ w.document.querySelector('button.askp-opt').click();emit({kind:'result',isError:false,numTurns:1});
+ await new Promise(resolve=>setTimeout(resolve,180));
+ assert.match(w.document.querySelector('.askp').textContent,/第一题/);
+ assert.ok([...w.document.querySelectorAll('.askp button, .askp input, .askp textarea')].every(input=>input.disabled));
+ assert.equal(sent.some(m=>m.type==='answerQuestion'),false);
+ emit({kind:'permission_request',requestId:'ended-secret',toolName:'AskUserQuestion',input:{questions:[{id:'secret',question:'凭据',isSecret:true,options:[]}]},suggestions:[]});
+ emit({kind:'result',isError:false,numTurns:1});assert.equal(w.document.querySelector('input[type=password]').disabled,true);assert.deepEqual(errors,[]);
+});
+
+test('查找命中折叠代码与工具输出时展开所在容器，持续输出不拉回底部',t=>{
+ const {w,emit,errors}=setup(t),flush=manualFrames(w),scroll=scrollFixture(w);
+ emit({kind:'load_history',items:[{type:'assistant_text',text:'```text\n'+Array.from({length:10},(_,i)=>`代码第${i}行`).join('\n')+'\n```'}],checkpoints:[]});
+ const block=w.document.querySelector('.code-block');assert.ok(block.classList.contains('collapsed'));
+ w.document.getElementById('input').dispatchEvent(new w.KeyboardEvent('keydown',{key:'f',metaKey:true,bubbles:true,cancelable:true}));
+ const input=w.document.querySelector('.find-input');input.value='代码第9行';input.dispatchEvent(new w.Event('input'));
+ assert.equal(block.classList.contains('collapsed'),false);
+ emit({kind:'tool_input',toolId:'a',name:'Bash',input:{command:'echo 定位工具命令'}});emit({kind:'tool_input',toolId:'b',name:'Bash',input:{command:'echo 第二个命令'}});
+ input.value='定位工具命令';input.dispatchEvent(new w.Event('input'));
+ assert.equal(w.document.querySelector('.tool-group-step').classList.contains('collapsed'),false);
+ assert.equal(w.document.querySelector('[data-tool-id="a"]').classList.contains('collapsed'),false);
+ scroll.scroll(500);emit({kind:'text_delta',text:'新输出'});flush();assert.equal(scroll.messages.scrollTop,500);assert.deepEqual(errors,[]);
+});

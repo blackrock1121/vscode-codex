@@ -36,6 +36,21 @@ function sidebar(t) {
   return { w, $, emit, sent, row, click, selected, sessions };
 }
 
+test('重命名允许复制粘贴快捷键冒泡，中文选词不提交，后台更新保留草稿与选区',t=>{
+ const f=sidebar(t);f.row('a').querySelector('.edit').click();const input=f.row('a').querySelector('.rename');
+ input.value='正在修改中文标题';input.setSelectionRange(2,5);
+ const bubbled=[];f.w.addEventListener('keydown',e=>bubbled.push(e.key));
+ for(const key of ['c','v','x','a'])input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key,metaKey:true,bubbles:true,cancelable:true}));
+ assert.deepEqual(bubbled,['c','v','x','a']);
+ input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',isComposing:true,bubbles:true,cancelable:true}));
+ assert.equal(f.sent.some(m=>m.type==='renameSession'),false);
+ f.emit({kind:'running',sessionIds:['b']});f.emit({kind:'sessions',list:f.sessions});
+ assert.equal(f.row('a').querySelector('.rename'),input);assert.equal(input.value,'正在修改中文标题');assert.equal(input.selectionStart,2);assert.equal(input.selectionEnd,5);
+ input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+ assert.equal(f.sent.filter(m=>m.type==='renameSession').length,1);assert.equal(f.sent.at(-1).title,'正在修改中文标题');
+ assert.equal(f.w.document.querySelector('.rename'),null);assert.ok(f.row('b').querySelector('.run-dot'));
+});
+
 test('Shift 按实际显示顺序跨置顶分组选取，支持反向和复选框，原地更新保留焦点', t => {
   const f = sidebar(t);
   f.$('multi').click();

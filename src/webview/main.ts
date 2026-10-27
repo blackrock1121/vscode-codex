@@ -1,4 +1,5 @@
 import { installWebviewErrors } from './errors';
+import { preserveTextSelection } from './selection';
 import MarkdownIt from "markdown-it";
 import hljs from "highlight.js/lib/common";
 import { latestModelChoices, modelDescription } from "./modelPicker";
@@ -425,8 +426,9 @@ function cancelPendingInteractions() {
       ".askp:not(.interaction-cancelled), .perm-bar:not(.resolved):not(.interaction-cancelled)",
     ),
   ).forEach((box) => {
+    if (box.dataset.requestId) questionInteractions.get(box.dataset.requestId)?.resolve("deny");
     box.classList.add("interaction-cancelled");
-    Array.from(box.querySelectorAll("button, textarea")).forEach((b) => ((b as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
+    Array.from(box.querySelectorAll("button, input, textarea, select")).forEach((b) => ((b as HTMLButtonElement | HTMLTextAreaElement).disabled = true));
   });
 }
 
@@ -502,6 +504,7 @@ function scheduleLiveRender() {
 function renderLive() {
   if (!liveBlock) return;
   const block = liveBlock;
+  const restoreSelection = preserveTextSelection(block.el);
   const env = {};
   // 按完整 Markdown 结构解析，未换行的代码/列表/表格尾部也属于原容器。
   const tokens = mdFast.parse(block.raw, env);
@@ -538,6 +541,7 @@ function renderLive() {
   const target = !block.raw.endsWith("\n") && !closedFence
     ? candidates.reverse().find(node => node.matches("p, li, td, th, h1, h2, h3, h4, h5, h6, pre > code")) : undefined;
   (target ?? block.el).appendChild(block.lineEl);
+  restoreSelection();
   block.renderedAt = performance.now();
   scheduleLiveLayout();
 }
@@ -558,9 +562,11 @@ function foldLeakedToolXml(text: string): string {
 function finalizeLive() {
   cancelLiveRender();
   if (!liveBlock) return;
+  const restoreSelection = preserveTextSelection(liveBlock.el);
   liveBlock.el.innerHTML = mdFull.render(foldLeakedToolXml(liveBlock.raw));
   linkifyRefs(liveBlock.el);
   hydrateLocalImages(liveBlock.el);
+  restoreSelection();
   updateActiveLine();
   maybeScroll();
 }
@@ -4135,15 +4141,41 @@ function addImagePreview(uri: string) {
 }
 
 // Lightbox (click any chat image to view full size; copy/save from the toolbar)
+let lightboxReturnFocus: HTMLElement | null = null;
+const lightboxInert = new Map<HTMLElement, boolean>();
 function openLightbox(src: string) {
+  if (lightbox.classList.contains("hidden")) {
+    lightboxReturnFocus = document.activeElement as HTMLElement | null;
+    for (const sibling of Array.from($("app").children)) {
+      if (!(sibling instanceof HTMLElement) || sibling === lightbox) continue;
+      lightboxInert.set(sibling, sibling.inert);
+      sibling.inert = true;
+    }
+  }
   lightboxImg.src = src;
   lightbox.classList.remove("hidden");
+  $("lb-close").focus({ preventScroll: true });
 }
 function closeLightbox() {
+  if (lightbox.classList.contains("hidden")) return;
   lightbox.classList.add("hidden");
   // 空 src 会启动一次无效图片加载并触发全局 error；移除属性才是取消资源。
   lightboxImg.removeAttribute("src");
+  for (const [element, inert] of lightboxInert) element.inert = inert;
+  lightboxInert.clear();
+  (lightboxReturnFocus?.isConnected && lightboxReturnFocus !== document.body ? lightboxReturnFocus : messagesEl).focus({ preventScroll: true });
+  lightboxReturnFocus = null;
 }
+lightbox.addEventListener("keydown", e => {
+  if (e.isComposing || e.keyCode === 229) return;
+  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeLightbox(); }
+  else if (e.key === "Tab") {
+    const buttons = Array.from(lightbox.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+    const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+    e.preventDefault();
+    buttons[(index + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
+  }
+});
 lightbox.onclick = closeLightbox; // click outside the image closes
 lightboxImg.onclick = (e) => e.stopPropagation(); // clicking the image itself doesn't
 $("lb-close").onclick = (e) => {
@@ -4511,12 +4543,15 @@ function syncPickers() {
 syncPickers(); // paint the real labels immediately (host `config` refines them)
 
 function closePickers() {
+  const focused = [[effortMenu, effortTrigger], [modeMenu, modeTrigger], [modelMenu, modelTrigger], [usageMenu, usagePill]]
+    .find(([menu]) => menu.contains(document.activeElement));
   effortMenu.classList.add("hidden");
   effortTrigger.setAttribute("aria-expanded", "false");
   modeMenu.classList.add("hidden");
   modelMenu.classList.add("hidden");
   usageMenu.classList.add("hidden");
   pickBackdrop.classList.add("hidden");
+  focused?.[1].focus({ preventScroll: true });
 }
 
 function buildModeMenu() {
@@ -4683,6 +4718,13 @@ cfHeader.onclick = (e) => {
 messagesEl.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;
   const link = t.closest("a[href]") as HTMLAnchorElement | null;
+  const ref = t.closest('.code-ref[data-action="open"], .code-ref[data-action="symbol"]');
+  // 拖选链接/路径是复制操作；鼠标松开产生的 click 不能顺带打开页面或文件。
+  const selection = window.getSelection();
+  if (e.detail > 0 && (link || ref) && selection?.rangeCount && !selection.isCollapsed && selection.getRangeAt(0).intersectsNode(link ?? ref!)) {
+    e.preventDefault();
+    return;
+  }
   if (link) {
     e.preventDefault();
     const url = link.getAttribute("href") || "";
@@ -4866,7 +4908,7 @@ function beginMessageEdit(msg: HTMLElement) {
       images: images.length ? images : undefined, context: attachments?.context, files: attachments?.files, requestId: edit.requestId });
   };
   input.addEventListener("keydown", event => {
-    if (event.isComposing) return;
+    if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMessageEdit(); }
     if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); save.click(); }
   });
@@ -5349,6 +5391,13 @@ $("app").appendChild(findBar);
 
 let findHits: HTMLElement[] = [];
 let findIdx = -1;
+let findReturnFocus: HTMLElement | null = null;
+let findRefreshTimer = 0;
+const findObserver = new MutationObserver(() => {
+  if (findRefreshTimer || findBar.classList.contains("hidden")) return;
+  // 流式输出和历史重载后刷新命中，合并连续更新，不跟着后台更新抢滚动位置。
+  findRefreshTimer = window.setTimeout(() => { findRefreshTimer = 0; findRun(false); }, 120);
+});
 
 /** 拆掉所有 <mark class="find-hit">，把文本还原回原文本节点（父节点归并相邻文本）。 */
 function findClear() {
@@ -5375,8 +5424,7 @@ function findCollect(q: string): HTMLElement[] {
       if (!v || !v.toLowerCase().includes(lc)) return NodeFilter.FILTER_REJECT;
       const p = node.parentElement;
       if (!p) return NodeFilter.FILTER_REJECT;
-      const tag = p.tagName;
-      if (tag === "SCRIPT" || tag === "STYLE" || tag === "MARK") return NodeFilter.FILTER_REJECT;
+      if (p.closest('script, style, mark, input, textarea, select, button, [contenteditable="true"], .working-pill')) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
@@ -5418,17 +5466,35 @@ function findMark(scroll: boolean) {
   findPrev.disabled = findHits.length === 0;
   findNext.disabled = findHits.length === 0;
   findHits.forEach((m, i) => m.classList.toggle("current", i === findIdx));
-  if (scroll && findIdx >= 0) findHits[findIdx].scrollIntoView({ block: "center", behavior: "auto" });
+  if (scroll && findIdx >= 0) {
+    const hit = findHits[findIdx];
+    for (let parent = hit.parentElement; parent && parent !== messagesEl; parent = parent.parentElement) {
+      if (parent instanceof HTMLDetailsElement) parent.open = true;
+      if (parent.matches(".tool-group-step.collapsed")) setToolGroupFolded(parent, false);
+      if (parent.matches(".tool-card.foldable.collapsed")) setToolFolded(parent, false);
+      if (parent.matches(".code-block.collapsed, .err-flat.collapsed")) parent.querySelector<HTMLButtonElement>(".code-expand")?.click();
+      if (parent.matches(".user-fold.collapsed")) (parent.nextElementSibling as HTMLButtonElement | null)?.click();
+    }
+    readingHistory = true;
+    pinnedToBottom = false;
+    hit.scrollIntoView({ block: "center", behavior: "auto" });
+  }
 }
 
-function findRun() {
+function findRun(scroll = true) {
+  findObserver.disconnect();
+  window.clearTimeout(findRefreshTimer); findRefreshTimer = 0;
+  const previousIndex = findIdx;
+  const restoreSelection = preserveTextSelection(messagesEl);
   findClear();
   const q = findInput.value;
   if (q) {
     findHits = findCollect(q);
-    findIdx = findHits.length ? 0 : -1;
+    findIdx = findHits.length ? scroll ? 0 : Math.max(0, Math.min(previousIndex, findHits.length - 1)) : -1;
   }
-  findMark(true);
+  restoreSelection();
+  findMark(scroll);
+  if (!findBar.classList.contains("hidden")) findObserver.observe(messagesEl, { childList: true, characterData: true, subtree: true });
 }
 
 function findGoto(delta: number) {
@@ -5438,20 +5504,29 @@ function findGoto(delta: number) {
 }
 
 function findOpen() {
+  if (findBar.classList.contains("hidden")) findReturnFocus = document.activeElement as HTMLElement | null;
   findBar.classList.remove("hidden");
   findInput.focus();
   findInput.select();
-  if (findInput.value) findRun();
+  findRun();
 }
 function findCloseBar() {
+  if (findBar.classList.contains("hidden")) return;
+  findObserver.disconnect();
+  window.clearTimeout(findRefreshTimer); findRefreshTimer = 0;
+  const returnFocus = findBar.contains(document.activeElement);
+  const restoreSelection = preserveTextSelection(messagesEl);
   findClear();
   findBar.classList.add("hidden");
   findBar.classList.remove("empty-hits");
-  inputEl.focus();
+  if (returnFocus) (findReturnFocus?.isConnected && findReturnFocus !== document.body ? findReturnFocus : messagesEl).focus({ preventScroll: true });
+  restoreSelection();
+  findReturnFocus = null;
 }
 
-findInput.addEventListener("input", findRun);
+findInput.addEventListener("input", () => findRun());
 findInput.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.keyCode === 229) return;
   if (e.key === "Enter") { e.preventDefault(); findGoto(e.shiftKey ? -1 : 1); }
   else if (e.key === "ArrowDown") { e.preventDefault(); findGoto(1); }
   else if (e.key === "ArrowUp") { e.preventDefault(); findGoto(-1); }
@@ -5461,10 +5536,13 @@ findPrev.onclick = () => { findGoto(-1); findInput.focus(); };
 findNext.onclick = () => { findGoto(1); findInput.focus(); };
 findClose.onclick = findCloseBar;
 window.addEventListener("keydown", (e) => {
+  if (e.isComposing || e.keyCode === 229 || !lightbox.classList.contains("hidden")) return;
   if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "f" || e.key === "F")) {
     e.preventDefault();
     findOpen();
   } else if (e.key === "Escape" && !findBar.classList.contains("hidden")) {
+    if ([modelMenu, modeMenu, effortMenu, usageMenu].some(menu => !menu.classList.contains("hidden"))) return;
+    e.preventDefault(); e.stopPropagation();
     findCloseBar();
   }
 }, true);

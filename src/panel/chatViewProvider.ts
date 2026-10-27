@@ -4532,6 +4532,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const PIN = ${JSON.stringify(PIN)};
     const EYE = ${JSON.stringify(EYE)}, EYE_OFF = ${JSON.stringify(EYE_OFF)};
     let sessions = [], activeId = null, runningIds = new Set(), multi = false, anchorId = null, deleting = false;
+    let renamingId = null;
     const sel = new Set();
     const $ = (id) => document.getElementById(id);
 
@@ -4581,6 +4582,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     function render() {
       updateSelection();
       const list = $("list");
+      // 后台状态刷新不能销毁正在输入的名称；结束编辑后再显示最新列表。
+      if (renamingId && sessions.some(s => s.id === renamingId) && list.querySelector(".rename")) return;
+      renamingId = null;
       if (!sessions.length) { list.innerHTML = '<div class="empty">暂无会话</div>'; return; }
       list.innerHTML = "";
       const pinned = sessions.filter((s) => s.pinned);
@@ -4644,22 +4648,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     function rename(id) {
+      const editing = document.querySelector(".rename");
+      if (editing) { editing.focus(); return; }
       const row = document.querySelector('.row[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
       if (!row) return;
       const t = row.querySelector(".t");
       const cur = (sessions.find((s) => s.id === id) || {}).title || "";
       const input = document.createElement("input");
       input.className = "rename"; input.value = cur;
+      renamingId = id;
       t.replaceWith(input); input.focus(); input.select();
       let done = false;
       const commit = (save) => {
         if (done) return; done = true;
+        if (renamingId !== id) return;
+        renamingId = null;
         if (save) vscode.postMessage({ type: "renameSession", sessionId: id, title: input.value.trim() });
         render();
       };
       input.addEventListener("click", (e) => e.stopPropagation());
       input.addEventListener("keydown", (e) => {
-        e.stopPropagation();
+        if (e.key === "Enter" || e.key === "Escape") e.stopPropagation();
+        if (e.isComposing || e.keyCode === 229) return;
         if (e.key === "Enter") { e.preventDefault(); commit(true); }
         else if (e.key === "Escape") { e.preventDefault(); commit(false); }
       });
@@ -4754,11 +4764,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 </head>
 <body data-session-id="${initialSessionId}">
   <div id="app">
-    <div id="lightbox" class="lightbox hidden">
+    <div id="lightbox" class="lightbox hidden" role="dialog" aria-modal="true" aria-label="图片预览">
       <div class="lightbox-actions">
         <button id="lb-copy" title="复制图片到剪贴板">${ICONS.copy} 复制</button>
         <button id="lb-save" title="保存图片到本地">${ICONS.file} 保存</button>
-        <button id="lb-close" title="关闭">×</button>
+        <button id="lb-close" title="关闭" aria-label="关闭图片预览">×</button>
       </div>
       <img id="lightbox-img" alt="预览" />
     </div>

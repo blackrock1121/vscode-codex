@@ -1129,7 +1129,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   will-change: transform;
 }
 /* A question/permission box whose turn already ended — visibly dead. */
-.interaction-cancelled { opacity: .55; pointer-events: none; position: relative; }
+.interaction-cancelled { opacity: .55; position: relative; }
 .interaction-cancelled::after {
   content: "本轮已结束 · 此询问已取消"; display: block;
   font-size: 11px; color: var(--vscode-descriptionForeground); padding: 4px 2px 0;

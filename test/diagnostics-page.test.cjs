@@ -25,6 +25,17 @@ function setup(t){
 }
 const openRecord=(w,id=record.id)=>w.document.querySelector(`.record[data-record-id="${id}"]`).click();
 
+test('诊断页后台刷新保留证据选区，相同内容不重绘，更新其它记录也不丢选区',t=>{
+ const {w,emit,errors}=setup(t);emit({type:'state',records:[record],workspaceId:'project-a'});openRecord(w);
+ const evidence=w.document.querySelector('.finding p'),selection=w.getSelection();
+ selection.setBaseAndExtent(evidence.firstChild,0,evidence.firstChild,4);
+ emit({type:'state',records:[record],workspaceId:'project-a'});
+ assert.equal(w.document.querySelector('.finding p'),evidence);assert.equal(selection.toString(),'两次失败');
+ emit({type:'state',records:[record,{...record,id:'second-record'}],workspaceId:'project-a'});
+ assert.equal(selection.toString(),'两次失败');assert.equal(selection.anchorNode.parentElement,w.document.querySelector('.finding p'));
+ assert.equal(selection.anchorOffset,0);assert.equal(w.document.querySelector('.layout').tabIndex,-1);assert.deepEqual(errors,[]);
+});
+
 test('诊断页通知入口使用全局设置，跳过状态和重试清晰展示，通知点击展开对应记录', t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({type:'state',records:[{...record,notification:{status:'skipped',message:'诊断耗时未达到全局通知阈值（60 秒）'}}],workspaceId:'project-a'});
