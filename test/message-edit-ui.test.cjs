@@ -31,7 +31,8 @@ test('编辑 b 开始：回退确认前保留全部对话，确认后仅保留 a
  const composer=f.w.document.getElementById('input');composer.value='未发送的另一条草稿';
  const input=f.edit();assert.equal(input.value,'b');input.value='B\n新的方案';
  assert.deepEqual(f.users(),['a','b','c']);assert.equal(f.sent.some(m=>m.type==='editMessage'),false);
- input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,bubbles:true,cancelable:true}));f.save();
+ const enter=new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true});input.dispatchEvent(enter);
+ assert.equal(enter.defaultPrevented,true);assert.equal(f.sent.filter(m=>m.type==='editMessage').length,1,'回车应直接发送');f.save();
  const requests=f.sent.filter(m=>m.type==='editMessage');assert.equal(requests.length,1);
  const request=requests[0];assert.equal(request.checkpointId,'cp-b');assert.equal(request.text,'B\n新的方案');
  assert.equal(request.context,'原始选区内容');assert.equal(request.images[0].data,'aGVsbG8=');
@@ -46,13 +47,16 @@ test('编辑 b 开始：回退确认前保留全部对话，确认后仅保留 a
  assert.equal(f.w.document.querySelectorAll('.msg.user')[1].dataset.checkpointId,'cp-B');
  assert.equal(f.w.document.querySelectorAll('.user-edit').length,2);assert.deepEqual(f.errors,[]);
 });
-test('取消、Escape、空白输入和输入法回车都不会回退或发送',t=>{
+test('取消、Escape、空白输入、Shift+Enter 和输入法回车都不会回退或发送',t=>{
  const f=setup(t);let input=f.edit();input.value='改到一半';
  input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
  assert.equal(f.w.document.querySelector('.user-edit-input'),null);assert.deepEqual(f.users(),['a','b','c']);
  input=f.edit();assert.equal(input.value,'b');input.value='  \n';f.save();assert.match(f.w.document.querySelector('.user-edit-error').textContent,/请输入/);
- input.value='输入法';input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',ctrlKey:true,isComposing:true,bubbles:true,cancelable:true}));
- input.dispatchEvent(new f.w.KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}));
+ input.value='输入法';
+ for(const modifiers of [{shiftKey:true},{isComposing:true},{keyCode:229}]){
+  const enter=new f.w.KeyboardEvent('keydown',{key:'Enter',...modifiers,bubbles:true,cancelable:true});input.dispatchEvent(enter);
+  assert.equal(enter.defaultPrevented,false,'换行和输入法确认应交给输入框处理');
+ }
  assert.equal(f.sent.some(m=>m.type==='editMessage'),false);
  f.w.document.querySelector('.user-edit-cancel').click();assert.deepEqual(f.users(),['a','b','c']);assert.deepEqual(f.errors,[]);
 });

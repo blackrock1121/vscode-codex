@@ -4871,6 +4871,7 @@ function beginMessageEdit(msg: HTMLElement) {
   input.value = msg.dataset.rawText || "";
   input.rows = Math.min(12, Math.max(3, input.value.split("\n").length));
   input.setAttribute("aria-label", "编辑消息内容");
+  input.title = "Enter 发送，Shift+Enter 换行";
   const hint = el("div", "user-edit-hint", checkpointId.startsWith("turn:")
     ? "发送后撤回本条及后续对话，上一轮完整保留。此处没有文件快照，文件保持现状。"
     : "发送后撤回本条及后续对话，并还原此后的文件改动；上一轮完整保留。原会话保留在历史中。");
@@ -4910,7 +4911,7 @@ function beginMessageEdit(msg: HTMLElement) {
   input.addEventListener("keydown", event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closeMessageEdit(); }
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) { event.preventDefault(); save.click(); }
+    if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); save.click(); }
   });
   actions.append(cancel, save);
   editor.append(input, hint, error, actions);
