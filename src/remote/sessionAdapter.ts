@@ -328,7 +328,8 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
                 return {accepted:true,result:{kind:'session.controls',section:op.section,page,total:this.host.modelCatalog.length,
                     models:this.host.modelCatalog.slice(page*6,page*6+6).map(m=>({id:m.id,name:m.name.slice(0,100),efforts:m.efforts,speedModes:m.speedModes})),
                     efforts:selected?.efforts.length?selected.efforts:['none','minimal','low','medium','high','xhigh','max','ultra'],
-                    speeds:selected?.speedModes?.filter(s=>s!=='ultrafast')??['default']}};
+                    speeds:selected?.speedModes?.filter(s=>s!=='ultrafast')??['default'],
+                    notifications:this.host.notificationSettings?.()??null}};
             }
             if(op.section==='changes'){
                 const changes=await this.host.getChangedFiles(ctx);if(!selectedActive())return denied('TARGET_CHANGED');

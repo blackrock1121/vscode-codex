@@ -62,6 +62,48 @@ const diagnosticRecord = { id: '11111111-1111-4111-8111-111111111111', status: '
   createdAt: 1000, finishedAt: 61000, workspaceName: '诊断项目', pluginVersion: 'test', findings: [],
   options: { kind: 'general', engine: 'rules', hours: 24 } };
 
+test('手机通知复用最新电脑飞书配置和真实发送器，完成/失败/待回答/待授权均不泄露正文', async () => {
+  config = { notifyWebhook: 'https://open.feishu.cn/open-apis/bot/v2/hook/secret', notifyMinDurationSec: 60 };
+  const p = provider(), sent = [], originalFetch = global.fetch;
+  p.context.workspaceState = { get: key => key.endsWith('private-session') };
+  global.fetch = async (url, options) => {sent.push({url, payload: JSON.parse(options.body)});return {ok: true, status: 200, json: async () => ({code: 0})};};
+  try {
+    const cases = [{durationMs: 65000}, {isError: true}, {waiting: true, ask: '待回答：保密问题'}, {waiting: true, ask: '待授权：保密命令'}];
+    for (const extra of cases) assert.equal((await p.dispatchNotification({sessionId: 'private-session'}, '保密正文', {...extra, question: '保密输入', project: '保密目录'})).status, 'sent');
+    assert.equal(sent.length, 4);assert.ok(sent.every(s => s.url === config.notifyWebhook && s.payload.msg_type === 'text'));
+    const text = sent.map(s => s.payload.content.text).join('\n');
+    assert.match(text,/任务完成/);assert.match(text,/任务出错/);assert.match(text,/等待回答/);assert.match(text,/等待授权/);assert.match(text,/1分5秒/);assert.doesNotMatch(text,/保密/);
+    config.notifyWebhook = 'https://open.larksuite.com/open-apis/bot/v2/hook/new';
+    await p.dispatchNotification({remotePrivate: true}, '保密正文', {});assert.equal(sent.at(-1).url, config.notifyWebhook);
+    config.notifyWebhook = 'https://example.invalid/hook';
+    assert.equal((await p.dispatchNotification({remotePrivate: true}, '保密正文', {})).status, 'not_configured');assert.equal(sent.length, 5);
+    config.notifyWebhook = '';assert.equal((await p.dispatchNotification({remotePrivate: true}, '保密正文', {})).status, 'not_configured');
+  } finally {global.fetch = originalFetch;}
+});
+
+test('手机只读通知状态不返回 Webhook 或密钥，并随电脑配置变化', () => {
+  const p = provider();config = {};
+  assert.equal(p.mobileNotificationSettings().channel, 'none');
+  config = {notifyWebhook:'https://open.feishu.cn/open-apis/bot/v2/hook/secret',notifyMinDurationSec:15,notifyLocal:true,
+    notifyFeishuQuietHours:{enabled:true,start:'09:00',end:'18:00'},notifyUsageFeishu:false};
+  const status=p.mobileNotificationSettings();assert.equal(status.channel,'feishu');assert.equal(status.minSec,15);assert.equal(status.usageEnabled,false);assert.equal(status.quietEffective,true);
+  assert.doesNotMatch(JSON.stringify(status),/secret|https|Webhook|hook\//);
+  config.notifyLocal=false;assert.equal(p.mobileNotificationSettings().quietEffective,false);
+  config.notifyWebhook='https://example.invalid/hook';assert.equal(p.mobileNotificationSettings().channel,'other');
+});
+
+test('手机会话遵守原耗时阈值与飞书静默，业务失败不能冒充发送成功', async () => {
+  config={notifyWebhook:'https://open.feishu.cn/open-apis/bot/v2/hook/test',notifyMinDurationSec:60,notifyLocal:true,notifyFeishuQuietHours:{enabled:true,start:'09:00',end:'18:00'}};
+  const p=provider(),sent=[];p.workdayCalendar={refresh:async()=>{},shouldMute:()=>true};p.sendLocalNotice=async()=>true;
+  p.sendWebhook=async(...args)=>{sent.push(args);return {ok:false,status:200,error:'机器人未确认接收'};};
+  p.maybeNotifyTurnDone({remotePrivate:true,lastUserText:'短任务'},{durationMs:59000,isError:false});await flush();assert.equal(sent.length,0);
+  await p.dispatchNotification({remotePrivate:true},'保密',{});assert.equal(sent.length,0);
+  p.sendLocalNotice=async()=>{throw Error('系统通知失败');};
+  assert.equal((await p.dispatchNotification({remotePrivate:true},'保密',{})).status,'failed');assert.equal(sent.length,1);assert.doesNotMatch(sent[0][1],/保密/);
+  config.notifyLocal=false;
+  const ctx={remotePrivate:true,lastUserText:'长任务'};p.maybeNotifyTurnDone(ctx,{durationMs:60000,isError:false});await flush();p.maybeNotifyTurnDone(ctx,{durationMs:60000,isError:false});await flush();assert.equal(sent.length,2,'完成事件重放不能重复通知');
+});
+
 test('诊断跟随全局通知开关和耗时阈值，重试读取最新配置及原诊断耗时', async () => {
   config = {}; const p = provider(), calls = [];
   p.sendLocalNotice = async (...args) => { calls.push(args); return true; };

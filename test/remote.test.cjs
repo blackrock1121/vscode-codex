@@ -156,7 +156,7 @@ test('尚未取得轮次 ID 或仅子任务运行时仍提供停止标识，跨�
   proc.turnId = 'actual-turn'; assert.equal(proc.currentTurnId, 'actual-turn');
   proc.busy = false; assert.equal(proc.currentTurnId, undefined);
 });
-test('手机接管标记在重载后仍禁止任务 Webhook，其他会话保持原行为', async () => {
+test('手机隐私标记在重载后仍禁止向非飞书 Webhook 发送，其他会话保持原行为', async () => {
   const f = fixture(), delivered = [];
   f.provider.sendWebhook = async (...args) => { delivered.push(args); return { ok: true }; };
   f.saved.set('codexChat.remotePrivate.session-b', true);

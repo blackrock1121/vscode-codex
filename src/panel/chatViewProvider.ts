@@ -316,6 +316,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             handlePermission: (ctx, id, decision) => this.handlePermission(ctx, id, decision),
             submitQuestionAnswer: (ctx, id, answers, allowed) => this.submitQuestionAnswer(ctx, id, answers, undefined, allowed),
             fetchUsage: () => this.fetchUsage(),
+            notificationSettings: () => this.mobileNotificationSettings(),
             stopContext: ctx => this.stopContext(ctx),
             publish: (id, event) => this.remotePublish?.(id, event),
         });
@@ -3348,6 +3349,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.maybeNotifyTurnDone(ctx, e, notifyTurnDone);
         }
     }
+    private mobileNotificationSettings(): Record<string, unknown> {
+        const cfg = vscode.workspace.getConfiguration("codexChat");
+        const url = (cfg.get<string>("notifyWebhook") || "").trim();
+        const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
+        return { channel: isFeishuWebhook(url) ? 'feishu' : url ? 'other' : 'none',
+            minSec: cfg.get<number>("notifyMinDurationSec") ?? 60,
+            quietHours: quiet ?? DEFAULT_QUIET_HOURS,
+            quietEffective: cfg.get<boolean>("notifyLocal") === true && localNotificationsSupported() && !!quiet?.enabled,
+            usageEnabled: cfg.get<boolean>("notifyUsageFeishu") ?? true,
+            usageThresholdPct: cfg.get<number>("notifyUsageThresholdPct") ?? 98 };
+    }
+    private mobileNotificationMessage(extra: Record<string, unknown>): {text: string; extra: Record<string, unknown>} {
+        const waiting = extra.waiting === true, isError = extra.isError === true;
+        const seconds = typeof extra.durationMs === 'number' && Number.isFinite(extra.durationMs) ? Math.max(0, Math.round(extra.durationMs / 1000)) : undefined;
+        const state = waiting ? (typeof extra.ask === 'string' && extra.ask.startsWith('待授权：') ? '等待授权' : '等待回答') : isError ? '任务出错' : '任务完成';
+        return { text: `${waiting ? '⏳' : isError ? '⚠️' : '✅'} Codex 手机会话${state}${seconds === undefined ? '' : `（耗时 ${Math.floor(seconds / 60)}分${seconds % 60}秒）`}\n请打开 Codex Remote 查看${waiting ? '并处理待办' : '结果'}。`,
+            extra: { mobile: true, waiting, isError } };
+    }
     private maybeNotifyTurnDone(ctx: SessionCtx, e: {
         durationMs?: number;
         isError: boolean;
@@ -3432,7 +3451,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const epoch = this.notificationVersion(sessionId);
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const privateSession = ctx.remotePrivate || (sessionId && this.context.workspaceState?.get<boolean>('codexChat.remotePrivate.' + sessionId));
-        const url = privateSession ? '' : (cfg.get<string>("notifyWebhook") || "").trim();
+        const configuredUrl = (cfg.get<string>("notifyWebhook") || "").trim();
+        // 手机复用本窗口的飞书 Webhook；隐私会话只发送固定状态，不把正文送入通知。
+        const url = privateSession && !isFeishuWebhook(configuredUrl) ? '' : configuredUrl;
+        const remoteNotice = privateSession ? this.mobileNotificationMessage(extra) : {text: msg, extra};
         const event = extra.waiting === true ? "waiting" : extra.isError === true ? "error" : "complete";
         const localEnabled = cfg.get<boolean>("notifyLocal") === true;
         const quiet = parseQuietHours(cfg.get("notifyFeishuQuietHours"));
@@ -3450,7 +3472,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const sent: string[] = [], failed: string[] = [], pending: Promise<void>[] = [];
         const sendRemote = () => {
             const remoteStartedAt = performance.now();
-            return this.sendWebhook(url, msg, extra).then(r => {
+            return this.sendWebhook(url, remoteNotice.text, remoteNotice.extra).then(r => {
                 this.output.appendLine(`[notify] remote_result session=${sessionId ?? "none"} event=${event} ok=${r.ok} status=${r.status ?? "none"} elapsedMs=${Math.round(performance.now() - remoteStartedAt)}`);
                 if (r.ok) sent.push("远程通知已发送");
                 else failed.push(`远程通知发送失败${r.error ? `（${r.error}）` : r.status ? `（HTTP ${r.status}）` : ''}`);

@@ -52,6 +52,7 @@ export interface RemoteSessionHost<C extends RemoteSession> {
     handlePermission(ctx: C, id: string, decision: 'allow' | 'deny'): boolean;
     submitQuestionAnswer(ctx: C, id: string, answers: Record<string, string | string[]>, allowed: () => boolean): Promise<void>;
     fetchUsage(): void;
+    notificationSettings?(): Record<string, unknown>;
     stopContext(ctx: C): Promise<void>;
     publish(sessionId: string, event: Record<string, unknown>): void;
 }
