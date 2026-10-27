@@ -66,12 +66,15 @@ print("ownership verified")
 if CommandLine.arguments.count == 4 {
     let client = NotificationClickClient()
     let done = DispatchSemaphore(value: 0)
-    client.open(CommandLine.arguments[1], activate: { pid, activated in
+    var acknowledgements = 0
+    client.open(CommandLine.arguments[1], acknowledge: { acknowledgements += 1 }, activate: { pid, activated in
+        precondition(acknowledgements == 1, "激活窗口前必须释放系统通知点击回调")
         precondition(pid == 12345, "只能激活来源窗口提供的主进程")
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) {
             activated(CommandLine.arguments[3] == "true")
         }
     }) { opened in
+        precondition(acknowledgements == 1, "成功、失败和旧宿主都必须且只能确认一次点击")
         precondition(opened == (CommandLine.arguments[2] == "true"))
         done.signal()
     }
@@ -90,6 +93,7 @@ if CommandLine.arguments.count == 4 {
   const endpoint = await router.endpoint('source-window', async () => opened++);
   const click = async (url, expected, active = true) => assert.match((await promisify(execFile)(binary,
     [url, String(expected), String(active)], { timeout: 15000 })).stdout, /click verified/);
+  await click('http://example.invalid/notification/not-a-token', false);
   await click(endpoint, false, false);
   assert.equal(opened, 0, '应用未进入前台时，不能打开会话或报告成功');
   await click(endpoint, true);

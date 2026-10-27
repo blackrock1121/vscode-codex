@@ -89,19 +89,29 @@ export function localNotificationsSupported(): boolean {
 /** 原生程序完成应用激活后，核对来源窗口确实获得焦点，不能仅凭命令返回就应答成功。 */
 export async function focusNotificationWindow(): Promise<void> {
     await observeOperation('notification.focus', async () => {
-        await vscode.commands.executeCommand("workbench.action.focusWindow");
-        if (vscode.window.state.focused) return;
-        await new Promise<void>((resolve, reject) => {
-            const subscription = vscode.window.onDidChangeWindowState(state => {
-                if (state.focused) { cleanup(); resolve(); }
-            });
-            const timer = setTimeout(() => {
-                cleanup();
-                reject(new Error("通知来源窗口未能切到前台。"));
-            }, 2000);
-            const cleanup = () => { clearTimeout(timer); subscription.dispose(); };
-            if (vscode.window.state.focused) { cleanup(); resolve(); }
+        let focused = false;
+        let onFocused: (() => void) | undefined;
+        let timer: NodeJS.Timeout | undefined;
+        // 在发起命令前监听：窗口可能在命令应答前已经获得焦点，随后又被通知中心
+        // 或用户切走。记住这次成功交接，不能把稍后的失焦当作此次跳转失败。
+        const subscription = vscode.window.onDidChangeWindowState(state => {
+            if (state.focused) { focused = true; onFocused?.(); }
         });
+        try {
+            await vscode.commands.executeCommand("workbench.action.focusWindow");
+            if (focused || vscode.window.state.focused) return;
+            await new Promise<void>((resolve, reject) => {
+                onFocused = resolve;
+                timer = setTimeout(() => {
+                    // 扩展宿主繁忙时，状态更新和定时器可能在同一批次到达。
+                    if (focused || vscode.window.state.focused) resolve();
+                    else reject(new Error("通知来源窗口未能切到前台。"));
+                }, 2000);
+            });
+        } finally {
+            clearTimeout(timer);
+            subscription.dispose();
+        }
     });
 }
 

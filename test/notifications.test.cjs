@@ -15,7 +15,7 @@ const vscode = {
   Uri: { from: parts => ({ ...parts, toString: () => `${parts.scheme}://${parts.authority}${parts.path}?${encodeURIComponent(parts.query)}` }) },
   env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => vscode.Uri.from({ ...uri, query: uri.query + '&windowId=42' }) },
   workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目' }] },
-  window: { state: { focused: true }, showWarningMessage: text => warnings.push(text) },
+  window: { state: { focused: true }, onDidChangeWindowState: () => ({ dispose() {} }), showWarningMessage: text => warnings.push(text) },
   commands: { executeCommand: async () => {} },
 };
 const originalLoad = Module._load;
@@ -673,6 +673,62 @@ test('被遮挡窗口必须实际获得焦点才打开会话；超时明确失�
   vscode.window.state.focused = true;
   await p.handleNotificationUri(uri, true);
   assert.equal(opened, 2);
+});
+
+test('窗口在聚焦命令应答前已跳转，随后失焦也不能误报失败；命令异常释放监听', async t => {
+  const p = provider(), originalState = vscode.window.state, originalSubscribe = vscode.window.onDidChangeWindowState;
+  const originalCommand = vscode.commands.executeCommand, listeners = new Set();
+  t.after(() => {
+    vscode.window.state = originalState; vscode.window.onDidChangeWindowState = originalSubscribe;
+    vscode.commands.executeCommand = originalCommand;
+  });
+  vscode.window.state = { focused: false };
+  vscode.window.onDidChangeWindowState = listener => {
+    listeners.add(listener);
+    return { dispose: () => listeners.delete(listener) };
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let reply, opened = 0;
+  vscode.commands.executeCommand = () => new Promise(resolve => { reply = resolve; });
+  p.openSession = async () => opened++;
+  const uri = { path: '/notification', query: 'window=window-A&session=session-A' };
+  const pending = p.handleNotificationUri(uri, true);
+  await flush();
+  for (const focused of [true, false]) {
+    vscode.window.state = { focused };
+    for (const listener of listeners) listener(vscode.window.state);
+  }
+  reply();
+  await flush(); t.mock.timers.tick(2000);
+  await pending;
+  assert.equal(opened, 1, '已发生的跳转不能被命令应答后的焦点状态抹掉');
+  assert.equal(listeners.size, 0);
+  vscode.commands.executeCommand = async () => { throw new Error('命令失败'); };
+  await assert.rejects(p.handleNotificationUri(uri, true), /命令失败/);
+  assert.equal(listeners.size, 0);
+  assert.equal(opened, 1);
+});
+
+test('焦点事件尚未投递但截止时状态已确认，不弹失败提示', async t => {
+  const p = provider(), originalState = vscode.window.state, originalSubscribe = vscode.window.onDidChangeWindowState;
+  const listeners = new Set();
+  t.after(() => { vscode.window.state = originalState; vscode.window.onDidChangeWindowState = originalSubscribe; });
+  vscode.window.state = { focused: false };
+  vscode.window.onDidChangeWindowState = listener => {
+    listeners.add(listener);
+    return { dispose: () => listeners.delete(listener) };
+  };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  let opened = 0;
+  p.openSession = async () => opened++;
+  const pending = p.handleNotificationUri({ path: '/notification', query: 'window=window-A&session=session-A' }, true);
+  await flush();
+  assert.equal(opened, 0);
+  vscode.window.state = { focused: true };
+  t.mock.timers.tick(2000);
+  await pending;
+  assert.equal(opened, 1);
+  assert.equal(listeners.size, 0);
 });
 
 test('远程扩展宿主不启动 Mac 通知辅助程序', async () => {

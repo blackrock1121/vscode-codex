@@ -74,8 +74,12 @@ final class NotificationClickClient: NSObject, URLSessionTaskDelegate {
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
-    func open(_ value: String, activate: @escaping (Int32, @escaping (Bool) -> Void) -> Void,
+    func open(_ value: String, acknowledge: () -> Void,
+              activate: @escaping (Int32, @escaping (Bool) -> Void) -> Void,
               completion: @escaping (Bool) -> Void) {
+        // 先结束系统通知点击回调，让通知中心释放焦点，再异步激活来源窗口。
+        // 若等聚焦结果才结束回调，会把仍在交接中的窗口误判为聚焦超时。
+        acknowledge()
         guard let endpoint = notificationClickEndpoint(value) else { completion(false); return }
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
@@ -278,7 +282,7 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
            let value = response.notification.request.content.userInfo["url"] as? String,
            let url = callbackURL(value) {
             if let value = response.notification.request.content.userInfo["clickEndpoint"] as? String {
-                clicks.open(value, activate: { pid, activated in
+                clicks.open(value, acknowledge: completionHandler, activate: { pid, activated in
                     DispatchQueue.main.async { self.activateSource(pid, url: url, completion: activated) }
                 }) { opened in
                     if !opened {
@@ -292,7 +296,6 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                             alert.runModal()
                         }
                     }
-                    completionHandler()
                 }
                 return
             }
