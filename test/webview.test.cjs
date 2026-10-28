@@ -2144,7 +2144,7 @@ test('轮次结束冻结全部问题输入，迟到的自动翻题不能恢复�
  emit({kind:'result',isError:false,numTurns:1});assert.equal(w.document.querySelector('input[type=password]').disabled,true);assert.deepEqual(errors,[]);
 });
 
-test('查找命中折叠代码与工具输出时展开所在容器，持续输出不拉回底部',t=>{
+test('查找默认展开正文代码但不展开工具，持续输出不拉回底部',t=>{
  const {w,emit,errors}=setup(t),flush=manualFrames(w),scroll=scrollFixture(w);
  emit({kind:'load_history',items:[{type:'assistant_text',text:'```text\n'+Array.from({length:10},(_,i)=>`代码第${i}行`).join('\n')+'\n```'}],checkpoints:[]});
  const block=w.document.querySelector('.code-block');assert.ok(block.classList.contains('collapsed'));
@@ -2153,7 +2153,129 @@ test('查找命中折叠代码与工具输出时展开所在容器，持续输�
  assert.equal(block.classList.contains('collapsed'),false);
  emit({kind:'tool_input',toolId:'a',name:'Bash',input:{command:'echo 定位工具命令'}});emit({kind:'tool_input',toolId:'b',name:'Bash',input:{command:'echo 第二个命令'}});
  input.value='定位工具命令';input.dispatchEvent(new w.Event('input'));
- assert.equal(w.document.querySelector('.tool-group-step').classList.contains('collapsed'),false);
- assert.equal(w.document.querySelector('[data-tool-id="a"]').classList.contains('collapsed'),false);
+ assert.equal(w.document.querySelector('.find-count').textContent,'0 / 0');
+ assert.equal(w.document.querySelector('.tool-group-step').classList.contains('collapsed'),true);
+ assert.equal(w.document.querySelector('[data-tool-id="a"]').classList.contains('collapsed'),true);
  scroll.scroll(500);emit({kind:'text_delta',text:'新输出'});flush();assert.equal(scroll.messages.scrollTop,500);assert.deepEqual(errors,[]);
+});
+
+function openFind(w){
+ w.document.getElementById('input').dispatchEvent(new w.KeyboardEvent('keydown',{key:'f',metaKey:true,bubbles:true,cancelable:true}));
+ const input=w.document.querySelector('.find-input'),tools=w.document.querySelector('.find-include-tools');
+ return {input,tools,search(text){input.value=text;input.dispatchEvent(new w.Event('input'));},
+  count:()=>w.document.querySelector('.find-count').textContent,
+  current:()=>w.document.querySelector('mark.find-hit.current'),
+  next:()=>w.document.querySelector('.find-next').click(),
+  close:()=>w.document.querySelector('.find-close').click()};
+}
+
+test('查找默认仅匹配用户消息、回答卡和 AI 正文，不匹配已展开工具及界面文字',async t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'user',text:'owner 用户问题'},
+  {type:'tool',toolId:'bash',name:'Bash',input:{command:'echo owner',description:'工具说明'},result:'owner 工具输出'},
+  {type:'tool',toolId:'custom',name:'custom_owner',input:{query:'owner 参数'},result:'owner 返回结果'},
+  {type:'assistant_text',text:'owner 回复\n\n```text\nowner 正文代码\n```'},
+  {type:'user',text:'用户已回答刚才的问题，请根据以下答案继续原任务：\n'+JSON.stringify([{question:'选择负责人',answers:['owner 回答']}])},
+ ],checkpoints:[]});
+ w.document.querySelector('.tool-group-toggle').click();w.document.querySelector('[data-tool-id="bash"] .tool-toggle').click();
+ const find=openFind(w);assert.equal(find.tools.checked,false);find.search('owner');assert.equal(find.count(),'1 / 4');
+ assert.equal(w.document.querySelector('.msg.assistant .tool-card mark'),null);
+ emit({kind:'tool_input',toolId:'live',name:'Bash',input:{command:'echo owner'}});
+ emit({kind:'tool_result',toolUseId:'live',content:'owner 新工具结果',isError:false});
+ await new Promise(resolve=>setTimeout(resolve,180));assert.equal(find.count(),'1 / 4');
+ assert.equal(w.document.querySelector('[data-tool-id="live"]').classList.contains('collapsed'),true);
+ for(const text of ['工具说明','custom_owner','复制','查看结果','完成']){find.search(text);assert.equal(find.count(),'0 / 0',text);}
+ find.tools.click();
+ for(const text of ['工具说明','custom_owner','owner 参数','owner 返回结果']){find.search(text);assert.notEqual(find.count(),'0 / 0',text);}
+ for(const text of ['复制','查看结果','完成']){find.search(text);assert.equal(find.count(),'0 / 0',text);}
+ assert.deepEqual(errors,[]);
+});
+
+test('包含工具时只展开当前命中，下一处收回前一工具，取消勾选恢复所有自动展开层级',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'tool',toolId:'first',name:'Bash',input:{command:Array.from({length:10},(_,i)=>'echo '+(i===9?'needle':'line'+i)).join('\n'),description:'第一条'},result:'普通输出'},
+  {type:'tool',toolId:'second',name:'Bash',input:{command:'echo done',description:'第二条'},result:'needle 执行结果'},
+ ],checkpoints:[]});
+ const first=w.document.querySelector('[data-tool-id="first"]'),second=w.document.querySelector('[data-tool-id="second"]');
+ const group=first.closest('.tool-group-step'),code=first.querySelector('.code-block'),details=second.querySelector('details');
+ const find=openFind(w);find.search('needle');assert.equal(find.count(),'0 / 0');
+ find.tools.click();assert.equal(find.count(),'1 / 2');
+ assert.equal(group.classList.contains('collapsed'),false);assert.equal(first.classList.contains('collapsed'),false);
+ assert.equal(code.classList.contains('collapsed'),false);assert.equal(second.classList.contains('collapsed'),true);assert.equal(details.open,false);
+ find.next();assert.equal(find.count(),'2 / 2');
+ assert.equal(first.classList.contains('collapsed'),true);assert.equal(code.classList.contains('collapsed'),true);
+ assert.equal(second.classList.contains('collapsed'),false);assert.equal(details.open,true);
+ find.tools.click();assert.equal(find.count(),'0 / 0');assert.equal(find.input.value,'needle');
+ assert.equal(group.classList.contains('collapsed'),true);assert.equal(second.classList.contains('collapsed'),true);assert.equal(details.open,false);
+ assert.equal(group.querySelector('.tool-group-toggle').getAttribute('aria-expanded'),'false');
+ assert.equal(second.querySelector('.tool-toggle').getAttribute('aria-expanded'),'false');
+ find.tools.click();find.next();find.close();
+ assert.equal(group.classList.contains('collapsed'),true);assert.equal(second.classList.contains('collapsed'),true);assert.equal(details.open,false);
+ assert.equal(w.document.querySelector('mark.find-hit'),null);assert.equal(openFind(w).tools.checked,true,'同一会话保留范围选择');
+ assert.deepEqual(errors,[]);
+});
+
+test('取消工具搜索保留搜索前及搜索期间用户手动展开的工具',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'tool',toolId:'manual',name:'Bash',input:{command:'echo before',description:'预先展开'},result:'预先展开的输出'},
+  {type:'tool',toolId:'found',name:'Bash',input:{command:'echo found',description:'等待搜索'},result:'needle'},
+ ],checkpoints:[]});
+ const manual=w.document.querySelector('[data-tool-id="manual"]'),found=w.document.querySelector('[data-tool-id="found"]'),group=manual.closest('.tool-group-step');
+ group.querySelector('.tool-group-toggle').click();manual.querySelector('.tool-toggle').click();manual.querySelector('summary').click();
+ const find=openFind(w);find.search('needle');find.tools.click();find.tools.click();
+ assert.equal(group.classList.contains('collapsed'),false);assert.equal(manual.classList.contains('collapsed'),false);assert.equal(manual.querySelector('details').open,true);
+ assert.equal(found.classList.contains('collapsed'),true);assert.equal(found.querySelector('details').open,false);
+ group.querySelector('.tool-group-toggle').click();find.tools.click();
+ found.querySelector('summary').click();found.querySelector('summary').click();find.tools.click();
+ assert.equal(group.classList.contains('collapsed'),false,'用户重新打开内层后保留外层');
+ assert.equal(found.classList.contains('collapsed'),false);assert.equal(found.querySelector('details').open,true);
+ assert.deepEqual(errors,[]);
+});
+
+test('工具搜索覆盖错误详情及折叠网页结果，关闭或清空搜索恢复折叠',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'load_history',items:[
+  {type:'tool',toolId:'failed',name:'Read',input:{file_path:'/tmp/demo.txt'},result:'错误第一行\n错误第二行\n错误第三行\nneedle',isError:true},
+  {type:'tool',toolId:'web',name:'WebSearch',input:{query:'文档'},result:'Links: '+JSON.stringify(Array.from({length:5},(_,i)=>({title:i===4?'hiddenneedle':'文档'+i,url:'https://example.test/'+i})))},
+ ],checkpoints:[]});
+ const failed=w.document.querySelector('[data-tool-id="failed"]'),web=w.document.querySelector('[data-tool-id="web"]'),group=failed.closest('.tool-group-step');
+ const find=openFind(w);find.tools.click();find.search('needle');
+ assert.equal(failed.classList.contains('error-details-collapsed'),false);assert.equal(failed.querySelector('.err-flat').classList.contains('collapsed'),false);
+ find.search('hiddenneedle');
+ assert.equal(failed.classList.contains('error-details-collapsed'),true);assert.equal(failed.querySelector('.err-flat').classList.contains('collapsed'),true);
+ assert.equal(web.classList.contains('collapsed'),false);assert.ok([...web.querySelectorAll('.search-hit.extra')].every(link=>!link.classList.contains('hidden')));
+ find.search('');assert.equal(group.classList.contains('collapsed'),true);assert.equal(web.classList.contains('collapsed'),true);
+ assert.ok([...web.querySelectorAll('.search-hit.extra')].every(link=>link.classList.contains('hidden')));
+ find.search('needle');find.close();assert.equal(group.classList.contains('collapsed'),true);assert.equal(failed.classList.contains('error-details-collapsed'),true);
+ assert.deepEqual(errors,[]);
+});
+
+test('范围切换保持当前正文命中，新会话恢复默认范围',async t=>{
+ const {w,emit,errors}=setup(t,'one');
+ const items=[{type:'tool',toolId:'before',name:'Bash',input:{command:'echo needle'},result:'needle'},
+  {type:'assistant_text',text:'needle 第一次，needle 第二次'}];
+ emit({kind:'load_history',sessionId:'one',items,checkpoints:[]});
+ const find=openFind(w);find.search('needle');find.next();const paragraph=find.current().parentElement;
+ find.tools.click();assert.equal(find.current().parentElement,paragraph);assert.equal(find.current(),paragraph.querySelectorAll('mark')[1]);
+ assert.equal(w.document.querySelector('[data-tool-id="before"]').classList.contains('collapsed'),true);
+ find.tools.click();assert.equal(find.count(),'2 / 2');find.tools.click();
+ emit({kind:'load_history',sessionId:'two',items,checkpoints:[]});
+ await new Promise(resolve=>setTimeout(resolve,180));assert.equal(find.tools.checked,false);assert.match(find.count(),/\/ 2$/);
+ assert.equal(w.document.querySelector('[data-tool-id="before"]').classList.contains('collapsed'),true);assert.deepEqual(errors,[]);
+});
+
+test('搜索展开后新增工具形成的组仍能收回，审批展开不受搜索收回影响',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'tool_input',toolId:'first',name:'Bash',input:{command:'echo needle',description:'第一条'}});
+ const find=openFind(w);find.tools.click();find.search('needle');
+ emit({kind:'tool_input',toolId:'second',name:'Bash',input:{command:'echo second'}});
+ const group=w.document.querySelector('.tool-group-step');assert.equal(group.classList.contains('collapsed'),false);
+ find.tools.click();assert.equal(group.classList.contains('collapsed'),true);assert.equal(group.querySelector('[data-tool-id="first"]').classList.contains('collapsed'),true);
+ find.tools.click();
+ emit({kind:'permission_request',requestId:'approval',toolUseId:'first',toolName:'Bash',input:{command:'echo needle'},suggestions:[]});
+ find.tools.click();const approval=w.document.querySelector('[data-tool-id="first"]');
+ assert.equal(approval.classList.contains('collapsed'),false,'等待用户审批的展开不属于搜索');assert.ok(approval.querySelector('.perm-bar'));assert.deepEqual(errors,[]);
 });

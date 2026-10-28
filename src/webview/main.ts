@@ -1655,6 +1655,7 @@ function toolGroupKind(name: string): Exclude<ToolGroupKind, "mixed"> | null {
 }
 
 function setToolFolded(card: HTMLElement, folded: boolean) {
+  if (!findChangingToolFold) findExpandedTools.delete(card);
   card.classList.toggle("collapsed", folded);
   const toggle = card.querySelector<HTMLButtonElement>(".tool-toggle");
   if (toggle) toggle.setAttribute("aria-expanded", String(!folded));
@@ -1675,6 +1676,7 @@ function isGroupableStep(node: HTMLElement): boolean {
 }
 
 function setToolGroupFolded(group: HTMLElement, folded: boolean) {
+  if (!findChangingToolFold) findExpandedTools.delete(group);
   group.classList.toggle("collapsed", folded);
   group.querySelector<HTMLButtonElement>(".tool-group-toggle")?.setAttribute("aria-expanded", String(!folded));
 }
@@ -1720,7 +1722,7 @@ function updateToolGroup(group: HTMLElement) {
 
 /** Any two consecutive tool calls share one timeline node, regardless of name.
  *  Text and interactive questions/approvals end a run; child cards retain their order. */
-function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false) {
+function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false, keepOpenForSearch = false) {
   const group = el("div", "step tool-group-step collapsed");
   const id = `tool-group-${++toolGroupSeq}`;
   const title = el("div", "tool-group");
@@ -1730,7 +1732,7 @@ function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false
     `<span class="tool-name"></span><span class="tool-group-count"></span>` +
     `<span class="tool-group-status"></span></button><div id="${id}" class="tool-group-items"></div>`;
   group.append(el("div", "step-dot"), title);
-  const opened = run.some((node) => node.querySelector(".tool-card.foldable:not(.collapsed)"));
+  const openedCards = run.flatMap(node => Array.from(node.querySelectorAll<HTMLElement>(".tool-card.foldable:not(.collapsed)")));
   body.insertBefore(group, run[0]);
   const items = group.querySelector(".tool-group-items")!;
   for (const node of run) {
@@ -1743,7 +1745,11 @@ function createToolGroup(body: HTMLElement, run: HTMLElement[], keepOpen = false
     pinnedToBottom = false;
   });
   updateToolGroup(group);
-  if (opened || keepOpen) setToolGroupFolded(group, false);
+  if (openedCards.length || keepOpen) {
+    if ((!keepOpen || keepOpenForSearch) && openedCards.every(card => findExpandedTools.has(card))) {
+      findExpandTool(group, () => setToolGroupFolded(group, false), () => setToolGroupFolded(group, true));
+    } else setToolGroupFolded(group, false);
+  }
 }
 
 function groupAdjacentTools(body: HTMLElement, step: HTMLElement) {
@@ -1769,12 +1775,13 @@ function separateExceptionalTool(card: HTMLElement) {
   if (!body) return;
   const steps = Array.from(group.querySelectorAll<HTMLElement>(":scope > .tool-group > .tool-group-items > .step"));
   const keepOpen = !group.classList.contains("collapsed");
+  const keepOpenForSearch = findExpandedTools.delete(group);
   const wasFirst = group.classList.contains("first-node");
   group.replaceWith(...steps);
   if (wasFirst) steps[0]?.classList.add("first-node");
   let run: HTMLElement[] = [];
   const flush = () => {
-    if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run, keepOpen);
+    if (run.length >= TOOL_GROUP_MIN) createToolGroup(body, run, keepOpen, keepOpenForSearch);
     run = [];
   };
   for (const step of steps) {
@@ -2767,6 +2774,7 @@ function loadHistory(items: TimelineItem[], checkpoints?: { id: string; label: s
 function renderHistory(showAll: boolean) {
   if (!historyState) return;
   const { items, checkpoints } = historyState;
+  findExpandedTools.clear();
   messagesEl.innerHTML = "";
   toolCards.clear();
   pruneRailObservers();
@@ -3460,7 +3468,11 @@ function persistRecovery() {
 }
 
 function bindSessionState(sessionId?: string) {
-  if (persistedSessionId && persistedSessionId !== sessionId) recoverySends.clear();
+  if (persistedSessionId && persistedSessionId !== sessionId) {
+    recoverySends.clear();
+    findIncludeTools.checked = false;
+    findRestoreTools();
+  }
   persistedSessionId = sessionId;
   persistRecovery();
 }
@@ -5371,13 +5383,15 @@ function toolIcon(name: string): string {
   return map[name] || ICON.tool;
 }
 // ---------------------------------------------------------------------------
-// 全局搜索（Cmd/Ctrl+F）：在消息区里查找文本，命中加底色、当前一条描边并滚到视野内。
+// 会话搜索（Cmd/Ctrl+F）：默认仅查找对话正文，工具内容需显式勾选。
 // 浮层绝对定位在聊天区右上角，不改变消息布局与滚动位置。
 // ---------------------------------------------------------------------------
 const findBar = el("div", "find-bar hidden");
+const findRow = el("div", "find-row");
 const findInput = el("input", "find-input") as HTMLInputElement;
 findInput.type = "text";
 findInput.placeholder = "查找";
+findInput.setAttribute("aria-label", "查找会话内容");
 findInput.spellcheck = false;
 const findCount = el("span", "find-count", "—");
 const findPrev = el("button", "find-btn find-prev");
@@ -5388,13 +5402,47 @@ findNext.title = "下一处 (↵)";
 findNext.innerHTML = ICON.chevron;
 const findClose = el("button", "find-btn find-close", "×");
 findClose.title = "关闭 (Esc)";
-findBar.append(findInput, findCount, findPrev, findNext, findClose);
+findRow.append(findInput, findCount, findPrev, findNext, findClose);
+const findScope = el("label", "find-scope");
+findScope.title = "搜索 Bash 命令、工具调用参数及执行结果";
+const findIncludeTools = el("input", "find-include-tools");
+findIncludeTools.type = "checkbox";
+findScope.append(findIncludeTools, document.createTextNode("包含工具内容"));
+findBar.append(findRow, findScope);
 $("app").appendChild(findBar);
 
 let findHits: HTMLElement[] = [];
 let findIdx = -1;
 let findReturnFocus: HTMLElement | null = null;
 let findRefreshTimer = 0;
+const findMessageSelector = ".msg.user .user-plain, .msg .askq-summary, .msg.assistant .text-seg";
+const findExpandedTools = new Map<HTMLElement, () => void>();
+let findChangingToolFold = false;
+
+/** 只记录搜索自动展开的容器；用户手动操作后，折叠状态归用户管理。 */
+function findChangeToolFold(change: () => void) {
+  const previous = findChangingToolFold;
+  findChangingToolFold = true;
+  try { change(); } finally { findChangingToolFold = previous; }
+}
+function findExpandTool(container: HTMLElement, expand: () => void, collapse: () => void) {
+  findExpandedTools.set(container, collapse);
+  findChangeToolFold(expand);
+}
+function findRestoreTools(keepHit?: HTMLElement) {
+  for (const [container, collapse] of findExpandedTools) {
+    if (keepHit && container.contains(keepHit)) continue;
+    findExpandedTools.delete(container);
+    if (container.isConnected) findChangeToolFold(collapse);
+  }
+}
+messagesEl.addEventListener("click", event => {
+  if (findChangingToolFold || !(event.target instanceof Element)) return;
+  const toggle = event.target.closest(".tool-toggle, .tool-group-toggle, .tool-error-toggle, .code-expand, .search-more, details.tool-result > summary");
+  if (!toggle) return;
+  // 手动展开内层时，也保留搜索先前展开的外层，避免取消搜索后把它藏起来。
+  for (let parent = toggle.parentElement; parent && parent !== messagesEl; parent = parent.parentElement) findExpandedTools.delete(parent);
+}, true);
 const findObserver = new MutationObserver(() => {
   if (findRefreshTimer || findBar.classList.contains("hidden")) return;
   // 流式输出和历史重载后刷新命中，合并连续更新，不跟着后台更新抢滚动位置。
@@ -5416,7 +5464,7 @@ function findClear() {
   findIdx = -1;
 }
 
-/** 遍历消息区文本节点，把匹配片段包进 <mark>，返回命中列表（跳过脚本/浮层自身）。 */
+/** 按正文/工具白名单收集命中，不搜索界面按钮、状态、计时或未发送的输入。 */
 function findCollect(q: string): HTMLElement[] {
   const marks: HTMLElement[] = [];
   const lc = q.toLowerCase();
@@ -5426,7 +5474,10 @@ function findCollect(q: string): HTMLElement[] {
       if (!v || !v.toLowerCase().includes(lc)) return NodeFilter.FILTER_REJECT;
       const p = node.parentElement;
       if (!p) return NodeFilter.FILTER_REJECT;
-      if (p.closest('script, style, mark, input, textarea, select, button, [contenteditable="true"], .working-pill')) return NodeFilter.FILTER_REJECT;
+      if (p.closest('script, style, mark, input, textarea, select, [contenteditable="true"], .working-pill, .code-head, .tool-meta, .tool-why, .tool-actions, .perm-bar, .tr-title, .tr-count')) return NodeFilter.FILTER_REJECT;
+      const button = p.closest("button");
+      if (button && !(button.matches(".tool-toggle") && p.closest(".tool-name, .tool-sub"))) return NodeFilter.FILTER_REJECT;
+      if (!p.closest(findMessageSelector) && !(findIncludeTools.checked && p.closest(".msg.assistant .tool-card"))) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     },
   });
@@ -5468,13 +5519,34 @@ function findMark(scroll: boolean) {
   findPrev.disabled = findHits.length === 0;
   findNext.disabled = findHits.length === 0;
   findHits.forEach((m, i) => m.classList.toggle("current", i === findIdx));
+  const hit = findHits[findIdx];
+  // 导航时只保留当前命中的展开路径，不把经过的所有工具留在展开状态。
+  if (scroll || !hit) findRestoreTools(hit);
   if (scroll && findIdx >= 0) {
-    const hit = findHits[findIdx];
     for (let parent = hit.parentElement; parent && parent !== messagesEl; parent = parent.parentElement) {
-      if (parent instanceof HTMLDetailsElement) parent.open = true;
-      if (parent.matches(".tool-group-step.collapsed")) setToolGroupFolded(parent, false);
-      if (parent.matches(".tool-card.foldable.collapsed")) setToolFolded(parent, false);
-      if (parent.matches(".code-block.collapsed, .err-flat.collapsed")) parent.querySelector<HTMLButtonElement>(".code-expand")?.click();
+      const container = parent;
+      const inTool = !!container.closest(".msg.assistant .tool-card, .tool-group-step");
+      if (inTool && !findIncludeTools.checked) continue;
+      if (container instanceof HTMLDetailsElement && !container.open) {
+        findExpandTool(container, () => { container.open = true; }, () => { container.open = false; });
+      }
+      if (container.matches(".tool-group-step.collapsed")) findExpandTool(container, () => setToolGroupFolded(container, false), () => setToolGroupFolded(container, true));
+      if (container.matches(".tool-card.foldable.collapsed")) findExpandTool(container, () => setToolFolded(container, false), () => setToolFolded(container, true));
+      if (container.matches(".tool-card.error-details-collapsed")) {
+        const toggle = container.querySelector<HTMLButtonElement>(".tool-error-toggle");
+        if (toggle) findExpandTool(container, () => toggle.click(), () => { if (!container.classList.contains("error-details-collapsed")) toggle.click(); });
+      }
+      if (container.matches(".code-block.collapsed, .err-flat.collapsed")) {
+        const toggle = container.querySelector<HTMLButtonElement>(".code-expand");
+        if (toggle) {
+          if (inTool) findExpandTool(container, () => toggle.click(), () => { if (!container.classList.contains("collapsed")) toggle.click(); });
+          else toggle.click();
+        }
+      }
+      if (container.matches(".tool-result") && hit.closest(".search-hit.extra.hidden")) {
+        const toggle = container.querySelector<HTMLButtonElement>(".search-more");
+        if (toggle) findExpandTool(container, () => toggle.click(), () => { if (toggle.classList.contains("on")) toggle.click(); });
+      }
       if (parent.matches(".user-fold.collapsed")) (parent.nextElementSibling as HTMLButtonElement | null)?.click();
     }
     readingHistory = true;
@@ -5483,16 +5555,22 @@ function findMark(scroll: boolean) {
   }
 }
 
-function findRun(scroll = true) {
+function findRun(scroll = true, preserveCurrent = !scroll) {
   findObserver.disconnect();
   window.clearTimeout(findRefreshTimer); findRefreshTimer = 0;
   const previousIndex = findIdx;
+  const previousRoot = findHits[findIdx]?.closest(`${findMessageSelector}, .tool-card`);
+  const previousRootIndex = previousRoot ? findHits.slice(0, findIdx).filter(hit => previousRoot.contains(hit)).length : -1;
   const restoreSelection = preserveTextSelection(messagesEl);
   findClear();
   const q = findInput.value;
   if (q) {
     findHits = findCollect(q);
-    findIdx = findHits.length ? scroll ? 0 : Math.max(0, Math.min(previousIndex, findHits.length - 1)) : -1;
+    findIdx = findHits.length ? preserveCurrent ? Math.max(0, Math.min(previousIndex, findHits.length - 1)) : 0 : -1;
+    if (preserveCurrent && previousRoot?.isConnected) {
+      const previousHit = findHits.filter(hit => previousRoot.contains(hit))[previousRootIndex];
+      if (previousHit) findIdx = findHits.indexOf(previousHit);
+    }
   }
   restoreSelection();
   findMark(scroll);
@@ -5519,6 +5597,7 @@ function findCloseBar() {
   const returnFocus = findBar.contains(document.activeElement);
   const restoreSelection = preserveTextSelection(messagesEl);
   findClear();
+  findRestoreTools();
   findBar.classList.add("hidden");
   findBar.classList.remove("empty-hits");
   if (returnFocus) (findReturnFocus?.isConnected && findReturnFocus !== document.body ? findReturnFocus : messagesEl).focus({ preventScroll: true });
@@ -5527,6 +5606,10 @@ function findCloseBar() {
 }
 
 findInput.addEventListener("input", () => findRun());
+findIncludeTools.addEventListener("change", () => {
+  if (!findIncludeTools.checked) findRestoreTools();
+  findRun(true, true);
+});
 findInput.addEventListener("keydown", (e) => {
   if (e.isComposing || e.keyCode === 229) return;
   if (e.key === "Enter") { e.preventDefault(); findGoto(e.shiftKey ? -1 : 1); }
