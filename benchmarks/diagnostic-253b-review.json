@@ -1,0 +1,83 @@
+{
+  "diagnosticId": "253b5021-b003-4ad9-9186-f99d6e5559a8",
+  "baseline": "74cde55",
+  "version": "0.1.187",
+  "sourceHash": "73235527b5aaa2c8c97c6a51994a65537783fd43db77cdffdd70382954f6dfe7",
+  "scope": "完整读取原报告；原报告未提供源码候选位置。扫描当前 62 个源码文件，保留全部静态候选；重点复核静默捕获、委派边界和修改调用链，不把候选数当作缺陷数。",
+  "fixes": [
+    {
+      "path": "src/codex/compactionRelay.ts",
+      "finding": "下游 WebSocket 在上游握手前返回 101，后端 403/502 变成已连接后断流。",
+      "change": "等待上游握手后升级；拒绝保留状态，不转发错误正文；取消和超时释放连接；同步升级异常有安全边界。移除握手前发送队列。",
+      "validation": "403、502、40ms 超时、主动关闭、同步/回调写入失败、恢复后收发、SSE 部分输出中断及模型/推理/收费档位保持。"
+    },
+    {
+      "path": "src/codex/compactionRelay.ts",
+      "finding": "普通请求也通过转发器，但其错误一律名为 compaction；缺少 processRunId、connectionId。",
+      "change": "网络日志使用 relay 名称和稳定关联 ID，HTTP 记录起止、首响应时间及状态。实际压缩仍记录独立 routeId；同一终态失败共享 failureId。",
+      "validation": "普通请求失败不增加压缩错误，压缩请求终态与网络错误使用同一 failureId。"
+    },
+    {
+      "path": "src/diagnostics/general.ts",
+      "finding": "非结构化通知业务字段 event=error 被当作执行失败。",
+      "change": "仅移除已知通知阶段的业务 event 字段再分类；result=failed 和真实错误保留。历史混合转发器错误归入连接链路。",
+      "validation": "固定原时间窗口：错误事件 1063→1055；130 条转发错误仍保留，只重新分类；工具与轮次汇总完全一致。"
+    },
+    {
+      "path": "src/operations.ts",
+      "finding": "包装异常 cause 的网络代码和代理握手原因丢失，HTTP 502 和模型容量拒绝可能分类未知。",
+      "change": "有界提取白名单 causeCode、HTTP 状态和固定传输原因；模型容量独立分类。",
+      "validation": "ECONNREFUSED、代理 CONNECT 关闭、握手超时、HTTP 502、模型容量，验证不输出异常正文、URL 或凭据。"
+    },
+    {
+      "path": "src/panel/chatViewProvider.ts",
+      "finding": "account.usage 恢复记录复用 failureId，诊断关联器需要 previousFailureId。",
+      "change": "恢复事件记录 previousFailureId 和 previousProcessRunId。",
+      "validation": "403 暂停轮询，手动成功恢复，落盘后诊断关联到同一故障链。"
+    },
+    {
+      "path": "src/webviewDelivery.ts",
+      "finding": "投递失败与恢复只有 operationId，不能被 failureId 关联器识别。",
+      "change": "保存失败 ID、恢复用 previousFailureId；连续失败只记录一次。",
+      "validation": "消息桥拒绝两次后成功，落盘显示一条失败链、一条关联恢复。"
+    },
+    {
+      "path": "src/workspaceActivity.ts",
+      "finding": "读取工作区活动记录失败被转换为安全拒绝文本，真实错误未落盘。",
+      "change": "保留安全拒绝，记录脱敏错误；按存储目录去重并限制缓存大小，后续校验成功关联恢复。",
+      "validation": "EACCES 连续三次只记一次；存储恢复后诊断检出恢复；不输出路径。"
+    },
+    {
+      "path": "src/checkpoints.ts",
+      "finding": "fileState 的非预期 I/O 错误返回 undefined，指纹缺失原因静默丢失。",
+      "change": "非 ENOENT/ENOTDIR 错误落盘；保持缺指纹时禁止回滚。",
+      "validation": "EACCES 不覆盖文件，诊断检出 checkpoint.fingerprint；下一轮正常采集可还原。"
+    }
+  ],
+  "verifiedExistingBoundaries": [
+    "SessionStore.read → trackRead/readInner → CodexRpc.request：请求有 requestId/processRunId/failureId；只对断开的只读连接重建一次，不重试后端拒绝。SessionStore.connection 的 reject 写失败由 CodexRpc.write/fail 记录。",
+    "ChatViewProvider.fetchUsage 已在 401/403 后暂停自动轮询；暂时性错误采用 3–30 分钟退避，并在账号变化/手动刷新时恢复。保持既有策略。",
+    "CodexProcess.prepareCompactionRelay：200ms 仅可选启动预算，超时采用原生路径；配置只在 thread/start/resume 和请求体作用域覆盖，不写用户全局配置。compactionRouted 已记录 configurationScope=request_only/sessionConfigurationChanged=false。",
+    "CodexProcess 的 notification/request/子线程委派统一进入 handlerFailed；RPC 收发、超时、关闭和预期取消已有终态。工具执行由 CLI 执行，不能把工作区命令的非零退出改成成功。",
+    "通知 focus → notification.click 通过 observeOperation 共享 failureId；已有来源窗口检查、并发点击合并和 2 秒焦点等待。历史 Error 缺少系统原因，不推断具体根因，不修改 OS 权限。",
+    "Webview 主页面和诊断页均安装 error/unhandledrejection 捕获；宿主 onPanelMessage/onSidebarMessage、诊断页面消息处理有统一错误边界。投递拒绝由 postWebviewMessage 汇总，错误桥断开有本地健康信号和后续补报。",
+    "日志写入通过 DailyLogWriter 的有界缓冲、重试和独立健康反馈；flushLogWriters 将待写/失败/超时作为扫描覆盖缺口。",
+    "历史加载/保存、快照、配置队列和后台诊断 jobs 已有上层记录；队列恢复用 catch 释放前一失败但原 Promise 仍返回调用方，不重复埋点。",
+    "纯 JSON/URL/格式解析、不匹配协议透传、目录探测中的 ENOENT 不增加异常日志。原生通知程序的 finish/result.json 由宿主 notification.show/clear 记录；未执行真实系统通知验收。"
+  ],
+  "unresolvedExternalEvidence": [
+    "API 403 的账户、网关和凭证根因仍未知；本机代码不能宣告后端解除拒绝。",
+    "HTTP 502、SSE 失败和模型容量拒绝需要后端及代理恢复证据。新增分类和转发修复不代表这些外部条件已消除。",
+    "MCP worker 的 Transport channel closed 属于 CLI 组件；不把 worker 退出推断为扩展宿主崩溃，不改服务认证或禁用 MCP。",
+    "CLI 系统技能 Directory not empty 缺少完整安装状态和并发证据；没有删除用户技能目录。",
+    "BatchLogProcessor.ExportError 仅说明遥测导出失败；没有远端接收/队列丢弃数据，不能宣称遥测或主连接恢复。",
+    "工具超时、缺文件、构建/语法/权限失败属于执行条件线索；保留 215 次工具失败，不修改无关工作区，不延长执行超时。",
+    "未归因等待和子任务尾部耗时未证明是调度缺陷；最长约 18.9 小时样本中约 18.8 小时为用户审批/回答。原始慢压缩成功样本仍标完成。"
+  ],
+  "validation": {
+    "typecheck": "通过",
+    "fullSuite": "883/883 通过；其后仅共享 failureId 的小改动，41/41 定向测试通过",
+    "metrics": "scripts/verify-diagnostic-253b.cjs，固定原时间窗及全部 7 个保留日志文件",
+    "limits": "本地故障注入和回放验证；没有执行真实收费压缩、真实通知点击或后端故障恢复测试。未逐一动态验证 736 个静态候选。"
+  }
+}

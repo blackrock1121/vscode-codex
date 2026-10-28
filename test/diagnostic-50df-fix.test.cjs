@@ -142,7 +142,8 @@ for(const sync of [false,true])test(`50df WebSocket ${sync?'同步':'回调'}发
   const local=[...relay.wss.clients][0];local.send=(_data,_opts,cb)=>{if(sync)throw fault('EPIPE');queueMicrotask(()=>cb(fault('EPIPE')));};
   const closed=once(ws,'close');ws.send(JSON.stringify({type:'response.create',model:'chosen',input:[{type:'compaction_trigger'}]}));await closed;
   assert.equal(requests,1);assert.deepEqual(routes.map(r=>r.stage),['request','response']);assert.equal(routes[1].outcome,'failed');assert.equal(routes[1].reason,'client_send');
-  assert.ok(f.rows.some(r=>r.operation==='compaction.websocket.write'&&r.reason==='client_send'));
+  assert.ok(f.rows.some(r=>r.operation==='relay.websocket.write'&&r.reason==='client_send'));
+  assert.equal(routes[1].failureId,f.rows.find(r=>r.operation==='relay.websocket.write').failureId);
   assert.ok((await f.scan()).findings.some(r=>r.evidence.includes('client_send')));assert.doesNotMatch(JSON.stringify(f.rows),/PRIVATE_TOKEN/);
 });
 
@@ -184,20 +185,22 @@ test('50df CLI 技能安装及 SSE 错误按来源分类，不推断指定模型
   assert.equal(classifyIncident('',{type:'event',event:'codex.sse_event',hasError:false}),undefined);
 });
 
-for(const sync of [false,true])test(`50df WebSocket 排队发送${sync?'同步':'回调'}失败明确终结，避免握手后静默中断`,async t=>{
+for(const sync of [false,true])test(`50df WebSocket 握手后上游发送${sync?'同步':'回调'}失败明确终结，避免握手后静默中断`,async t=>{
   const f=fixture(t),routes=[];let routed;
   const firstRoute=new Promise(r=>routed=r),server=http.createServer(),wss=new WebSocketServer({noServer:true});
   await new Promise(r=>server.listen(0,'127.0.0.1',r));
   const upgrade=once(server,'upgrade');
   const relay=await api.CompactionRelay.start(`http://127.0.0.1:${server.address().port}/v1`,()=>({model:'compact',effort:'high'}),r=>{routes.push(r);if(r.stage==='request')routed();});
   t.after(()=>{relay.close();for(const s of wss.clients)s.terminate();wss.close();server.closeAllConnections();server.close();});
-  const ws=new WebSocket(relay.baseUrl.replace('http:','ws:')+'/responses');t.after(()=>ws.terminate());await once(ws,'open');
-  const [req,socket,head]=await upgrade; t.after(()=>socket.destroy());
-  ws.send(JSON.stringify({type:'response.create',model:'chosen',input:[{type:'compaction_trigger'}]}));await firstRoute;await tick();
-  const upstream=[...relay.sockets].find(s=>s.readyState===WebSocket.CONNECTING);assert.ok(upstream);
+  const ws=new WebSocket(relay.baseUrl.replace('http:','ws:')+'/responses');t.after(()=>ws.terminate());
+  const opened=once(ws,'open'),[req,socket,head]=await upgrade; t.after(()=>socket.destroy());
+  assert.equal(ws.readyState,WebSocket.CONNECTING);assert.equal(routes.length,0);
+  wss.handleUpgrade(req,socket,head,()=>{});await opened;
+  const upstream=[...relay.sockets].find(s=>!relay.wss.clients.has(s)&&s.readyState===WebSocket.OPEN);assert.ok(upstream);
   upstream.send=(_data,_opts,cb)=>{if(sync)throw fault('EPIPE');queueMicrotask(()=>cb(fault('EPIPE')));};
-  const closed=once(ws,'close');wss.handleUpgrade(req,socket,head,()=>{});await closed;
-  assert.deepEqual(routes.map(r=>r.stage),['request','response']);assert.equal(routes[1].outcome,'failed');assert.equal(routes[1].reason,'queued_upstream_send');
-  assert.equal(f.rows.filter(r=>r.operation==='compaction.websocket.write').length,1);
-  assert.ok((await f.scan()).findings.some(r=>r.evidence.includes('queued_upstream_send')));
+  const closed=once(ws,'close');ws.send(JSON.stringify({type:'response.create',model:'chosen',input:[{type:'compaction_trigger'}]}));await firstRoute;await closed;
+  assert.deepEqual(routes.map(r=>r.stage),['request','response']);assert.equal(routes[1].outcome,'failed');assert.equal(routes[1].reason,'upstream_send');
+  assert.equal(f.rows.filter(r=>r.operation==='relay.websocket.write').length,1);
+  assert.equal(routes[1].failureId,f.rows.find(r=>r.operation==='relay.websocket.write').failureId);
+  assert.ok((await f.scan()).findings.some(r=>r.evidence.includes('upstream_send')));
 });

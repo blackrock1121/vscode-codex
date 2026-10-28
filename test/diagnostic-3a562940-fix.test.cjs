@@ -31,7 +31,8 @@ test(`3a562940 ${category} 暂停无效轮询，手动成功后恢复且故障�
  fail=false;p.fetchUsage(true);await tick();assert.equal(calls,2);assert.equal(p.usageBlockedCategory,undefined);
  clock+=180000;p.fetchUsage();await tick();assert.equal(calls,3);
  const failure=f.rows.find(r=>r.operation==='account.usage'&&r.stage==='failed'),recovery=f.rows.find(r=>r.operation==='account.usage'&&r.stage==='recovered');
- assert.equal(failure.failureCategory,category);assert.equal(failure.failureId,recovery.failureId);
+ assert.equal(failure.failureCategory,category);assert.equal(failure.failureId,recovery.previousFailureId);
+ assert.equal((await f.scan()).general.recoveredFailureChains,1);
  assert.ok((await f.scan()).findings.some(r=>r.evidence.includes('account.usage')&&r.evidence.includes(category)));
  assert.doesNotMatch(JSON.stringify(f.rows),/PRIVATE_TOKEN/);
  t.diagnostic(JSON.stringify({scenario:category,pollTicks:480,beforeRequests:480,afterRequestsBeforeRecovery:1}));

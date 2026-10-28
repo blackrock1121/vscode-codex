@@ -1,0 +1,5958 @@
+{
+  "diagnosticId": "253b5021-b003-4ad9-9186-f99d6e5559a8",
+  "baseline": "74cde55",
+  "version": "0.1.187",
+  "report": {
+    "bytes": 169579,
+    "lines": 1596,
+    "sha256": "528a9932149d9ea8999a0c0094d883cfabd4cf5de4e521a75845e55bd033c4d2",
+    "sourcePositions": [],
+    "note": "完整报告没有源码位置清单；当前构建另行扫描，候选不等于实际缺口。"
+  },
+  "logSnapshots": [
+    {
+      "name": "codex-chat-2026-10-22.log",
+      "bytes": 17200021,
+      "sha256": "6abb4c17838487e3038870c1639d1fb8044dd6dfa07eb6a973df4b2eb6899681"
+    },
+    {
+      "name": "codex-chat-2026-10-23.log",
+      "bytes": 22813820,
+      "sha256": "1d3d1418ea39f49fba2e58307e2d3a1691ef4d83b60c308510fc353e0cf410e9"
+    },
+    {
+      "name": "codex-chat-2026-10-24.log",
+      "bytes": 16087183,
+      "sha256": "794d11965fd6102c1d6dc6cb130907e54448071f00a161b9d0671ce00f6de0f7"
+    },
+    {
+      "name": "codex-chat-2026-10-25.log",
+      "bytes": 13348115,
+      "sha256": "29783cfe02655eddef33e8de9616be04d6baab183bfe80fdf3f89ecf3247ac46"
+    },
+    {
+      "name": "codex-chat-2026-10-26.log",
+      "bytes": 26813719,
+      "sha256": "6848915618705a967d0e2a0c53925fa5556826e7030a8dfa64c757f54b43428d"
+    },
+    {
+      "name": "codex-chat-2026-10-27.log",
+      "bytes": 27905387,
+      "sha256": "9e469e1088c3e5045663fe99a0b0e734237e32c61e79226a3643ecad8a846021"
+    },
+    {
+      "name": "codex-chat-2026-10-28.log",
+      "bytes": 30907962,
+      "sha256": "f5a950607255238e6971a983c34a272d14faa4358b2db957b2223187f2bc3895"
+    }
+  ],
+  "before": {
+    "summary": {
+      "turns": 117,
+      "tools": 2765,
+      "failures": 215,
+      "longestTurnMs": 68055066,
+      "versions": [
+        "0.1.177",
+        "0.1.178",
+        "0.1.169",
+        "0.1.179",
+        "0.1.176",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186"
+      ]
+    },
+    "general": {
+      "errors": 1063,
+      "warnings": 86,
+      "retries": 83,
+      "recoveries": 4,
+      "compactionErrors": 130,
+      "groups": 138,
+      "overflow": 0,
+      "correlatedToolErrors": 230,
+      "correlatedErrors": 214,
+      "linkedRecoveries": 1,
+      "failureChains": 163,
+      "toolFailureChains": 219,
+      "recoveredFailureChains": 1,
+      "recoveryEvidence": [
+        {
+          "failureId": "42806ce6-6692-4de0-a176-a8d04ee198f6",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "failureLocation": "codex-chat-2026-10-28.log:59701",
+          "recoveryLocation": "codex-chat-2026-10-28.log:60175"
+        }
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 155076207,
+      "lines": 345131,
+      "records": 72165,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 26,
+      "sessions": 43,
+      "firstDay": "2026-10-22",
+      "lastDay": "2026-10-28",
+      "sources": [
+        {
+          "pluginVersion": "0.1.177",
+          "windowId": "f1cb3248-2f16-425e-8702-f57cdb3afc1e",
+          "hostId": "7859",
+          "records": 3711,
+          "turns": 3,
+          "tools": 125,
+          "failures": 3,
+          "logLines": 3763
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "21158c6e-09c5-4db3-b96a-680aab3ad563",
+          "hostId": "44753",
+          "records": 6253,
+          "turns": 8,
+          "tools": 71,
+          "failures": 3,
+          "logLines": 6392
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 4256,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 4258
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 3019,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3021
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 3028,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3032
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "e339e48f-bc47-4d31-8a5b-7b70af7f8885",
+          "hostId": "38816",
+          "records": 2322,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2324
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "9527aa62-bfc1-486c-8eef-e7019d439c13",
+          "hostId": "38815",
+          "records": 2262,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2266
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 3024,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3026
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 3335,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3337
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "f61a7691-911a-4ff0-8746-a9e230fecfb3",
+          "hostId": "38819",
+          "records": 2492,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2508
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 4422,
+          "turns": 4,
+          "tools": 124,
+          "failures": 6,
+          "logLines": 4496
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 4209,
+          "turns": 9,
+          "tools": 300,
+          "failures": 45,
+          "logLines": 4386
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "292bb5a9-6261-4a0b-9202-70ca59ba958e",
+          "hostId": "79137",
+          "records": 12369,
+          "turns": 38,
+          "tools": 1075,
+          "failures": 69,
+          "logLines": 13057
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "277b8fc3-9325-4b4b-b2cb-c2592e834935",
+          "hostId": "79977",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "9c5f5087-7078-4753-b9c9-204bc640ede6",
+          "hostId": "3130",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "b35e8b0d-eb31-4c80-b206-383bdffc4d33",
+          "hostId": "3265",
+          "records": 2047,
+          "turns": 7,
+          "tools": 117,
+          "failures": 14,
+          "logLines": 2185
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "2afcbce4-a23a-4dfd-95c5-b8bfeb8bd76a",
+          "hostId": "16088",
+          "records": 852,
+          "turns": 7,
+          "tools": 45,
+          "failures": 3,
+          "logLines": 972
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "72a64faa-3efd-41fe-900d-8813d08e0ec5",
+          "hostId": "63011",
+          "records": 1802,
+          "turns": 4,
+          "tools": 101,
+          "failures": 12,
+          "logLines": 1892
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 7152,
+          "turns": 23,
+          "tools": 566,
+          "failures": 38,
+          "logLines": 7577
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 841,
+          "turns": 2,
+          "tools": 19,
+          "failures": 3,
+          "logLines": 888
+        },
+        {
+          "pluginVersion": "0.1.182",
+          "windowId": "a562585c-1740-46f0-9a81-5422305255e0",
+          "hostId": "18565",
+          "records": 2283,
+          "turns": 4,
+          "tools": 172,
+          "failures": 9,
+          "logLines": 2388
+        },
+        {
+          "pluginVersion": "0.1.184",
+          "windowId": "1054a813-e05b-4a73-b1ab-45b71618c5e4",
+          "hostId": "71559",
+          "records": 598,
+          "turns": 1,
+          "tools": 32,
+          "failures": 7,
+          "logLines": 634
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "hostId": "16319",
+          "records": 1109,
+          "turns": 5,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1279
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "hostId": "22238",
+          "records": 145,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 157
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "fc7251d9-8e8a-4728-8660-acf9fe5da27e",
+          "hostId": "52810",
+          "records": 493,
+          "turns": 1,
+          "tools": 18,
+          "failures": 3,
+          "logLines": 535
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 133,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 141
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1793092145931,
+      "requestedToMs": 1793178545931,
+      "includedLines": 74524,
+      "outsideRangeLines": 270590,
+      "unknownTimeLines": 17,
+      "fromMs": 1793092154040,
+      "toMs": 1793178545931
+    }
+  },
+  "after": {
+    "summary": {
+      "turns": 117,
+      "tools": 2765,
+      "failures": 215,
+      "longestTurnMs": 68055066,
+      "versions": [
+        "0.1.177",
+        "0.1.178",
+        "0.1.169",
+        "0.1.179",
+        "0.1.176",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186"
+      ]
+    },
+    "general": {
+      "errors": 1055,
+      "warnings": 86,
+      "retries": 83,
+      "recoveries": 4,
+      "compactionErrors": 0,
+      "groups": 135,
+      "overflow": 0,
+      "correlatedToolErrors": 230,
+      "correlatedErrors": 214,
+      "linkedRecoveries": 1,
+      "failureChains": 163,
+      "toolFailureChains": 219,
+      "recoveredFailureChains": 1,
+      "recoveryEvidence": [
+        {
+          "failureId": "42806ce6-6692-4de0-a176-a8d04ee198f6",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "failureLocation": "codex-chat-2026-10-28.log:59701",
+          "recoveryLocation": "codex-chat-2026-10-28.log:60175"
+        }
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 155076207,
+      "lines": 345131,
+      "records": 72165,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 26,
+      "sessions": 43,
+      "firstDay": "2026-10-22",
+      "lastDay": "2026-10-28",
+      "sources": [
+        {
+          "pluginVersion": "0.1.177",
+          "windowId": "f1cb3248-2f16-425e-8702-f57cdb3afc1e",
+          "hostId": "7859",
+          "records": 3711,
+          "turns": 3,
+          "tools": 125,
+          "failures": 3,
+          "logLines": 3763
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "21158c6e-09c5-4db3-b96a-680aab3ad563",
+          "hostId": "44753",
+          "records": 6253,
+          "turns": 8,
+          "tools": 71,
+          "failures": 3,
+          "logLines": 6392
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 4256,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 4258
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 3019,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3021
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 3028,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3032
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "e339e48f-bc47-4d31-8a5b-7b70af7f8885",
+          "hostId": "38816",
+          "records": 2322,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2324
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "9527aa62-bfc1-486c-8eef-e7019d439c13",
+          "hostId": "38815",
+          "records": 2262,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2266
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 3024,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3026
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 3335,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3337
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "f61a7691-911a-4ff0-8746-a9e230fecfb3",
+          "hostId": "38819",
+          "records": 2492,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2508
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 4422,
+          "turns": 4,
+          "tools": 124,
+          "failures": 6,
+          "logLines": 4496
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 4209,
+          "turns": 9,
+          "tools": 300,
+          "failures": 45,
+          "logLines": 4386
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "292bb5a9-6261-4a0b-9202-70ca59ba958e",
+          "hostId": "79137",
+          "records": 12369,
+          "turns": 38,
+          "tools": 1075,
+          "failures": 69,
+          "logLines": 13057
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "277b8fc3-9325-4b4b-b2cb-c2592e834935",
+          "hostId": "79977",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "9c5f5087-7078-4753-b9c9-204bc640ede6",
+          "hostId": "3130",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "b35e8b0d-eb31-4c80-b206-383bdffc4d33",
+          "hostId": "3265",
+          "records": 2047,
+          "turns": 7,
+          "tools": 117,
+          "failures": 14,
+          "logLines": 2185
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "2afcbce4-a23a-4dfd-95c5-b8bfeb8bd76a",
+          "hostId": "16088",
+          "records": 852,
+          "turns": 7,
+          "tools": 45,
+          "failures": 3,
+          "logLines": 972
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "72a64faa-3efd-41fe-900d-8813d08e0ec5",
+          "hostId": "63011",
+          "records": 1802,
+          "turns": 4,
+          "tools": 101,
+          "failures": 12,
+          "logLines": 1892
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 7152,
+          "turns": 23,
+          "tools": 566,
+          "failures": 38,
+          "logLines": 7577
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 841,
+          "turns": 2,
+          "tools": 19,
+          "failures": 3,
+          "logLines": 888
+        },
+        {
+          "pluginVersion": "0.1.182",
+          "windowId": "a562585c-1740-46f0-9a81-5422305255e0",
+          "hostId": "18565",
+          "records": 2283,
+          "turns": 4,
+          "tools": 172,
+          "failures": 9,
+          "logLines": 2388
+        },
+        {
+          "pluginVersion": "0.1.184",
+          "windowId": "1054a813-e05b-4a73-b1ab-45b71618c5e4",
+          "hostId": "71559",
+          "records": 598,
+          "turns": 1,
+          "tools": 32,
+          "failures": 7,
+          "logLines": 634
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "hostId": "16319",
+          "records": 1109,
+          "turns": 5,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1279
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "hostId": "22238",
+          "records": 145,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 157
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "fc7251d9-8e8a-4728-8660-acf9fe5da27e",
+          "hostId": "52810",
+          "records": 493,
+          "turns": 1,
+          "tools": 18,
+          "failures": 3,
+          "logLines": 535
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 133,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 141
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1793092145931,
+      "requestedToMs": 1793178545931,
+      "includedLines": 74524,
+      "outsideRangeLines": 270590,
+      "unknownTimeLines": 17,
+      "fromMs": 1793092154040,
+      "toMs": 1793178545931
+    }
+  },
+  "allRetained": {
+    "summary": {
+      "turns": 427,
+      "tools": 8545,
+      "failures": 628,
+      "longestTurnMs": 82448984,
+      "versions": [
+        "0.1.162",
+        "0.1.151",
+        "0.1.163",
+        "0.1.154",
+        "0.1.150",
+        "0.1.157",
+        "0.1.160",
+        "0.1.159",
+        "0.1.164",
+        "0.1.166",
+        "0.1.167",
+        "0.1.168",
+        "0.1.169",
+        "0.1.173",
+        "0.1.174",
+        "0.1.175",
+        "0.1.176",
+        "0.1.177",
+        "0.1.178",
+        "0.1.179",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186"
+      ]
+    },
+    "general": {
+      "errors": 2738,
+      "warnings": 116,
+      "retries": 98,
+      "recoveries": 73,
+      "compactionErrors": 6,
+      "groups": 160,
+      "overflow": 917,
+      "correlatedToolErrors": 684,
+      "correlatedErrors": 435,
+      "linkedRecoveries": 1,
+      "failureChains": 265,
+      "toolFailureChains": 647,
+      "recoveredFailureChains": 1,
+      "recoveryEvidence": [
+        {
+          "failureId": "42806ce6-6692-4de0-a176-a8d04ee198f6",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "failureLocation": "codex-chat-2026-10-28.log:59701",
+          "recoveryLocation": "codex-chat-2026-10-28.log:60175"
+        }
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 155076207,
+      "lines": 345131,
+      "records": 336690,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 85,
+      "sessions": 104,
+      "firstDay": "2026-10-22",
+      "lastDay": "2026-10-28",
+      "sources": [
+        {
+          "pluginVersion": "0.1.162",
+          "windowId": "ac8c492f-ac45-4ee7-90a4-1cff6755a302",
+          "hostId": "19632",
+          "records": 1688,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1688
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "8ff1babe-23bf-4321-b05e-47c9cf8670f0",
+          "hostId": "30870",
+          "records": 853,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 853
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "329220c1-bed5-4eb4-9102-90e3dab85ec3",
+          "hostId": "22862",
+          "records": 2198,
+          "turns": 1,
+          "tools": 61,
+          "failures": 3,
+          "logLines": 2227
+        },
+        {
+          "pluginVersion": "0.1.154",
+          "windowId": "22255ee5-6fd9-4c4f-9bad-72b8d9995ecb",
+          "hostId": "31190",
+          "records": 1042,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1042
+        },
+        {
+          "pluginVersion": "0.1.150",
+          "windowId": "87382bd9-2d34-4c0b-8036-d15f66b8fae5",
+          "hostId": "14045",
+          "records": 1368,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1368
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "18b802be-fc3e-4ca6-82e1-9af87c429f46",
+          "hostId": "27643",
+          "records": 1710,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1713
+        },
+        {
+          "pluginVersion": "0.1.157",
+          "windowId": "1e6abc60-f545-44f9-9a19-5eb6d237ce6e",
+          "hostId": "45524",
+          "records": 841,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 841
+        },
+        {
+          "pluginVersion": "0.1.160",
+          "windowId": "8ff80d61-38a2-48ff-9cc5-902db51611a9",
+          "hostId": "79748",
+          "records": 1485,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1485
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "024a84ac-ed2b-4425-8806-f6d95468fcb4",
+          "hostId": "29236",
+          "records": 5745,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5753
+        },
+        {
+          "pluginVersion": "0.1.159",
+          "windowId": "029f67ad-a8d3-4e0c-ac7a-8e1cf601c746",
+          "hostId": "70867",
+          "records": 1641,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1641
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "5856c6db-93be-43fc-8dae-cc26baeedfc5",
+          "hostId": "30626",
+          "records": 5747,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5755
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "1e9cec70-1338-49a0-b359-5695af54d7c8",
+          "hostId": "34549",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "8cc3a5d8-0686-404b-84c4-c4099071684f",
+          "hostId": "34657",
+          "records": 1814,
+          "turns": 11,
+          "tools": 57,
+          "failures": 8,
+          "logLines": 2022
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "95cbbd2f-c0ea-4865-b6cb-7556efb88587",
+          "hostId": "90997",
+          "records": 4907,
+          "turns": 12,
+          "tools": 375,
+          "failures": 30,
+          "logLines": 5125
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "19dd0ce3-4486-45a3-8f12-c64699a0c07f",
+          "hostId": "70789",
+          "records": 16,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 17
+        },
+        {
+          "pluginVersion": "0.1.163",
+          "windowId": "173e23da-f0a3-4834-af34-564d09be5cef",
+          "hostId": "74911",
+          "records": 196,
+          "turns": 1,
+          "tools": 4,
+          "failures": 0,
+          "logLines": 219
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "43399ec6-d81d-44da-ae71-98d02b1d631a",
+          "hostId": "89058",
+          "records": 1784,
+          "turns": 2,
+          "tools": 124,
+          "failures": 6,
+          "logLines": 1844
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "2cf4c0c1-e3cc-4c01-92f8-0a9c1a214a57",
+          "hostId": "89637",
+          "records": 1958,
+          "turns": 2,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1996
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "a17f0d28-a209-4d63-8eb7-8048cdaf4209",
+          "hostId": "32709",
+          "records": 2515,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2535
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "8a801074-60aa-434d-af1f-546863b0e8c2",
+          "hostId": "38089",
+          "records": 65,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 70
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "8f48427a-349f-4134-bde2-2491214f2b77",
+          "hostId": "38577",
+          "records": 1735,
+          "turns": 5,
+          "tools": 74,
+          "failures": 1,
+          "logLines": 1825
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "d91bc835-a111-4d5c-9a94-6453958ff282",
+          "hostId": "38702",
+          "records": 63,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 69
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "4d168e12-02f0-40c8-a3ff-8888b734a3f5",
+          "hostId": "41868",
+          "records": 2112,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2123
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "4ae3bf54-dbed-4e39-9fd5-0ae3b4d775f0",
+          "hostId": "45144",
+          "records": 1666,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1673
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "a41a044b-51c2-489a-aa85-0f115a8a3962",
+          "hostId": "46768",
+          "records": 4394,
+          "turns": 3,
+          "tools": 214,
+          "failures": 10,
+          "logLines": 4469
+        },
+        {
+          "pluginVersion": "0.1.164",
+          "windowId": "193c6d87-d6bd-46e8-894b-1b3d48996996",
+          "hostId": "48606",
+          "records": 2079,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 2086
+        },
+        {
+          "pluginVersion": "0.1.166",
+          "windowId": "83cda43f-230f-47d4-bb10-02ec28eab5b1",
+          "hostId": "80963",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.166",
+          "windowId": "8bf6a46e-f121-44c1-8250-1d6b1a694410",
+          "hostId": "81040",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.167",
+          "windowId": "afbe2e23-9526-47ec-8a0e-515e25183276",
+          "hostId": "95836",
+          "records": 213,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 239
+        },
+        {
+          "pluginVersion": "0.1.167",
+          "windowId": "f2942393-5020-4684-8ba8-efbd6fe1dbd2",
+          "hostId": "96335",
+          "records": 71,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 77
+        },
+        {
+          "pluginVersion": "0.1.168",
+          "windowId": "b7323398-b5ef-488f-b8a1-287fec70d299",
+          "hostId": "97858",
+          "records": 6072,
+          "turns": 7,
+          "tools": 345,
+          "failures": 23,
+          "logLines": 6198
+        },
+        {
+          "pluginVersion": "0.1.168",
+          "windowId": "f5fab670-a96f-41e7-a76b-a9f58c6cadb4",
+          "hostId": "98806",
+          "records": 3543,
+          "turns": 2,
+          "tools": 27,
+          "failures": 0,
+          "logLines": 3605
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6179e663-8ffe-4509-b2ec-012e5365a8b3",
+          "hostId": "9147",
+          "records": 9958,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 9969
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6238324b-8793-4082-905e-339ba408d85e",
+          "hostId": "12675",
+          "records": 9970,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 9981
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "4d03bbf0-30c6-4626-acac-59405ce04c4d",
+          "hostId": "63354",
+          "records": 16894,
+          "turns": 20,
+          "tools": 657,
+          "failures": 61,
+          "logLines": 17239
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "71f71993-9ab0-4f2d-a600-14e129d58e86",
+          "hostId": "77263",
+          "records": 13701,
+          "turns": 7,
+          "tools": 157,
+          "failures": 19,
+          "logLines": 13842
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "4a4255c7-9ca3-42f6-8a15-bef3771d851a",
+          "hostId": "91426",
+          "records": 23413,
+          "turns": 48,
+          "tools": 276,
+          "failures": 7,
+          "logLines": 24233
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "c416b1cf-a346-48a3-95a2-29785d88d048",
+          "hostId": "94817",
+          "records": 15382,
+          "turns": 10,
+          "tools": 100,
+          "failures": 11,
+          "logLines": 15580
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "d86b06ba-ce9e-4286-9877-fe97a19e50cc",
+          "hostId": "78121",
+          "records": 9359,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 9370
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "e3f67e40-dc28-4d48-ba62-d83d3c68d88c",
+          "hostId": "17963",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "07ca80f8-df5a-45ce-abc2-de820c3d971b",
+          "hostId": "18288",
+          "records": 20723,
+          "turns": 38,
+          "tools": 537,
+          "failures": 48,
+          "logLines": 21393
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "834d0217-ec1c-458d-976b-165b8c9aecab",
+          "hostId": "27589",
+          "records": 390,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 419
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "e339e48f-bc47-4d31-8a5b-7b70af7f8885",
+          "hostId": "38816",
+          "records": 6887,
+          "turns": 3,
+          "tools": 16,
+          "failures": 2,
+          "logLines": 6945
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "a0c94429-60c7-46b7-b7e9-668a4fe8c260",
+          "hostId": "38813",
+          "records": 761,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 766
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 7715,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 7729
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 6989,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6999
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "9527aa62-bfc1-486c-8eef-e7019d439c13",
+          "hostId": "38815",
+          "records": 6214,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6226
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "27f8b17c-b6e5-41dc-bbb9-9efe3afb57e0",
+          "hostId": "38821",
+          "records": 3774,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3782
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "f61a7691-911a-4ff0-8746-a9e230fecfb3",
+          "hostId": "38819",
+          "records": 6457,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6481
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 21340,
+          "turns": 47,
+          "tools": 801,
+          "failures": 49,
+          "logLines": 22154
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "60d74230-ce13-4a53-97bd-76022345b0dc",
+          "hostId": "38823",
+          "records": 14726,
+          "turns": 31,
+          "tools": 752,
+          "failures": 52,
+          "logLines": 15295
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "ea3deb43-b0d6-4c36-8b79-f453f3440eb2",
+          "hostId": "38820",
+          "records": 1214,
+          "turns": 1,
+          "tools": 32,
+          "failures": 3,
+          "logLines": 1253
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "b6caf540-f12b-487c-b0ad-1e051c87166c",
+          "hostId": "95146",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "b5c3d48c-404b-4097-b632-fce231530973",
+          "hostId": "95240",
+          "records": 5262,
+          "turns": 9,
+          "tools": 464,
+          "failures": 28,
+          "logLines": 5416
+        },
+        {
+          "pluginVersion": "0.1.173",
+          "windowId": "2e4cd111-b3e3-4f21-b8ae-3a07c8152e7f",
+          "hostId": "28954",
+          "records": 6802,
+          "turns": 11,
+          "tools": 88,
+          "failures": 7,
+          "logLines": 6997
+        },
+        {
+          "pluginVersion": "0.1.173",
+          "windowId": "1edeeedf-c501-4311-b3b2-50dedff1e578",
+          "hostId": "42199",
+          "records": 377,
+          "turns": 2,
+          "tools": 16,
+          "failures": 1,
+          "logLines": 422
+        },
+        {
+          "pluginVersion": "0.1.174",
+          "windowId": "8b434713-053a-4b4e-af86-8158cbc5f09e",
+          "hostId": "57384",
+          "records": 3807,
+          "turns": 4,
+          "tools": 67,
+          "failures": 12,
+          "logLines": 3891
+        },
+        {
+          "pluginVersion": "0.1.174",
+          "windowId": "e20a1977-fa9c-438c-9f92-99be267b3279",
+          "hostId": "81135",
+          "records": 1416,
+          "turns": 1,
+          "tools": 9,
+          "failures": 1,
+          "logLines": 1436
+        },
+        {
+          "pluginVersion": "0.1.175",
+          "windowId": "46581e5f-84e5-4569-a343-8506306cb338",
+          "hostId": "49962",
+          "records": 513,
+          "turns": 1,
+          "tools": 31,
+          "failures": 1,
+          "logLines": 543
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "1c810f91-3ef3-410f-a461-d9cda34b2ad9",
+          "hostId": "73287",
+          "records": 1202,
+          "turns": 2,
+          "tools": 101,
+          "failures": 4,
+          "logLines": 1247
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 6154,
+          "turns": 12,
+          "tools": 202,
+          "failures": 9,
+          "logLines": 6373
+        },
+        {
+          "pluginVersion": "0.1.177",
+          "windowId": "f1cb3248-2f16-425e-8702-f57cdb3afc1e",
+          "hostId": "7859",
+          "records": 5895,
+          "turns": 14,
+          "tools": 261,
+          "failures": 9,
+          "logLines": 6152
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "21158c6e-09c5-4db3-b96a-680aab3ad563",
+          "hostId": "44753",
+          "records": 7622,
+          "turns": 15,
+          "tools": 115,
+          "failures": 9,
+          "logLines": 7911
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 3894,
+          "turns": 1,
+          "tools": 65,
+          "failures": 2,
+          "logLines": 3920
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "5f33dc17-5107-46f1-bf90-2ff90c94aa84",
+          "hostId": "54288",
+          "records": 3,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 4
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "a4af1764-8eea-4f09-90d4-a5d550953a8c",
+          "hostId": "72400",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "89a949e4-d38b-47bd-9e54-de16c0af92c2",
+          "hostId": "72401",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "5a570554-36e3-4b18-9fe9-e2defd9df915",
+          "hostId": "72573",
+          "records": 69,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 74
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "9aa5f0e7-a095-4f33-be58-4761c5b48eab",
+          "hostId": "73151",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 3216,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3224
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 4221,
+          "turns": 9,
+          "tools": 300,
+          "failures": 45,
+          "logLines": 4398
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "292bb5a9-6261-4a0b-9202-70ca59ba958e",
+          "hostId": "79137",
+          "records": 12369,
+          "turns": 38,
+          "tools": 1075,
+          "failures": 69,
+          "logLines": 13057
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "277b8fc3-9325-4b4b-b2cb-c2592e834935",
+          "hostId": "79977",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "9c5f5087-7078-4753-b9c9-204bc640ede6",
+          "hostId": "3130",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "b35e8b0d-eb31-4c80-b206-383bdffc4d33",
+          "hostId": "3265",
+          "records": 2047,
+          "turns": 7,
+          "tools": 117,
+          "failures": 14,
+          "logLines": 2185
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "2afcbce4-a23a-4dfd-95c5-b8bfeb8bd76a",
+          "hostId": "16088",
+          "records": 852,
+          "turns": 7,
+          "tools": 45,
+          "failures": 3,
+          "logLines": 972
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "72a64faa-3efd-41fe-900d-8813d08e0ec5",
+          "hostId": "63011",
+          "records": 1802,
+          "turns": 4,
+          "tools": 101,
+          "failures": 12,
+          "logLines": 1892
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 7478,
+          "turns": 24,
+          "tools": 588,
+          "failures": 41,
+          "logLines": 7921
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 849,
+          "turns": 2,
+          "tools": 19,
+          "failures": 3,
+          "logLines": 896
+        },
+        {
+          "pluginVersion": "0.1.182",
+          "windowId": "a562585c-1740-46f0-9a81-5422305255e0",
+          "hostId": "18565",
+          "records": 2283,
+          "turns": 4,
+          "tools": 172,
+          "failures": 9,
+          "logLines": 2388
+        },
+        {
+          "pluginVersion": "0.1.184",
+          "windowId": "1054a813-e05b-4a73-b1ab-45b71618c5e4",
+          "hostId": "71559",
+          "records": 598,
+          "turns": 1,
+          "tools": 32,
+          "failures": 7,
+          "logLines": 634
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "hostId": "16319",
+          "records": 1109,
+          "turns": 5,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1279
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "hostId": "22238",
+          "records": 153,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 165
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "fc7251d9-8e8a-4728-8660-acf9fe5da27e",
+          "hostId": "52810",
+          "records": 493,
+          "turns": 1,
+          "tools": 18,
+          "failures": 3,
+          "logLines": 535
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 776,
+          "turns": 0,
+          "tools": 50,
+          "failures": 6,
+          "logLines": 802
+        }
+      ],
+      "scanErrors": [],
+      "requestedToMs": 1793179727428,
+      "includedLines": 345131,
+      "outsideRangeLines": 0,
+      "unknownTimeLines": 0,
+      "fromMs": 1792598401249,
+      "toMs": 1793179724979
+    }
+  },
+  "handshake": {
+    "before": {
+      "upstreamDelayMs": 80,
+      "prematureOpen": 1,
+      "clientFrames": 1,
+      "httpStatus": null,
+      "elapsedMs": 91.21,
+      "upstreamAttempts": 1
+    },
+    "after": {
+      "upstreamDelayMs": 80,
+      "prematureOpen": 0,
+      "clientFrames": 0,
+      "httpStatus": 403,
+      "elapsedMs": 85.4,
+      "upstreamAttempts": 1
+    }
+  },
+  "sourceAudit": {
+    "schema": 1,
+    "version": "0.1.187",
+    "sourceHash": "73235527b5aaa2c8c97c6a51994a65537783fd43db77cdffdd70382954f6dfe7",
+    "files": [
+      {
+        "file": "src/checkpoints.ts",
+        "sha256": "88a90aa342572e714d298980a790bedb00e239456d7e686ed1ebdc57f93431cc",
+        "functions": 69,
+        "operations": 1,
+        "catches": 12,
+        "logSites": 11,
+        "candidates": [
+          {
+            "line": 356,
+            "symbol": "restore",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 372,
+            "symbol": "restore",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 395,
+            "symbol": "restore",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/childThreads.ts",
+        "sha256": "4dd8502fbf12e09694ae48b7aea003ca7f1e3a2b0ddb7d559171b11dd4d4b9c4",
+        "functions": 13,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/codex/compactionInput.ts",
+        "sha256": "f9a38d87434f72b555d62f9664a3155f07a447fc0d28b13f9e4d88e7a404f2bd",
+        "functions": 35,
+        "operations": 4,
+        "catches": 5,
+        "logSites": 4,
+        "candidates": [
+          {
+            "line": 22,
+            "symbol": "save",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 29,
+            "symbol": "save",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 30,
+            "symbol": "save",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 32,
+            "symbol": "reduce",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 43,
+            "symbol": "save",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 53,
+            "symbol": "optimizeCompactionInput",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 64,
+            "symbol": "optimizeCompactionInput",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 66,
+            "symbol": "cancelled",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/compactionPolicy.ts",
+        "sha256": "ad8d9bd005ea6ac144a4d5fb0b1edd69476a7c2ab30b0d565cf759f26b0dfb11",
+        "functions": 26,
+        "operations": 0,
+        "catches": 4,
+        "logSites": 7,
+        "candidates": []
+      },
+      {
+        "file": "src/codex/compactionRelay.ts",
+        "sha256": "1f29add717b5df800f612964927cf90fdacd4e1cc37c8edd69e1c1459f1a7d90",
+        "functions": 58,
+        "operations": 6,
+        "catches": 13,
+        "logSites": 20,
+        "candidates": [
+          {
+            "line": 57,
+            "symbol": "routeCompaction",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 114,
+            "symbol": "CompactionRelay",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 119,
+            "symbol": "start",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 124,
+            "symbol": "start",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 130,
+            "symbol": "start",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 134,
+            "symbol": "start",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 146,
+            "symbol": "target",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 215,
+            "symbol": "upgrade",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 216,
+            "symbol": "upgrade",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 217,
+            "symbol": "upgrade",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 218,
+            "symbol": "upgrade",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 222,
+            "symbol": "upgrade",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 241,
+            "symbol": "upgrade",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 266,
+            "symbol": "websocket",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 290,
+            "symbol": "finally",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 269,
+            "symbol": "catch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 277,
+            "symbol": "catch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 285,
+            "symbol": "catch",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 287,
+            "symbol": "catch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 288,
+            "symbol": "catch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 295,
+            "symbol": "websocket",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 295,
+            "symbol": "websocket",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 309,
+            "symbol": "websocket",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 313,
+            "symbol": "websocket",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 319,
+            "symbol": "websocket",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 320,
+            "symbol": "websocket",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 331,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 332,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 356,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 365,
+            "symbol": "upstream",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 366,
+            "symbol": "upstream",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 369,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 370,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 375,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 376,
+            "symbol": "http",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/compactionValidation.ts",
+        "sha256": "9bc6c76fa66bb4bdc0c8b78cef22904086f5b740fd878faac2fc7111e8933dd6",
+        "functions": 20,
+        "operations": 4,
+        "catches": 1,
+        "logSites": 1,
+        "candidates": [
+          {
+            "line": 62,
+            "symbol": "validateCompactionModel",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 83,
+            "symbol": "validateCompactionModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 84,
+            "symbol": "validateCompactionModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 85,
+            "symbol": "validateCompactionModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 86,
+            "symbol": "validateCompactionModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 87,
+            "symbol": "phase",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 110,
+            "symbol": "compacted",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 113,
+            "symbol": "answer",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 115,
+            "symbol": "validateCompactionModel",
+            "kind": "error-propagated"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/events.ts",
+        "sha256": "a709dbb91f112587586aa5cc96c957542ce6557b68de54c9901cf471faddb2d6",
+        "functions": 38,
+        "operations": 0,
+        "catches": 3,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 30,
+            "symbol": "parseQuestionReply",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 60,
+            "symbol": "maskQuestionReply",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 82,
+            "symbol": "toolView",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/executionPolicy.ts",
+        "sha256": "f4c1b107486c663b5a487b68e6109f9909b27a4c7b6e78b32bd3cad0e6266710",
+        "functions": 3,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/codex/performanceTrace.ts",
+        "sha256": "69c23be10de19332f9803a5e4d71bd9adb8a3fa45ed624d38dd010f4ab8fb530",
+        "functions": 39,
+        "operations": 0,
+        "catches": 1,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 102,
+            "symbol": "write",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/process.ts",
+        "sha256": "8c0e5989fe6a2ceef856191ed424e01caf3b998e6ba25f41e69bf41b9e9b96e9",
+        "functions": 129,
+        "operations": 23,
+        "catches": 24,
+        "logSites": 15,
+        "candidates": [
+          {
+            "line": 156,
+            "symbol": "CodexProcess",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 166,
+            "symbol": "CodexProcess",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 166,
+            "symbol": "CodexProcess",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 167,
+            "symbol": "CodexProcess",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 167,
+            "symbol": "CodexProcess",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 167,
+            "symbol": "CodexProcess",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 168,
+            "symbol": "CodexProcess",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 200,
+            "symbol": "preTool",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 203,
+            "symbol": "preTool",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 218,
+            "symbol": "timedRequest",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 244,
+            "symbol": "finally",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 258,
+            "symbol": "prepare",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 278,
+            "symbol": "startSession",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 297,
+            "symbol": "startSession",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 306,
+            "symbol": "prefetchCompactionSettings",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 428,
+            "symbol": "restoreQuestion",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 460,
+            "symbol": "dispatch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 480,
+            "symbol": "finally",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 496,
+            "symbol": "dispatch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 498,
+            "symbol": "dispatch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 527,
+            "symbol": "compact",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 598,
+            "symbol": "stopInvalidQuestion",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 619,
+            "symbol": "checking",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 637,
+            "symbol": "checking",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 663,
+            "symbol": "routeChildNotification",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 679,
+            "symbol": "discoverChildren",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 695,
+            "symbol": "stopping",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 703,
+            "symbol": "stopping",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 810,
+            "symbol": "notification",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 906,
+            "symbol": "notification",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 935,
+            "symbol": "request",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 937,
+            "symbol": "request",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 938,
+            "symbol": "request",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 960,
+            "symbol": "request",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 965,
+            "symbol": "childRequest",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 975,
+            "symbol": "childRequest",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 980,
+            "symbol": "childRequest",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 990,
+            "symbol": "childRequest",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1026,
+            "symbol": "pauseForQuestion",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1042,
+            "symbol": "pauseForQuestion",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1052,
+            "symbol": "respondPermission",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1106,
+            "symbol": "interrupt",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1126,
+            "symbol": "stop",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1129,
+            "symbol": "stop",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1206,
+            "symbol": "disposeAndWait",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/rpc.ts",
+        "sha256": "3a79c0fe7032b126fc2c1ae2cf7863673bb64c3290c52b9ca4d182d29ff1ccde",
+        "functions": 39,
+        "operations": 2,
+        "catches": 12,
+        "logSites": 20,
+        "candidates": [
+          {
+            "line": 67,
+            "symbol": "start",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 87,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 88,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 89,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 90,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 105,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 112,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 130,
+            "symbol": "receiveLine",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 146,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 161,
+            "symbol": "initialize",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 188,
+            "symbol": "request",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 211,
+            "symbol": "write",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 217,
+            "symbol": "write",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 248,
+            "symbol": "disposeAndWait",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 251,
+            "symbol": "disposeAndWait",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 267,
+            "symbol": "codexSpawnEnvironment",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 277,
+            "symbol": "resolveCodex",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 285,
+            "symbol": "resolveCodex",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/session.ts",
+        "sha256": "03fe872374e2426bf76db311996cb29d36eb4ffbba3e65dfdb81f1a7c9792b3c",
+        "functions": 76,
+        "operations": 15,
+        "catches": 8,
+        "logSites": 8,
+        "candidates": [
+          {
+            "line": 63,
+            "symbol": "connection",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 63,
+            "symbol": "connection",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 64,
+            "symbol": "connection",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 71,
+            "symbol": "connection",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 72,
+            "symbol": "connection",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 99,
+            "symbol": "readMetadata",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 110,
+            "symbol": "readModelCatalog",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 169,
+            "symbol": "refreshInner",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 173,
+            "symbol": "results",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 222,
+            "symbol": "hydrateWith",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 227,
+            "symbol": "hydrateWith",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 232,
+            "symbol": "readTurnCount",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 235,
+            "symbol": "readTurnCount",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 237,
+            "symbol": "readTurnCount",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 244,
+            "symbol": "readTurnCountWith",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 261,
+            "symbol": "hydrateThread",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 271,
+            "symbol": "hydrateThread",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 355,
+            "symbol": "setCustomTitle",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 359,
+            "symbol": "archive",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 365,
+            "symbol": "delete",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 401,
+            "symbol": "prepareFork",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 405,
+            "symbol": "fork",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 421,
+            "symbol": "fork",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 421,
+            "symbol": "fork",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 422,
+            "symbol": "fork",
+            "kind": "branch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/codex/telemetry.ts",
+        "sha256": "b83ccffea977f943ea96fd697c083929ee2de0afb31c8341da2dce4ea1dcfa75",
+        "functions": 26,
+        "operations": 1,
+        "catches": 3,
+        "logSites": 4,
+        "candidates": [
+          {
+            "line": 106,
+            "symbol": "transportDiagnostics",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 142,
+            "symbol": "LocalTelemetry",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 166,
+            "symbol": "start",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 171,
+            "symbol": "start",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnosticHealth.ts",
+        "sha256": "166adcc4147ecccdd1a685d7575ab16ff3272375adc3a90c5cf6b45ed433bb0a",
+        "functions": 4,
+        "operations": 0,
+        "catches": 1,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 14,
+            "symbol": "failed",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnostics/analysis.ts",
+        "sha256": "0b9f5537e32ac0d85838e01c5a1b357f8005c881fdc2a8f6cd1e65eee52d2197",
+        "functions": 12,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/configuration.ts",
+        "sha256": "e721c3e1d98bdbd4ba21c3797c9c2b7901fdcecfabd704985f1c253db3402558",
+        "functions": 3,
+        "operations": 1,
+        "catches": 2,
+        "logSites": 3,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/evidence.ts",
+        "sha256": "6c1e5869251095831058f9e0a8d4c38963017b12bceb2dda5c082af9e6b376f5",
+        "functions": 2,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/general.ts",
+        "sha256": "42ef230f4b239f15c29d39bf86f035441f84209c5f42d302e68b4f0cd11ded0c",
+        "functions": 17,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/jobs.ts",
+        "sha256": "73a4654d8e7bdf232fa2756045157f469e97ac8a26d1124b0962444270802743",
+        "functions": 70,
+        "operations": 14,
+        "catches": 28,
+        "logSites": 24,
+        "candidates": [
+          {
+            "line": 25,
+            "symbol": "alive",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 40,
+            "symbol": "workerRunner",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 44,
+            "symbol": "workerRunner",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 53,
+            "symbol": "workerRunner",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 69,
+            "symbol": "get",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 84,
+            "symbol": "update",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 86,
+            "symbol": "then",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 86,
+            "symbol": "next",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 90,
+            "symbol": "next",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 102,
+            "symbol": "list",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 113,
+            "symbol": "batch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 120,
+            "symbol": "batch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 126,
+            "symbol": "batch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 140,
+            "symbol": "report",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 144,
+            "symbol": "finally",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 146,
+            "symbol": "finally",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 156,
+            "symbol": "finally",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 175,
+            "symbol": "catch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 201,
+            "symbol": "execute",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 212,
+            "symbol": "retryNotification",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 222,
+            "symbol": "lock",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 226,
+            "symbol": "lock",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 230,
+            "symbol": "lock",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 235,
+            "symbol": "lock",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 237,
+            "symbol": "repair",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 246,
+            "symbol": "repair",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 250,
+            "symbol": "repair",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 255,
+            "symbol": "repair",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 262,
+            "symbol": "repair",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 263,
+            "symbol": "repair",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 267,
+            "symbol": "dispose",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 269,
+            "symbol": "dispose",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnostics/loggingAudit.ts",
+        "sha256": "4cd1e461e74ab2611c4cc681ae4d0ab63f4cf890b2b77703884e3e72b119a5f2",
+        "functions": 6,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/loggingAuditData.ts",
+        "sha256": "bcdd27a791bf5637911c0558038e5a7a8bc233f78940c8500b6a40973696f673",
+        "functions": 0,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/model.ts",
+        "sha256": "1d565087fe3550267a8fc053f47322aa3be72da018ada1f8fdc4577d0e4b4b7c",
+        "functions": 32,
+        "operations": 3,
+        "catches": 7,
+        "logSites": 6,
+        "candidates": [
+          {
+            "line": 41,
+            "symbol": "analyzeWithModel",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 52,
+            "symbol": "serverRequest",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 79,
+            "symbol": "analyzeWithModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 79,
+            "symbol": "analyzeWithModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 79,
+            "symbol": "analyzeWithModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 79,
+            "symbol": "analyzeWithModel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 84,
+            "symbol": "configured",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 92,
+            "symbol": "session",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 100,
+            "symbol": "analyzeWithModel",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 126,
+            "symbol": "analyzeWithModel",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 126,
+            "symbol": "analyzeWithModel",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnostics/notification.ts",
+        "sha256": "9d660a71ba326b0f7eb8181213f5a8d00e2643be3ad67f052d24d5711e0fe127",
+        "functions": 1,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/options.ts",
+        "sha256": "b9e56e72c9ecc723168377547b9ae9684166c9d525a0ed0ceb6b226781cd66db",
+        "functions": 2,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/page.ts",
+        "sha256": "03385d0f58c10a388bf5cf6b752e2ba363297e0e8df017f221fd1f93e8564878",
+        "functions": 18,
+        "operations": 3,
+        "catches": 4,
+        "logSites": 5,
+        "candidates": [
+          {
+            "line": 26,
+            "symbol": "DiagnosticsPage",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 39,
+            "symbol": "show",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 40,
+            "symbol": "show",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 40,
+            "symbol": "show",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 42,
+            "symbol": "show",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 45,
+            "symbol": "begin",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 55,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 59,
+            "symbol": "message",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 62,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 63,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 64,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 65,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 67,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 73,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 75,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 80,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 84,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 85,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 86,
+            "symbol": "message",
+            "kind": "branch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnostics/redact.ts",
+        "sha256": "3e7210b08d8c75c0f1474ff493daf65137447b43e479434c68a4ae8d9ebfde77",
+        "functions": 1,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/diagnostics/scan.ts",
+        "sha256": "f31503c9d6ca5d5aa419caa2059cea50b20aa125728d44b8f6e56a8ea4c314b3",
+        "functions": 22,
+        "operations": 2,
+        "catches": 4,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 61,
+            "symbol": "scanPluginLogs",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 64,
+            "symbol": "filter",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 73,
+            "symbol": "snapshots",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 75,
+            "symbol": "snapshots",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 94,
+            "symbol": "consume",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 156,
+            "symbol": "scanPluginLogs",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnostics/wait.ts",
+        "sha256": "512c15706e732bbe1956d242bcaf460d8d2983c877bcb62e72ecf898fa201552",
+        "functions": 8,
+        "operations": 0,
+        "catches": 1,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 13,
+            "symbol": "diagnosticWait",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 17,
+            "symbol": "diagnosticWait",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnostics/worker.ts",
+        "sha256": "7c88c0288166d0e7725fceb1c93838a2e590483e0ad5a710c7d96146d631ea68",
+        "functions": 2,
+        "operations": 2,
+        "catches": 1,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 5,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 7,
+            "symbol": "result",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 10,
+            "symbol": "匿名回调",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diagnosticsReport.ts",
+        "sha256": "0a8ff659f94896e3f0222342e893e2e59b54e75068b494bedf2ff173e3cb76b3",
+        "functions": 40,
+        "operations": 2,
+        "catches": 2,
+        "logSites": 1,
+        "candidates": [
+          {
+            "line": 107,
+            "symbol": "readPerformanceData",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 126,
+            "symbol": "readPerformanceData",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 133,
+            "symbol": "readPerformanceReport",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/diff.ts",
+        "sha256": "75b058ef925a414d409120b61805c3e5f3f2801b545bef44e4cdfc9e523bf236",
+        "functions": 3,
+        "operations": 1,
+        "catches": 2,
+        "logSites": 1,
+        "candidates": [
+          {
+            "line": 32,
+            "symbol": "readDiffFile",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/extension.ts",
+        "sha256": "2a624ea4efe5a5618681625a7895961a63911ac5103aa10124fcdd94da7cb4f1",
+        "functions": 67,
+        "operations": 8,
+        "catches": 3,
+        "logSites": 12,
+        "candidates": [
+          {
+            "line": 86,
+            "symbol": "diagnosticsPage",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 86,
+            "symbol": "diagnosticsPage",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 92,
+            "symbol": "save",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 117,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 118,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 119,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 126,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 127,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 145,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 146,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 147,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 148,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 149,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 150,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 151,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 154,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 157,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 158,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 159,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 160,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 161,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 169,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 171,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 174,
+            "symbol": "activate",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 194,
+            "symbol": "deactivate",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/fileRef.ts",
+        "sha256": "b21693031f3b73016ead3638df826c4c566c0805fb56154a62e11b5dc4516cea",
+        "functions": 1,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/imageFile.ts",
+        "sha256": "ff8d5498492e22d372b144618c24b191aefc683ef5a1211ce7332de0fefa2824",
+        "functions": 1,
+        "operations": 1,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 5,
+            "symbol": "readImageFile",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/logging.ts",
+        "sha256": "43e15701f3224b82d770dacf29982ce25d17169e11cf751694d41011a048537a",
+        "functions": 28,
+        "operations": 8,
+        "catches": 8,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 12,
+            "symbol": "pruneLogs",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 21,
+            "symbol": "pruneLogs",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 23,
+            "symbol": "pruneLogs",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 33,
+            "symbol": "flushLogWriters",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 36,
+            "symbol": "flushLogWriters",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 38,
+            "symbol": "flushLogWriters",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 85,
+            "symbol": "health",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 89,
+            "symbol": "prune",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 91,
+            "symbol": "prune",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 97,
+            "symbol": "prune",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 113,
+            "symbol": "write",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 113,
+            "symbol": "write",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 117,
+            "symbol": "flush",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 119,
+            "symbol": "flush",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 122,
+            "symbol": "flush",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 129,
+            "symbol": "flush",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 137,
+            "symbol": "flush",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 141,
+            "symbol": "flush",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 144,
+            "symbol": "flush",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 145,
+            "symbol": "flush",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 162,
+            "symbol": "dispose",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/notificationRouter.ts",
+        "sha256": "2bcddbbee76c40e1bb04338433325b75bf1ae19fa25e85ef4201f3387f947e3a",
+        "functions": 15,
+        "operations": 2,
+        "catches": 2,
+        "logSites": 4,
+        "candidates": [
+          {
+            "line": 44,
+            "symbol": "server",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 35,
+            "symbol": "running",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 59,
+            "symbol": "endpoint",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 71,
+            "symbol": "endpoint",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 63,
+            "symbol": "catch",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/notifications.ts",
+        "sha256": "1505898abb868725fc34f9697889e2e6d7071bccf3e2f31f6d3c625055788d99",
+        "functions": 31,
+        "operations": 8,
+        "catches": 3,
+        "logSites": 2,
+        "candidates": [
+          {
+            "line": 15,
+            "symbol": "queueSessionNotification",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 18,
+            "symbol": "then",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 91,
+            "symbol": "focusNotificationWindow",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 97,
+            "symbol": "subscription",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 119,
+            "symbol": "sendLocalNotification",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 124,
+            "symbol": "clearLocalNotification",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 131,
+            "symbol": "clearPreviousLocalNotifications",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 151,
+            "symbol": "clearPreviousLocalNotifications",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 158,
+            "symbol": "clearPreviousLocalNotifications",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 167,
+            "symbol": "requestLocalNotificationInner",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 180,
+            "symbol": "requestLocalNotificationInner",
+            "kind": "error-propagated"
+          }
+        ]
+      },
+      {
+        "file": "src/operations.ts",
+        "sha256": "e2357ec56a69e6c3cf1df0cb9f31ff676f734c4f6700e0545ccff4d12894cb7a",
+        "functions": 9,
+        "operations": 1,
+        "catches": 2,
+        "logSites": 4,
+        "candidates": [
+          {
+            "line": 43,
+            "symbol": "operationLog",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/panel/chatViewProvider.ts",
+        "sha256": "0f0f1851555a6bc0165b5259423facf1048cc34e6027817c610de57b1f7895d5",
+        "functions": 434,
+        "operations": 85,
+        "catches": 100,
+        "logSites": 171,
+        "candidates": [
+          {
+            "line": 114,
+            "symbol": "add",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 277,
+            "symbol": "write",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 288,
+            "symbol": "markPrivate",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 291,
+            "symbol": "markPrivate",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 303,
+            "symbol": "reloadSession",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 304,
+            "symbol": "reloadSession",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 345,
+            "symbol": "ChatViewProvider",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 363,
+            "symbol": "ChatViewProvider",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 366,
+            "symbol": "ChatViewProvider",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 369,
+            "symbol": "ChatViewProvider",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 373,
+            "symbol": "ChatViewProvider",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 580,
+            "symbol": "resolveWebviewView",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 589,
+            "symbol": "resolveWebviewView",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 591,
+            "symbol": "resolveWebviewView",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 617,
+            "symbol": "catch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 622,
+            "symbol": "catch",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 679,
+            "symbol": "openSession",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 681,
+            "symbol": "openSession",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 689,
+            "symbol": "openSession",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 716,
+            "symbol": "reopenDetached",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 737,
+            "symbol": "adoptPanel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 743,
+            "symbol": "adoptPanel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 749,
+            "symbol": "adoptPanel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 829,
+            "symbol": "revivePanel",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 909,
+            "symbol": "login",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 912,
+            "symbol": "login",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 927,
+            "symbol": "newSession",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 930,
+            "symbol": "diagnosticModels",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 933,
+            "symbol": "createDiagnosticRepairSession",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 953,
+            "symbol": "start",
+            "kind": "handler-delegated"
+          },
+          {
+            "line": 947,
+            "symbol": "then",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 960,
+            "symbol": "openInEditor",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 969,
+            "symbol": "stop",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1042,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1048,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1051,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1054,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1057,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1060,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1063,
+            "symbol": "onSidebarMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1099,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1119,
+            "symbol": "onPanelMessage",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1124,
+            "symbol": "onPanelMessage",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1152,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1158,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1163,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1166,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1169,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1172,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1200,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1203,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1206,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1209,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1212,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1217,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1218,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1228,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1231,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1237,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1252,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1263,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1272,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1276,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1289,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1295,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1306,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1311,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1314,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1320,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1332,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1335,
+            "symbol": "onPanelMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1459,
+            "symbol": "newContext",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1513,
+            "symbol": "excludeSnapshotPaths",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1527,
+            "symbol": "queueSnapshotExclusionUpdate",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1534,
+            "symbol": "resetLocalSnapshotExcludes",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1535,
+            "symbol": "resetLocalSnapshotExcludes",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1539,
+            "symbol": "handleSend",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1573,
+            "symbol": "record",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1577,
+            "symbol": "stage",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 1582,
+            "symbol": "syncStage",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 1608,
+            "symbol": "handleSendInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1618,
+            "symbol": "handleSendInner",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1660,
+            "symbol": "handleSendInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1661,
+            "symbol": "handleSendInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1683,
+            "symbol": "handleSendInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1744,
+            "symbol": "editMessage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1756,
+            "symbol": "editMessage",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 1779,
+            "symbol": "editMessageRewindPrepared",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1830,
+            "symbol": "saveImage",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1881,
+            "symbol": "queueSessionSettings",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1884,
+            "symbol": "waitSessionSettings",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1905,
+            "symbol": "setPermissionMode",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1936,
+            "symbol": "setPermissionMode",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1954,
+            "symbol": "saveSessionModel",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1956,
+            "symbol": "saveSessionModel",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1976,
+            "symbol": "setModel",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1980,
+            "symbol": "setModel",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1986,
+            "symbol": "setModel",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2003,
+            "symbol": "saveSessionSpeed",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2005,
+            "symbol": "saveSessionSpeed",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2061,
+            "symbol": "saveSessionEffort",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2063,
+            "symbol": "saveSessionEffort",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2151,
+            "symbol": "autosaveBefore",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2193,
+            "symbol": "catch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2209,
+            "symbol": "getChangedFiles",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2262,
+            "symbol": "forkCheckpointInner",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2339,
+            "symbol": "forkCheckpointPrepared",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2482,
+            "symbol": "forkRewind",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2493,
+            "symbol": "forkRewind",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2499,
+            "symbol": "forkRewind",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2525,
+            "symbol": "forkRewind",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2542,
+            "symbol": "forkRewind",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2544,
+            "symbol": "forkRewind",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2555,
+            "symbol": "submitQuestionAnswer",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2564,
+            "symbol": "submitQuestionAnswer",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2565,
+            "symbol": "submitQuestionAnswer",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2583,
+            "symbol": "submitQuestionAnswer",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2598,
+            "symbol": "submitQuestionAnswer",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 2610,
+            "symbol": "restoreCheckpoint",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2872,
+            "symbol": "compactSession",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2882,
+            "symbol": "compactSessionPrepared",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2929,
+            "symbol": "setPinned",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2968,
+            "symbol": "messageSub",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2995,
+            "symbol": "messageSub",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3000,
+            "symbol": "messageSub",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3008,
+            "symbol": "messageSub",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 3013,
+            "symbol": "messageSub",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3035,
+            "symbol": "cfgSub",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 3040,
+            "symbol": "reviveNotifyPanel",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 3248,
+            "symbol": "captureFinalSnapshot",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3255,
+            "symbol": "captureFinalSnapshot",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3278,
+            "symbol": "handleEmit",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3343,
+            "symbol": "handleEmitInner",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 3551,
+            "symbol": "sendLocalNotice",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3559,
+            "symbol": "sendLocalNotice",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3577,
+            "symbol": "pending",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 3631,
+            "symbol": "handleNotificationUri",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3632,
+            "symbol": "handleNotificationUri",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3670,
+            "symbol": "sendWebhook",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3779,
+            "symbol": "deliver",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3796,
+            "symbol": "maybeNotifyUsage",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3840,
+            "symbol": "onSessionId",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3954,
+            "symbol": "renameSession",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3986,
+            "symbol": "checkForUpdate",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3988,
+            "symbol": "checkForUpdate",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3991,
+            "symbol": "checkForUpdate",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4005,
+            "symbol": "checkForUpdate",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4020,
+            "symbol": "checkForUpdate",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4022,
+            "symbol": "fetchRepoFile",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4039,
+            "symbol": "req",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4040,
+            "symbol": "req",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4054,
+            "symbol": "req",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4055,
+            "symbol": "req",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4057,
+            "symbol": "httpGetText",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4064,
+            "symbol": "resolveWorkspaceFile",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 4151,
+            "symbol": "fileRefResolves",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4215,
+            "symbol": "openFile",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4220,
+            "symbol": "openFile",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4226,
+            "symbol": "openFile",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4248,
+            "symbol": "openSymbol",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4271,
+            "symbol": "lspHit",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4313,
+            "symbol": "openSymbolInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4322,
+            "symbol": "openSymbolInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4334,
+            "symbol": "openSymbolInner",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4384,
+            "symbol": "sourceFiles",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4392,
+            "symbol": "searchDefinition",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4409,
+            "symbol": "contents",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4463,
+            "symbol": "findProjectRoot",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/questionImages.ts",
+        "sha256": "485a84681644215293f0f265ea07fe08ff6746ef2fd3a6738330b7e2122dbfde",
+        "functions": 1,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/bridgeClient.ts",
+        "sha256": "e003a6426c2d6fbe28053024e2896c047f9eebae75772930d9a6ff2700000e15",
+        "functions": 21,
+        "operations": 4,
+        "catches": 7,
+        "logSites": 10,
+        "candidates": [
+          {
+            "line": 72,
+            "symbol": "connect",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 72,
+            "symbol": "connect",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 74,
+            "symbol": "connect",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 104,
+            "symbol": "receive",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 130,
+            "symbol": "receive",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 119,
+            "symbol": "then",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 127,
+            "symbol": "finally",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 132,
+            "symbol": "connect",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 141,
+            "symbol": "connect",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/remote/command.ts",
+        "sha256": "5783d1c3b7e0ba370eb4ec87f3f8475c04dbdabbd20ea3b3dbb788f485223e30",
+        "functions": 13,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/contract.ts",
+        "sha256": "96c774370516033ad19174bc8626fdceafd46ce2767a0a088b26d14dfc086133",
+        "functions": 3,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/executionReceipts.ts",
+        "sha256": "f85031ae4dc51cea37f053ef119fa40024b0a500cd6cc42a6b7d3766f96c89ce",
+        "functions": 9,
+        "operations": 3,
+        "catches": 1,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 18,
+            "symbol": "transact",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 20,
+            "symbol": "run",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 23,
+            "symbol": "old",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 36,
+            "symbol": "run",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/remote/host.ts",
+        "sha256": "51053b9dc3c673fa854b09e8e671d1e0dbf60008386a697a6beccf57a740d190",
+        "functions": 0,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/images.ts",
+        "sha256": "17c86260a883d13d05efad93cd96319bc239490d84802dd19249fb99d4513adf",
+        "functions": 3,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/results.ts",
+        "sha256": "a13c0357c049b5bd25e6943c672851db422b7fe9f8df966eb9f276ea7445b112",
+        "functions": 10,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/runProgress.ts",
+        "sha256": "8a9039e47f3923b51fb027501b3cde85cfab6a74fb2f96b457cdc327de2aedd2",
+        "functions": 4,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/sessionAdapter.ts",
+        "sha256": "ceae47a93f658907271e21efb0d162e9a9e8bc900abdc4b1fc8ea4aa965ce05b",
+        "functions": 61,
+        "operations": 3,
+        "catches": 10,
+        "logSites": 1,
+        "candidates": [
+          {
+            "line": 65,
+            "symbol": "publish",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 84,
+            "symbol": "observe",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 90,
+            "symbol": "timer",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 107,
+            "symbol": "closed",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 146,
+            "symbol": "drainTasks",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 151,
+            "symbol": "drainTasks",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 226,
+            "symbol": "executeOperation",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 244,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 257,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 261,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 262,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 268,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 277,
+            "symbol": "executeOperation",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 286,
+            "symbol": "executeOperation",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 288,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 290,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 292,
+            "symbol": "executeOperation",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 293,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 294,
+            "symbol": "executeOperation",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 305,
+            "symbol": "executeOperation",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 319,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 334,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 346,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 350,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 353,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 353,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 356,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 363,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 371,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 385,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 400,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 402,
+            "symbol": "executeOperation",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 411,
+            "symbol": "executeOperation",
+            "kind": "branch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/remote/taskQueue.ts",
+        "sha256": "9f18c5df77cf0115d07a628c606085df1a8e5ebf3068a8096e03b4aed8b4f435",
+        "functions": 8,
+        "operations": 1,
+        "catches": 1,
+        "logSites": 4,
+        "candidates": []
+      },
+      {
+        "file": "src/remote/timeline.ts",
+        "sha256": "bba8dd72ed110bf5f50165e17c88a361ac825965b151c86ac2672a6fbe238afe",
+        "functions": 10,
+        "operations": 1,
+        "catches": 3,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 35,
+            "symbol": "imageSources",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 68,
+            "symbol": "read",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 71,
+            "symbol": "read",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 73,
+            "symbol": "read",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 74,
+            "symbol": "read",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 79,
+            "symbol": "read",
+            "kind": "error-propagated"
+          }
+        ]
+      },
+      {
+        "file": "src/remote/transcript.ts",
+        "sha256": "c508d587dc83187f266f88a8fd18a52bf375f1a7945587e127c7480d00f31342",
+        "functions": 11,
+        "operations": 3,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 19,
+            "symbol": "transcriptPage",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 35,
+            "symbol": "transcriptSnapshot",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 49,
+            "symbol": "cursor",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/shared.ts",
+        "sha256": "bfc65491b37538badb88dca86ec4390e4a3fa57db2ef4c6bbdcc062020354ca4",
+        "functions": 18,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/snapshot.ts",
+        "sha256": "a825f7f81d65535dfda66fb4ee172cb0695a465f40c19177a519b869c2ba3c55",
+        "functions": 34,
+        "operations": 9,
+        "catches": 7,
+        "logSites": 4,
+        "candidates": [
+          {
+            "line": 100,
+            "symbol": "walk",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 114,
+            "symbol": "listed",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 114,
+            "symbol": "listed",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 141,
+            "symbol": "read",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 176,
+            "symbol": "current",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 181,
+            "symbol": "read",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 183,
+            "symbol": "read",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 189,
+            "symbol": "fingerprint",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 193,
+            "symbol": "fingerprint",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 195,
+            "symbol": "fingerprints",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 205,
+            "symbol": "readBatch",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 237,
+            "symbol": "changed",
+            "kind": "operation-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/webview/diagnostics.ts",
+        "sha256": "f05433121f7f2422198f2bf9f07d382616179f8890484f1cc8e973df398ba853",
+        "functions": 30,
+        "operations": 12,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 11,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 31,
+            "symbol": "send",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 32,
+            "symbol": "select",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 34,
+            "symbol": "select",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 35,
+            "symbol": "select",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 54,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 61,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 62,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 72,
+            "symbol": "renderContent",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 114,
+            "symbol": "renderContent",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 140,
+            "symbol": "renderContent",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 145,
+            "symbol": "renderContent",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 146,
+            "symbol": "renderContent",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 156,
+            "symbol": "renderContent",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 159,
+            "symbol": "renderContent",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 161,
+            "symbol": "renderContent",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 164,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 165,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 166,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 168,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/webview/errors.ts",
+        "sha256": "fd77d8d93cabfd85a9252c69f548f37b647fcc66e22fff22da9d21dff0f03a98",
+        "functions": 7,
+        "operations": 1,
+        "catches": 1,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 16,
+            "symbol": "flush",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 19,
+            "symbol": "flush",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 38,
+            "symbol": "installWebviewErrors",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 39,
+            "symbol": "installWebviewErrors",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 42,
+            "symbol": "installWebviewErrors",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/webview/main.ts",
+        "sha256": "54049cc6c644ddd3d4b26224c7dcb1fb5c9bd29dc9ae671822ec2f8c80d42dd1",
+        "functions": 531,
+        "operations": 53,
+        "catches": 15,
+        "logSites": 0,
+        "candidates": [
+          {
+            "line": 21,
+            "symbol": "send",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 36,
+            "symbol": "reportWebviewError",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 62,
+            "symbol": "匿名回调",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 68,
+            "symbol": "匿名回调",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 115,
+            "symbol": "codeBlock",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 207,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 208,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 209,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 210,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 211,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 212,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 213,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 231,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 232,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 233,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 234,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 235,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 236,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 237,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 277,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 278,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 279,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 280,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 281,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 295,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 298,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 299,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 702,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 709,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 713,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 714,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 741,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 741,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 883,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 883,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 887,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 947,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 990,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1002,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1022,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1023,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1132,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1132,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1156,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1749,
+            "symbol": "createToolGroup",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1823,
+            "symbol": "createToolCard",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 1903,
+            "symbol": "updateToolPartial",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1949,
+            "symbol": "extractSearchLinks",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 1955,
+            "symbol": "add",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1968,
+            "symbol": "extractSearchLinks",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 1970,
+            "symbol": "extractSearchLinks",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 1982,
+            "symbol": "prettyHost",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 2006,
+            "symbol": "setToolResult",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 2276,
+            "symbol": "attachPermission",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2277,
+            "symbol": "attachPermission",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2281,
+            "symbol": "attachPermission",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2319,
+            "symbol": "attachReanswer",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 2319,
+            "symbol": "attachReanswer",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2331,
+            "symbol": "pairs",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 2338,
+            "symbol": "renderQuestion",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2351,
+            "symbol": "renderQuestion",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 2406,
+            "symbol": "addPictures",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2429,
+            "symbol": "addPictures",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 2441,
+            "symbol": "renderQuestion",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 2449,
+            "symbol": "renderQuestion",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 2450,
+            "symbol": "renderQuestion",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 2661,
+            "symbol": "renderQuestion",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 2682,
+            "symbol": "renderQuestion",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3012,
+            "symbol": "showHistoryStatus",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3085,
+            "symbol": "showLocalImage",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3091,
+            "symbol": "showLocalImage",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3112,
+            "symbol": "hydrateLocalImages",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3118,
+            "symbol": "hydrateLocalImages",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 3126,
+            "symbol": "hydrateLocalImages",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3126,
+            "symbol": "hydrateLocalImages",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3134,
+            "symbol": "linkifyRefs",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3151,
+            "symbol": "linkifyRefs",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 3216,
+            "symbol": "linkifyRefs",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3228,
+            "symbol": "linkifyRefs",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3283,
+            "symbol": "renderChangedFiles",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3289,
+            "symbol": "renderChangedFiles",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3295,
+            "symbol": "renderChangedFiles",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3313,
+            "symbol": "renderCheckpointDivider",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3320,
+            "symbol": "renderCheckpointDivider",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3380,
+            "symbol": "onSendCancelled",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3388,
+            "symbol": "onSendCancelled",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3389,
+            "symbol": "onSendCancelled",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3448,
+            "symbol": "syncDesktopQueue",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3454,
+            "symbol": "syncDesktopQueue",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3576,
+            "symbol": "setComposerText",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3608,
+            "symbol": "clearComposer",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3662,
+            "symbol": "handleSlashCommand",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3676,
+            "symbol": "handleSlashCommand",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3680,
+            "symbol": "handleSlashCommand",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3717,
+            "symbol": "handleSlashCommand",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 3785,
+            "symbol": "performSend",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 3969,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4008,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4010,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4013,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4038,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4121,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4187,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4203,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4205,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4207,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4231,
+            "symbol": "匿名回调",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 4278,
+            "symbol": "renderFileChips",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4299,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4300,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4301,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4306,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4333,
+            "symbol": "匿名回调",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 4339,
+            "symbol": "匿名回调",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 4385,
+            "symbol": "importDroppedPlainFiles",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4397,
+            "symbol": "importDroppedPlainFiles",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4402,
+            "symbol": "importDroppedEntries",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4408,
+            "symbol": "collect",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4409,
+            "symbol": "collect",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4424,
+            "symbol": "collect",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4413,
+            "symbol": "collect",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 4424,
+            "symbol": "collect",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4431,
+            "symbol": "collect",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 4447,
+            "symbol": "importDroppedEntries",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4591,
+            "symbol": "requestModelChange",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4598,
+            "symbol": "requestEffortChange",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4648,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4666,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4670,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4679,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4700,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4706,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4706,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4708,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4715,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4722,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4725,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4726,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4728,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4729,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4730,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4730,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4737,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4737,
+            "symbol": "匿名回调",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4747,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4750,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4757,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4763,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4763,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4771,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4765,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4777,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4777,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4780,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4779,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4780,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4785,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4784,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4785,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4787,
+            "symbol": "匿名回调",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 4905,
+            "symbol": "beginMessageEdit",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 4930,
+            "symbol": "beginMessageEdit",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 4967,
+            "symbol": "copy",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 5005,
+            "symbol": "submitEdit",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 5070,
+            "symbol": "submitEdit",
+            "kind": "branch-unlogged"
+          },
+          {
+            "line": 5130,
+            "symbol": "renderSnapshotSkips",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 5142,
+            "symbol": "renderSnapshotSkips",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 5197,
+            "symbol": "renderRateLimit",
+            "kind": "operation-unlogged"
+          },
+          {
+            "line": 5286,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5287,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5290,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5445,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5614,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5615,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5619,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 5629,
+            "symbol": "匿名回调",
+            "kind": "entry-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/webview/modelPicker.ts",
+        "sha256": "4df47edf1f57c074d7eab6357d0802bdc1597e985da0934d6cba112def9ecaff",
+        "functions": 4,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/webview/selection.ts",
+        "sha256": "affe78d3d9d514c1266b10be68049d1474c62b0853996e94a90d781033f8f9da",
+        "functions": 5,
+        "operations": 0,
+        "catches": 0,
+        "logSites": 0,
+        "candidates": []
+      },
+      {
+        "file": "src/webviewDelivery.ts",
+        "sha256": "69d5e9680fd60b8152ee279bd9091d6002e84cfbc39bf22d7107f582e5154619",
+        "functions": 1,
+        "operations": 1,
+        "catches": 1,
+        "logSites": 3,
+        "candidates": []
+      },
+      {
+        "file": "src/workdayCalendar.ts",
+        "sha256": "61594a58e124397e780d0f0ec1f9aab3eb1c9a7b082eaacf20ddc54a7387c576",
+        "functions": 24,
+        "operations": 1,
+        "catches": 8,
+        "logSites": 7,
+        "candidates": [
+          {
+            "line": 29,
+            "symbol": "isFeishuWebhook",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 44,
+            "symbol": "parseHolidayYear",
+            "kind": "catch-unlogged"
+          },
+          {
+            "line": 119,
+            "symbol": "updateYear",
+            "kind": "entry-unlogged"
+          },
+          {
+            "line": 128,
+            "symbol": "updateYear",
+            "kind": "catch-unlogged"
+          }
+        ]
+      },
+      {
+        "file": "src/workspaceActivity.ts",
+        "sha256": "c1e90c3d56d855dba2ba03cb31836d2e92e270f251a86a5dc846478e3e42021e",
+        "functions": 24,
+        "operations": 0,
+        "catches": 4,
+        "logSites": 2,
+        "candidates": [
+          {
+            "line": 34,
+            "symbol": "begin",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 51,
+            "symbol": "finish",
+            "kind": "error-propagated"
+          },
+          {
+            "line": 61,
+            "symbol": "save",
+            "kind": "error-propagated"
+          }
+        ]
+      }
+    ],
+    "unsupported": [
+      "native/Notifications.swift"
+    ]
+  },
+  "limitations": [
+    "真实后端 403/502、MCP worker、技能安装、远端遥测恢复均未由本机修复证明解决。",
+    "历史失败记录完整保留，分类改变不代表历史事件已恢复；工具失败和轮次耗时统计须保持一致。",
+    "80ms 是受控握手拒绝延迟，测量的是消除虚假连接和无效发送，不能外推为真实任务总耗时降低。",
+    "源码清单是逐文件静态扫描结果；优先核验了静默/委派边界及变更路径，未对每个候选做动态故障注入。"
+  ]
+}

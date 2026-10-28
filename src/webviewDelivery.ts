@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { operationFailure, operationLog } from './operations';
+import { errorFields, operationFailure, operationLog } from './operations';
 
 type Target = { postMessage(message: any): PromiseLike<boolean> };
 const failures = new WeakMap<Target, string>();
@@ -9,11 +9,15 @@ export async function postWebviewMessage(target: Target | undefined, message: un
   try {
     const delivered = await target.postMessage(message);
     if (delivered === false) {
-      if (!failures.has(target)) { failures.set(target, randomUUID()); operationLog('webview.delivery', 'unavailable', { operationId: failures.get(target) }); } return false;
+      if (!failures.has(target)) { failures.set(target, randomUUID()); operationLog('webview.delivery', 'unavailable', { operationId: failures.get(target), failureId: failures.get(target) }); } return false;
     }
-    if (failures.has(target)) { operationLog('webview.delivery', 'recovered', { operationId: failures.get(target) }); failures.delete(target); }
+    if (failures.has(target)) { operationLog('webview.delivery', 'recovered', { operationId: failures.get(target), previousFailureId: failures.get(target) }); failures.delete(target); }
     return true;
   } catch (error) {
-    if (!failures.has(target)) { failures.set(target, randomUUID()); operationFailure('webview.delivery', error, { operationId: failures.get(target) }); } return false;
+    if (!failures.has(target)) {
+      const failureId = String(errorFields(error).failureId ?? randomUUID());
+      failures.set(target, failureId);
+      operationFailure('webview.delivery', error, { operationId: failureId, failureId });
+    } return false;
   }
 }

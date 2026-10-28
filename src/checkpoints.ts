@@ -626,6 +626,7 @@ function fileState(file: string): string | undefined {
     } finally { fs.closeSync(fd); }
   } catch (error) {
     if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return 'missing';
+    operationFailure('checkpoint.fingerprint', error);
     return undefined;
   }
 }

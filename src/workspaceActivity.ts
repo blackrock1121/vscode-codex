@@ -1,6 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { operationFailure, operationLog } from './operations';
 
 interface Activity {
   id: string;
@@ -19,6 +20,7 @@ const overlaps = (a: string[], b: string[]) => a.some(left => b.some(right => co
 
 /** 只保存执行区间与路径，不保存对话或文件正文。独立于会话，删除/派生会话也不能抹掉并行证据。 */
 export class WorkspaceActivity {
+  private static readonly verificationFailures = new Map<string, string>();
   private constructor(private readonly dir: string, private readonly record: Activity) {}
   get id(): string { return this.record.id; }
 
@@ -81,6 +83,11 @@ export class WorkspaceActivity {
         return path.join(fs.realpathSync(parent), suffix);
       });
       const records = this.read(path.join(storageDir, 'workspace-activity'));
+      const previousFailureId = this.verificationFailures.get(storageDir);
+      if (previousFailureId) {
+        operationLog('workspace.activity.verify', 'recovered', { previousFailureId });
+        this.verificationFailures.delete(storageDir);
+      }
       const selected = ids.map(id => records.find(record => record.id === id));
       if (selected.some(record => !record || record.ended === undefined)) return '文件快照的执行区间未完整记录';
       for (const record of records) {
@@ -90,7 +97,14 @@ export class WorkspaceActivity {
           own.started < (record.ended ?? Infinity) && record.started < own.ended!))
           return '采集文件快照期间有其他会话同时使用该工作区，无法区分各会话的改动；已阻止回滚以保留其他会话的成果';
       }
-    } catch {
+    } catch (error) {
+      // 返回安全拒绝仍须保留磁盘/数据原因；列表刷新不重复记同一故障。
+      if (!this.verificationFailures.has(storageDir)) {
+        if (this.verificationFailures.size >= 128) this.verificationFailures.delete(this.verificationFailures.keys().next().value!);
+        const failureId = randomUUID();
+        this.verificationFailures.set(storageDir, failureId);
+        operationFailure('workspace.activity.verify', error, { failureId });
+      }
       return '无法验证工作区的并行活动记录，已阻止文件回滚';
     }
     return undefined;

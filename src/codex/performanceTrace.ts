@@ -43,10 +43,11 @@ export function failureCategory(value: unknown, exitCode?: number | null): strin
   // 中间必须有空格；\s* 会把源码、配置中的普通 timeout 字段也当作 timed out。
   if (/\btimed?[ \t]+out\b|\bETIMEDOUT\b|\b\w*Timeout(?:Error|Exception)\b|请求超时|^\s*timeout[.!]?\s*$/i.test(text)) return 'timeout';
   if (/\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?|response code)[ :="']+429\b|\b429[ :]+Too Many Requests\b|\brate[ -]limit(?:ed|ing)?\b|\brate_limit_exceeded\b|\btoo many requests\b/i.test(text)) return 'rate_limit';
+  if (/\bselected model is at capacity\b/i.test(text)) return 'model_capacity';
   if (/ENOTFOUND|EAI_AGAIN|could not resolve|name resolution/i.test(text)) return 'dns';
   if (/\b(?:HTTP(?:\/\d(?:\.\d)?)?\s+403|403 Forbidden)\b/i.test(text)) return 'permission';
   if (/\bHTTP(?:\/\d(?:\.\d)?)?\s+401\b|401 Unauthorized|authentication failed|unauthorized/i.test(text)) return 'authentication';
-  if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|error sending request|fetch failed|network unreachable|ENETUNREACH|EHOSTUNREACH|502 Bad Gateway|503 Service/i.test(text)) return 'network_or_service';
+  if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|error sending request|fetch failed|network unreachable|ENETUNREACH|EHOSTUNREACH|502 Bad Gateway|503 Service|\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?)[ :="']+5\d{2}\b/i.test(text)) return 'network_or_service';
   if (/syntax error|SyntaxError|unexpected token|unterminated/i.test(text)) return 'syntax';
   if (/\berror TS\d+\b|\b(?:compilation|build) failed\b|\btests? (?:\d+ )?failed\b|(?:^|\n)[ \t]*(?:[✗✘×❌ℹ]\uFE0F?[ \t]*)?(?:FAIL(?:ED)?(?![ \t]+(?:0|false|to)\b)[ \t]+|not ok \d+\b)/i.test(text)) return 'build_or_test';
   if (/No such file or directory|ENOENT/i.test(text)) return 'missing_file';

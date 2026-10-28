@@ -333,6 +333,7 @@ export class CodexProcess {
       const upstream = compactionUpstream(settings.config, { type: identity.authMethod === 'apikey' ? 'apiKey' : identity.authMethod });
       if (!upstream || this.exited || this.disposed) return;
       const relay = await CompactionRelay.start(upstream, (source, tier) => this.selectCompaction(source, tier), route => this.compactionRouted(route), {
+        processRunId: this.rpc.runId,
         archiveDirectory: path.join(os.homedir(), '.codex-chat', 'compaction-archive'),
         onOptimized: (threadId, savings) => this.emit({ kind: 'diag', message: `[compaction_input] ${JSON.stringify({ threadId, ...savings })}` }),
       });

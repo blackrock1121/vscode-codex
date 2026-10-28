@@ -22,3 +22,4 @@ export * from '../../src/snapshot';
 export * from '../../src/codex/compactionRelay';
 export * from '../../src/notificationRouter';
 export * from '../../src/imageFile';
+export * from '../../src/workspaceActivity';

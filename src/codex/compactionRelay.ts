@@ -1,6 +1,7 @@
 import { operationFailure, operationLog } from '../operations';
 import * as http from 'node:http';
 import * as https from 'node:https';
+import type { Duplex } from 'node:stream';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { WebSocket, WebSocketServer, RawData } from 'ws';
 import { getProxyForUrl } from 'proxy-from-env';
@@ -8,6 +9,9 @@ import * as path from 'node:path';
 import { CompactionArchive, InputSavings, optimizeCompactionInput, ResponseHistory } from './compactionInput';
 
 interface RelayOptions {
+  processRunId?: string;
+  /** 上游握手预算；不限制已连接的生成流。 */
+  handshakeTimeoutMs?: number;
   constrain?: (raw: Buffer) => Buffer;
   archiveDirectory?: string;
   /** 内部适配测试可延长预算；生产调用省略，使用 250ms。 */
@@ -21,6 +25,8 @@ import { CompactionSelector } from './compactionPolicy';
 export interface CompactionRoute {
   stage: 'request' | 'response' | 'transport_end';
   routeId?: string;
+  connectionId?: string;
+  failureId?: string;
   threadId?: string;
   fromModel: string;
   fromEffort?: string;
@@ -83,8 +89,8 @@ function bytes(data: RawData): Buffer { return Buffer.isBuffer(data) ? data : Ar
  */
 export class CompactionRelay {
   private readonly server = http.createServer((req, res) => { void this.http(req, res).catch(error => {
-    operationFailure('compaction.http', error);
-    if (!res.headersSent) res.writeHead(502); res.end();
+    if (!this.closed && !req.aborted && !res.destroyed) operationFailure('relay.http', error, { processRunId: this.options.processRunId });
+    if (res.headersSent) res.destroy(); else { res.writeHead(502); res.end(); }
   }); });
   private readonly wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
   private readonly sockets = new Set<WebSocket>();
@@ -102,7 +108,8 @@ export class CompactionRelay {
     this.server.on('upgrade', (req, socket, head) => {
       const target = this.target(req);
       if (!target || this.closed) { socket.destroy(); return; }
-      this.wss.handleUpgrade(req, socket, head, client => this.websocket(req, target, client));
+      try { this.upgrade(req, socket, head, target); }
+      catch (error) { operationFailure('relay.websocket.upgrade', error, { processRunId: this.options.processRunId }); socket.destroy(); }
     });
     this.server.on('clientError', (_error, socket) => socket.destroy());
     // listen 成功后仍可能发生服务器错误，不能留下无监听的 error 事件。
@@ -141,7 +148,7 @@ export class CompactionRelay {
   private report(route: CompactionRoute): void {
     try { this.onRoute(route); } catch (error) { operationFailure('compaction.observer', error); /* 诊断失败不能中断模型请求 */ }
   }
-  private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], signal: AbortSignal, history?: ResponseHistory): Promise<{ body: Buffer; route?: CompactionRoute }> {
+  private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], signal: AbortSignal, history?: ResponseHistory, connectionId?: string): Promise<{ body: Buffer; route?: CompactionRoute }> {
     if (!target.pathname.endsWith('/responses') || req.headers['content-encoding']) return { body: raw };
     const result = routeCompaction(raw, false, this.select);
     const id = req.headers['thread-id'] ?? req.headers['session-id'];
@@ -167,43 +174,101 @@ export class CompactionRelay {
     }
     if (this.options.constrain) result.body = this.options.constrain(result.body);
     if (result.route) {
-      const route: CompactionRoute = { ...result.route, routeId: randomUUID(), threadId, transport, stage: 'request' };
+      const route: CompactionRoute = { ...result.route, routeId: randomUUID(), connectionId, threadId, transport, stage: 'request' };
       this.report(route);
       return { body: result.body, route };
     }
     return { body: result.body };
   }
-  private websocket(req: http.IncomingMessage, target: URL, client: WebSocket): void {
+  /** 上游接受握手后才向 CLI 返回 101；403/502 保留原状态，避免伪成功后断流重试。 */
+  private upgrade(req: http.IncomingMessage, socket: Duplex, head: Buffer, target: URL): void {
     target.protocol = target.protocol === 'https:' ? 'wss:' : 'ws:';
     const protocols = typeof req.headers['sec-websocket-protocol'] === 'string' ?
       req.headers['sec-websocket-protocol'].split(',').map(x => x.trim()) : [];
     const upstream = new WebSocket(target, protocols, { headers: forwardedHeaders(req.headers, true),
-      agent: this.agent, maxPayload: MAX_PAYLOAD, handshakeTimeout: 20_000,
+      agent: this.agent, maxPayload: MAX_PAYLOAD, handshakeTimeout: this.options.handshakeTimeoutMs ?? 20_000,
       perMessageDeflate: { concurrencyLimit: 2, zlibDeflateOptions: { level: 3 } } });
+    const connectionId = randomUUID(), started = Date.now();
+    const fields = { operationId: connectionId, connectionId, processRunId: this.options.processRunId, transport: 'websocket', targetService: new URL(this.upstream).hostname };
+    let settled = false;
+    this.sockets.add(upstream);
+    operationLog('relay.websocket.handshake', 'start', fields);
+    const reject = (status: number, error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      if (this.closed || socket.destroyed) {
+        operationLog('relay.websocket.handshake', 'cancelled', { ...fields, durationMs: Date.now() - started });
+        socket.destroy();
+      }
+      else {
+        operationFailure('relay.websocket.handshake', error ?? new Error(`HTTP ${status}`), {
+          ...fields, httpStatusCode: status, durationMs: Date.now() - started,
+          responseSource: error ? 'relay' : 'upstream' });
+        // 不转存错误页、认证头或网关正文。
+        socket.end(`HTTP/1.1 ${status} ${http.STATUS_CODES[status] ?? 'Error'}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`);
+      }
+      upstream.terminate();
+    };
+    const cancelled = () => {
+      if (!settled) { settled = true; operationLog('relay.websocket.handshake', 'cancelled', { ...fields, durationMs: Date.now() - started }); upstream.terminate(); }
+    };
+    socket.once('close', cancelled);
+    socket.once('error', cancelled);
+    upstream.once('close', () => { this.sockets.delete(upstream); if (!settled) reject(502); });
+    upstream.on('unexpected-response', (request, response) => {
+      reject(response.statusCode ?? 502); response.destroy(); request.destroy();
+    });
+    // 保留该监听器以吸收 terminate 的迟到 error；已交接连接由 websocket 的边界负责。
+    upstream.on('error', error => reject(502, error));
+    upstream.once('open', () => {
+      if (settled || this.closed || socket.destroyed) { cancelled(); upstream.terminate(); return; }
+      settled = true;
+      socket.off('close', cancelled); socket.off('error', cancelled);
+      try {
+        if (upstream.protocol) req.headers['sec-websocket-protocol'] = upstream.protocol;
+        else delete req.headers['sec-websocket-protocol'];
+        let upgraded = false;
+        this.wss.handleUpgrade(req, socket, head, client => {
+          upgraded = true;
+          this.websocket(req, target, client, upstream, connectionId);
+          operationLog('relay.websocket.handshake', 'completed', { ...fields, durationMs: Date.now() - started });
+        });
+        if (!upgraded) {
+          operationLog('relay.websocket.handshake', 'cancelled', { ...fields, reason: 'invalid_client_handshake', durationMs: Date.now() - started });
+          upstream.terminate();
+        }
+        // 非法下游握手被 ws 拒绝时同样释放已经连接的上游。
+        socket.once('close', () => { if (upstream.readyState === WebSocket.OPEN) upstream.terminate(); });
+      } catch (error) {
+        operationFailure('relay.websocket.upgrade', error, fields); socket.destroy(); upstream.terminate();
+      }
+    });
+  }
+  private websocket(req: http.IncomingMessage, target: URL, client: WebSocket, upstream: WebSocket, connectionId: string): void {
     this.sockets.add(client); this.sockets.add(upstream);
-    let queued: { body: Buffer; binary: boolean }[] = [], queuedBytes = 0;
     const history = new ResponseHistory();
     const controller = new AbortController();
-    const connectionId = randomUUID();
+    const fields = { connectionId, processRunId: this.options.processRunId };
     let writes = Promise.resolve(), pendingBytes = 0;
     const responses: (CompactionRoute | undefined)[] = [];
-    const incomplete = (reason: string, outcome?: CompactionRoute['outcome']) => {
+    const incomplete = (reason: string, outcome?: CompactionRoute['outcome'], failureId?: string) => {
       for (const route of responses.splice(0)) if (route) this.report({ ...route, stage: 'response',
-        outcome: this.closed ? 'cancelled' : outcome ?? 'incomplete', reason });
+        outcome: this.closed ? 'cancelled' : outcome ?? 'incomplete', reason, failureId });
     };
     let writeFailed = false;
     const failedWrite = (reason: string, error: unknown) => {
       if (writeFailed) return;
       writeFailed = true;
-      if (!this.closed) operationFailure('compaction.websocket.write', error, { connectionId, reason });
-      incomplete(reason, 'failed'); controller.abort(); client.terminate(); upstream.terminate();
+      const failureId = randomUUID();
+      if (!this.closed) operationFailure('relay.websocket.write', error, { ...fields, reason, failureId });
+      incomplete(reason, 'failed', this.closed ? undefined : failureId); controller.abort(); client.terminate(); upstream.terminate();
     };
     client.on('message', (data, binary) => {
       const original = bytes(data); pendingBytes += original.length; client.pause();
       if (pendingBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
       writes = writes.then(async () => {
         if (this.closed || client.readyState !== WebSocket.OPEN) return;
-        const routed = binary ? { body: original } : await this.rewrite(original, req, target, 'websocket', controller.signal, history);
+        const routed = binary ? { body: original } : await this.rewrite(original, req, target, 'websocket', controller.signal, history, connectionId);
         if (this.closed || client.readyState !== WebSocket.OPEN) {
           if (routed.route) this.report({ ...routed.route, stage: 'response', outcome: 'cancelled', reason: 'closed_before_send' });
           return;
@@ -219,26 +284,13 @@ export class CompactionRelay {
             else if (request.type === 'response.create') responses.push(routed.route);
           } catch { history.clear(); incomplete('unrecognized_frame'); /* 无法识别的帧仅转发 */ }
         } else { history.clear(); incomplete('binary_frame'); }
-        if (upstream.readyState === WebSocket.CONNECTING) {
-          queuedBytes += body.length;
-          if (queuedBytes > MAX_PAYLOAD) { client.close(1009); upstream.terminate(); return; }
-          queued.push({ body, binary });
-        } else if (upstream.readyState === WebSocket.OPEN) {
+        if (upstream.readyState === WebSocket.OPEN) {
           await new Promise<void>((resolve, reject) => upstream.send(body, { binary }, error => error ? reject(error) : resolve()));
-        }
+        } else { incomplete('upstream_closed'); client.terminate(); }
       }).catch(error => failedWrite('upstream_send', error)).finally(() => {
         pendingBytes -= original.length;
         if (pendingBytes === 0 && client.readyState === WebSocket.OPEN) client.resume();
       });
-    });
-    upstream.on('open', () => {
-      if (client.readyState !== WebSocket.OPEN) { upstream.close(); return; }
-      for (const { body, binary } of queued) {
-        if (writeFailed) break;
-        try { upstream.send(body, { binary }, error => { if (error) failedWrite('queued_upstream_send', error); }); }
-        catch (error) { failedWrite('queued_upstream_send', error); }
-      }
-      queued = []; queuedBytes = 0;
     });
     upstream.on('message', (data, binary) => {
       if (client.readyState !== WebSocket.OPEN) return;
@@ -264,15 +316,18 @@ export class CompactionRelay {
       if (peer.readyState === WebSocket.CONNECTING || code === 1006) peer.terminate();
       else if (peer.readyState === WebSocket.OPEN) peer.close(code === 1005 ? 1000 : code, reason);
     };
-    client.on('close', (code, reason) => { incomplete('client_closed'); controller.abort(); this.sockets.delete(client); queued = []; history.clear(); closePeer(upstream, code, reason); });
-    upstream.on('close', (code, reason) => { incomplete('upstream_closed'); controller.abort(); this.sockets.delete(upstream); queued = []; history.clear(); closePeer(client, code, reason); });
-    client.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.client', error); controller.abort(); upstream.terminate(); });
-    upstream.on('error', error => { if (!this.closed) operationFailure('compaction.websocket.upstream', error); controller.abort(); client.terminate(); });
+    client.on('close', (code, reason) => { incomplete('client_closed'); controller.abort(); this.sockets.delete(client); history.clear(); closePeer(upstream, code, reason); });
+    upstream.on('close', (code, reason) => { incomplete('upstream_closed'); controller.abort(); this.sockets.delete(upstream); history.clear(); closePeer(client, code, reason); });
+    client.on('error', error => { if (!this.closed && !controller.signal.aborted) operationFailure('relay.websocket.client', error, fields); controller.abort(); upstream.terminate(); });
+    upstream.on('error', error => { if (!this.closed && !controller.signal.aborted) operationFailure('relay.websocket.upstream', error, fields); controller.abort(); client.terminate(); });
   }
   private async http(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const target = this.target(req);
     if (!target || this.closed) { res.writeHead(404); res.end(); return; }
     const controller = new AbortController();
+    const requestId = randomUUID(), started = Date.now();
+    const fields = { operationId: requestId, connectionId: requestId, processRunId: this.options.processRunId,
+      transport: 'http', targetService: target.hostname };
     req.once('aborted', () => controller.abort());
     res.once('close', () => controller.abort());
     const chunks: Buffer[] = []; let size = 0;
@@ -282,30 +337,41 @@ export class CompactionRelay {
       chunks.push(chunk);
     }
     const original = Buffer.concat(chunks);
-    const routed = req.method === 'POST' ? await this.rewrite(original, req, target, 'http', controller.signal) : { body: original };
+    const routed = req.method === 'POST' ? await this.rewrite(original, req, target, 'http', controller.signal, undefined, requestId) : { body: original };
     const body = routed.body;
-    let ended = false, httpStatusCode: number | undefined;
+    let ended = false, httpStatusCode: number | undefined, firstResponseMs: number | undefined;
+    operationLog('relay.http', 'start', { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough' });
     // HTTP 只观察传输终态，不把 2xx/SSE 结束冒充压缩语义成功。
-    const finish = (outcome: CompactionRoute['outcome'], reason: string) => {
-      if (ended || !routed.route) return;
+    const finish = (outcome: CompactionRoute['outcome'], reason: string, error?: unknown) => {
+      if (ended) return;
       ended = true;
-      this.report({ ...routed.route, stage: 'transport_end', outcome, reason, httpStatusCode });
+      const failureId = outcome === 'failed' ? randomUUID() : undefined;
+      const details = { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough',
+        httpStatusCode, firstResponseMs, durationMs: Date.now() - started, reason, failureId };
+      if (outcome === 'failed') operationFailure('relay.http', error ?? new Error(`HTTP ${httpStatusCode}`), details);
+      else operationLog('relay.http', outcome === 'cancelled' ? 'cancelled' : outcome === 'incomplete' ? 'incomplete' : 'completed', details);
+      if (routed.route) this.report({ ...routed.route, stage: 'transport_end', outcome, reason, httpStatusCode, failureId });
     };
     if (this.closed || res.destroyed || req.aborted) { finish('cancelled', 'closed_before_send'); res.destroy(); return; }
-    res.once('close', () => finish(this.closed ? 'cancelled' : 'incomplete', 'client_closed'));
+    res.once('close', () => finish('cancelled', this.closed ? 'relay_closed' : 'client_closed'));
     const headers = forwardedHeaders(req.headers, false);
     if (body.length || req.headers['content-length']) headers['content-length'] = body.length;
     const upstream = (target.protocol === 'https:' ? https : http).request(target, {
       method: req.method, headers, agent: this.agent,
     }, response => {
       httpStatusCode = response.statusCode;
+      firstResponseMs = Date.now() - started;
       res.writeHead(response.statusCode ?? 502, forwardedHeaders(response.headers, false));
       response.on('end', () => finish(httpStatusCode && httpStatusCode >= 400 ? 'failed' : undefined, 'http_stream_ended'));
-      response.on('error', error => { finish('failed', 'response_error'); operationFailure('compaction.http.response', error); res.destroy(); }); response.pipe(res);
+      response.on('error', error => { finish(controller.signal.aborted ? 'cancelled' : 'failed', 'response_error', error); res.destroy(); }); response.pipe(res);
     });
     this.requests.add(upstream);
     upstream.on('close', () => this.requests.delete(upstream));
-    upstream.on('error', error => { finish(controller.signal.aborted ? 'cancelled' : 'failed', 'upstream_error'); if (!controller.signal.aborted) operationFailure('compaction.http.upstream', error); if (!res.headersSent) res.writeHead(502); res.end(); });
+    upstream.on('error', error => {
+      finish(this.closed || controller.signal.aborted ? 'cancelled' : 'failed', 'upstream_error', error);
+      // 已经转发部分 SSE 后必须中断响应，不能伪装成完整的 HTTP 200。
+      if (res.headersSent) res.destroy(); else { res.writeHead(502); res.end(); }
+    });
     req.on('aborted', () => upstream.destroy());
     res.on('close', () => { if (!res.writableEnded) upstream.destroy(); });
     upstream.end(body);

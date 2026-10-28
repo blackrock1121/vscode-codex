@@ -124,7 +124,7 @@ test('3a1 额度接口失败保留缓存并限频，恢复日志沿用同一故�
   maybeNotifyUsage(){},handleEmit(){},post:(_c,e)=>sent.push(e)});
  const flush=()=>new Promise(r=>setImmediate(r));p.fetchUsage(true);await flush();assert.equal(p.lastUsage,old);assert.match(sent[0].message,/额度刷新失败/);
  p.fetchUsage();await flush();assert.equal(calls,1);fail=false;p.fetchUsage(true);await flush();assert.equal(calls,2);assert.equal(p.usageInFlight,false);
- const events=rows.filter(r=>r.operation==='account.usage');assert.deepEqual(events.map(r=>r.stage),['start','failed','start','completed','recovered']);assert.equal(events[1].operationId,events[4].operationId);assert.equal(events[1].failureId,events[4].failureId);assert.equal(events[1].failureCategory,'network_or_service');assert.doesNotMatch(JSON.stringify(rows),/PRIVATE/);
+ const events=rows.filter(r=>r.operation==='account.usage');assert.deepEqual(events.map(r=>r.stage),['start','failed','start','completed','recovered']);assert.equal(events[1].operationId,events[4].operationId);assert.equal(events[1].failureId,events[4].previousFailureId);assert.equal(events[1].failureCategory,'network_or_service');assert.doesNotMatch(JSON.stringify(rows),/PRIVATE/);
 });
 
 test('3a1 远程只读处理器同步抛错可回传失败，连接继续处理下一条请求',async t=>{

@@ -3726,7 +3726,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 for (const event of quotaEvents(r.rateLimits, r.rateLimitResetCredits)) this.handleEmit(ctx, event);
             operationLog('account.usage', 'completed', { operationId, durationMs: Math.round(performance.now() - startedAt) });
             if (this.usageFailureId) {
-                operationLog('account.usage', 'recovered', { operationId: this.usageFailureId, ...this.usageFailureFields });
+                operationLog('account.usage', 'recovered', { operationId: this.usageFailureId,
+                    previousFailureId: this.usageFailureFields?.failureId, previousProcessRunId: this.usageFailureFields?.processRunId });
                 this.usageFailureId = undefined; this.usageFailureFields = undefined;
             }
         }).catch(error => {

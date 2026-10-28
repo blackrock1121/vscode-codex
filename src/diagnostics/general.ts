@@ -12,13 +12,15 @@ const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOEN
 const warning = /\b(?:warn(?:ing)?|retry|fallback|reconnect(?:ing)?)\b|重试|降级|警告|重连/i;
 const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '压缩' : /webview|脚本|渲染|布局/i.test(line) ? '页面脚本' :
   /snapshot|checkpoint|快照|还原点/i.test(line) ? '快照与还原点' : /restore|resume|恢复/i.test(line) ? '会话恢复' :
-  /notification|notify|webhook|通知/i.test(line) ? '通知' : /rpc|transport|connection|连接|\bCLI\b|进程|stderr/i.test(line) ? '连接与进程' :
+  /notification|notify|webhook|通知/i.test(line) ? '通知' : /rpc|relay|transport|connection|连接|\bCLI\b|进程|stderr/i.test(line) ? '连接与进程' :
   /sessionSettings|config|设置|配置/i.test(line) ? '配置' : /tool|bash|command|工具|命令/i.test(line) ? '工具执行' : '插件运行';
 
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
   if (row) {
     if (row.event === 'codex.tool_result' && row.expectedCancellation === true && row.cancellationReason === 'question_pause' && row.outcome === 'waiting_for_user' && ['unknown', 'interrupted'].includes(String(row.failureCategory))) return;
-    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' || String(row.operation ?? '').startsWith('compaction.') || /compact/i.test(String(row.method ?? ''));
+    const legacyRelay = /^compaction\.(?:http|websocket)(?:\.|$)/.test(String(row.operation ?? ''));
+    const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' ||
+      !legacyRelay && String(row.operation ?? '').startsWith('compaction.') || /compact/i.test(String(row.method ?? ''));
     const stage = String(row.stage ?? row.event ?? ''), outcome = String(row.outcome ?? row.status ?? '');
     const failed = /error|failed|failure|timeout|closed|disconnected/.test(stage) || /failed|error|connection_closed/.test(outcome) ||
       row.success === false || row.hasError === true || row.isError === true || row.type === 'runtime_error' && row.severity !== 'warning';
@@ -29,11 +31,12 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     // 旧 stderr 脱敏可能留下 ANSI 的 [2m 前缀，不能依赖模块名前的单词边界。
     const telemetry = row.type === 'runtime_error' && /opentelemetry_sdk\b.*\b(?:ExportError|export error)\b/i.test(String(row.message ?? ''));
     const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' || row.event === 'logging_health' ? '采集完整性' : compaction ? '压缩' :
+      legacyRelay || String(row.operation ?? '').startsWith('relay.') ? '连接与进程' :
       row.operation === 'remote.connection' ? '手机接入连接' : row.errorOrigin === 'backend' || row.event === 'codex.sse_event' ? '后端服务' :
       row.type === 'runtime_error' && /codex_skills_extension\b.*failed to install system skills/i.test(String(row.message ?? '')) ? '后端组件' :
       row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
-    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
+    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.causeCode, row.transportReason, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
       diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
@@ -44,7 +47,11 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
     return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };
   }
-  const signal = line.replace(/\b(?:failed|failures?|errors?|warnings?|errorCount|failedCount)\s*[:=]\s*(?:0|false|null)\b/gi, '')
+  // 通知业务事件不是发送结果。只剔除已知通知阶段的 event 字段，真实
+  // result=failed、异常正文等仍须进入分类，不能整行忽略。
+  const execution = /\[notify\] (?:dispatch|local_result)\b/.test(line)
+    ? line.replace(/\bevent=(?:error|done|waiting)\b/g, '') : line;
+  const signal = execution.replace(/\b(?:failed|failures?|errors?|warnings?|errorCount|failedCount)\s*[:=]\s*(?:0|false|null)\b/gi, '')
     .replace(/"(?:isError|error|errors|warnings?|failures|failed)"\s*:\s*(?:(?:0|false|null)\b|\[\s*\])/gi, '').replace(/\b0\s+(?:errors?|warnings?|failures?)\b/gi, '');
   if (!bad.test(signal) && !warning.test(signal)) return;
   // 用户主动取消不是内部错误；原有错误仍通过其它记录呈现。
