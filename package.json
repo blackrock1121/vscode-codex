@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.184",
+  "version": "0.1.185",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -248,8 +248,8 @@
             "max",
             "ultra"
           ],
-          "default": "medium",
-          "description": "新会话的默认推理强度为 medium；会话内选择独立保存，仅影响该会话下一轮。留空使用模型默认值，可用档位取决于模型。"
+          "default": "high",
+          "description": "新会话的默认推理强度为 high；会话内选择独立保存，仅影响该会话下一轮。留空使用模型默认值，可用档位取决于模型。"
         },
         "codexChat.snapshotFilesForRestore": {
           "type": "boolean",

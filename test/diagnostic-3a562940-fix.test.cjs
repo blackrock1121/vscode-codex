@@ -36,6 +36,25 @@ test(`3a562940 ${category} 暂停无效轮询，手动成功后恢复且故障�
  assert.doesNotMatch(JSON.stringify(f.rows),/PRIVATE_TOKEN/);
  t.diagnostic(JSON.stringify({scenario:category,pollTicks:480,beforeRequests:480,afterRequestsBeforeRecovery:1}));
 });
+for(const [message,code,expected]of [
+ ['failed to fetch codex rate limits: GET https://example.com/usage failed: 403 Forbidden; content-type=text/html; charset=UTF-8; body=<html>PRIVATE_TOKEN</html>',undefined,/远端站点拒绝访问（HTTP 403）.*VPN\/代理/],
+ ['HTTP 403 PRIVATE_TOKEN',undefined,/额度接口拒绝访问（HTTP 403）/],
+ ['EACCES PRIVATE_TOKEN','EACCES',/本机权限不足/],
+ ['operation not permitted PRIVATE_TOKEN',undefined,/本机权限不足/],
+])test(`额度拒绝提示区分远端响应与本机权限：${expected}`,async t=>{
+ const f=await fixture(t);
+ const {p,sent}=provider(async()=>{throw Object.assign(new Error(message),{code,rpcCode:-32603,errorOrigin:'backend'});});
+ p.fetchUsage(true);await tick();
+ assert.match(sent[0].message,expected);assert.equal(p.usageBlockedCategory,'permission');
+ assert.equal(p.lastUsage.weekPct,20);assert.doesNotMatch(JSON.stringify(sent),/PRIVATE_TOKEN|example\.com/);
+ const failure=f.rows.find(r=>r.operation==='account.usage'&&r.stage==='failed');
+ if(message.includes('403')){
+  assert.doesNotMatch(sent[0].message,/本机/);assert.match(sent[0].message,/不代表额度已用完/);
+  assert.equal(failure.httpStatusCode,403);
+ }else assert.equal(failure.httpStatusCode,undefined);
+ assert.equal(failure.htmlAccessDenied,message.includes('<html>')?true:undefined);
+ assert.doesNotMatch(JSON.stringify(f.rows),/PRIVATE_TOKEN|example\.com|<html>/);
+});
 test('3a562940 网络失败指数退避有上限，缓存可用且恢复重置退避',async t=>{
  const f=await fixture(t);let clock=Date.now(),calls=0,fail=true;t.mock.method(Date,'now',()=>clock);
  const {p}=provider(async()=>{calls++;if(fail)throw new Error('error sending request PRIVATE_TOKEN');return {rateLimits:{}};});

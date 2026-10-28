@@ -4487,7 +4487,7 @@ function availableEfforts() {
 }
 let currentMode = "default";
 let currentModel = "";
-let currentEffort = "medium";
+let currentEffort = "high";
 let modelPending = false;
 let effortPending = false;
 let speedPending = false;

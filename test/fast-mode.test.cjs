@@ -181,21 +181,21 @@ test('生成速度按模型和计费方式区分，保留最高限定且不把�
  ]) assert.equal(speedGain(mode,model,billing).badge,'未公布');
 });
 
-test('默认 medium，各会话推理强度独立保存，重载和公共配置广播保持各自选择',async()=>{
+test('默认 high，各会话推理强度独立保存，重载和公共配置广播保持各自选择',async()=>{
  const f=fixture();delete f.settings.effort;
- assert.equal(f.provider.sessionEffort(f.session),'medium');
- assert.equal(f.provider.sessionEffort(f.hidden),'medium');
+ assert.equal(f.provider.sessionEffort(f.session),'high');
+ assert.equal(f.provider.sessionEffort(f.hidden),'high');
  await f.provider.setEffort(f.other,'low');
  assert.deepEqual(f.applied,[['effort','b','low']]);
- assert.equal(f.provider.sessionEffort(f.session),'medium');
+ assert.equal(f.provider.sessionEffort(f.session),'high');
  assert.equal(f.provider.sessionEffort(f.other),'low');
- assert.equal(f.provider.sessionEffort(f.hidden),'medium');
+ assert.equal(f.provider.sessionEffort(f.hidden),'high');
  f.messages.length=0;f.provider.broadcastModelConfig();
- assert.deepEqual(f.messages.map(m=>[m.target,m.effort]),[['a','medium'],['b','low']]);
+ assert.deepEqual(f.messages.map(m=>[m.target,m.effort]),[['a','high'],['b','low']]);
  const restored=fixture(true,f.state);delete restored.settings.effort;
  assert.equal(restored.provider.sessionEffort(restored.other),'low');
- restored.settings.effort='high';assert.equal(restored.provider.sessionEffort(restored.other),'low');
- assert.equal(restored.provider.sessionEffort({}),'high');
+ restored.settings.effort='medium';assert.equal(restored.provider.sessionEffort(restored.other),'low');
+ assert.equal(restored.provider.sessionEffort({}),'medium');
 });
 test('推理设置保存失败或不支持时不能改变进程，错误只发给当前会话',async()=>{
  for(const condition of ['save-failed','unsupported']){
@@ -231,7 +231,7 @@ test('旧超高速设置回到普通，新界面与设置不再允许启用超�
  assert.equal(f.provider.speedMode(f.session),'default');
  f.settings.speedMode='ultrafast';assert.equal(f.provider.defaultSpeedMode(),'default');
  await f.provider.setSpeedMode(f.other,'ultrafast');assert.equal(f.applied.length,0);
- const pkg=require('../package.json');assert.equal(pkg.contributes.configuration.properties['codexChat.effort'].default,'medium');
+ const pkg=require('../package.json');assert.equal(pkg.contributes.configuration.properties['codexChat.effort'].default,'high');
  assert.deepEqual(pkg.contributes.configuration.properties['codexChat.speedMode'].enum,['default','fast']);
 });
 

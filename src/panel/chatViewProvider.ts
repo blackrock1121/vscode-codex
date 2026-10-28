@@ -2053,7 +2053,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (ctx.effort !== undefined) return ctx.effort;
         const saved = ctx.sessionId
             ? this.context.workspaceState.get<string>(`codexChat.sessionEffort.${ctx.sessionId}`) : undefined;
-        ctx.effort = typeof saved === "string" ? saved : this.config().get<string>("effort", "medium");
+        ctx.effort = typeof saved === "string" ? saved : this.config().get<string>("effort", "high");
         return ctx.effort;
     }
     private async saveSessionEffort(ctx: Pick<SessionCtx, "sessionId">, effort: string): Promise<void> {
@@ -3738,13 +3738,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.usageBlockedCategory = blocked ? category : undefined;
             const retryAfterMs = blocked ? undefined : Math.min(30 * 60000, 3 * 60000 * 2 ** (this.usageFails - 1));
             this.usageRetryAt = retryAfterMs === undefined ? 0 : Date.now() + retryAfterMs;
+            // 远端 HTTP 拒绝与本机执行/文件权限不是同一个问题；只记录状态与响应类型，不输出错误页或 URL。
+            const errorText = String((error as Error)?.message ?? '').slice(0, 32768);
+            const httpForbidden = /\b(?:HTTP(?:\/\d(?:\.\d)?)?\s+403|403 Forbidden)\b/i.test(errorText);
+            const htmlForbidden = httpForbidden && /content-type\s*[:=]\s*text\/html|<!doctype html|<html\b/i.test(errorText);
+            const localPermission = /\b(?:EACCES|EPERM)\b|permission denied|operation not permitted/i.test(`${details.errorCode ?? ''} ${errorText}`);
             operationFailure('account.usage', error, { operationId, cached: !!this.lastUsage,
                 staleMs: this.lastUsageUpdatedAt ? Date.now() - this.lastUsageUpdatedAt : undefined,
+                httpStatusCode: httpForbidden ? 403 : undefined, htmlAccessDenied: htmlForbidden || undefined,
                 durationMs: Math.round(performance.now() - startedAt), consecutiveFailures: this.usageFails, retryAfterMs, pollingPaused: blocked });
             this.usageFailureFields = errorFields(error);
             if (force || newlyBlocked) for (const ctx of this.sessions) this.post(ctx, { kind: 'notice', message: blocked
                 ? category === 'authentication' ? '额度刷新失败：账号认证被拒绝，已暂停自动查询。请检查登录状态；登录成功后会恢复，也可手动刷新。'
-                    : '额度刷新失败：访问被拒绝，已暂停自动查询。请检查账号或本机访问权限；处理后可手动刷新。'
+                    : htmlForbidden ? '额度刷新失败：远端站点拒绝访问（HTTP 403），已暂停自动查询，保留上次显示。这不代表额度已用完；请检查 VPN/代理或稍后手动刷新。'
+                    : httpForbidden ? '额度刷新失败：额度接口拒绝访问（HTTP 403），已暂停自动查询，保留上次显示。这不代表额度已用完；请检查账号访问权限或网络，处理后可手动刷新。'
+                    : localPermission ? '额度刷新失败：本机权限不足，已暂停自动查询。请检查 Codex 程序或本机文件访问权限；处理后可手动刷新。'
+                    : '额度刷新失败：访问被拒绝，已暂停自动查询。请检查账号访问权限；处理后可手动刷新。'
                 : '额度刷新失败，保留上次显示；对话仍可继续，将延后自动重试，也可手动刷新。' });
         }).finally(() => {
             this.usageInFlight = false;
@@ -4860,7 +4869,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             <button id="btn-attach-file" class="composer-btn" title="附加文件/目录到会话">${ICONS.attach}</button>
             <span class="composer-sep"></span>
             <button id="model-trigger" class="composer-pick" title="选择模型"><span class="pick-emoji">${ICONS.model}</span><span id="model-label" class="pick-label">默认模型</span><span class="pick-caret">${ICONS.chevron}</span></button>
-            <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">medium</span><span class="pick-caret">${ICONS.chevron}</span></button>
+            <button id="effort-trigger" class="composer-pick" aria-haspopup="true" aria-expanded="false" title="选择此会话的推理强度"><span id="effort-label" class="effort-label">high</span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="speed-trigger" type="button" class="composer-pick speed-toggle" role="switch" aria-checked="false" aria-label="快速模式"><span class="speed-bolt" aria-hidden="true">${ICONS.fast}</span></button>
             <button id="mode-trigger" class="composer-pick" aria-haspopup="true" aria-label="选择权限模式"><span id="mode-icon" class="pick-emoji"></span><span id="mode-label" class="pick-label"></span><span class="pick-caret">${ICONS.chevron}</span></button>
             <button id="diagnostics-trigger" type="button" class="composer-pick" title="插件诊断中心" aria-label="打开插件诊断中心"><span class="pick-emoji" aria-hidden="true">${ICONS.debug}</span></button>

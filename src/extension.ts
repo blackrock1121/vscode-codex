@@ -87,7 +87,7 @@ export function activate(context: vscode.ExtensionContext): void {
     async () => { provider.showNotifyConfig(); }, {
       load: forceModels => loadDiagnosticConfiguration(context.globalState.get('codexChat.diagnosticOptions'), {
         model: vscode.workspace.getConfiguration('codexChat').get<string>('model'),
-        effort: vscode.workspace.getConfiguration('codexChat').get<string>('effort', 'medium'),
+        effort: vscode.workspace.getConfiguration('codexChat').get<string>('effort', 'high'),
       }, () => provider.diagnosticModels(), 10000, forceModels),
       save: async options => { await context.globalState.update('codexChat.diagnosticOptions', diagnosticOptions(options)); },
     });
