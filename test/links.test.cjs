@@ -24,6 +24,33 @@ const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
 const proto=ChatViewProvider.prototype;
 
+test('Finder 菜单定位实际文件，支持空格、中文和行号，拒绝目录及网页',async t=>{
+  const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-finder-'));
+  t.after(()=>fs.rm(root,{recursive:true,force:true}));
+  const file=path.join(root,'配置 文件.yaml');
+  await fs.writeFile(file,'config');
+  const ctx={cwd:()=>root,workspaceDirs:()=>[root],resolveWorkspaceFile:proto.resolveWorkspaceFile};
+  found=[];
+  for(const ref of [file,'配置 文件.yaml',`file://${encodeURI(file)}#L12`,file+':8']){
+    calls.length=0;
+    await proto.revealFileInFinder.call(ctx,{codexFilePath:ref});
+    assert.deepEqual(calls.filter(c=>Array.isArray(c)&&c[0]==='command'),[['command','revealFileInOS',{fsPath:file}]]);
+    assert.equal(calls.some(c=>['openTextDocument','external'].includes(c[0])),false);
+  }
+  for(const ref of [root,'https://example.com/file.yaml','mailto:a@example.com',path.join(root,'missing.yaml')]){
+    calls.length=0;
+    await proto.revealFileInFinder.call(ctx,{codexFilePath:ref});
+    assert.equal(calls.some(c=>Array.isArray(c)&&c[0]==='command'),false,ref);
+  }
+  calls.length=0;
+  for(const context of [undefined,null,{},'path',{codexFilePath:12}]) await proto.revealFileInFinder.call(ctx,context);
+  assert.deepEqual(calls,[]);
+  await fs.unlink(file);
+  await fs.mkdir(file);
+  await proto.revealFileInFinder.call(ctx,{codexFilePath:file});
+  assert.equal(calls.some(c=>Array.isArray(c)&&c[0]==='command'),false,'原文件变成目录后不能定位');
+});
+
 test('本地链接严格解析路径，不把失效的绝对路径跳到同名文件',async t=>{
   calls.length=0;
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-links-'));

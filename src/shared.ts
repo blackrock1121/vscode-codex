@@ -184,7 +184,7 @@ export type ToWebview =
   | { kind: "draft"; text: string; images?: { mediaType: string; data: string }[]; files?: string[]; contexts?: { label: string; text: string }[] }
   | { kind: "update_available"; version: string }
   | { kind: "context"; used: number; total: number }
-  | { kind: "refs_validated"; invalid: string[] }
+  | { kind: "refs_validated"; invalid: string[]; valid?: string[] }
   | { kind: "local_image"; path: string; dataUri?: string }
   | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number }
   /** 后台轮次已结束，等待文件还原点归档；此时仍不能发送下一轮。 */

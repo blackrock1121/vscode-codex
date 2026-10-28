@@ -35,6 +35,26 @@ function scrollFixture(w){
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
 
+test('仅校验通过的文件链接启用原生 Finder 菜单，撤销链接时清除菜单',t=>{
+ const {w,sent,emit,errors}=setup(t);
+ emit({kind:'load_history',sessionId:'finder',items:[{type:'assistant_text',text:'[文件](/tmp/配置%20文件.yaml#L8) [目录](/tmp/folder/) [网页](https://example.com) 普通文字 `SomeSymbol`'}],checkpoints:[]});
+ const refs=sent.filter(m=>m.type==='validateRefs').flatMap(m=>m.refs);
+ const file=refs.find(r=>r.path==='/tmp/配置 文件.yaml'),folder=refs.find(r=>r.path==='/tmp/folder/');
+ assert.ok(file);assert.ok(folder);
+ assert.equal(w.document.querySelector('[data-vscode-context]'),null,'未校验的路径不能冒充文件');
+ emit({kind:'refs_validated',valid:[file.id],invalid:[folder.id]});
+ const element=w.document.querySelector(`[data-ref-id="${file.id}"]`);
+ assert.deepEqual(JSON.parse(element.dataset.vscodeContext),{webviewSection:'codex-file-link',codexFilePath:'/tmp/配置 文件.yaml'});
+ assert.equal(w.document.querySelectorAll('[data-vscode-context]').length,1);
+ element.dispatchEvent(new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+ assert.equal(sent.some(m=>m.type==='openFile'),false,'右键不能触发左键打开');
+ element.click();
+ assert.ok(sent.some(m=>m.type==='openFile'&&m.path==='/tmp/配置 文件.yaml'&&m.line===8));
+ emit({kind:'refs_validated',invalid:[file.id]});
+ assert.equal(w.document.querySelector('[data-vscode-context]'),null);
+ assert.deepEqual(errors,[]);
+});
+
 test('电脑排队内容同步宿主，撤回后更新；不把图片数据或输入草稿发进镜像',t=>{
  const f=setup(t,'queue-session'),input=f.w.document.getElementById('input');
  f.emit({kind:'load_history',sessionId:'queue-session',items:[],checkpoints:[]});

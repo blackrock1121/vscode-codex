@@ -1319,12 +1319,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
                 case "validateRefs": {
                     const invalid: string[] = [];
+                    const valid: string[] = [];
                     for (const r of m.refs) {
                         if (!(await this.fileRefResolves(r.path)))
                             invalid.push(r.id);
+                        else
+                            valid.push(r.id);
                     }
-                    if (invalid.length)
-                        this.post(ctx, { kind: "refs_validated", invalid });
+                    this.post(ctx, { kind: "refs_validated", invalid, valid });
                     break;
                 }
                 case "copy":
@@ -4173,6 +4175,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         catch (err) {
             operationFailure('webview.image.read', err, { operationId, resourceType: 'local', durationMs: Date.now() - started });
             return undefined;
+        }
+    }
+    /** 仅接受文件链接菜单的路径；执行前重新校验，避免文件已删除或变成目录。 */
+    async revealFileInFinder(context: unknown): Promise<void> {
+        const p = (context as { codexFilePath?: unknown } | null)?.codexFilePath;
+        if (typeof p !== "string" || !p) return;
+        try {
+            const abs = await this.resolveWorkspaceFile(parseFileRef(p).path, true);
+            if (!abs || !(await fs.promises.stat(abs)).isFile()) {
+                vscode.window.showWarningMessage(`找不到文件：${p}`);
+                return;
+            }
+            await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(abs));
+        }
+        catch (error) {
+            operationFailure('file.revealInFinder', error);
+            vscode.window.showErrorMessage(`无法在 Finder 中显示文件：${p}`);
         }
     }
     private async openFile(ctx: SessionCtx, p: string, line?: number, endLine?: number): Promise<void> {

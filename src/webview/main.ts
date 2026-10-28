@@ -1299,6 +1299,12 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       updateContextGauge(m.used, m.total);
       break;
     case "refs_validated":
+      for (const id of m.valid ?? []) {
+        const e = messagesEl.querySelector<HTMLElement>(`[data-ref-id="${id}"]`);
+        if (e?.dataset.action === "open" && e.dataset.path) {
+          e.dataset.vscodeContext = JSON.stringify({ webviewSection: "codex-file-link", codexFilePath: e.dataset.path });
+        }
+      }
       for (const id of m.invalid) {
         const e = messagesEl.querySelector(`[data-ref-id="${id}"]`) as HTMLElement | null;
         if (e) unlinkRef(e);
@@ -3234,7 +3240,7 @@ let refSeq = 0;
 /** Strip the clickable-link affordance from a ref element (keeps plain text/code). */
 function unlinkRef(e: HTMLElement) {
   e.classList.remove("code-ref");
-  for (const a of ["action", "path", "line", "endline", "symbol", "refId"]) delete e.dataset[a];
+  for (const a of ["action", "path", "line", "endline", "symbol", "refId", "vscodeContext"]) delete e.dataset[a];
   e.removeAttribute("title");
 }
 

@@ -148,6 +148,7 @@ export function activate(context: vscode.ExtensionContext): void {
     registerCommand("codex-chat.stop", () => provider.stop()),
     registerCommand("codex-chat.focusInput", () => provider.focusInput()),
     registerCommand("codex-chat.addSelectionToChat", () => provider.addSelection()),
+    registerCommand("codex-chat.revealFileInFinder", (context: unknown) => provider.revealFileInFinder(context)),
     // 手动检查：只点亮侧边栏横幅（不直接弹安装确认），但保留结果反馈。
     // 真正的"下载并安装"确认统一由点击横幅触发，避免同时冒出两个入口。
     registerCommand("codex-chat.checkUpdate", () => provider.checkForUpdate(true, false)),
