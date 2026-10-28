@@ -1007,6 +1007,36 @@ test('重置时间在左，额度和百分比相邻；重置卡列出各自有�
  emit({kind:'usage',weekPct:94,resetCredits:null});assert.equal(menu.querySelectorAll('.usage-credit').length,0);
  assert.deepEqual(errors,[]);
 });
+test('原生搜索结果在实时与历史界面显示链接、数量并展开其余结果',t=>{
+ const {toolView,timeline}=require('../dist/test/codex/events.js');
+ const item={type:'webSearch',id:'native-search',query:'检索资料',results:[
+  {type:'text_result',title:'<img src=x onerror=alert(1)>',url:'https://example.com/first'},
+  {type:'text_result',url:'https://example.com/untitled'},
+  {type:'text_result',title:'第三条',url:'https://example.com/third'},
+  {type:'text_result',title:'第四条',url:'https://example.com/fourth'},
+  {type:'text_result',title:'危险链接',url:'javascript:alert(1)'},
+ ]};
+ for(const history of [false,true]){
+  const {w,emit,errors}=setup(t);
+  if(history)emit({kind:'load_history',sessionId:'search-history',items:timeline([{items:[item]}]),checkpoints:[]});
+  else{
+   const view=toolView(item);
+   emit({kind:'tool_input',toolId:item.id,name:view.name,input:view.input});
+   emit({kind:'tool_result',toolUseId:item.id,content:view.result,isError:view.isError});
+  }
+  const links=[...w.document.querySelectorAll('.search-hit')];
+  assert.equal(links.length,4);
+  assert.equal(links[0].querySelector('.sh-title').textContent,item.results[0].title);
+  assert.equal(links[1].textContent.includes('https://example.com/untitled'),true);
+  assert.equal(w.document.querySelectorAll('.search-results img').length,0);
+  assert.equal(w.document.querySelector('.tool-meta').textContent,'完成 · 4 条');
+  assert.equal(w.document.querySelectorAll('.search-hit.hidden').length,1);
+  w.document.querySelector('.search-more').click();
+  assert.equal(w.document.querySelectorAll('.search-hit.hidden').length,0);
+  assert.equal(w.document.querySelectorAll('.tool-result-body').length,0);
+  assert.deepEqual(errors,[]);
+ }
+});
 test('搜索结果只渲染 http(s) 链接',t=>{const {w,emit,errors}=setup(t);emit({kind:'tool_input',toolId:'search',name:'WebSearch',input:{query:'test'}});emit({kind:'tool_result',toolUseId:'search',content:'Links: [{"title":"正常","url":"https://example.com/a"},{"title":"危险","url":"javascript:alert(1)"}]',isError:false});const links=[...w.document.querySelectorAll('.search-hit')];assert.equal(links.length,1);assert.equal(links[0].href,'https://example.com/a');assert.deepEqual(errors,[]);});
 test('回复中的网页、相对路径、绝对路径和文件 URI 分别走正确跳转',t=>{const {w,sent,emit,errors}=setup(t);emit({kind:'load_history',sessionId:'links',items:[{type:'assistant_text',text:'[网站](https://example.com/a?q=1) [邮箱](mailto:a@example.com) [相对](docs/guide.md#L8) [绝对](/tmp/a%20b.txt#L12) [文件 URI](file:///tmp/a%20b.pdf) [文档](/tmp/report.docx) [命令](command:workbench.action.files.openFile)'}],checkpoints:[]});const messages=w.document.getElementById('messages');const click=e=>e.dispatchEvent(new w.MouseEvent('click',{bubbles:true,cancelable:true}));const site=messages.querySelector('a[href="https://example.com/a?q=1"]');assert.ok(site);click(site);assert.ok(sent.some(m=>m.type==='openExternalLink'&&m.url==='https://example.com/a?q=1'));click(messages.querySelector('a[href^="mailto:"]'));assert.ok(sent.some(m=>m.type==='openExternalLink'&&m.url==='mailto:a@example.com'));for(const [label,p,line]of [['相对','docs/guide.md',8],['绝对','/tmp/a b.txt',12],['文件 URI','file:///tmp/a%20b.pdf',undefined],['文档','/tmp/report.docx',undefined]]){const ref=[...messages.querySelectorAll('.code-ref[data-action="open"]')].find(e=>e.textContent===label);assert.ok(ref,label);click(ref);assert.ok(sent.some(m=>m.type==='openFile'&&m.path===p&&m.line===line),label);}assert.equal([...messages.querySelectorAll('a,.code-ref')].some(e=>e.textContent==='命令'),false);assert.deepEqual(errors,[]);});
 test('调用代码链接在历史和流式回复中分离路径与行号',t=>{

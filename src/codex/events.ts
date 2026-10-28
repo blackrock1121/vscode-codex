@@ -81,8 +81,18 @@ export function toolView(item: any): { name: string; input: Record<string, unkno
       return { name, input, result: pairs.join('\n'), isError: false };
     } catch { /* 保留原始结果供排错 */ }
   }
+  const isError = item.status === 'failed' || item.status === 'declined' || !!item.error || item.success === false || item.result?.isError === true || (item.exitCode != null && item.exitCode !== 0);
+  // 原生 webSearch 把标题、链接和摘要放在 results，且可能没有 status/result。
+  // 实时通知和历史共用此映射，不能把已返回的搜索结果序列化成空字符串。
+  if (item.type === 'webSearch' && !isError && (Array.isArray(item.results) ||
+      (item.aggregatedOutput == null && item.result == null && item.contentItems == null))) {
+    const result = Array.isArray(item.results)
+      ? item.results.length ? JSON.stringify(item.results) : '本次检索未返回结果。'
+      : '检索已结束，未提供结果明细。';
+    return { name, input, result, isError };
+  }
   const result = item.aggregatedOutput ?? (item.changes ? item.changes.map((c: any) => `${c.path}\n${c.diff ?? ''}`).join('\n') : JSON.stringify(item.result ?? item.contentItems ?? item.error ?? item.status ?? ''));
-  return { name, input, result, isError: item.status === 'failed' || item.status === 'declined' || !!item.error || item.success === false || item.result?.isError === true || (item.exitCode != null && item.exitCode !== 0) };
+  return { name, input, result, isError };
 }
 export function userView(content: any[]): Extract<TimelineItem, { type: 'user' }> {
   let text = maskQuestionReply(content.filter(x => x.type === 'text').map(x => x.text).join('\n'));

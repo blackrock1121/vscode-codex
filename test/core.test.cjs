@@ -11,6 +11,34 @@ const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 const {diffCounts}=require('../dist/test/diff.js');
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const executable=path.resolve('test/fake-codex.cjs');
+test('原生网页检索的 results 在实时通知和历史中保留完整链接',()=>{
+ const events=[];
+ const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},
+  {emit:e=>events.push(e),onPermission:()=>{},onSessionId:()=>{},onClose:()=>{}});
+ const item={type:'webSearch',id:'native-search',query:'检索资料',action:{type:'search',queries:['检索资料']},results:[
+  {type:'text_result',title:'资料标题',url:'https://example.com/source',snippet:'资料摘要'},
+  {type:'text_result',url:'https://example.com/untitled',snippet:'无标题资料'},
+ ]};
+ p.notification({method:'item/started',params:{item:{...item,results:[]}}});
+ p.notification({method:'item/completed',params:{item}});
+ const result=events.find(e=>e.kind==='tool_result');
+ assert.deepEqual(JSON.parse(result.content),item.results);
+ assert.equal(result.isError,false);
+ const history=timeline([{items:[item]}])[0];
+ assert.equal(history.name,'WebSearch');
+ assert.equal(history.input.query,'检索资料');
+ assert.equal(history.result,result.content);
+});
+test('网页检索区分空结果和缺少明细，并保留旧版正文与失败原因',()=>{
+ const view=item=>timeline([{items:[{type:'webSearch',id:'search',...item}]}])[0];
+ assert.equal(view({results:[]}).result,'本次检索未返回结果。');
+ assert.equal(view({}).result,'检索已结束，未提供结果明细。');
+ assert.equal(view({status:'completed'}).result,'检索已结束，未提供结果明细。');
+ assert.match(view({result:'旧版正文'}).result,/旧版正文/);
+ const failed=view({results:[],error:{message:'搜索服务不可用'},status:'failed'});
+ assert.equal(failed.isError,true);
+ assert.match(failed.result,/搜索服务不可用/);
+});
 test('问题答案以真实图片输入续轮，纯图片回答也可提交，空答案仍不能放行',async t=>{
  const {p,events,requests}=await client(t);p.sendUserMessage('dynamic-question');await waitUntil(()=>requests.length);
  const key=requests[0].requestId,answers={choice:[]},picture={mediaType:'image/png',data:'aGVsbG8='};
