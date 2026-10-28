@@ -1,4 +1,4 @@
-import { observeOperation, operationLog } from '../operations';
+import { errorFields, observeOperation, operationFailure, operationLog } from '../operations';
 import { CodexRpc } from './rpc';
 import { timeline, userView, parseQuestionReply, normalizeQuestions } from './events';
 import { SessionSummary, TimelineItem, QuestionAnswerModes } from '../shared';
@@ -46,6 +46,7 @@ export class SessionStore {
   private preparations = new Set<ForkPreparation>();
   private metadata = new Map<string, { expiresAt: number; result: Promise<any> }>();
   private metadataRevision = 0;
+  private readonly readFailures = new Map<string, { failureId: string; processRunId?: string }>();
   private disposed = false;
   constructor(private readonly cwd: string, private readonly executable: () => string,
     private readonly accountChanged?: () => void) {}
@@ -121,17 +122,43 @@ export class SessionStore {
   }
   /** 只用于无副作用的读取；连接在请求期间断开时重建并重试一次。 */
   read<T = any>(method: string, params: unknown = {}): Promise<T> {
-    return observeOperation('session.read', () => this.readInner<T>(method, params), { method, targetKind: method.startsWith('account/') ? 'account_api' : method.startsWith('thread/') ? 'thread_api' : 'metadata_api' });
+    return observeOperation('session.read', () => this.trackRead(method, params, () => this.readInner<T>(method, params)), { method, targetKind: method.startsWith('account/') ? 'account_api' : method.startsWith('thread/') ? 'thread_api' : 'metadata_api' });
+  }
+  /** 后续同类读取成功才宣告恢复，不自动重试后端错误，也不把其它会话的成功当作恢复。 */
+  private async trackRead<T>(method: string, params: unknown, work: () => Promise<T>): Promise<T> {
+    const thread = (params as { threadId?: unknown } | null)?.threadId;
+    const key = JSON.stringify([method, typeof thread === 'string' ? thread : null]);
+    const previous = this.readFailures.get(key);
+    try {
+      const result = await work();
+      if (previous && this.readFailures.get(key) === previous) {
+        operationLog(method === 'hydrate' ? 'session.hydrate' : 'session.read', 'recovered', {
+          method, previousFailureId: previous.failureId, previousProcessRunId: previous.processRunId, processRunId: this.rpc?.runId });
+        this.readFailures.delete(key);
+      }
+      return result;
+    } catch (error) {
+      // RPC 错误已有 failureId；本地历史校验错误在这里分配，外层记录复用同一失败链。
+      const fields = errorFields(error);
+      if (!fields.failureId) operationFailure('session.validation', error, { method });
+      const failureId = errorFields(error).failureId;
+      if (typeof failureId === 'string' && fields.failureCategory !== 'cancelled') {
+        this.readFailures.set(key, { failureId, processRunId: fields.processRunId as string | undefined });
+        if (this.readFailures.size > 256) this.readFailures.delete(this.readFailures.keys().next().value!);
+      }
+      throw error;
+    }
   }
   private async readInner<T>(method: string, params: unknown): Promise<T> {
     const rpc = await this.connection();
     try { return await rpc.request<T>(method, params); }
     catch (error) {
       if (!rpc.isClosed || this.disposed) throw error;
-      operationLog('session.read', 'retry', { method, processRunId: rpc.runId });
+      const previousFailureId = errorFields(error).failureId;
+      operationLog('session.read', 'retry', { method, processRunId: rpc.runId, previousFailureId });
       const next = await this.connection();
       const result = await next.request<T>(method, params);
-      operationLog('session.read', 'recovered', { method, previousProcessRunId: rpc.runId, processRunId: next.runId });
+      operationLog('session.read', 'recovered', { method, previousFailureId, previousProcessRunId: rpc.runId, processRunId: next.runId });
       return result;
     }
   }
@@ -176,17 +203,18 @@ export class SessionStore {
   async hydrate(id: string): Promise<void> {
     const active = this.hydrating.get(id);
     if (active) return active;
-    const work = observeOperation('session.hydrate', async () => {
+    const work = observeOperation('session.hydrate', () => this.trackRead('hydrate', { threadId: id }, async () => {
       const rpc = await this.connection();
       try { await this.hydrateWith(rpc, id); }
       catch (error) {
         if (!rpc.isClosed || this.disposed) throw error;
-        operationLog('session.hydrate', 'retry', { reason: 'connection_closed', processRunId: rpc.runId });
+        const previousFailureId = errorFields(error).failureId;
+        operationLog('session.hydrate', 'retry', { reason: 'connection_closed', processRunId: rpc.runId, previousFailureId });
         const next = await this.connection();
         await this.hydrateWith(next, id);
-        operationLog('session.hydrate', 'recovered', { previousProcessRunId: rpc.runId, processRunId: next.runId });
+        operationLog('session.hydrate', 'recovered', { previousFailureId, previousProcessRunId: rpc.runId, processRunId: next.runId });
       }
-    }, { threadId: id });
+    }), { threadId: id });
     this.hydrating.set(id, work);
     try { await work; }
     finally { if (this.hydrating.get(id) === work) this.hydrating.delete(id); }
@@ -232,6 +260,14 @@ export class SessionStore {
   }
   private async hydrateThread(rpc: CodexRpc, thread: any): Promise<void> {
     const id = thread.id;
+    const invalid = () => Object.assign(new Error('会话历史轮次无效或重复，已保留上次读取的内容。'), { name: 'SyntaxError' });
+    const turnIds = new Set<string>();
+    const checkTurns = (turns: any[]) => {
+      for (const turn of turns) {
+        if (!turn || typeof turn.id !== 'string' || !turn.id || !Array.isArray(turn.items) || turnIds.has(turn.id)) throw invalid();
+        turnIds.add(turn.id);
+      }
+    };
     if (thread.historyMode === 'paginated' || !Array.isArray(thread.turns)) {
       let cursor: string | null = null; const turns: any[] = [];
       const seen = new Set<string>();
@@ -240,12 +276,13 @@ export class SessionStore {
         if (!Array.isArray(page?.data) || page.data.some((turn: any) => !turn || typeof turn.id !== 'string' || !Array.isArray(turn.items)) ||
           (page.nextCursor != null && (typeof page.nextCursor !== 'string' || !page.nextCursor)))
           throw Object.assign(new Error('会话历史分页格式无效，已保留上次读取的内容。'), { name: 'SyntaxError' });
+        checkTurns(page.data);
         turns.push(...page.data); cursor = page.nextCursor;
         if (cursor && seen.has(cursor)) throw new Error('会话历史分页游标重复，已停止读取，请重试。');
         if (cursor) seen.add(cursor);
       } while (cursor);
-      thread.turns = turns;
-    }
+      thread = { ...thread, turns };
+    } else checkTurns(thread.turns);
     this.threads.set(id, { ...thread, archived: this.threads.get(id)?.archived ?? false });
   }
   list(): SessionSummary[] {
@@ -389,5 +426,5 @@ export class SessionStore {
       await preparation.dispose();
     }
   }
-  dispose() { this.disposed = true; this.invalidateMetadata(); this.rpc?.dispose(); for (const preparation of this.preparations) void preparation.dispose(); }
+  dispose() { this.disposed = true; this.invalidateMetadata(); this.readFailures.clear(); this.rpc?.dispose(); for (const preparation of this.preparations) void preparation.dispose(); }
 }

@@ -184,11 +184,19 @@ export class CompactionRelay {
     let queued: { body: Buffer; binary: boolean }[] = [], queuedBytes = 0;
     const history = new ResponseHistory();
     const controller = new AbortController();
+    const connectionId = randomUUID();
     let writes = Promise.resolve(), pendingBytes = 0;
     const responses: (CompactionRoute | undefined)[] = [];
-    const incomplete = (reason: string) => {
+    const incomplete = (reason: string, outcome?: CompactionRoute['outcome']) => {
       for (const route of responses.splice(0)) if (route) this.report({ ...route, stage: 'response',
-        outcome: this.closed ? 'cancelled' : 'incomplete', reason });
+        outcome: this.closed ? 'cancelled' : outcome ?? 'incomplete', reason });
+    };
+    let writeFailed = false;
+    const failedWrite = (reason: string, error: unknown) => {
+      if (writeFailed) return;
+      writeFailed = true;
+      if (!this.closed) operationFailure('compaction.websocket.write', error, { connectionId, reason });
+      incomplete(reason, 'failed'); controller.abort(); client.terminate(); upstream.terminate();
     };
     client.on('message', (data, binary) => {
       const original = bytes(data); pendingBytes += original.length; client.pause();
@@ -218,14 +226,18 @@ export class CompactionRelay {
         } else if (upstream.readyState === WebSocket.OPEN) {
           await new Promise<void>((resolve, reject) => upstream.send(body, { binary }, error => error ? reject(error) : resolve()));
         }
-      }).catch(error => { operationFailure('compaction.websocket.write', error); client.terminate(); upstream.terminate(); }).finally(() => {
+      }).catch(error => failedWrite('upstream_send', error)).finally(() => {
         pendingBytes -= original.length;
         if (pendingBytes === 0 && client.readyState === WebSocket.OPEN) client.resume();
       });
     });
     upstream.on('open', () => {
       if (client.readyState !== WebSocket.OPEN) { upstream.close(); return; }
-      for (const { body, binary } of queued) upstream.send(body, { binary });
+      for (const { body, binary } of queued) {
+        if (writeFailed) break;
+        try { upstream.send(body, { binary }, error => { if (error) failedWrite('queued_upstream_send', error); }); }
+        catch (error) { failedWrite('queued_upstream_send', error); }
+      }
       queued = []; queuedBytes = 0;
     });
     upstream.on('message', (data, binary) => {
@@ -244,7 +256,9 @@ export class CompactionRelay {
           }
         } catch { history.clear(); incomplete('unrecognized_frame'); /* 上游原文只转发，不写日志 */ }
       } else { history.clear(); incomplete('binary_frame'); }
-      upstream.pause(); client.send(data, { binary }, error => { if (error) upstream.terminate(); else upstream.resume(); });
+      upstream.pause();
+      try { client.send(data, { binary }, error => { if (error) failedWrite('client_send', error); else if (!writeFailed) upstream.resume(); }); }
+      catch (error) { failedWrite('client_send', error); }
     });
     const closePeer = (peer: WebSocket, code: number, reason: Buffer) => {
       if (peer.readyState === WebSocket.CONNECTING || code === 1006) peer.terminate();

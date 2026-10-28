@@ -659,7 +659,7 @@ export class CodexProcess {
         if (this.rejectedChildren.size > 128) this.rejectedChildren.delete(this.rejectedChildren.values().next().value!);
       }
       this.finishTreeIfReady();
-    }).catch(e => this.emit({ kind: 'error', message: String(e), keepBusy: true }));
+    }).catch(e => this.handlerFailed('process.child.notification', e));
   }
   private finishTreeIfReady(): void {
     if (!this.rootCompletion || this.children.activeTurns().length || this.childChecks.size ||
@@ -675,7 +675,7 @@ export class CodexProcess {
       if (typeof id !== 'string' || id === this.sessionId) continue;
       void this.ensureChild(id).then(accepted => {
         if (accepted && this.stoppingTree) return this.interruptChild(id);
-      }).finally(() => this.finishTreeIfReady()).catch(e => this.emit({ kind: 'error', message: String(e), keepBusy: true }));
+      }).finally(() => this.finishTreeIfReady()).catch(e => this.handlerFailed('process.child.discovery', e));
     }
   }
   private clearChildRequests(threadId: string, turnId?: string): void {
@@ -1180,7 +1180,10 @@ export class CodexProcess {
     this.latency.finish(isError ? 'failed' : this.stoppingTree ? 'interrupted' : 'completed');
     this.endCompactionTrace(isError ? 'failed' : 'turn_ended_without_compaction_completed');
     this.rememberEndedTurn(this.turnId);
-    try { this.clearSavedQuestion(); } catch (e) { this.error(`清理已结束的提问失败：${String(e)}`); }
+    try { this.clearSavedQuestion(); } catch (e) {
+      operationFailure('question.cleanup', e, { processRunId: this.rpc.runId });
+      this.error(`清理已结束的提问失败：${String(e)}`);
+    }
     clearTimeout(this.pausedQuestion?.timer);
     clearTimeout(this.stopTimer); this.stopTimer = undefined;
     this.stopSettled?.(); this.stopSettled = undefined;

@@ -167,6 +167,9 @@ export class WorkspaceSnapshot {
           const chunk = buffer.subarray(0, bytesRead);
           if (chunk.includes(0)) return { reason: 'binary' };
           chunks.push(chunk);
+          // 已读到打开时的完整大小；下方仍核对句柄和路径状态，变化则拒绝。
+          // 稳定小文件无需再为 EOF 发起一次异步读取。
+          if (size === opened.size) break;
         }
         if (size !== opened.size) { this.changedDuringRead++; return { reason: 'unreadable' }; }
         // 已打开文件在读取期间消失/被替换，属于不稳定读取，不能当作可安全还原的删除。
@@ -213,7 +216,8 @@ export class WorkspaceSnapshot {
       const files = (await this.walk(root)).filter(file => !this.files.has(file) && !this.skipped.has(file));
       const readAt = performance.now();
       await this.readBatch(files, (file, { text, reason, missing }) => {
-        if (missing) return;
+        // 清单中存在但读取前消失的文件没有可靠基线；之后重现不能误当成本轮新增并删除。
+        if (missing) { this.changedDuringRead++; this.skip(file, 'unreadable'); return; }
         if (text === undefined) { this.skip(file, reason ?? 'unreadable'); return; }
         const size = Buffer.byteLength(text);
         if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); return; }

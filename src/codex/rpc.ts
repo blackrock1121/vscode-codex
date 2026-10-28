@@ -181,7 +181,7 @@ export class CodexRpc extends EventEmitter {
       if (this.diagnostics) this.diagnostic({ ...fields, stage, ...extra });
       else operationLog('rpc.request', stage, { processRunId: this.processRunId, requestId: id, method, ...extra });
     };
-    record('start', { pendingRequests: this.pending.size });
+    record('start', { pendingRequests: this.pending.size, timeoutMs: timeout });
     const request = new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => { this.pending.delete(id); reject(Object.assign(new Error(`Codex 请求超时：${method}`), { errorOrigin: 'timeout' })); }, timeout);
       this.pending.set(id, { resolve, reject, timer, method, startedAt });
@@ -195,7 +195,8 @@ export class CodexRpc extends EventEmitter {
       const failure = Object.assign(new Error(error.message), { name: error.name, code: error.code, rpcCode: error.rpcCode,
         processRunId: this.processRunId, requestId: id, failureId: error.failureId ?? randomUUID(),
         errorOrigin: error.errorOrigin ?? (Number.isInteger(error.rpcCode) ? 'backend' : 'transport') });
-      record('end', { ...errorFields(failure), outcome: failure.name === 'AbortError' ? 'cancelled' : 'failed', durationMs: Math.round(performance.now() - startedAt) });
+      record('end', { ...errorFields(failure), timeoutMs: timeout, terminationReason: failure.name === 'AbortError' ? 'client_dispose' : failure.errorOrigin,
+        outcome: failure.name === 'AbortError' ? 'cancelled' : 'failed', durationMs: Math.round(performance.now() - startedAt) });
       throw failure;
     });
   }

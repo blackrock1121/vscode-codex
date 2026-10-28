@@ -4,7 +4,8 @@ import type { DiagnosticFinding } from './analysis';
 import { redactDiagnosticText } from './redact';
 
 export interface GeneralSummary { errors: number; warnings: number; retries: number; recoveries: number; compactionErrors: number; groups: number; overflow: number;
-  correlatedErrors?: number; failureChains?: number; correlationOverflow?: number; correlatedToolErrors?: number; toolFailureChains?: number }
+  correlatedErrors?: number; failureChains?: number; correlationOverflow?: number; correlatedToolErrors?: number; toolFailureChains?: number;
+  linkedRecoveries?: number; recoveredFailureChains?: number; recoveryEvidence?: { failureId: string; operation: string; pluginVersion?: string; windowId?: string; failureLocation: string; recoveryLocation: string }[] }
 export interface LogLocation { file: string; line: number; atMs?: number; pluginVersion?: string; windowId?: string; traceId?: string }
 interface Incident { category: string; severity: 'warning' | 'error'; title: string; message: string }
 const bad = /\b(?:errors?|failed|failures?|exception|panic|fatal|unhandled|ENOENT|EACCES|ECONNRESET|ECONNREFUSED|ETIMEDOUT|MODULE_NOT_FOUND)\b|\b\w+Error\b|(?:\b(?:ok|success)|"(?:ok|success)")\s*[:=]\s*false\b|(?:\bisError|"isError")\s*[:=]\s*true\b|崩溃|异常|失败|报错|超时|断开|无响应|(?:脚本|运行时)错误/i;
@@ -27,14 +28,18 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     if (!failed && !retry && !fallback) return;
     // 旧 stderr 脱敏可能留下 ANSI 的 [2m 前缀，不能依赖模块名前的单词边界。
     const telemetry = row.type === 'runtime_error' && /opentelemetry_sdk\b.*\b(?:ExportError|export error)\b/i.test(String(row.message ?? ''));
-    const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' || row.event === 'logging_health' ? '采集完整性' : compaction ? '压缩' : row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
+    const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' || row.event === 'logging_health' ? '采集完整性' : compaction ? '压缩' :
+      row.operation === 'remote.connection' ? '手机接入连接' : row.errorOrigin === 'backend' || row.event === 'codex.sse_event' ? '后端服务' :
+      row.type === 'runtime_error' && /codex_skills_extension\b.*failed to install system skills/i.test(String(row.message ?? '')) ? '后端组件' :
+      row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
     const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
       diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
-      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin', 'connectionKind', 'connectionId', 'initiator', 'terminationReason'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
+      typeof row.timeoutMs === 'number' ? `timeoutMs=${row.timeoutMs}` : undefined,
       Number.isSafeInteger(row.requestId) ? `requestId=${row.requestId}` : undefined, row.message]
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
     return { category, severity: failed ? 'error' : 'warning', title: `${category}${retry ? '重试' : fallback ? '警告或降级' : '异常'}`, message: redactDiagnosticText(detail) };
@@ -52,11 +57,25 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
 export class GeneralAccumulator {
   private readonly counts: GeneralSummary = { errors: 0, warnings: 0, retries: 0, recoveries: 0, compactionErrors: 0, groups: 0, overflow: 0 };
   private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string> }>();
-  private readonly failureChains = new Set<string>();
+  private readonly failureChains = new Map<string, string>();
+  private readonly recoveredChains = new Set<string>();
+  private readonly recoveryEvidence: NonNullable<GeneralSummary['recoveryEvidence']> = [];
   private readonly toolFailures = new Set<string>();
   add(line: string, row: PerformanceRow | undefined, where: LogLocation): void {
     if (row?.stage === 'recovered') {
       this.counts.recoveries++;
+      const id = row.previousFailureId;
+      if (typeof id === 'string' && /^[a-f\d-]{36}$/i.test(id)) {
+        const key = `${where.pluginVersion ?? ''}:${where.windowId ?? ''}:${row.previousProcessRunId ?? ''}:${id}`;
+        const failureLocation = this.failureChains.get(key);
+        if (failureLocation) {
+          this.counts.linkedRecoveries = (this.counts.linkedRecoveries ?? 0) + 1;
+          if (!this.recoveredChains.has(key) && this.recoveryEvidence.length < 100) this.recoveryEvidence.push({
+            failureId: id, operation: diagnosticId(row.operation) ?? 'unknown', pluginVersion: where.pluginVersion,
+            windowId: where.windowId, failureLocation, recoveryLocation: `${where.file}:${where.line}` });
+          this.recoveredChains.add(key);
+        }
+      }
       if (!(Number(row.lostRecords) > 0)) return;
       row = { ...row, stage: 'unavailable', failureCategory: 'logging_loss', message: `恢复前有 ${Number(row.lostRecords)} 条记录未交给日志出口` };
     }
@@ -64,16 +83,17 @@ export class GeneralAccumulator {
     const incident = classifyIncident(line, row); if (!incident) return;
     if (incident.severity === 'error') this.counts.errors++; else this.counts.warnings++;
     if (incident.severity === 'error' && typeof row?.failureId === 'string' && /^[a-f\d-]{36}$/i.test(row.failureId)) {
-      const key = `${where.windowId ?? ''}:${row.processRunId ?? ''}:${row.failureId}`;
+      const key = `${where.pluginVersion ?? ''}:${where.windowId ?? ''}:${row.processRunId ?? ''}:${row.failureId}`;
       if (this.failureChains.has(key) || this.failureChains.size < 20000) {
-        this.failureChains.add(key); this.counts.correlatedErrors = (this.counts.correlatedErrors ?? 0) + 1;
+        if (!this.failureChains.has(key)) this.failureChains.set(key, `${where.file}:${where.line}`);
+        this.counts.correlatedErrors = (this.counts.correlatedErrors ?? 0) + 1;
       } else this.counts.correlationOverflow = (this.counts.correlationOverflow ?? 0) + 1;
     } else if (incident.severity === 'error' && incident.category === '工具执行' && row && where.windowId) {
       const call = diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId);
       // 性能/传输双观测必须有同一窗口及轮次（或进程）；不同父子调用编号绝不猜测合并。
       const scope = diagnosticId(row.traceId ?? where.traceId) ?? diagnosticId(row.processRunId);
       if (call && scope) {
-        const key = `${where.windowId}:${scope}:${call}`;
+        const key = `${where.pluginVersion ?? ''}:${where.windowId}:${scope}:${call}`;
         if (this.toolFailures.has(key) || this.toolFailures.size < 20000) {
           this.toolFailures.add(key); this.counts.correlatedToolErrors = (this.counts.correlatedToolErrors ?? 0) + 1;
         } else this.counts.correlationOverflow = (this.counts.correlationOverflow ?? 0) + 1;
@@ -113,15 +133,22 @@ export class GeneralAccumulator {
     this.counts.groups = this.groups.size;
     this.counts.failureChains = this.failureChains.size;
     this.counts.toolFailureChains = this.toolFailures.size;
+    this.counts.recoveredFailureChains = this.recoveredChains.size;
+    this.counts.recoveryEvidence = this.recoveryEvidence;
     const findings: DiagnosticFinding[] = [...this.groups].sort(([, a], [, b]) => (a.incident.severity === 'error' ? 0 : 1) - (b.incident.severity === 'error' ? 0 : 1) || b.count - a.count)
       .map(([id, group]) => ({ id: `log-${id}`, category: group.incident.category, origin: 'rule', occurrences: group.count,
         title: group.incident.title, severity: group.incident.severity, evidence: `${group.count} 条异常/警告日志。\n${group.examples.join('\n')}`,
-        recommendation: group.incident.category === '遥测采集' ? '此记录来自遥测导出链路，可能造成诊断数据缺失；不能据此认定主对话连接中断。请另行核对同一进程的 RPC、轮次和进程退出事件。' : '按文件和行号核对前后事件，确认是否恢复、是否影响用户和实际根因；区分插件故障、环境依赖、后端服务和预期取消，再实施修复。', traceIds: [...group.traces] }));
+        recommendation: group.incident.category === '手机接入连接' ? '此记录来自独立手机接入桥接，不代表 Codex 子进程崩溃。按 connectionId、reason、initiator 和 previousFailureId 核对关闭与重连。' :
+          group.incident.category === '后端组件' ? '此记录来自 CLI 系统技能安装组件；核对进程、目录状态和后续安装结果。目录非空不能单独证明权限问题、竞争或插件缺陷，不直接删除技能目录。' :
+          group.incident.category === '后端服务' ? '同一 failureId 为一次后端失败的多层记录；不能仅由错误分类区分网络、鉴权或服务内部原因，检查同类请求的后续恢复。' :
+          group.incident.category === '遥测采集' ? '此记录来自遥测导出链路，可能造成诊断数据缺失；不能据此认定主对话连接中断。请另行核对同一进程的 RPC、轮次和进程退出事件。' : '按文件和行号核对前后事件，确认是否恢复、是否影响用户和实际根因；区分插件故障、环境依赖、后端服务和预期取消，再实施修复。', traceIds: [...group.traces] }));
     const report = ['# 最近日志异常检查', '', `错误 ${this.counts.errors} 条，警告 ${this.counts.warnings} 条；压缩错误 ${this.counts.compactionErrors} 条，重试 ${this.counts.retries} 条，明确恢复 ${this.counts.recoveries} 条。`,
       '以上为日志事件数，同一次故障可能产生多条记录；恢复记录不代表所有错误都已恢复。',
+      `其中 ${this.counts.linkedRecoveries ?? 0} 条恢复记录明确关联到本次扫描中的 ${this.recoveredChains.size} 条失败链；其余 ${this.counts.recoveries - (this.counts.linkedRecoveries ?? 0)} 条未建立失败关联，不能据此抵扣错误。`,
       `其中 ${this.counts.correlatedErrors ?? 0} 条错误通过明确 failureId 关联为 ${this.failureChains.size} 条故障链；另有 ${this.counts.correlatedToolErrors ?? 0} 条工具错误观测按同窗口、轮次或进程及 callId 关联为 ${this.toolFailures.size} 个失败调用。不同编号的嵌套调用不强行合并。`,
       `其余 ${this.counts.errors - (this.counts.correlatedErrors ?? 0) - (this.counts.correlatedToolErrors ?? 0)} 条缺少完整关联或超过上限，不能按事件数推算独立事故。关联上限未纳入 ${this.counts.correlationOverflow ?? 0} 条。`,
       `异常分组 ${this.counts.groups} 个；超过分组上限的事件 ${this.counts.overflow} 条仍计入错误/警告总数。`, '',
+      ...this.recoveryEvidence.map(e => `- 已关联恢复：版本 ${e.pluginVersion ?? '未标注'} · 窗口 ${e.windowId ?? '未标注'} · ${e.operation} · failureId=${e.failureId} · ${e.failureLocation} → ${e.recoveryLocation}`), '',
       ...findings.flatMap(f => [`## ${f.title} · ${f.id}`, '', f.evidence, '', f.recommendation, ''])].join('\n');
     return { summary: { ...this.counts }, findings, report };
   }
