@@ -4654,6 +4654,7 @@ modelTrigger.onclick = (e) => {
     modelMenu.classList.remove("hidden");
     positionPickMenu(modelMenu, modelTrigger);
     pickBackdrop.classList.remove("hidden");
+    send({ type: "refreshModels" });
   }
 };
 pickBackdrop.onclick = closePickers;

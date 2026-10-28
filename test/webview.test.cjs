@@ -1059,6 +1059,25 @@ test('模型选择器每个系列仅保留最新版本，中文介绍不挤占�
  assert.ok(sent.some(m=>m.type==='setModel'&&m.model==='gpt-6.1-sol'));
  assert.deepEqual(errors,[]);
 });
+test('每次打开模型菜单请求刷新，新 Terra 到达后更新已打开菜单并保留原选择',t=>{
+ const {w,emit,sent,errors}=setup(t);
+ const model=id=>({id,name:id,description:'',efforts:['high'],defaultEffort:'high'});
+ emit({kind:'models',models:[model('gpt-5.6-terra')]});
+ emit({kind:'config',model:'gpt-5.6-terra',effort:'high',permissionMode:'default',speedMode:'default'});
+ const trigger=w.document.getElementById('model-trigger');
+ trigger.click();
+ assert.equal(sent.filter(m=>m.type==='refreshModels').length,1);
+ emit({kind:'models',models:[model('gpt-5.6-terra'),model('gpt-6.1-terra')]});
+ assert.deepEqual([...w.document.querySelectorAll('#model-menu [data-model]')].map(e=>e.dataset.model),['','gpt-6.1-terra']);
+ assert.equal(w.document.getElementById('model-label').textContent,'gpt-5.6-terra');
+ assert.equal(w.document.getElementById('effort-label').textContent,'high');
+ assert.equal(sent.some(m=>['setModel','setEffort','setSpeedMode'].includes(m.type)),false);
+ trigger.click(); assert.equal(sent.filter(m=>m.type==='refreshModels').length,1);
+ trigger.click(); assert.equal(sent.filter(m=>m.type==='refreshModels').length,2);
+ w.document.querySelector('[data-model="gpt-6.1-terra"]').click();
+ assert.equal(sent.findLast(m=>m.type==='setModel').model,'gpt-6.1-terra');
+ assert.deepEqual(errors,[]);
+});
 test('模型命令支持默认别名和完整目录中的旧模型，菜单保持精简',t=>{
  const {w,emit,sent,errors}=setup(t);
  const model=(id,name)=>({id,name,description:'',efforts:['low','medium','high'],defaultEffort:'medium'});

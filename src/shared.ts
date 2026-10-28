@@ -302,6 +302,7 @@ export type FromWebview =
    *  否则（手动「检查更新」/自动轮询）只点亮横幅，不打断。 */
   | { type: "checkUpdate"; fromBanner?: boolean }
   | { type: "refreshUsage" }
+  | { type: "refreshModels" }
   | { type: "performanceReport"; requestId?: string }
   | { type: "send"; text: string; sendId?: string; queueMs?: number; context?: string; images?: { mediaType: string; data: string }[]; files?: string[] }
   | { type: "excludeSnapshotPaths"; paths?: string[]; all?: boolean }

@@ -61,6 +61,25 @@ test('切换 B 模型仅更新 B，其他打开或后台会话及新会话默认
   assert.ok(f.messages.length && f.messages.every(m => m.target === 'b'));
 });
 
+test('打开模型菜单优先刷新当前会话连接，空白或已退出的连接使用共享目录', async () => {
+  const f = fixture(); let refreshes = 0, reads = 0;
+  f.a.proc.refreshModels = async () => { refreshes++; };
+  f.provider.store.readModelCatalog = async () => {
+    reads++;
+    return { data: [{ model: 'gpt-6.1-terra', displayName: 'GPT-6.1 Terra', description: '' }] };
+  };
+  await f.provider.onPanelMessage(f.a, { type: 'refreshModels' });
+  assert.equal(refreshes, 1); assert.equal(reads, 0);
+  delete f.b.proc;
+  await f.provider.onPanelMessage(f.b, { type: 'refreshModels' });
+  f.a.proc.isExited = true;
+  await f.provider.onPanelMessage(f.a, { type: 'refreshModels' });
+  assert.equal(refreshes, 1); assert.equal(reads, 2);
+  assert.equal(f.provider.modelCatalog[0].id, 'gpt-6.1-terra');
+  assert.deepEqual(f.messages.filter(m => m.kind === 'models').map(m => m.target), ['b', 'a']);
+  assert.deepEqual(f.applied, []); assert.equal(f.state.size, 0);
+});
+
 test('连续交错选择按会话保存，重建宿主后恢复各自模型，包括默认模型空字符串', async () => {
   const f = fixture();
   await Promise.all([

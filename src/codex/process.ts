@@ -104,6 +104,8 @@ export class CodexProcess {
   private models: ModelChoice[] = [];
   private modelsReady: Promise<void> = Promise.resolve();
   private modelsLoaded = false;
+  private modelsReadAt = 0;
+  private refreshingModels?: Promise<void>;
   private preparing?: Promise<void>;
   private starting?: Promise<void>;
   private dispatchSequence = 0;
@@ -230,11 +232,26 @@ export class CodexProcess {
         if (cursor) seen.add(cursor);
       } while (cursor);
       this.models = models;
+      this.modelsReadAt = Date.now();
       this.emit({ kind: 'models', models });
     } catch (e) {
       operationFailure('models.load', e);
       if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，普通模式仍可使用：${String(e)}` });
     } finally { this.modelsLoaded = true; this.scheduleCompactionValidation(); }
+  }
+  /** 菜单打开时刷新当前连接的目录及能力；短期复用并合并并发读取，不影响正在执行的轮次。 */
+  refreshModels(): Promise<void> {
+    return this.refreshingModels ??= (async () => {
+      await this.prepare();
+      await this.modelsReady;
+      if (this.exited || this.disposed) return;
+      if (this.modelsReadAt && Date.now() - this.modelsReadAt < 30_000) {
+        this.emit({ kind: 'models', models: this.models });
+        return;
+      }
+      this.modelsReady = this.loadModels();
+      await this.modelsReady;
+    })().finally(() => { this.refreshingModels = undefined; });
   }
   /** 仅准备连接与模型目录；不创建会话、不发起模型生成。 */
   prepare(): Promise<void> {

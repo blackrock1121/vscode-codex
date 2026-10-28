@@ -1212,6 +1212,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 case "setModel":
                     await this.setModel(ctx, m.model);
                     break;
+                case "refreshModels":
+                    try {
+                        if (ctx.proc && !ctx.proc.isExited) await ctx.proc.refreshModels();
+                        else {
+                            const models = modelChoices((await this.store.readModelCatalog()).data);
+                            this.modelCatalog = models;
+                            this.post(ctx, { kind: "models", models });
+                        }
+                    } catch (error) {
+                        operationFailure('panel.models.refresh', error);
+                        this.post(ctx, { kind: "notice", message: `模型列表刷新失败，请重新打开模型菜单重试：${String(error)}` });
+                    }
+                    break;
                 case "setSpeedMode":
                     await this.setSpeedMode(ctx, m.mode);
                     break;
