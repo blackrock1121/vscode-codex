@@ -11,7 +11,7 @@ Module._load=originalLoad;
 const {SessionStore}=require('../dist/test/codex/session.js');
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const user=text=>({type:'userMessage',content:[{type:'text',text}]});
-async function fixture(t){
+async function fixture(t, withAdded=false){
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-edit-message-'));
  const workspace=path.join(dir,'project');await fs.mkdir(workspace);
  const file=path.join(workspace,'source.txt');await fs.writeFile(file,'c结束时');
@@ -21,7 +21,10 @@ async function fixture(t){
  store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>steps.push('释放连接')});
  const checkpoints=new CheckpointManager(dir);checkpoints.setSession('source');const ids=[];
  for(const [i,text] of ['a','b','c'].entries()){
-  ids.push(checkpoints.beginTurn(text,i,true));checkpoints.recordSnapshot(file,i===0?'a开始前':`${['a','b'][i-1]}结束时`);checkpoints.completeSnapshot();
+  ids.push(checkpoints.beginTurn(text,i,true));checkpoints.recordSnapshot(file,i===0?'a开始前':`${['a','b'][i-1]}结束时`);
+  await fs.writeFile(file,`${text}结束时`);
+  if(withAdded&&text==='c'){const added=path.join(workspace,'c-added.txt');await fs.writeFile(added,'c创建');checkpoints.recordSnapshot(added,null);}
+  checkpoints.completeSnapshot();
  }
  checkpoints.flush();const ctx={sessionId:'source',checkpoints};
  const provider=Object.create(ChatViewProvider.prototype),settings=new Map([
@@ -44,8 +47,8 @@ async function fixture(t){
  return {dir,workspace,file,turns,store,ctx,provider,events,forks,sent,steps,ids,request,submit};
 }
 test('a开始→a结束→b开始→b结束→c：编辑 b 后回到 a结束的文件和完整对话，再发送 B',async t=>{
- const f=await fixture(t);
- const added=path.join(f.workspace,'c-added.txt');await fs.writeFile(added,'c创建');f.ctx.checkpoints.recordSnapshot(added,null);
+ const f=await fixture(t,true);
+ const added=path.join(f.workspace,'c-added.txt');
  f.ctx.checkpoints.accept(f.file);f.ctx.checkpoints.flush();
  const original=await fs.readFile(path.join(f.dir,'checkpoints-source.json'),'utf8');
  const send=f.provider.handleSend;
@@ -70,6 +73,16 @@ test('编辑 a 开始时回到空上下文和 a 之前的文件，不保留旧 a
  assert.equal(f.ctx.sessionId,undefined);assert.deepEqual(f.forks,[]);assert.equal(await fs.readFile(f.file,'utf8'),'a开始前');
  assert.equal(f.sent.length,1);assert.equal(f.sent[0][1],'A');assert.equal(f.events.find(m=>m.kind==='edit_message_result').sessionId,undefined);
  assert.deepEqual(f.store.threads.get('source').turns,f.turns);
+});
+
+test('编辑重发发现文件有其他来源的新修改时不创建分支、不截断对话、不发送',async t=>{
+ const f=await fixture(t);await fs.writeFile(f.file,'另一个会话刚完成的成果');
+ await f.submit();
+ assert.equal(f.ctx.sessionId,'source');assert.equal(f.forks.length,0);assert.equal(f.sent.length,0);
+ assert.equal(await fs.readFile(f.file,'utf8'),'另一个会话刚完成的成果');
+ assert.equal(f.store.threads.get('source').turns.length,3);
+ assert.equal(f.events.some(event=>event.kind==='edit_message_result'&&event.ok),false);
+ assert.ok(f.events.some(event=>JSON.stringify(event).includes('文件又被修改')));
 });
 test('正在运行 c 时编辑 b，必须等 c 停止和最终快照收齐后才回退、发送 B',async t=>{
  const f=await fixture(t);let release;

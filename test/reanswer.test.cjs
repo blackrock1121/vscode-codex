@@ -18,7 +18,7 @@ const {CodexProcess,questionStateFile}=require('../dist/test/codex/process.js');
 const {QUESTION_REPLY_PREFIX,checkpointTextKey}=require('../dist/test/codex/events.js');
 const user=text=>({type:'userMessage',content:[{type:'text',text}]});
 const reply=answer=>QUESTION_REPLY_PREFIX+JSON.stringify([{question:'安装来源',answers:[answer]}]);
-async function fixture(t){
+async function fixture(t, live=false){
  choice='还原';dialogs.length=0;
  const dir=await fs.mkdtemp(path.join(os.tmpdir(),'codex-reanswer-'));
  const workspace=path.join(dir,'project');await fs.mkdir(workspace);
@@ -29,7 +29,9 @@ async function fixture(t){
  store.prepareFork=()=>({ready:Promise.resolve(),dispose:async()=>{}});
  const checkpoints=new CheckpointManager(dir);checkpoints.setSession('source');
  checkpoints.beginTurn('完成安装',0);checkpoints.recordSnapshot(file,'任务开始前');
- const id=checkpoints.beginTurn(reply('A'),1,true);checkpoints.recordSnapshot(file,'提问前已完成的修改');checkpoints.completeSnapshot();checkpoints.flush();
+ await fs.writeFile(file,'提问前已完成的修改');checkpoints.completeSnapshot();
+ const id=checkpoints.beginTurn(reply('A'),1,true);checkpoints.recordSnapshot(file,'提问前已完成的修改');
+ await fs.writeFile(file,'按旧答案修改后');if(!live)checkpoints.completeSnapshot();checkpoints.flush();
  const ctx={sessionId:'source',checkpoints};const messages=[],forks=[];
  const provider=Object.create(ChatViewProvider.prototype);
  Object.assign(provider,{store,sessions:new Set([ctx]),detached:new Map(),restoring:new Set(),forking:new Set(),
@@ -206,11 +208,12 @@ test('无文件快照时阻止重新回答，不提供只回退对话的降级',
  assert.deepEqual(g.forks,[]);assert.match(g.messages.at(-1).message,/无法准确还原/);
 });
 test('重新回答回滚后续所有轮次及已保留的改动，恢复删除文件并删除新增文件',async t=>{
- const f=await fixture(t);
+ const f=await fixture(t,true);
  const added=path.join(f.workspace,'added.bin'),deleted=path.join(f.workspace,'deleted.txt');
  f.checkpoints.recordSnapshot(added,null);await fs.writeFile(added,Buffer.from([0,1,2]));
  f.checkpoints.accept(f.file);
  assert.equal(f.checkpoints.changedPaths().includes(f.file),false);
+ f.checkpoints.completeSnapshot();
  f.turns.push({id:'later-turn',status:'completed',items:[user('继续改'),{type:'agentMessage',text:'再下一轮的回复'}]});
  f.checkpoints.beginTurn('继续改',2,true);
  f.checkpoints.recordSnapshot(f.file,'按旧答案修改后');await fs.writeFile(f.file,'后续再次修改');
@@ -269,7 +272,7 @@ test('快照未修改的二进制不阻止还原，新增二进制可删除，�
  assert.equal(limited.unrestorableChanges.has(f.workspace),true);
 });
 test('活动轮次的新建文件收齐差异后可以还原，丢失内存基线的未归档轮次会阻止还原',async t=>{
- const f=await fixture(t);const added=path.join(f.workspace,'new.txt');
+ const f=await fixture(t,true);const added=path.join(f.workspace,'new.txt');
  f.ctx.snapshot=new WorkspaceSnapshot([f.workspace]);await f.ctx.snapshot.capture();
  f.ctx.mayHaveModifiedWorkspace=true;
  f.checkpoints.recordUnrestorable([added]);await fs.writeFile(added,'工具新建文件');
@@ -352,7 +355,7 @@ test('提交问题答案等待本会话保存的新档位，不沿用旧推理�
  assert.equal(submitted,'high');
 });
 test('工具返回相对路径时使用工作目录匹配快照，不误判缺少原文',async t=>{
- const f=await fixture(t);
+ const f=await fixture(t,true);
  f.ctx.snapshot=new WorkspaceSnapshot([f.workspace]);await f.ctx.snapshot.capture();
  f.provider.handleEmitInner(f.ctx,{kind:'tool_input',toolId:'edit',name:'Edit',input:{file_path:'./source.txt'}});
  await fs.writeFile(f.file,'又一次修改');await f.provider.captureFinalSnapshot(f.ctx);

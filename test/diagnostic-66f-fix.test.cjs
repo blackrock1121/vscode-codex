@@ -134,7 +134,7 @@ test('66f 历史先失败仍等待快照收尾，连接先失败立即被观察�
  provider.output={appendLine(){}};provider.config=()=>({get:(_k,def)=>def});provider.post=()=>{};provider.workspaceDirs=()=>[];provider.localSnapshotExcludedPaths=()=>[];provider.reportSnapshotSkips=()=>{};
  provider.ensureProcess=async()=>{throw fault('ECONNRESET');};provider.store={readTurnCount:async()=>{throw fault('EIO');}};
  t.mock.method(api.WorkspaceSnapshot.prototype,'capture',async()=>{started.resolve();await snapshot.promise;});
- const ctx={sessionId:'existing',sendSeq:1};let done=false;const work=provider.handleSendInner(ctx,'PRIVATE_TOKEN').finally(()=>done=true),rejection=assert.rejects(work,{code:'EIO'});
+ const ctx={sessionId:'existing',sendSeq:1,checkpoints:{startWorkspaceActivity:()=>{}}};let done=false;const work=provider.handleSendInner(ctx,'PRIVATE_TOKEN').finally(()=>done=true),rejection=assert.rejects(work,{code:'EIO'});
  await started.promise;await tick();assert.equal(done,false);snapshot.resolve();await rejection;assert.equal(done,true);assert.ok(ctx.snapshot);
 });
 

@@ -14,7 +14,7 @@ const vscode = {
   ViewColumn: { Active: -1 },
   Uri: { from: parts => ({ ...parts, toString: () => `${parts.scheme}://${parts.authority}${parts.path}?${encodeURIComponent(parts.query)}` }) },
   env: { uiKind: 1, uriScheme: 'vscode', asExternalUri: async uri => vscode.Uri.from({ ...uri, query: uri.query + '&windowId=42' }) },
-  workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目' }] },
+  workspace: { getConfiguration: () => ({ get: key => config[key] }), workspaceFolders: [{ name: '公司项目', uri: { fsPath: '/tmp/company-project' } }] },
   window: { state: { focused: true }, onDidChangeWindowState: () => ({ dispose() {} }), showWarningMessage: text => warnings.push(text) },
   commands: { executeCommand: async () => {} },
 };
@@ -257,7 +257,7 @@ test('直接发送消息成功后清理该会话，发送失败保留旧通知',
     p.ensureProcess=async()=>proc;p.speedMode=()=> 'default';p.post=()=>{};
     p.store.hydrate=async()=>{};p.store.countLines=()=>0;p.store.readTurnCount=async()=>0;
     p.clearSessionNotification=id=>cleared.push(id);
-    const ctx={sessionId:'branch',proc,checkpoints:{beginTurn:()=> 'checkpoint'}};
+    const ctx={sessionId:'branch',proc,checkpoints:{startWorkspaceActivity:()=>{},finishWorkspaceActivity:()=>{},beginTurn:()=> 'checkpoint'}};
     await p.handleSend(ctx,'直接在派生会话回复');
     assert.deepEqual(cleared,accepted?['branch']:[]);
   }
@@ -386,6 +386,7 @@ test('结果已收到后在快照整理期间关闭会话不再通知，关闭�
         recordSnapshot: (...args) => checkpoints.push(['snapshot', ...args]),
         recordUnrestorable: files => checkpoints.push(['unrestorable', [...files]]),
         completeSnapshot: () => checkpoints.push(['complete']),
+        finishWorkspaceActivity: () => {},
         flush: () => checkpoints.push(['flush']),
       },
     };
@@ -1083,7 +1084,7 @@ test('主动回复只清理来源会话，多标签与派生通知继续独立�
   const proc={isBusy:false,setModel:async()=>{},setSpeedMode:async()=>{},setEffort:async()=>{},sendUserMessage:()=>true};
   p.ensureProcess=async()=>proc; p.speedMode=()=> 'default';p.post=()=>{};
   p.store.hydrate=async()=>{};p.store.countLines=()=>0;p.store.readTurnCount=async()=>0;
-  const ctx={sessionId:a,proc,checkpoints:{beginTurn:()=> 'checkpoint'}};
+  const ctx={sessionId:a,proc,checkpoints:{startWorkspaceActivity:()=>{},finishWorkspaceActivity:()=>{},beginTurn:()=> 'checkpoint'}};
   await p.handleSend(ctx,'我没点通知，直接回复');
   await Promise.all([p.sendLocalNotice('新一轮完成','',a),p.sendLocalNotice('分支仍待回答','',branch)]);
   assert.deepEqual(nativeCalls.filter(x=>x.data.operation==='clear').map(x=>x.data.sessionId),[a]);

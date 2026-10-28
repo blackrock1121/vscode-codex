@@ -311,6 +311,7 @@ test('超过四十轮后还原最早保留点，不撤销更早轮次的文件�
  checkpoints.beginTurn('第一轮',0);checkpoints.recordSnapshot(earlier,'最初内容');
  const second=checkpoints.beginTurn('第二轮',1);checkpoints.recordSnapshot(later,'第二轮之前');
  await fs.writeFile(later,'第二轮改动');
+ checkpoints.completeSnapshot();
  for(let i=2;i<41;i++)checkpoints.beginTurn(`第 ${i+1} 轮`,i);
  assert.equal(checkpoints.list()[0].id,second);
  const result=checkpoints.restore(second);
@@ -322,8 +323,9 @@ test('超过四十轮后还原最早保留点，不撤销更早轮次的文件�
 
 test('还原写盘失败必须报告失败，并保留还原点供重试',async t=>{
  const {dir,checkpoints}=await checkpointFixture(t);
- const blocked=path.join(dir,'blocked.txt');await fs.mkdir(blocked);
+ const blocked=path.join(dir,'blocked.txt');
  const id=checkpoints.beginTurn('待还原轮次',0);checkpoints.recordSnapshot(blocked,'原始内容');
+ checkpoints.completeSnapshot();checkpoints.flush();await fs.mkdir(blocked);
  assert.throws(()=>checkpoints.restore(id),/blocked\.txt/);
  assert.equal(checkpoints.list()[0].id,id);
  const reloaded=new CheckpointManager(dir);reloaded.setSession('test');
@@ -345,6 +347,7 @@ test('中途写盘失败会恢复已修改和已删除文件，并保留还原�
  const good=path.join(dir,'good.txt'),added=path.join(dir,'added.bin'),bad=path.join(dir,'bad.txt');
  await fs.writeFile(good,'当前内容');await fs.writeFile(added,Buffer.from([0,1,2]));await fs.writeFile(bad,'当前末尾');
  const id=checkpoints.beginTurn('还原',0);checkpoints.recordSnapshot(good,'旧内容');checkpoints.recordSnapshot(added,null);checkpoints.recordSnapshot(bad,'旧末尾');
+ checkpoints.completeSnapshot();
  let failed=false;t.mock.method(syncFs,'writeFileSync',function(file,data,...args){
   if(file===bad&&!failed){failed=true;throw Error('模拟写盘失败');}return write.call(this,file,data,...args);
  });
@@ -357,8 +360,11 @@ test('中途写盘失败会恢复已修改和已删除文件，并保留还原�
 test('单文件回滚失败不会把备份当作已接受而删除',async t=>{
  const {provider,messages}=providerFixture();
  const {dir,checkpoints}=await checkpointFixture(t);
- const blocked=path.join(dir,'blocked.txt');await fs.mkdir(blocked);
+ const blocked=path.join(dir,'blocked.txt');await fs.writeFile(blocked,'当前内容');
  checkpoints.beginTurn('待回滚',0);checkpoints.recordSnapshot(blocked,'原始内容');
+ checkpoints.completeSnapshot();
+ const syncFs=require('node:fs'),write=syncFs.writeFileSync;
+ t.mock.method(syncFs,'writeFileSync',function(file,...args){if(file===blocked)throw Error('模拟写盘失败');return write.call(this,file,...args);});
  provider.revertFile({checkpoints},blocked);
  assert.equal(checkpoints.originalOf(blocked),'原始内容');
  assert.ok(messages.some(event=>event.message?.includes('回滚失败')));
@@ -380,8 +386,10 @@ test('派生还原写盘失败时清理临时分支，原会话与备份保持�
  const {dir,checkpoints}=await checkpointFixture(t);
  checkpoints.beginTurn('第一轮',0);
  const id=checkpoints.beginTurn('第二轮',1);
- const blocked=path.join(dir,'blocked.txt');await fs.mkdir(blocked);
- checkpoints.recordSnapshot(blocked,'原始内容');checkpoints.flush();
+ const blocked=path.join(dir,'blocked.txt');await fs.writeFile(blocked,'当前内容');
+ checkpoints.recordSnapshot(blocked,'原始内容');checkpoints.completeSnapshot();checkpoints.flush();
+ const syncFs=require('node:fs'),write=syncFs.writeFileSync;
+ t.mock.method(syncFs,'writeFileSync',function(file,...args){if(file===blocked)throw Error('模拟写盘失败');return write.call(this,file,...args);});
  const originalFile=path.join(dir,'checkpoints-test.json');
  const before=await fs.readFile(originalFile,'utf8');
  const deleted=[];

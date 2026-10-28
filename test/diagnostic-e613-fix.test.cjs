@@ -115,8 +115,9 @@ test('发送使用实时轮数创建还原点，读取失败、停止或会话�
   const provider=Object.create(ChatViewProvider.prototype),checkpoints=[],sent=[],applied=[];
   const proc={isBusy:false,setModel:async v=>applied.push(['model',v]),setEffort:async v=>applied.push(['effort',v]),
    setSpeedMode:async v=>applied.push(['speed',v]),sendUserMessage:text=>{sent.push(text);return true;}};
-  const ctx={sessionId:'source',proc,checkpoints:{beginTurn:(_text,count)=>{checkpoints.push(count);return 'checkpoint';}}};
+  const ctx={sessionId:'source',proc,checkpoints:{startWorkspaceActivity:()=>{},finishWorkspaceActivity:()=>{},beginTurn:(_text,count)=>{checkpoints.push(count);return 'checkpoint';}}};
   Object.assign(provider,{
+   workspaceDirs:()=>[],
    config:()=>({get:(_key,fallback)=>false}),post:()=>{},output:{appendLine:()=>{}},ensureProcess:async()=>proc,
    waitSessionSettings:async()=>{},sessionModel:()=> 'chosen-model',sessionEffort:()=> 'high',speedMode:()=> 'fast',
    clearSessionNotification:()=>{},store:{countLines:()=>assert.fail('不能使用旧历史缓存'),hydrate:()=>assert.fail('不能拉全部正文'),

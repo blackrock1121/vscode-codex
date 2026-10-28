@@ -15,7 +15,7 @@ const command = (operation, sid = 'session-b') => ({ version: 1, commandId: 'cmd
 
 function fixture() {
   const provider = Object.create(ChatViewProvider.prototype), saved = new Map(), events = [], sends = [];
-  const makeSession = id => ({ sessionId: id, blank: false, ready: true, checkpoints: { beginTurn: () => 'checkpoint', clear: () => {} },
+  const makeSession = id => ({ sessionId: id, blank: false, ready: true, checkpoints: { startWorkspaceActivity: () => {}, finishWorkspaceActivity: () => {}, beginTurn: () => 'checkpoint', clear: () => {} },
     proc: { currentSessionId: id, currentTurnId: 'turn-1', isBusy: false, isExited: false,
       setModel: async () => {}, setEffort: async () => {}, setSpeedMode: async () => {},
       sendUserMessage(text) { sends.push([id, text]); this.isBusy = true; return true; },

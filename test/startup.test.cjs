@@ -26,7 +26,7 @@ async function until(check) {
 async function fixture(t, env = {}, options = {}) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'codex-startup-'));
   const log = path.join(dir, 'rpc.jsonl'), events = [], procs = [];
-  const ctx = { blank: true, ready: true, checkpoints: { beginTurn: () => 'checkpoint', clear: () => {}, flush: () => {} } };
+  const ctx = { blank: true, ready: true, checkpoints: { startWorkspaceActivity: () => {}, finishWorkspaceActivity: () => {}, beginTurn: () => 'checkpoint', clear: () => {}, flush: () => {} } };
   const provider = Object.create(ChatViewProvider.prototype);
   const create = (extra, extraEnv = {}) => {
     const proc = new CodexProcess({ codexPath: path.resolve('test/fake-codex.cjs'), cwd: dir,

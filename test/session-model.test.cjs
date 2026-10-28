@@ -14,13 +14,13 @@ function fixture(state = new Map()) {
   const settings = { model: 'model-a', effort: 'high', speedMode: 'default', autosave: false, snapshotFilesForRestore: false };
   const makeSession = sessionId => ({
     sessionId, blank: !sessionId, ready: true,
-    checkpoints: { setSession: () => {}, flush: () => {}, clear: () => {}, beginTurn: () => 'checkpoint' },
+    checkpoints: { startWorkspaceActivity: () => {}, finishWorkspaceActivity: () => {}, setSession: () => {}, flush: () => {}, clear: () => {}, beginTurn: () => 'checkpoint' },
     proc: {
       modelForNextTurn: 'model-a',
       async setModel(model) { this.modelForNextTurn = model; applied.push([sessionId, 'model', model]); },
       setEffort: async effort => applied.push([sessionId, 'effort', effort]),
       setSpeedMode: async speed => applied.push([sessionId, 'speed', speed]),
-      setPermissionMode: async () => {}, dispose: () => {},
+      setPermissionMode: async () => {}, dispose: () => {}, disposeAndWait: async () => {},
     },
   });
   const a = makeSession('a'), b = makeSession('b'), hidden = makeSession('hidden');

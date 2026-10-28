@@ -1,6 +1,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import { WorkspaceActivity } from './workspaceActivity';
 import { CheckpointSummary } from "./shared";
 import { checkpointTextKey, QUESTION_REPLY_PREFIX } from "./codex/events";
 import { expectedFileError, operationFailure, operationLog } from './operations';
@@ -9,6 +10,8 @@ interface FileBackup {
   path: string;
   /** Pre-edit content, or null if the file did not exist (i.e. was created). */
   content: string | null;
+  /** 收尾时的文件指纹；还原前必须仍一致。 */
+  after?: string;
 }
 
 interface Checkpoint {
@@ -23,6 +26,7 @@ interface Checkpoint {
   workspaceSnapshot?: boolean;
   /** 最终差异已归档；异常退出丢失内存基线时不能声称能完整还原。 */
   snapshotComplete?: boolean;
+  activityId?: string;
   /** Files touched this turn that could NOT be snapshotted (too large / binary).
    *  Restore must surface these — silently reporting success while a file keeps
    *  Codex's edits is a lie. */
@@ -53,8 +57,26 @@ export class CheckpointManager {
   private baseline = new Map<string, string | null>();
   private baselineSkipped = new Set<string>();
   private sessionId?: string;
+  private activity?: WorkspaceActivity;
+  private activityCheckpoint?: string;
 
   constructor(private readonly storageDir: string) {}
+
+  get workspaceActivityId(): string | undefined { return this.activity?.id; }
+
+  /** 在自动保存/基线扫描之前登记，包括关闭文件快照的会话。 */
+  startWorkspaceActivity(roots: string[]): void {
+    this.finishWorkspaceActivity();
+    this.activity = WorkspaceActivity.begin(this.storageDir, roots);
+  }
+
+  finishWorkspaceActivity(): void {
+    if (!this.activity) return;
+    const cp = this.checkpoints.find(c => c.id === this.activityCheckpoint);
+    this.activity.finish([...(cp?.acceptedFiles ?? []), ...(cp?.files ?? [])].map(f => f.path));
+    this.activity = undefined;
+    this.activityCheckpoint = undefined;
+  }
 
   setSession(sessionId: string): void {
     if (this.sessionId === sessionId) return;
@@ -67,7 +89,10 @@ export class CheckpointManager {
    * @param truncateLine line count of the session transcript before this turn.
    */
   beginTurn(userText: string, truncateLine: number, workspaceSnapshot?: boolean): string {
+    if (this.activityCheckpoint) this.finishWorkspaceActivity();
+    if (!this.activity) this.startWorkspaceActivity([]);
     const id = randomUUID();
+    this.activityCheckpoint = id;
     this.checkpoints.push({
       id,
       label: shortLabel(userText),
@@ -75,6 +100,7 @@ export class CheckpointManager {
       userText,
       files: [],
       workspaceSnapshot,
+      activityId: this.activity!.id,
       truncateLine,
     });
     if (this.checkpoints.length > MAX_CHECKPOINTS) {
@@ -150,6 +176,10 @@ export class CheckpointManager {
   completeSnapshot(): void {
     const cp = this.current();
     if (!cp) return;
+    // 与基线不同，结束指纹只写一次；重复收尾不能把外部修改冒充成本会话结果。
+    if (cp.snapshotComplete) return;
+    for (const file of [...(cp.acceptedFiles ?? []), ...cp.files]) file.after = fileState(file.path);
+    this.finishWorkspaceActivity();
     cp.snapshotComplete = true;
     this.persistSoon();
   }
@@ -162,11 +192,44 @@ export class CheckpointManager {
     if (later.some(c => c.workspaceSnapshot !== true)) return "回答或后续轮次缺少可验证的工作区快照（旧记录或当时未开启快照）";
     if (!checkFiles) return undefined;
     if (later.some(c => !c.snapshotComplete)) return "回答后的文件差异未完整归档，无法确认全部后续改动";
+    const unsafe = this.fileRestoreBlockReason(checkpointId);
+    if (unsafe) return unsafe;
     const covered = new Set<string>();
     for (const cp of later) {
       for (const f of [...(cp.acceptedFiles ?? []), ...cp.files]) covered.add(f.path);
       const missing = (cp.skipped ?? []).filter(file => !covered.has(file));
       if (missing.length) return `以下路径缺少可还原的原文：${missing.join("、")}`;
+    }
+    return undefined;
+  }
+
+  /** 统一保护还原、编辑重发和单文件回滚，旧数据不猜测文件归属。 */
+  fileRestoreBlockReason(checkpointId?: string, onlyFile?: string): string | undefined {
+    if (onlyFile && this.baseline.has(onlyFile)) return '最早还原点已裁剪，无法验证该文件的完整修改链';
+    const index = checkpointId ? this.checkpoints.findIndex(cp => cp.id === checkpointId) : 0;
+    if (index < 0) return '找不到该还原点';
+    const later = this.checkpoints.slice(index);
+    const expected = new Map<string, string>();
+    const ids = new Set<string>();
+    for (const cp of later) {
+      // 同一轮点“保留”后继续编辑可能同时出现在两处；只比较不同轮次的衔接。
+      const files = [...new Map([...cp.files, ...(cp.acceptedFiles ?? [])].map(file => [file.path, file])).values()]
+        .filter(file => !onlyFile || file.path === onlyFile);
+      if (!files.length) continue;
+      if (!cp.activityId || !cp.snapshotComplete || files.some(file => file.after === undefined))
+        return '还原点缺少并行保护或结束时的文件指纹（旧记录或快照未完成），无法安全回滚文件';
+      ids.add(cp.activityId);
+      for (const file of files) {
+        if (expected.has(file.path) && expected.get(file.path) !== contentState(file.content))
+          return `轮次之间存在其他来源的修改，已保留文件：${file.path}`;
+        expected.set(file.path, file.after!);
+      }
+    }
+    if (!expected.size) return undefined;
+    const conflict = WorkspaceActivity.blockReason(this.storageDir, [...ids], [...expected.keys()]);
+    if (conflict) return conflict;
+    for (const [file, state] of expected) {
+      if (fileState(file) !== state) return `快照结束后文件又被修改，已保留当前内容：${file}`;
     }
     return undefined;
   }
@@ -218,6 +281,12 @@ export class CheckpointManager {
     return [...set];
   }
 
+  restorePaths(checkpointId: string): string[] {
+    const index = this.checkpoints.findIndex(cp => cp.id === checkpointId);
+    return index < 0 ? [] : [...new Set(this.checkpoints.slice(index)
+      .flatMap(cp => [...(cp.acceptedFiles ?? []), ...cp.files].map(file => file.path)))];
+  }
+
   /**
    * Accept a file's changes in the review list, retaining its restore backups.
    */
@@ -257,6 +326,8 @@ export class CheckpointManager {
   restore(checkpointId: string): { restoredFiles: number; skipped: string[]; userText: string; truncateLine: number } | undefined {
     const idx = this.checkpoints.findIndex((c) => c.id === checkpointId);
     if (idx < 0) return undefined;
+    const blocked = this.fileRestoreBlockReason(checkpointId);
+    if (blocked) throw new Error(`文件还原检查失败，尚未修改文件或回退对话：${blocked}`);
     const truncateLine = this.checkpoints[idx].truncateLine;
     // Files we could never snapshot (large/binary) keep Codex's edits — collect
     // them so the caller can tell the user instead of claiming a full revert.
@@ -295,6 +366,9 @@ export class CheckpointManager {
           before.set(file, { backup, mode: stat.mode });
         } else before.set(file, null);
       }
+      // 备份期间其他窗口可能开始任务或改文件；实际写入之前再校验一次。
+      const changed = this.fileRestoreBlockReason(checkpointId);
+      if (changed) throw new Error(changed);
     } catch (err) {
       clearBackups();
       this.flush();
@@ -369,6 +443,7 @@ export class CheckpointManager {
   }
 
   clear(): void {
+    this.finishWorkspaceActivity();
     this.checkpoints = [];
     this.baseline.clear();
     this.baselineSkipped.clear();
@@ -522,4 +597,35 @@ export class CheckpointManager {
 export function shortLabel(text: string): string {
   const t = text.replace(/\s+/g, " ").trim();
   return t.length > 48 ? t.slice(0, 48) + "…" : t || "(空消息)";
+}
+
+function contentState(content: string | null): string {
+  return content === null ? 'missing' : createHash('sha256').update(content, 'utf8').digest('hex');
+}
+
+/** 有界读取，包含二进制；不跟随符号链接，不给超大文件生成不可靠的结束指纹。 */
+function fileState(file: string): string | undefined {
+  try {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.size > 16 * 1024 * 1024) return undefined;
+    const fd = fs.openSync(file, fs.constants.O_RDONLY | (fs.constants.O_NOFOLLOW ?? 0) | (fs.constants.O_NONBLOCK ?? 0));
+    try {
+      const same = (other: fs.Stats) => other.isFile() && stat.dev === other.dev && stat.ino === other.ino &&
+        stat.size === other.size && stat.mtimeMs === other.mtimeMs && stat.ctimeMs === other.ctimeMs;
+      if (!same(fs.fstatSync(fd))) return undefined;
+      const hash = createHash('sha256'), buffer = Buffer.allocUnsafe(64 * 1024);
+      let size = 0;
+      while (size <= stat.size) {
+        const count = fs.readSync(fd, buffer, 0, Math.min(buffer.length, stat.size + 1 - size), null);
+        if (!count) break;
+        size += count;
+        hash.update(buffer.subarray(0, count));
+      }
+      if (size !== stat.size || !same(fs.fstatSync(fd)) || !same(fs.lstatSync(file))) return undefined;
+      return hash.digest('hex');
+    } finally { fs.closeSync(fd); }
+  } catch (error) {
+    if (['ENOENT', 'ENOTDIR'].includes((error as NodeJS.ErrnoException).code ?? '')) return 'missing';
+    return undefined;
+  }
 }
