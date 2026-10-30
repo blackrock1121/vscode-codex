@@ -1,0 +1,1447 @@
+{
+  "diagnosticId": "afefb855-38d6-4ff4-9400-b75242324b63",
+  "baseline": "2eeb5e57bec2955656b5a31de7a52362af452689",
+  "sourceVersion": "0.1.187",
+  "sourceHash": "73235527b5aaa2c8c97c6a51994a65537783fd43db77cdffdd70382954f6dfe7",
+  "reportSha256": "21e981871ed1567bf1038225c212d135a61cd9af48e4b74203e6c26076349174",
+  "totalCandidates": 736,
+  "reviewed": 148,
+  "scope": "主审范围148条；codex148条及界面/远程440条见另外两份审查索引。全部基线位置固定在0.1.187，不用新行号覆盖旧证据。",
+  "files": [
+    {
+      "file": "src/checkpoints.ts",
+      "baselineSha256": "88a90aa342572e714d298980a790bedb00e239456d7e686ed1ebdc57f93431cc",
+      "currentSha256": "88a90aa342572e714d298980a790bedb00e239456d7e686ed1ebdc57f93431cc"
+    },
+    {
+      "file": "src/diagnosticHealth.ts",
+      "baselineSha256": "166adcc4147ecccdd1a685d7575ab16ff3272375adc3a90c5cf6b45ed433bb0a",
+      "currentSha256": "166adcc4147ecccdd1a685d7575ab16ff3272375adc3a90c5cf6b45ed433bb0a"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "baselineSha256": "73a4654d8e7bdf232fa2756045157f469e97ac8a26d1124b0962444270802743",
+      "currentSha256": "cf2e87e87a5c667aca405b2907eb9967a16bc41d28808b6a5fa80333d7370089"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "baselineSha256": "1d565087fe3550267a8fc053f47322aa3be72da018ada1f8fdc4577d0e4b4b7c",
+      "currentSha256": "1d565087fe3550267a8fc053f47322aa3be72da018ada1f8fdc4577d0e4b4b7c"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "baselineSha256": "03385d0f58c10a388bf5cf6b752e2ba363297e0e8df017f221fd1f93e8564878",
+      "currentSha256": "53a75c24fa8ef9cb90793f1e0bbf7aed41864ff8c8f8980fd0557b2b333e3c64"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "baselineSha256": "f31503c9d6ca5d5aa419caa2059cea50b20aa125728d44b8f6e56a8ea4c314b3",
+      "currentSha256": "f31503c9d6ca5d5aa419caa2059cea50b20aa125728d44b8f6e56a8ea4c314b3"
+    },
+    {
+      "file": "src/diagnostics/wait.ts",
+      "baselineSha256": "512c15706e732bbe1956d242bcaf460d8d2983c877bcb62e72ecf898fa201552",
+      "currentSha256": "512c15706e732bbe1956d242bcaf460d8d2983c877bcb62e72ecf898fa201552"
+    },
+    {
+      "file": "src/diagnostics/worker.ts",
+      "baselineSha256": "7c88c0288166d0e7725fceb1c93838a2e590483e0ad5a710c7d96146d631ea68",
+      "currentSha256": "c0cab78df09587d9dd521771af27db2123c5141dece6458789f96ba13287a81d"
+    },
+    {
+      "file": "src/diagnosticsReport.ts",
+      "baselineSha256": "0a8ff659f94896e3f0222342e893e2e59b54e75068b494bedf2ff173e3cb76b3",
+      "currentSha256": "0a8ff659f94896e3f0222342e893e2e59b54e75068b494bedf2ff173e3cb76b3"
+    },
+    {
+      "file": "src/diff.ts",
+      "baselineSha256": "75b058ef925a414d409120b61805c3e5f3f2801b545bef44e4cdfc9e523bf236",
+      "currentSha256": "75b058ef925a414d409120b61805c3e5f3f2801b545bef44e4cdfc9e523bf236"
+    },
+    {
+      "file": "src/extension.ts",
+      "baselineSha256": "2a624ea4efe5a5618681625a7895961a63911ac5103aa10124fcdd94da7cb4f1",
+      "currentSha256": "2a624ea4efe5a5618681625a7895961a63911ac5103aa10124fcdd94da7cb4f1"
+    },
+    {
+      "file": "src/imageFile.ts",
+      "baselineSha256": "ff8d5498492e22d372b144618c24b191aefc683ef5a1211ce7332de0fefa2824",
+      "currentSha256": "ff8d5498492e22d372b144618c24b191aefc683ef5a1211ce7332de0fefa2824"
+    },
+    {
+      "file": "src/logging.ts",
+      "baselineSha256": "43e15701f3224b82d770dacf29982ce25d17169e11cf751694d41011a048537a",
+      "currentSha256": "43e15701f3224b82d770dacf29982ce25d17169e11cf751694d41011a048537a"
+    },
+    {
+      "file": "src/operations.ts",
+      "baselineSha256": "e2357ec56a69e6c3cf1df0cb9f31ff676f734c4f6700e0545ccff4d12894cb7a",
+      "currentSha256": "e2357ec56a69e6c3cf1df0cb9f31ff676f734c4f6700e0545ccff4d12894cb7a"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "baselineSha256": "a825f7f81d65535dfda66fb4ee172cb0695a465f40c19177a519b869c2ba3c55",
+      "currentSha256": "a825f7f81d65535dfda66fb4ee172cb0695a465f40c19177a519b869c2ba3c55"
+    },
+    {
+      "file": "src/workdayCalendar.ts",
+      "baselineSha256": "61594a58e124397e780d0f0ec1f9aab3eb1c9a7b082eaacf20ddc54a7387c576",
+      "currentSha256": "fd68f5c55eb25397c9600c650a7bb83e1b642e06e515bfcf993842a26b6e4195"
+    },
+    {
+      "file": "src/workspaceActivity.ts",
+      "baselineSha256": "c1e90c3d56d855dba2ba03cb31836d2e92e270f251a86a5dc846478e3e42021e",
+      "currentSha256": "c1e90c3d56d855dba2ba03cb31836d2e92e270f251a86a5dc846478e3e42021e"
+    }
+  ],
+  "entries": [
+    {
+      "file": "src/checkpoints.ts",
+      "line": 395,
+      "symbol": "restore",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        }\n      } catch (err) {\n        failure = `${p}（${String(err)}）`;\n        break;",
+      "boundary": "restore → panel.restoreCheckpoint/forkRewind。356 的 ENOENT 仅为不存在的目标；其它预检错误经 372 包装后上抛。395 记录失败并回滚 touched 文件，回滚失败有 checkpoint.restore.recovery；最终抛出并保留还原点，非假成功。外层统一记录，不在每个文件重复记日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/checkpoints.ts",
+      "line": 356,
+      "symbol": "restore",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "        try { stat = fs.lstatSync(file); }\n        catch (err) { if ((err as NodeJS.ErrnoException).code !== \"ENOENT\") throw err; }\n        if (stat && !stat.isFile()) throw new Error(`${file} 已变为目录或符号链接`);\n        if (stat) {",
+      "boundary": "restore → panel.restoreCheckpoint/forkRewind。356 的 ENOENT 仅为不存在的目标；其它预检错误经 372 包装后上抛。395 记录失败并回滚 touched 文件，回滚失败有 checkpoint.restore.recovery；最终抛出并保留还原点，非假成功。外层统一记录，不在每个文件重复记日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/checkpoints.ts",
+      "line": 372,
+      "symbol": "restore",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "      if (changed) throw new Error(changed);\n    } catch (err) {\n      clearBackups();\n      this.flush();",
+      "boundary": "restore → panel.restoreCheckpoint/forkRewind。356 的 ENOENT 仅为不存在的目标；其它预检错误经 372 包装后上抛。395 记录失败并回滚 touched 文件，回滚失败有 checkpoint.restore.recovery；最终抛出并保留还原点，非假成功。外层统一记录，不在每个文件重复记日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnosticHealth.ts",
+      "line": 14,
+      "symbol": "failed",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      errorCode: typeof code === 'string' && /^E[A-Z0-9_]{1,48}$/.test(code) ? code : undefined })}`;\n    try { this.fallback(line); } catch { /* 独立最终出口也已不可用，不再递归。 */ }\n  }\n  recovered(write: (line: string) => void): void {",
+      "boundary": "独立 console/output 健康出口限流到一次；最终出口自身也失败时不递归。recovered 携带 lostRecords。磁盘永久不可写不承诺落盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 25,
+      "symbol": "alive",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "const validId = (id: unknown): id is string => typeof id === 'string' && /^[a-f\\d-]{36}$/.test(id);\nconst alive = (pid: number) => { try { process.kill(pid, 0); return true; } catch (e) { return (e as NodeJS.ErrnoException).code === 'EPERM'; } };\n\nexport function workerRunner(workerPath: string, logDir: string, timeoutMs = 5 * 60_000): DiagnosticRunner {",
+      "boundary": "process.kill(pid,0) 为存活探测，EPERM 视为存活，非故障吞没。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 44,
+      "symbol": "workerRunner",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      if (message?.type === 'diagnostic') operationLog('diagnostics.worker', 'failed', message.fields);\n      else if (message?.type === 'progress') { try { progress(String(message.message).slice(0, 200)); } catch (error) { finish(error instanceof Error ? error : new Error('诊断进度回调失败')); } }\n      else if (message?.type === 'result') finish(undefined, message.result);\n      else if (message?.type === 'error') finish(new Error(message.message));",
+      "boundary": "本次修复：worker error/exit/timeout/progress 异常统一唯一终态，错误对象穿过 execute 不再丢弃 failureId/errorCode；取消是 cancelled，成功是 completed。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 86,
+      "symbol": "then",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    const previous = this.mutations.get(id) ?? Promise.resolve();\n    const next = previous.catch(() => {}).then(async () => {\n      let lock: import('node:fs/promises').FileHandle | undefined;\n      for (let attempt = 0; attempt < 40; attempt++) {",
+      "boundary": "mutations 的 previous.catch 只释放失败队列，原 next 返回调用方；save、execute、page 各自记录真正失败。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 230,
+      "symbol": "lock",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      try { const owner = JSON.parse(await fs.readFile(file, 'utf8')); stale = Number.isInteger(owner.pid) && owner.pid > 0 && !alive(owner.pid); }\n      catch { stale = Date.now() - (await fs.stat(file)).mtimeMs > 30000; }\n      if (!stale) throw Object.assign(new Error('记录处理中'), { code: 'EEXIST' });\n      await fs.unlink(file); handle = await fs.open(file, 'wx', 0o600);",
+      "boundary": "EEXIST 是有界锁竞争；所有权检查失败后只按陈旧时间判定，不删除存活进程有效锁；非 EEXIST 传播。清理失败单独 diagnostics.lock.cleanup。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 269,
+      "symbol": "dispose",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    this.disposed = true;\n    await this.starting?.catch(() => {});\n    for (const controller of this.controllers.values()) controller.abort();\n    await Promise.allSettled([...this.tasks]);",
+      "boundary": "关闭时中止 controllers，await allSettled(tasks)；每个 execute 自带失败或取消终态，task.catch 记录剩余异常。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 40,
+      "symbol": "workerRunner",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    deadline.unref();\n    signal.addEventListener('abort', abort, { once: true });\n    worker.on('message', message => {\n      if (settled) return;",
+      "boundary": "本次修复：worker error/exit/timeout/progress 异常统一唯一终态，错误对象穿过 execute 不再丢弃 failureId/errorCode；取消是 cancelled，成功是 completed。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 53,
+      "symbol": "workerRunner",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    });\n    worker.once('exit', code => { if (!settled) finish(new Error(`后台诊断未完成（${code}），请重试。`)); });\n  });\n}",
+      "boundary": "本次修复：worker error/exit/timeout/progress 异常统一唯一终态，错误对象穿过 execute 不再丢弃 failureId/errorCode；取消是 cancelled，成功是 completed。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 113,
+      "symbol": "batch",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "          let record = await this.get(name.slice(0, -5));\n          if (record.status === 'running' && !alive(record.ownerPid)) {\n            record = await this.update(record.id, row => {\n              // 列表读取与获得跨窗口写锁之间，另一窗口可能已经更新终态。",
+      "boundary": "get 失败为 diagnostics.record.read 并增加 listWarning；过期进程记录锁内再次核验，不覆盖其它窗口刚写的完成状态。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 120,
+      "symbol": "batch",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "          }\n          if (record.notification.status === 'sending' && record.notification.ownerPid && !alive(record.notification.ownerPid)) {\n            record = await this.update(record.id, row => {\n              if (row.notification.status !== 'sending' || !row.notification.ownerPid || alive(row.notification.ownerPid)) return;",
+      "boundary": "get 失败为 diagnostics.record.read 并增加 listWarning；过期进程记录锁内再次核验，不覆盖其它窗口刚写的完成状态。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 126,
+      "symbol": "batch",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "          }\n          if (record.repair?.status === 'creating' && record.repair.ownerPid && !alive(record.repair.ownerPid)) {\n            record = await this.update(record.id, row => {\n              if (row.repair?.status !== 'creating' || !row.repair.ownerPid || alive(row.repair.ownerPid)) return;",
+      "boundary": "get 失败为 diagnostics.record.read 并增加 listWarning；过期进程记录锁内再次核验，不覆盖其它窗口刚写的完成状态。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 146,
+      "symbol": "finally",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      const options = diagnosticOptions(settings), now = Date.now();\n      if (this.runningId) {\n        const existing = await this.get(this.runningId), previous = existing.options;\n        if (previous && (previous.kind !== options.kind || previous.hours !== options.hours || previous.engine !== options.engine || previous.model !== options.model || previous.effort !== options.effort))",
+      "boundary": "starting.finally/task.finally 仅释放引用；原异步返回值保留拒绝，实际 execute/save/page 出口已记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 156,
+      "symbol": "finally",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      await this.save(record); this.runningId = record.id;\n      if (this.disposed) return this.update(record.id, row => { row.status = 'interrupted'; row.finishedAt = Date.now(); row.progress = '窗口已关闭，诊断中断'; });\n      const controller = new AbortController(); this.controllers.set(record.id, controller);\n      const task = this.execute(record, controller.signal).finally(() => {",
+      "boundary": "starting.finally/task.finally 仅释放引用；原异步返回值保留拒绝，实际 execute/save/page 出口已记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 201,
+      "symbol": "execute",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "    if (this.runningId === record.id) this.runningId = undefined;\n    if (!this.disposed) await this.retryNotification(record.id).catch(error => operationFailure('diagnostics.notification', error, fields));\n  }\n  async cancel(id: string): Promise<void> {",
+      "boundary": "开始、结果原子保存、完成/失败/取消日志齐全；损坏/丢弃/flush 失败显示部分完成。工作线程错误现在保留同一 failureId；不把工具失败算插件故障。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 246,
+      "symbol": "repair",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "    checkRepairWorkspace();\n    if (record.repair?.sessionId) { await open(record.repair.sessionId); return record.repair.sessionId; }\n    const lockFile = this.file(id, '.repair.lock');\n    let lock: import('node:fs/promises').FileHandle;",
+      "boundary": "双检 workspace/sessionId 与 repair.lock 防重复创建；create/open 失败向页面/命令 observeOperation 传播；failed repair 保存失败另记。长报告重复正文移除，但完整 findings 和全部源码位置读取要求保留。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 255,
+      "symbol": "repair",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      checkRepairWorkspace();\n      if (record.repair?.sessionId) { await open(record.repair.sessionId); return record.repair.sessionId; }\n      await this.update(id, row => { row.repair = { status: 'creating', ownerPid: process.pid, workspaceId: this.scope.workspaceId }; });\n      creating = true;",
+      "boundary": "双检 workspace/sessionId 与 repair.lock 防重复创建；create/open 失败向页面/命令 observeOperation 传播；failed repair 保存失败另记。长报告重复正文移除，但完整 findings 和全部源码位置读取要求保留。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 263,
+      "symbol": "repair",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "    } catch (error) {\n      if (creating) await this.update(id, row => { row.repair = { status: 'failed', message: String((error as Error).message).slice(0, 300) }; }).catch(error => operationFailure('diagnostics.repair.save', error, { diagnosticId: id }));\n      throw error;\n    } finally { await lock.close(); await fs.unlink(lockFile).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.lock.cleanup', error, { diagnosticId: id }); }); }",
+      "boundary": "双检 workspace/sessionId 与 repair.lock 防重复创建；create/open 失败向页面/命令 observeOperation 传播；failed repair 保存失败另记。长报告重复正文移除，但完整 findings 和全部源码位置读取要求保留。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 69,
+      "symbol": "get",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  private file(id: string, suffix = '.json') { if (!validId(id)) throw new Error('诊断记录编号无效'); return path.join(this.dir, id + suffix); }\n  async get(id: string): Promise<DiagnosticRecord> {\n    const data = JSON.parse(await fs.readFile(this.file(id), 'utf8')) as DiagnosticRecord;\n    if (data.id !== id || !['running', 'completed', 'failed', 'interrupted'].includes(data.status) || !Array.isArray(data.findings)) throw new Error('诊断记录已损坏');",
+      "boundary": "JSON/文件读取原样传播；list → diagnostics.record.read，page → diagnostics.page，execute/update → diagnostics.execute。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 84,
+      "symbol": "update",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async update(id: string, change: (record: DiagnosticRecord) => void): Promise<DiagnosticRecord> {\n    const previous = this.mutations.get(id) ?? Promise.resolve();\n    const next = previous.catch(() => {}).then(async () => {",
+      "boundary": "队列与跨窗口锁保证原子更新；失败返回原 next，调用链记录。EEXIST 最多40次/25ms，不改变退避与权限。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 86,
+      "symbol": "next",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "    const previous = this.mutations.get(id) ?? Promise.resolve();\n    const next = previous.catch(() => {}).then(async () => {\n      let lock: import('node:fs/promises').FileHandle | undefined;\n      for (let attempt = 0; attempt < 40; attempt++) {",
+      "boundary": "同 update；save 统一 diagnostics.save。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 102,
+      "symbol": "list",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  async list(): Promise<DiagnosticRecord[]> {\n    const files = (await fs.readdir(this.dir).catch(error => {\n      if (expectedFileError(error)) return [] as string[];",
+      "boundary": "目录非 ENOENT 记录并上抛；按20项并发读，单记录错误保留部分列表警告。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 140,
+      "symbol": "report",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  async report(id: string): Promise<string> { await this.get(id); return fs.readFile(this.file(id, '.report.md'), 'utf8'); }\n  start(settings: DiagnosticOptions = DEFAULT_DIAGNOSTIC_OPTIONS): Promise<DiagnosticRecord> {\n    if (this.disposed) return Promise.reject(new Error('诊断服务已关闭'));",
+      "boundary": "get 后 readFile → page.message.error 或 repair → 宿主统一操作出口，无吞错。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 144,
+      "symbol": "finally",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "    if (this.starting) return this.starting;\n    this.starting = (async () => {\n      const options = diagnosticOptions(settings), now = Date.now();\n      if (this.runningId) {",
+      "boundary": "starting.finally/task.finally 仅释放引用；原异步返回值保留拒绝，实际 execute/save/page 出口已记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 175,
+      "symbol": "catch",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "      if (saving) return;\n      saving = (async () => {\n        while (latest !== undefined && accepting && !signal.aborted) {\n          const message = latest; latest = undefined;",
+      "boundary": "进度保存失败 → diagnostics.progress.save；过时进度丢弃是明确合并策略，不重放用户操作。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 222,
+      "symbol": "lock",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async lock(id: string, suffix: string): Promise<import('node:fs/promises').FileHandle> {\n    const file = this.file(id, suffix);\n    let handle: import('node:fs/promises').FileHandle;",
+      "boundary": "EEXIST 是有界锁竞争；所有权检查失败后只按陈旧时间判定，不删除存活进程有效锁；非 EEXIST 传播。清理失败单独 diagnostics.lock.cleanup。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 237,
+      "symbol": "repair",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  async repair(id: string, create: (prompt: string, title: string) => Promise<string>, open: (sessionId: string) => Promise<void>): Promise<string> {\n    let record = await this.get(id);\n    if (record.diagnosticScope !== 'local-plugin-full' && record.workspaceId !== this.scope.workspaceId) throw new Error('请在旧诊断记录所属工作区中创建修复会话。');",
+      "boundary": "双检 workspace/sessionId 与 repair.lock 防重复创建；create/open 失败向页面/命令 observeOperation 传播；failed repair 保存失败另记。长报告重复正文移除，但完整 findings 和全部源码位置读取要求保留。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 267,
+      "symbol": "dispose",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  async dispose(): Promise<void> {\n    this.disposed = true;\n    await this.starting?.catch(() => {});",
+      "boundary": "关闭时中止 controllers，await allSettled(tasks)；每个 execute 自带失败或取消终态，task.catch 记录剩余异常。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 90,
+      "symbol": "next",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "        try { lock = await this.lock(id, '.update.lock'); break; }\n        catch (error) {\n          if (!expectedFileError(error, ['EEXIST'])) throw error;\n          await new Promise(resolve => setTimeout(resolve, 25));",
+      "boundary": "同 update；save 统一 diagnostics.save。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 212,
+      "symbol": "retryNotification",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "    let lock: import('node:fs/promises').FileHandle;\n    try { lock = await this.lock(id, '.notification.lock'); } catch (error) { if (expectedFileError(error, ['EEXIST'])) return; throw error; }\n    try {\n      if ((await this.get(id)).notification.status === 'sent') return;",
+      "boundary": "notify 失败记 diagnostics.notification；锁竞争是已在发送的正常情况，状态持久化和 sent 双检防重复。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 226,
+      "symbol": "lock",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "    try { handle = await fs.open(file, 'wx', 0o600); }\n    catch (error) {\n      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;\n      let stale = false;",
+      "boundary": "EEXIST 是有界锁竞争；所有权检查失败后只按陈旧时间判定，不删除存活进程有效锁；非 EEXIST 传播。清理失败单独 diagnostics.lock.cleanup。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 235,
+      "symbol": "lock",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "    try { await handle.writeFile(JSON.stringify({ pid: process.pid, windowId: this.scope.windowId })); return handle; }\n    catch (error) { await handle.close(); await fs.unlink(file).catch(cleanup => { if (!expectedFileError(cleanup)) operationFailure('diagnostics.lock.cleanup', cleanup, { diagnosticId: id }); }); throw error; }\n  }\n  async repair(id: string, create: (prompt: string, title: string) => Promise<string>, open: (sessionId: string) => Promise<void>): Promise<string> {",
+      "boundary": "EEXIST 是有界锁竞争；所有权检查失败后只按陈旧时间判定，不删除存活进程有效锁；非 EEXIST 传播。清理失败单独 diagnostics.lock.cleanup。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 250,
+      "symbol": "repair",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "    try { lock = await this.lock(id, '.repair.lock'); }\n    catch (error) { if (!expectedFileError(error, ['EEXIST'])) throw error; throw new Error('该诊断正在创建修复会话，请稍后刷新查看。'); }\n    let creating = false;\n    try {",
+      "boundary": "双检 workspace/sessionId 与 repair.lock 防重复创建；create/open 失败向页面/命令 observeOperation 传播；failed repair 保存失败另记。长报告重复正文移除，但完整 findings 和全部源码位置读取要求保留。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "line": 262,
+      "symbol": "repair",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "      return sessionId;\n    } catch (error) {\n      if (creating) await this.update(id, row => { row.repair = { status: 'failed', message: String((error as Error).message).slice(0, 300) }; }).catch(error => operationFailure('diagnostics.repair.save', error, { diagnosticId: id }));\n      throw error;",
+      "boundary": "双检 workspace/sessionId 与 repair.lock 防重复创建；create/open 失败向页面/命令 observeOperation 传播；failed repair 保存失败另记。长报告重复正文移除，但完整 findings 和全部源码位置读取要求保留。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 41,
+      "symbol": "analyzeWithModel",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "  const result = new Promise<string>((resolve, reject) => { resolveResult = resolve; rejectResult = reject; });\n  void result.catch(() => {});\n  let closing: Promise<void> | undefined;\n  const close = () => closing ??= Promise.resolve().then(() => rpc.disposeAndWait())",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 52,
+      "symbol": "serverRequest",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "  const closed = () => fail('模型诊断连接提前关闭');\n  const serverRequest = (m: RpcMessage) => { try { rpc.reject(m.id!, '诊断任务不支持工具或用户交互'); } catch {} fail('模型诊断尝试调用工具或交互，已停止'); };\n  const notification = (m: RpcMessage) => {\n    const p = m.params;",
+      "boundary": "reject 的错误不会绕过紧接的 fail；禁止执行工具后关闭临时进程，最终 diagnostics.model 记录失败。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 100,
+      "symbol": "analyzeWithModel",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      sandboxPolicy: { type: 'readOnly', networkAccess: false }, environments: [], outputSchema: OUTPUT_SCHEMA })\n      .then(turn => { turnId = turn?.turn?.id ?? turnId; }).catch(error => fail(`模型诊断请求失败：${redactDiagnosticText(String((error as Error).message), 200)}`));\n    const raw = await result;\n    const parsed = JSON.parse(raw);",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 126,
+      "symbol": "analyzeWithModel",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    rpc.off('notification', notification); rpc.off('close', closed); rpc.off('request', serverRequest);\n    if (threadId && turnId && !settled) void rpc.request('turn/interrupt', { threadId, turnId }, 1000).catch(() => {});\n    await close();\n  }",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 79,
+      "symbol": "analyzeWithModel",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "  timer.unref(); heartbeat.unref();\n  rpc.on('notification', notification); rpc.on('close', closed); rpc.on('request', serverRequest); signal.addEventListener('abort', abort, { once: true });\n  try {\n    if (signal.aborted) throw new Error('诊断已中断');",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 79,
+      "symbol": "analyzeWithModel",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "  timer.unref(); heartbeat.unref();\n  rpc.on('notification', notification); rpc.on('close', closed); rpc.on('request', serverRequest); signal.addEventListener('abort', abort, { once: true });\n  try {\n    if (signal.aborted) throw new Error('诊断已中断');",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 79,
+      "symbol": "analyzeWithModel",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "  timer.unref(); heartbeat.unref();\n  rpc.on('notification', notification); rpc.on('close', closed); rpc.on('request', serverRequest); signal.addEventListener('abort', abort, { once: true });\n  try {\n    if (signal.aborted) throw new Error('诊断已中断');",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 79,
+      "symbol": "analyzeWithModel",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "  timer.unref(); heartbeat.unref();\n  rpc.on('notification', notification); rpc.on('close', closed); rpc.on('request', serverRequest); signal.addEventListener('abort', abort, { once: true });\n  try {\n    if (signal.aborted) throw new Error('诊断已中断');",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 126,
+      "symbol": "analyzeWithModel",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "    rpc.off('notification', notification); rpc.off('close', closed); rpc.off('request', serverRequest);\n    if (threadId && turnId && !settled) void rpc.request('turn/interrupt', { threadId, turnId }, 1000).catch(() => {});\n    await close();\n  }",
+      "boundary": "独立诊断线程，fail/abort/close/notification → 唯一 result；result.catch 仅防迟到拒绝。整个函数记录 start/completed/failed/cancelled，失败保留本地结果。finally.disposeAndWait 有独立失败记录。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 84,
+      "symbol": "configured",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "    await stage(() => rpc.start());\n    const configured = await stage(() => rpc.request('config/read', { includeLayers: false }, 10000));\n    const disabledMcp = Object.fromEntries(Object.keys(configured.config?.mcp_servers ?? {}).map(name => [name, { enabled: false }]));\n    const config: Record<string, unknown> = { model_reasoning_effort: request.effort, web_search: 'disabled',",
+      "boundary": "config/read 经 diagnosticWait → analyzeWithModel catch；模型和 effort 显式验证，未降级。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "line": 92,
+      "symbol": "session",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "      'features.view_image': false, 'features.sleep_tool': false };\n    const session = await stage(() => rpc.request('thread/start', { model: request.model, allowProviderModelFallback: false, cwd, ephemeral: true,\n      approvalPolicy: 'never', sandbox: 'read-only', serviceTier: 'default', config,\n      baseInstructions: INSTRUCTIONS, developerInstructions: INSTRUCTIONS, dynamicTools: [], environments: [] }));",
+      "boundary": "thread/start 经 diagnosticWait → analyzeWithModel catch；保留用户所选模型与 effort。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 40,
+      "symbol": "show",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      panel.onDidDispose(() => { if (this.panel === panel) { this.panel = undefined; this.ready = false; this.revealId = undefined; this.selectionSequence++; clearTimeout(this.refreshTimer); this.refreshTimer = undefined; } });\n      panel.webview.onDidReceiveMessage(message => { void this.message(message).catch(error => this.error(error)); });\n    }\n    if (start) void this.begin().catch(error => this.error(error));",
+      "boundary": "消息回调/begin catch → error → operationFailure；panel 关闭清状态，不取消已启动后台诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 42,
+      "symbol": "show",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    }\n    if (start) void this.begin().catch(error => this.error(error));\n    else if (existed) void this.refresh();\n  }",
+      "boundary": "消息回调/begin catch → error → operationFailure；panel 关闭清状态，不取消已启动后台诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 59,
+      "symbol": "message",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        await this.refresh();\n        if (this.configuration) void this.configuration.load().then(config => { if (this.panel === panel) postWebviewMessage(panel?.webview, { type: 'configuration', ...config }); }).catch(error => { if (this.panel === panel) this.error(error); });\n        break;\n      }",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 26,
+      "symbol": "DiagnosticsPage",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    private readonly configuration?: { load: (forceModels?: boolean) => Promise<DiagnosticConfiguration>; save: (options: DiagnosticOptions) => Promise<void> }) {\n    jobs.on('changed', this.changed);\n  }\n  show(start = true, id?: string): void {",
+      "boundary": "changed 回调合并刷新，refresh 自带失败/恢复出口，纯订阅无需逐次日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 39,
+      "symbol": "show",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "      panel.webview.html = diagnosticsHtml(nonce, panel.webview.asWebviewUri(vscode.Uri.joinPath(this.context.extensionUri, 'media', 'diagnostics.js')).toString());\n      panel.onDidDispose(() => { if (this.panel === panel) { this.panel = undefined; this.ready = false; this.revealId = undefined; this.selectionSequence++; clearTimeout(this.refreshTimer); this.refreshTimer = undefined; } });\n      panel.webview.onDidReceiveMessage(message => { void this.message(message).catch(error => this.error(error)); });\n    }",
+      "boundary": "消息回调/begin catch → error → operationFailure；panel 关闭清状态，不取消已启动后台诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 40,
+      "symbol": "show",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "      panel.onDidDispose(() => { if (this.panel === panel) { this.panel = undefined; this.ready = false; this.revealId = undefined; this.selectionSequence++; clearTimeout(this.refreshTimer); this.refreshTimer = undefined; } });\n      panel.webview.onDidReceiveMessage(message => { void this.message(message).catch(error => this.error(error)); });\n    }\n    if (start) void this.begin().catch(error => this.error(error));",
+      "boundary": "消息回调/begin catch → error → operationFailure；panel 关闭清状态，不取消已启动后台诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 55,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'webviewError': operationFailure('diagnostics.webview', new Error('页面脚本异常')); break;\n      case 'ready': {\n        const panel = this.panel;\n        this.ready = true;",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 62,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      }\n      case 'refresh': await this.refresh(); break;\n      case 'start': await this.begin(message.options); break;\n      case 'configure': await this.configuration?.save(diagnosticOptions(message.options)); break;",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 63,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'refresh': await this.refresh(); break;\n      case 'start': await this.begin(message.options); break;\n      case 'configure': await this.configuration?.save(diagnosticOptions(message.options)); break;\n      case 'reloadModels': {",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 64,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'start': await this.begin(message.options); break;\n      case 'configure': await this.configuration?.save(diagnosticOptions(message.options)); break;\n      case 'reloadModels': {\n        const panel = this.panel;",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 65,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'configure': await this.configuration?.save(diagnosticOptions(message.options)); break;\n      case 'reloadModels': {\n        const panel = this.panel;\n        if (this.configuration) {",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 67,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "        const panel = this.panel;\n        if (this.configuration) {\n          const config = await this.configuration.load(true);\n          if (panel === this.panel) postWebviewMessage(panel?.webview, { type: 'configuration', ...config });",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 73,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      }\n      case 'cancel': await this.jobs.cancel(message.id!); break;\n      case 'collapse': this.selectionSequence++; this.selected = undefined; break;\n      case 'select': {",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 75,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'collapse': this.selectionSequence++; this.selected = undefined; break;\n      case 'select': {\n        const selection = ++this.selectionSequence, panel = this.panel;\n        const record = await this.jobs.get(message.id!);",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 80,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "        this.selected = record.id;\n        if (record.status !== 'completed') { await this.refresh(); break; }\n        const report = await this.jobs.report(record.id);\n        if (selection === this.selectionSequence && panel === this.panel) postWebviewMessage(panel?.webview, { type: 'detail', id: record.id, report }); break;",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 84,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      }\n      case 'repair': await this.repair(message.id!); await this.refresh(); break;\n      case 'notify': await this.jobs.retryNotification(message.id!); await this.refresh(); break;\n      case 'settings': await this.settings(); break;",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 85,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'repair': await this.repair(message.id!); await this.refresh(); break;\n      case 'notify': await this.jobs.retryNotification(message.id!); await this.refresh(); break;\n      case 'settings': await this.settings(); break;\n    }",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 86,
+      "symbol": "message",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      case 'notify': await this.jobs.retryNotification(message.id!); await this.refresh(); break;\n      case 'settings': await this.settings(); break;\n    }\n  }",
+      "boundary": "异步操作交 jobs/configuration/repair；onDidReceiveMessage.catch → error。select/collapse 属本地选择状态；postWebviewMessage 记录投递失败。本次修复诊断页 webviewError 类别丢失，保留白名单 phase/errorType。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "line": 45,
+      "symbol": "begin",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async begin(settings?: unknown): Promise<void> {\n    const options = diagnosticOptions(settings ?? (this.configuration ? (await this.configuration.load()).options : DEFAULT_DIAGNOSTIC_OPTIONS));\n    await this.configuration?.save(options);",
+      "boundary": "configuration.save/jobs.start/refresh 原异常返回 show/message 统一捕获；未吞没。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "line": 75,
+      "symbol": "snapshots",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    try { return { name, size: (await fs.promises.stat(path.join(dir, name))).size }; }\n    catch (error) { scanError('stat', error); return { name, size: -1 }; }\n  }));\n  const coverage: DiagnosticCoverage = { mode: 'local-plugin-full', files: names.length, readFiles: 0, unreadableFiles: 0,",
+      "boundary": "stat 错误计 scanErrors/unreadableFiles，不当空文件；后续报告显示证据缺口。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "line": 94,
+      "symbol": "consume",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        row = { ...parsed, diagnosticType: match[1], ...meta };\n      } catch { invalid = true; }\n    } else if (/\\[(perf|transport|compaction|compaction_route|operation|logging)\\] /.test(line) && !/\\[logging\\] droppedLines=\\d+\\b/.test(line)) invalid = true;\n    const day = file.match(LOG_NAME)![1], at = diagnosticLogTime(line, file, row);",
+      "boundary": "JSON parse 失败计 invalidLines；区间外/无时间行独立计数；并非默认正常。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "line": 156,
+      "symbol": "scanPluginLogs",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      if (fileBytes === snapshot.size) coverage.readFiles++; else coverage.unreadableFiles++;\n    } catch (error) { coverage.unreadableFiles++; scanError('read', error); }\n  }\n  coverage.windows = windows.size; coverage.sessions = sessions.size; coverage.sources = [...sources.values()];",
+      "boundary": "read 故障、短读计 unreadableFiles；worker/jobs 为最终出口。开始长度固定，扫描时新增行留下一次。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "line": 61,
+      "symbol": "scanPluginLogs",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "/** 扫描开始时存在的全部日文件及各自长度快照，避免追随持续追加而永不结束。 */\nexport async function scanPluginLogs(dir: string, progress: (message: string) => void = () => {}, request?: DiagnosticRequest): Promise<DiagnosticOutput> {\n  if (request?.kind === 'general') progress('正在检查当前插件源码的日志覆盖，包括没有运行记录的路径…');\n  const audit = request?.kind === 'general' ? auditLoggingCoverage() : undefined;",
+      "boundary": "read 故障、短读计 unreadableFiles；worker/jobs 为最终出口。开始长度固定，扫描时新增行留下一次。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "line": 73,
+      "symbol": "snapshots",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  };\n  const snapshots = await Promise.all(names.map(async name => {\n    try { return { name, size: (await fs.promises.stat(path.join(dir, name))).size }; }\n    catch (error) { scanError('stat', error); return { name, size: -1 }; }",
+      "boundary": "stat 错误计 scanErrors/unreadableFiles，不当空文件；后续报告显示证据缺口。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "line": 64,
+      "symbol": "filter",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "  const audit = request?.kind === 'general' ? auditLoggingCoverage() : undefined;\n  const names = (await fs.promises.readdir(dir).catch(error => {\n    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [] as string[];\n    throw error;",
+      "boundary": "根目录非 ENOENT 传播到 worker/jobs，ENOENT 代表尚无日志；源码审查仍独立执行。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/wait.ts",
+      "line": 17,
+      "symbol": "diagnosticWait",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      return work();\n    }).then(value => finish(undefined, value), error => finish(error));\n  });\n}",
+      "boundary": "计时/abort/原 Promise 拒绝通过 finish 单一结算；迟到回调被忽略避免重复。错误由 model/configuration 边界记录，不取消共享管理连接。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/wait.ts",
+      "line": 13,
+      "symbol": "diagnosticWait",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    const timer = setTimeout(() => finish(new Error(timeoutMessage)), timeoutMs);\n    signal?.addEventListener('abort', abort, { once: true });\n    Promise.resolve().then(() => {\n      if (signal?.aborted) throw new Error('诊断已中断');",
+      "boundary": "计时/abort/原 Promise 拒绝通过 finish 单一结算；迟到回调被忽略避免重复。错误由 model/configuration 边界记录，不取消共享管理连接。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnostics/worker.ts",
+      "line": 10,
+      "symbol": "匿名回调",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    parentPort!.postMessage({ type: 'result', result });\n  } catch (error) { parentPort!.postMessage({ type: 'diagnostic', fields: errorFields(error) }); parentPort!.postMessage({ type: 'error', message: '诊断未完成：全局日志读取或分析失败，请重试并检查日志目录权限。' }); }\n})();\n",
+      "boundary": "本次改为单条 error 消息携带安全 errorCode/errorType/failureId，父 workerRunner 和 jobs.execute 共享失败链，原错误正文不传输。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/worker.ts",
+      "line": 5,
+      "symbol": "匿名回调",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "\nvoid (async () => {\n  try {\n    const result = await scanPluginLogs(workerData.logDir, message => parentPort!.postMessage({ type: 'progress', message }), workerData.request);",
+      "boundary": "本次改为单条 error 消息携带安全 errorCode/errorType/failureId，父 workerRunner 和 jobs.execute 共享失败链，原错误正文不传输。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/diagnostics/worker.ts",
+      "line": 7,
+      "symbol": "result",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  try {\n    const result = await scanPluginLogs(workerData.logDir, message => parentPort!.postMessage({ type: 'progress', message }), workerData.request);\n    parentPort!.postMessage({ type: 'progress', message: '正在整理全局诊断证据…' });\n    parentPort!.postMessage({ type: 'result', result });",
+      "boundary": "scanPluginLogs 的异常统一进入 catch，再到父线程写盘；正常结果唯一终态。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnosticsReport.ts",
+      "line": 126,
+      "symbol": "readPerformanceData",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "            ...(identity ? { pluginVersion: identity[1], windowId: identity[2], hostId: identity[3] } : {}) });\n        } catch { invalidLines++; /* 报告明确显示证据缺口，不能冒充没有异常。 */ }\n      }\n    } finally { await handle.close(); }",
+      "boundary": "目录非 ENOENT 记录；open/read 传播。JSON 损坏累加 invalidLines 并在 sourceNote 明示；抽样旧接口不作为全量证据。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnosticsReport.ts",
+      "line": 107,
+      "symbol": "readPerformanceData",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "\nexport async function readPerformanceData(dir: string): Promise<{ rows: PerformanceRow[]; sourceNote: string }> {\n  const names = (await fs.readdir(dir).catch(error => { if (expectedFileError(error)) return [] as string[]; operationFailure('diagnostics.report.read', error); throw error; })).filter(n => /^codex-chat-\\d{4}-\\d{2}-\\d{2}\\.log$/.test(n)).sort().slice(-3);\n  const rows: PerformanceRow[] = []; let truncated = false, invalidLines = 0;",
+      "boundary": "目录非 ENOENT 记录；open/read 传播。JSON 损坏累加 invalidLines 并在 sourceNote 明示；抽样旧接口不作为全量证据。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diagnosticsReport.ts",
+      "line": 133,
+      "symbol": "readPerformanceReport",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "\nexport async function readPerformanceReport(dir: string): Promise<string> {\n  const { rows, sourceNote } = await readPerformanceData(dir);\n  return performanceReport(rows, sourceNote);",
+      "boundary": "委派 readPerformanceData，不重复底层日志；主诊断采用 scanPluginLogs 全量扫描。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/diff.ts",
+      "line": 32,
+      "symbol": "readDiffFile",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        return { exists: true, text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks, size)) };\n      } catch { return { exists: true, unavailable: 'binary' }; }\n    } finally { await handle.close(); }\n  } catch (error) {",
+      "boundary": "UTF8 解码失败是 binary 展示状态；missing/unreadable 区分，磁盘错误 operationFailure(diff.read)，不伪造空内容。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 117,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerRemote();\n    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(registerRemote),\n      vscode.workspace.onDidGrantWorkspaceTrust(registerRemote),\n      vscode.workspace.onDidChangeConfiguration(event => {",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 118,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(registerRemote),\n      vscode.workspace.onDidGrantWorkspaceTrust(registerRemote),\n      vscode.workspace.onDidChangeConfiguration(event => {\n        if (event.affectsConfiguration('codexChat.remoteEnabled')) registerRemote();",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 119,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "      vscode.workspace.onDidGrantWorkspaceTrust(registerRemote),\n      vscode.workspace.onDidChangeConfiguration(event => {\n        if (event.affectsConfiguration('codexChat.remoteEnabled')) registerRemote();\n      }), { dispose: () => { provider.remotePublish = undefined; remote?.dispose(); } });",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 126,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    output,\n    registerCommand(\"codex-chat.login\", () => provider.login()),\n    registerCommand(\"codex-chat.account\", () => provider.account()),\n    provider,",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 127,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.login\", () => provider.login()),\n    registerCommand(\"codex-chat.account\", () => provider.account()),\n    provider,\n    vscode.window.registerUriHandler({ handleUri: uri => provider.handleNotificationUri(uri) }),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 145,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    }),\n    registerCommand(\"codex-chat.newSession\", () => provider.newSession()),\n    registerCommand(\"codex-chat.showSessions\", () => provider.showSessions()),\n    registerCommand(\"codex-chat.closeSession\", () => provider.closeActiveSession()),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 146,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.newSession\", () => provider.newSession()),\n    registerCommand(\"codex-chat.showSessions\", () => provider.showSessions()),\n    registerCommand(\"codex-chat.closeSession\", () => provider.closeActiveSession()),\n    registerCommand(\"codex-chat.stop\", () => provider.stop()),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 147,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.showSessions\", () => provider.showSessions()),\n    registerCommand(\"codex-chat.closeSession\", () => provider.closeActiveSession()),\n    registerCommand(\"codex-chat.stop\", () => provider.stop()),\n    registerCommand(\"codex-chat.focusInput\", () => provider.focusInput()),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 148,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.closeSession\", () => provider.closeActiveSession()),\n    registerCommand(\"codex-chat.stop\", () => provider.stop()),\n    registerCommand(\"codex-chat.focusInput\", () => provider.focusInput()),\n    registerCommand(\"codex-chat.addSelectionToChat\", () => provider.addSelection()),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 149,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.stop\", () => provider.stop()),\n    registerCommand(\"codex-chat.focusInput\", () => provider.focusInput()),\n    registerCommand(\"codex-chat.addSelectionToChat\", () => provider.addSelection()),\n    registerCommand(\"codex-chat.revealFileInFinder\", (context: unknown) => provider.revealFileInFinder(context)),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 150,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.focusInput\", () => provider.focusInput()),\n    registerCommand(\"codex-chat.addSelectionToChat\", () => provider.addSelection()),\n    registerCommand(\"codex-chat.revealFileInFinder\", (context: unknown) => provider.revealFileInFinder(context)),\n    // 手动检查：只点亮侧边栏横幅（不直接弹安装确认），但保留结果反馈。",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 151,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.addSelectionToChat\", () => provider.addSelection()),\n    registerCommand(\"codex-chat.revealFileInFinder\", (context: unknown) => provider.revealFileInFinder(context)),\n    // 手动检查：只点亮侧边栏横幅（不直接弹安装确认），但保留结果反馈。\n    // 真正的\"下载并安装\"确认统一由点击横幅触发，避免同时冒出两个入口。",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 154,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    // 真正的\"下载并安装\"确认统一由点击横幅触发，避免同时冒出两个入口。\n    registerCommand(\"codex-chat.checkUpdate\", () => provider.checkForUpdate(true, false)),\n\n",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 157,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "\n    registerCommand(\"codex-chat.notifyConfig\", () => provider.showNotifyConfig()),\n    registerCommand(\"codex-chat.resetLocalSnapshotExcludes\", () => provider.resetLocalSnapshotExcludes()),\n    registerCommand(\"codex-chat.performanceReport\", () => diagnosticsPage.show(false)),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 158,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.notifyConfig\", () => provider.showNotifyConfig()),\n    registerCommand(\"codex-chat.resetLocalSnapshotExcludes\", () => provider.resetLocalSnapshotExcludes()),\n    registerCommand(\"codex-chat.performanceReport\", () => diagnosticsPage.show(false)),\n    registerCommand(\"codex-chat.startDiagnostics\", () => diagnosticsPage.show(true)),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 159,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.resetLocalSnapshotExcludes\", () => provider.resetLocalSnapshotExcludes()),\n    registerCommand(\"codex-chat.performanceReport\", () => diagnosticsPage.show(false)),\n    registerCommand(\"codex-chat.startDiagnostics\", () => diagnosticsPage.show(true)),\n    registerCommand(\"codex-chat.openDiagnostics\", (id?: string) => diagnosticsPage.show(false, id)),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 160,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.performanceReport\", () => diagnosticsPage.show(false)),\n    registerCommand(\"codex-chat.startDiagnostics\", () => diagnosticsPage.show(true)),\n    registerCommand(\"codex-chat.openDiagnostics\", (id?: string) => diagnosticsPage.show(false, id)),\n    vscode.window.registerWebviewPanelSerializer(\"codex-chat.diagnostics\", {",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 161,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    registerCommand(\"codex-chat.startDiagnostics\", () => diagnosticsPage.show(true)),\n    registerCommand(\"codex-chat.openDiagnostics\", (id?: string) => diagnosticsPage.show(false, id)),\n    vscode.window.registerWebviewPanelSerializer(\"codex-chat.diagnostics\", {\n      async deserializeWebviewPanel(panel: vscode.WebviewPanel): Promise<void> { panel.dispose(); diagnosticsPage.show(false); },",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 169,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    }),\n    registerCommand(\"codex-chat.openInEditor\", () => provider.openInEditor()),\n    // Cmd+Shift+T（仅聊天面板聚焦时接管）：重开最近关闭的会话标签页，对齐官方插件。\n    registerCommand(\"codex-chat.reopenClosedSession\", () => provider.reopenClosedSession()),",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 171,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    // Cmd+Shift+T（仅聊天面板聚焦时接管）：重开最近关闭的会话标签页，对齐官方插件。\n    registerCommand(\"codex-chat.reopenClosedSession\", () => provider.reopenClosedSession()),\n    // The icon on FILE editors' title bar: always start a FRESH conversation\n    // (openInEditor would resurrect the last session).",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 174,
+      "symbol": "activate",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "    // (openInEditor would resurrect the last session).\n    registerCommand(\"codex-chat.open\", () => provider.newSession()),\n  );\n",
+      "boundary": "registerCommand 统一 observeOperation；serializer 面板恢复同样有操作边界；activate 自带 start/completed/failed。URI 处理实际 provider.handleNotificationUri 捕获。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 86,
+      "symbol": "diagnosticsPage",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  const diagnosticsPage = new DiagnosticsPage(context, diagnostics,\n    async id => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }); },\n    async () => { provider.showNotifyConfig(); }, {\n      load: forceModels => loadDiagnosticConfiguration(context.globalState.get('codexChat.diagnosticOptions'), {",
+      "boundary": "repair/open/create 委派 jobs/provider；页面顶层捕获并落盘，不重复记底层操作。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 86,
+      "symbol": "diagnosticsPage",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  const diagnosticsPage = new DiagnosticsPage(context, diagnostics,\n    async id => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }); },\n    async () => { provider.showNotifyConfig(); }, {\n      load: forceModels => loadDiagnosticConfiguration(context.globalState.get('codexChat.diagnosticOptions'), {",
+      "boundary": "repair/open/create 委派 jobs/provider；页面顶层捕获并落盘，不重复记底层操作。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 92,
+      "symbol": "save",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "      }, () => provider.diagnosticModels(), 10000, forceModels),\n      save: async options => { await context.globalState.update('codexChat.diagnosticOptions', diagnosticOptions(options)); },\n    });\n  context.subscriptions.push(diagnosticsPage, { dispose: () => { void diagnostics.dispose().finally(() => diagnosticServices.delete(diagnostics)); } });",
+      "boundary": "globalState.update 拒绝传播到 DiagnosticsPage.message/begin.error；保存失败不显示已配置。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/extension.ts",
+      "line": 194,
+      "symbol": "deactivate",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "\nexport async function deactivate(): Promise<void> {\n  await Promise.all([...diagnosticServices].map(service => service.dispose()));\n  await Promise.all([...logWriters].map(writer => writer.flush()));",
+      "boundary": "jobs.dispose 已记录取消/失败，writer.flush 自带独立健康出口，等待清理完毕。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/imageFile.ts",
+      "line": 5,
+      "symbol": "readImageFile",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "/** 图片读取限制实际读入量；文件在 stat 后增长也不能突破内存预算。 */\nexport async function readImageFile(file: string, maxBytes: number): Promise<Buffer> {\n  const handle = await fs.open(file, constants.O_RDONLY | (constants.O_NONBLOCK ?? 0));\n  try {",
+      "boundary": "有界文件读取原异常向 panel.loadLocalImage/remote.execute 传播，边界记录 missing/unreadable/too_large；不记录正文与路径。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 21,
+      "symbol": "pruneLogs",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        await fs.promises.unlink(path.join(dir, name));\n      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failure(error); }\n    }\n  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failure(error); }",
+      "boundary": "文件不存在是跨窗口删除竞争；其它错误走 failure → writer.health 独立反馈。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 23,
+      "symbol": "pruneLogs",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    }\n  } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') failure(error); }\n}\n",
+      "boundary": "文件不存在是跨窗口删除竞争；其它错误走 failure → writer.health 独立反馈。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 85,
+      "symbol": "health",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    // 不经过队列；磁盘不可写时也能在扩展宿主/输出通道看到故障，不递归写同一日志。\n    try { this.onHealth(line); } catch { /* 最终反馈通道也可能已经关闭 */ }\n    if (!this.closed) this.write(line);\n  }",
+      "boundary": "不递归调用 operation sink，失败限流、恢复通知；最终输出自身不可用时明确无法保证留痕。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 97,
+      "symbol": "prune",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        if (!failed) this.health('prune');\n      } catch (error) { this.health('prune', error); }\n    })();\n    try { await this.pruning; } finally { this.pruning = undefined; }",
+      "boundary": "mkdir/readdir/unlink 异常走 health，成功才记录 recovered。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 113,
+      "symbol": "write",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      if (!this.timer) { this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 200); this.timer.unref(); }\n    } catch (error) { try { this.onHealth('[logging] enqueue_failed'); } catch { /* 不递归 */ } }\n  }\n",
+      "boundary": "队列超限累加 dropped，flush 写带时间汇总；enqueue 异常走独立 onHealth，不递归。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 113,
+      "symbol": "write",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      if (!this.timer) { this.timer = setTimeout(() => { this.timer = undefined; void this.flush(); }, 200); this.timer.unref(); }\n    } catch (error) { try { this.onHealth('[logging] enqueue_failed'); } catch { /* 不递归 */ } }\n  }\n",
+      "boundary": "队列超限累加 dropped，flush 写带时间汇总；enqueue 异常走独立 onHealth，不递归。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 137,
+      "symbol": "flush",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "          batches.delete(day); // 部分成功后重试不能把已落盘的日期重放。\n          try { this.onBatch?.(text); this.health('output'); } catch (error) { this.health('output', error); }\n        }\n        // 丢弃汇总也必须有时间；否则带时间窗的诊断会把它排入 unknownTimeLines，",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 145,
+      "symbol": "flush",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        if (this.prunedDay !== logDay(date)) { await this.prune(date); this.prunedDay = logDay(date); }\n      } catch (error) {\n        // 保留未落盘批次并保持先后顺序；总内存仍有界，不等待下次业务日志才恢复。\n        this.dropped += dropped;",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 38,
+      "symbol": "flushLogWriters",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      await writer.flush();\n      if (!writer.healthSnapshot().failed) await writer.flush(); // 包含恢复健康记录。\n    })), new Promise<void>(resolve => { timer = setTimeout(() => { timedOut = true; resolve(); }, budgetMs); })]);\n  } finally { clearTimeout(timer); }",
+      "boundary": "有界刷新预算；返回 pending/failed/drop 状态，超时不冒充完成；checkLogFlush 将其放入诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 119,
+      "symbol": "flush",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "    clearTimeout(this.timer); this.timer = undefined;\n    if (this.flushing) {\n      await this.flushing;\n      // 失败批次由有界退避或下次显式刷新重试；并发等待者不能绕开退避递归刷盘。",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 122,
+      "symbol": "flush",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "      // 失败批次由有界退避或下次显式刷新重试；并发等待者不能绕开退避递归刷盘。\n      if (!this.writeFailures && (this.pending.size || this.dropped)) await this.flush();\n      return;\n    }",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 141,
+      "symbol": "flush",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "        // 从而在明明丢失日志时仍显示 droppedLines=0。保留旧格式兼容历史读取器。\n        if (dropped) await fs.promises.appendFile(path.join(this.dir, `codex-chat-${logDay(date)}.log`), `[${new Date().toISOString()}] ${this.identityPrefix}[logging] droppedLines=${dropped} reason=buffer_or_write_limit\\n`, 'utf8');\n        this.writeFailures = 0; this.health('write');\n        // 先完成跨天批次再清理，避免把过期批次重新创建出来。",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 144,
+      "symbol": "flush",
+      "kind": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "sourceExcerpt": "        // 先完成跨天批次再清理，避免把过期批次重新创建出来。\n        if (this.prunedDay !== logDay(date)) { await this.prune(date); this.prunedDay = logDay(date); }\n      } catch (error) {\n        // 保留未落盘批次并保持先后顺序；总内存仍有界，不等待下次业务日志才恢复。",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 12,
+      "symbol": "pruneLogs",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "/** 保留今天和之前六个本地日历日的插件日志，不触碰目录中的其它文件。 */\nexport async function pruneLogs(dir: string, now = new Date(), failure: (error: unknown) => void = () => {}): Promise<void> {\n  const oldest = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);\n  const cutoff = `codex-chat-${logDay(oldest)}.log`;",
+      "boundary": "文件不存在是跨窗口删除竞争；其它错误走 failure → writer.health 独立反馈。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 33,
+      "symbol": "flushLogWriters",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "/** 预算只限制扫描前的等待；不能把超时或仍未写入的批次当作刷新成功。 */\nexport async function flushLogWriters(writers: DailyLogWriter[], budgetMs = 1500): Promise<LogFlushState> {\n  let timer: NodeJS.Timeout | undefined, timedOut = false;\n  try {",
+      "boundary": "有界刷新预算；返回 pending/failed/drop 状态，超时不冒充完成；checkLogFlush 将其放入诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 36,
+      "symbol": "flushLogWriters",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  try {\n    await Promise.race([Promise.all(writers.map(async writer => {\n      await writer.flush();\n      if (!writer.healthSnapshot().failed) await writer.flush(); // 包含恢复健康记录。",
+      "boundary": "有界刷新预算；返回 pending/failed/drop 状态，超时不冒充完成；checkLogFlush 将其放入诊断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 89,
+      "symbol": "prune",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "\n  async prune(now = new Date()): Promise<void> {\n    if (this.pruning) return this.pruning;\n    this.pruning = (async () => {",
+      "boundary": "mkdir/readdir/unlink 异常走 health，成功才记录 recovered。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 91,
+      "symbol": "prune",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "    if (this.pruning) return this.pruning;\n    this.pruning = (async () => {\n      try {\n        await fs.promises.mkdir(this.dir, { recursive: true });",
+      "boundary": "mkdir/readdir/unlink 异常走 health，成功才记录 recovered。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 117,
+      "symbol": "flush",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  /** 有界队列 + 串行异步批量落盘，流式事件不再逐条阻塞扩展宿主。 */\n  async flush(): Promise<void> {\n    clearTimeout(this.timer); this.timer = undefined;\n    if (this.flushing) {",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 129,
+      "symbol": "flush",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "    const date = this.latestDate, dropped = this.dropped; this.inFlightDropped = dropped; this.dropped = 0;\n    this.flushing = (async () => {\n      try {\n        await fs.promises.mkdir(this.dir, { recursive: true });",
+      "boundary": "串行批次、已成功日期删除避免重放；失败批次保留且最多3次退避重试，独立健康记录，恢复后落盘。onBatch 失败不撤销已写磁盘。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/logging.ts",
+      "line": 162,
+      "symbol": "dispose",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  async dispose(): Promise<void> { this.closed = true; await this.flush(); }\n}\n",
+      "boundary": "先 closed 阻止新入队，仍 await flush；最终磁盘失败由健康通道报告，不承诺丢失数据已恢复。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/operations.ts",
+      "line": 43,
+      "symbol": "operationLog",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    sink(`[operation] ${JSON.stringify({ atMs: Date.now(), operation, operationId: context.getStore() ?? randomUUID(), stage, ...fields })}`);\n  } catch (error) { health.failed(error); }\n}\nexport function operationFailure(operation: string, error: unknown, fields: Fields = {}): void {",
+      "boundary": "sink 异常走 DiagnosticHealth 独立输出；固定类别/标识白名单，不记录错误正文。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 114,
+      "symbol": "listed",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        const directoryAt = performance.now();\n        const listed = await Promise.all(batch.map(dir => fs.readdir(dir, { withFileTypes: true }).catch(() => undefined)));\n        this.timings.directoryMs += performance.now() - directoryAt;\n        for (let j = 0; j < batch.length; j++) {",
+      "boundary": "目录读取失败返回 undefined 后标 unreadable/completeScan=false；capture 汇总 partial/unavailable，changed 阻止不可靠新增判断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 176,
+      "symbol": "current",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        // 已打开文件在读取期间消失/被替换，属于不稳定读取，不能当作可安全还原的删除。\n        const current = await fs.lstat(file).catch(() => undefined);\n        if (!current || !same(opened, await handle.stat()) || !same(opened, current)) {\n          this.changedDuringRead++; return { reason: 'unreadable' };",
+      "boundary": "读取后路径核对失败算 changedDuringRead/unreadable，不能当文件删除或还原成功。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 181,
+      "symbol": "read",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "        try { return { text: new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(Buffer.concat(chunks, size)) }; }\n        catch { return { reason: 'binary' }; }\n      } finally { await handle.close(); }\n    } catch (error) {",
+      "boundary": "binary/large/symlink 为可见 skipReasons；ENOENT 与不稳定读取区分，真正采集汇总 capture；不逐文件记重复日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 183,
+      "symbol": "read",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      } finally { await handle.close(); }\n    } catch (error) {\n      const code = (error as NodeJS.ErrnoException).code;\n      if (code === 'ENOENT' || code === 'ENOTDIR') return { missing: true };",
+      "boundary": "binary/large/symlink 为可见 skipReasons；ENOENT 与不稳定读取区分，真正采集汇总 capture；不逐文件记重复日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 193,
+      "symbol": "fingerprint",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "      return [s.ino, s.size, s.mtimeNs, s.ctimeNs, s.mode].join(\":\");\n    } catch { return undefined; }\n  }\n  private async fingerprints(files: string[]): Promise<Map<string, string | undefined>> {",
+      "boundary": "读取失败用 undefined 保守标 unrestorableChanges，不呈现完整恢复。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 100,
+      "symbol": "walk",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async walk(root: string): Promise<string[]> {\n    const out: string[] = [];\n    const excluded = new Set(['.git', 'node_modules', '.venv', 'venv', 'dist', 'build', 'target', '.next', '.codex', '.idea']);",
+      "boundary": "Git失败已有 snapshot.inventory 并回退遍历；目录读取部分失败汇总。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 114,
+      "symbol": "listed",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "        const directoryAt = performance.now();\n        const listed = await Promise.all(batch.map(dir => fs.readdir(dir, { withFileTypes: true }).catch(() => undefined)));\n        this.timings.directoryMs += performance.now() - directoryAt;\n        for (let j = 0; j < batch.length; j++) {",
+      "boundary": "目录读取失败返回 undefined 后标 unreadable/completeScan=false；capture 汇总 partial/unavailable，changed 阻止不可靠新增判断。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 141,
+      "symbol": "read",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async read(file: string): Promise<SnapshotRead> {\n    try {\n      const stat = await fs.lstat(file);",
+      "boundary": "binary/large/symlink 为可见 skipReasons；ENOENT 与不稳定读取区分，真正采集汇总 capture；不逐文件记重复日志。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 189,
+      "symbol": "fingerprint",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async fingerprint(file: string): Promise<string | undefined> {\n    try {\n      const s = await fs.lstat(file, { bigint: true });",
+      "boundary": "读取失败用 undefined 保守标 unrestorableChanges，不呈现完整恢复。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 195,
+      "symbol": "fingerprints",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  private async fingerprints(files: string[]): Promise<Map<string, string | undefined>> {\n    const result = new Map<string, string | undefined>();\n    for (let i = 0; i < files.length; i += this.readConcurrency) {",
+      "boundary": "16并发有界纯汇总，异常安全状态由 capture/changed 上层表示。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 205,
+      "symbol": "readBatch",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  /** Overlap disk reads while bounding transient buffers and preserving file order. */\n  private async readBatch(files: string[], visit: (file: string, result: SnapshotRead) => void): Promise<void> {\n    for (let i = 0; i < files.length; i += this.readConcurrency) {\n      const batch = files.slice(i, i + this.readConcurrency);",
+      "boundary": "16并发有界且按原序处理；read 返回 skipReasons，外层汇总，不重复埋点。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "line": 237,
+      "symbol": "changed",
+      "kind": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "sourceExcerpt": "  }\n  async changed(): Promise<Map<string, string | null>> {\n    const changes = new Map<string, string | null>();\n    const existingReady = this.readBatch([...this.files.keys()], (file, { text: current, reason }) => {",
+      "boundary": "读取/清单并发，完整性不足标 unrestorableChanges；panel.finalizeCheckpoint 与 latency.finalization 记录终态。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/workdayCalendar.ts",
+      "line": 29,
+      "symbol": "isFeishuWebhook",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "    try { return [\"open.feishu.cn\", \"open.larksuite.com\"].includes(new URL(url).hostname); }\n    catch { return false; }\n}\n",
+      "boundary": "纯 URL 校验；非法配置返回 false，真正发送边界由 notification.webhook 处理，不记录 webhook 地址。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/workdayCalendar.ts",
+      "line": 44,
+      "symbol": "parseHolidayYear",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "            try { const u = new URL(p); return u.protocol === \"https:\" && (u.hostname === \"www.gov.cn\" || u.hostname.endsWith(\".gov.cn\")); }\n            catch { return false; }\n        })) throw new Error(`${year} 年日历格式无效`);\n    const seen = new Set<string>();",
+      "boundary": "纯结构校验；invalid 抛出到 updateYear，非日志缺口。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/workdayCalendar.ts",
+      "line": 128,
+      "symbol": "updateYear",
+      "kind": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "sourceExcerpt": "                    break;\n                } catch (error) { lastError = error; }\n                finally { clearTimeout(timeout); signal.removeEventListener(\"abort\", cancel); }\n            }",
+      "boundary": "首源失败尝试镜像是有界回退；本次修复原始异常正文日志，增加结构化 start/failed/cancelled/completed、缓存写入错误及 previousFailureId 恢复关联。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/workdayCalendar.ts",
+      "line": 119,
+      "symbol": "updateYear",
+      "kind": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "sourceExcerpt": "                const cancel = () => controller.abort();\n                signal.addEventListener(\"abort\", cancel, { once: true });\n                const timeout = setTimeout(cancel, 8000);\n                try {",
+      "boundary": "首源失败尝试镜像是有界回退；本次修复原始异常正文日志，增加结构化 start/failed/cancelled/completed、缓存写入错误及 previousFailureId 恢复关联。",
+      "disposition": "已修复所属调用链缺口"
+    },
+    {
+      "file": "src/workspaceActivity.ts",
+      "line": 34,
+      "symbol": "begin",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "      try { process.kill(record.pid, 0); }\n      catch (error) {\n        if ((error as NodeJS.ErrnoException).code !== 'ESRCH') throw error;\n        new WorkspaceActivity(dir, record).finish();",
+      "boundary": "ENOENT 等真实文件错误、非 ESRCH 存活检查错误传播至 panel.handleSendInner 阶段失败；不把未知并发状态当安全。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/workspaceActivity.ts",
+      "line": 51,
+      "symbol": "finish",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "    try { this.save(); }\n    catch (error) { this.record.ended = undefined; throw error; }\n  }\n",
+      "boundary": "save 失败把 ended 撤回后原样抛出，panel.finishActivity/checkpoint 调用方有失败出口。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    },
+    {
+      "file": "src/workspaceActivity.ts",
+      "line": 61,
+      "symbol": "save",
+      "kind": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "sourceExcerpt": "      try { fs.unlinkSync(temporary); }\n      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }\n    }\n  }",
+      "boundary": "原子写入失败传播；临时清理失败不吞没，归属调用方活动记录阶段。",
+      "disposition": "已有操作边界或可见安全回退，不重复埋点"
+    }
+  ],
+  "verification": [
+    "test/diagnostic-afefb855-fix.test.cjs",
+    "test/logging.test.cjs",
+    "test/diagnostic-87cc-fix.test.cjs",
+    "test/diagnostic-3a1-fix.test.cjs",
+    "test/diagnostics.test.cjs",
+    "test/snapshot-safety.test.cjs",
+    "test/restore.test.cjs",
+    "test/concurrent-restore.test.cjs",
+    "test/workday-calendar.test.cjs"
+  ],
+  "limitations": [
+    "736是静态候选数，不是缺陷数；逐项调用链审查不等于每个分支均动态注入。",
+    "旧日志缺失的服务名、工具输出和后端timing无法恢复；未归因等待仍未知。",
+    "不以注入用例证明远端403恢复、真实Webhook送达或系统焦点切换成功。"
+  ]
+}

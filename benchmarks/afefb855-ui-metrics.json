@@ -1,0 +1,22 @@
+{
+  "baseline": "2eeb5e57bec2955656b5a31de7a52362af452689",
+  "scenario": "隔离消息入口及通知响应故障注入；不是线上整轮速度基准",
+  "before": {
+    "invalidMessages": 12,
+    "unhandledHandlerRejections": 4,
+    "invalidDataRecords": 0,
+    "webhookRequests": 2,
+    "webhookTerminalRecords": 0,
+    "webhookBusinessCodes": []
+  },
+  "after": {
+    "invalidMessages": 12,
+    "unhandledHandlerRejections": 0,
+    "invalidDataRecords": 12,
+    "webhookRequests": 2,
+    "webhookTerminalRecords": 2,
+    "webhookBusinessCodes": [
+      9499
+    ]
+  }
+}

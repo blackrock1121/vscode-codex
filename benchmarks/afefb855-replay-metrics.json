@@ -1,0 +1,1186 @@
+{
+  "diagnosticId": "afefb855-38d6-4ff4-9400-b75242324b63",
+  "baseline": "2eeb5e57bec2955656b5a31de7a52362af452689",
+  "sourceCandidatesReviewed": 736,
+  "scope": "全部保留7文件固定快照；24小时同区间比较，另回放截至本次快照的全部保留日志（无工作区/窗口/会话/版本过滤）。未修改原始日志。",
+  "before": {
+    "general": {
+      "errors": 59,
+      "warnings": 2,
+      "retries": 0,
+      "recoveries": 0,
+      "compactionErrors": 0,
+      "groups": 20,
+      "overflow": 0,
+      "correlatedErrors": 10,
+      "correlatedToolErrors": 42,
+      "failureChains": 5,
+      "toolFailureChains": 35,
+      "recoveredFailureChains": 0,
+      "recoveryEvidence": []
+    },
+    "summary": {
+      "turns": 47,
+      "tools": 686,
+      "failures": 35,
+      "longestTurnMs": 1134167,
+      "versions": [
+        "0.1.179",
+        "0.1.187",
+        "0.1.169",
+        "0.1.181",
+        "0.1.178",
+        "0.1.186",
+        "0.1.176"
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 131738610,
+      "lines": 289950,
+      "records": 23631,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 17,
+      "sessions": 11,
+      "firstDay": "2026-10-24",
+      "lastDay": "2026-10-30",
+      "sources": [
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 946,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 948
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "488f9946-6b2d-4a4b-80ba-e7eb76185a7c",
+          "hostId": "85090",
+          "records": 4510,
+          "turns": 3,
+          "tools": 87,
+          "failures": 5,
+          "logLines": 4559
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 313,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 315
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 375,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 381
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 635,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 637
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 315,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 317
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 3335,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3337
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 1466,
+          "turns": 9,
+          "tools": 57,
+          "failures": 2,
+          "logLines": 1623
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 1888,
+          "turns": 12,
+          "tools": 108,
+          "failures": 4,
+          "logLines": 2087
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 633,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 635
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 315,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 317
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "df85d18f-2356-4d3f-b448-4b3bd72b540a",
+          "hostId": "43806",
+          "records": 7666,
+          "turns": 22,
+          "tools": 384,
+          "failures": 21,
+          "logLines": 8033
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "b0480b2f-09a6-44c3-ab35-cc3d9edcfc6b",
+          "hostId": "73341",
+          "records": 270,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 278
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "44ca173f-3309-41eb-a5b8-8d8553eb2d66",
+          "hostId": "77247",
+          "records": 28,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 29
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d",
+          "hostId": "77372",
+          "records": 405,
+          "turns": 0,
+          "tools": 23,
+          "failures": 0,
+          "logLines": 433
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd",
+          "hostId": "8490",
+          "records": 271,
+          "turns": 1,
+          "tools": 13,
+          "failures": 3,
+          "logLines": 295
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e",
+          "hostId": "17119",
+          "records": 260,
+          "turns": 0,
+          "tools": 14,
+          "failures": 0,
+          "logLines": 276
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1793241995122,
+      "requestedToMs": 1793328395122,
+      "includedLines": 24500,
+      "outsideRangeLines": 265424,
+      "unknownTimeLines": 26,
+      "fromMs": 1793241998545,
+      "toMs": 1793328393395
+    }
+  },
+  "after": {
+    "general": {
+      "errors": 58,
+      "warnings": 2,
+      "retries": 0,
+      "recoveries": 0,
+      "compactionErrors": 0,
+      "groups": 16,
+      "overflow": 0,
+      "correlatedErrors": 10,
+      "correlatedToolErrors": 42,
+      "transportResponseLines": 1,
+      "failureChains": 5,
+      "toolFailureChains": 35,
+      "recoveredFailureChains": 0,
+      "recoveryEvidence": []
+    },
+    "summary": {
+      "turns": 47,
+      "tools": 686,
+      "failures": 35,
+      "longestTurnMs": 1134167,
+      "versions": [
+        "0.1.179",
+        "0.1.187",
+        "0.1.169",
+        "0.1.181",
+        "0.1.178",
+        "0.1.186",
+        "0.1.176"
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 131738610,
+      "lines": 289950,
+      "records": 23631,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 17,
+      "sessions": 11,
+      "firstDay": "2026-10-24",
+      "lastDay": "2026-10-30",
+      "sources": [
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 946,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 948
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "488f9946-6b2d-4a4b-80ba-e7eb76185a7c",
+          "hostId": "85090",
+          "records": 4510,
+          "turns": 3,
+          "tools": 87,
+          "failures": 5,
+          "logLines": 4559
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 313,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 315
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 375,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 381
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 635,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 637
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 315,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 317
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 3335,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3337
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 1466,
+          "turns": 9,
+          "tools": 57,
+          "failures": 2,
+          "logLines": 1623
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 1888,
+          "turns": 12,
+          "tools": 108,
+          "failures": 4,
+          "logLines": 2087
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 633,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 635
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 315,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 317
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "df85d18f-2356-4d3f-b448-4b3bd72b540a",
+          "hostId": "43806",
+          "records": 7666,
+          "turns": 22,
+          "tools": 384,
+          "failures": 21,
+          "logLines": 8033
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "b0480b2f-09a6-44c3-ab35-cc3d9edcfc6b",
+          "hostId": "73341",
+          "records": 270,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 278
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "44ca173f-3309-41eb-a5b8-8d8553eb2d66",
+          "hostId": "77247",
+          "records": 28,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 29
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d",
+          "hostId": "77372",
+          "records": 405,
+          "turns": 0,
+          "tools": 23,
+          "failures": 0,
+          "logLines": 433
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd",
+          "hostId": "8490",
+          "records": 271,
+          "turns": 1,
+          "tools": 13,
+          "failures": 3,
+          "logLines": 295
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e",
+          "hostId": "17119",
+          "records": 260,
+          "turns": 0,
+          "tools": 14,
+          "failures": 0,
+          "logLines": 276
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1793241995122,
+      "requestedToMs": 1793328395122,
+      "includedLines": 24500,
+      "outsideRangeLines": 265424,
+      "unknownTimeLines": 26,
+      "fromMs": 1793241998545,
+      "toMs": 1793328393395
+    }
+  },
+  "allRetained": {
+    "general": {
+      "errors": 2150,
+      "warnings": 115,
+      "retries": 95,
+      "recoveries": 38,
+      "compactionErrors": 0,
+      "groups": 160,
+      "overflow": 1313,
+      "correlatedToolErrors": 500,
+      "correlatedErrors": 394,
+      "linkedRecoveries": 2,
+      "transportResponseLines": 2,
+      "failureChains": 254,
+      "toolFailureChains": 468,
+      "recoveredFailureChains": 2,
+      "recoveryEvidence": [
+        {
+          "failureId": "42806ce6-6692-4de0-a176-a8d04ee198f6",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "failureLocation": "codex-chat-2026-10-28.log:59701",
+          "recoveryLocation": "codex-chat-2026-10-28.log:60175"
+        },
+        {
+          "failureId": "9fa40e06-587e-43d7-868a-15ab4a49a625",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "failureLocation": "codex-chat-2026-10-28.log:58210",
+          "recoveryLocation": "codex-chat-2026-10-29.log:3830"
+        }
+      ]
+    },
+    "summary": {
+      "turns": 360,
+      "tools": 6761,
+      "failures": 450,
+      "longestTurnMs": 82448984,
+      "versions": [
+        "0.1.169",
+        "0.1.151",
+        "0.1.173",
+        "0.1.174",
+        "0.1.175",
+        "0.1.176",
+        "0.1.177",
+        "0.1.178",
+        "0.1.179",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186",
+        "0.1.187"
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 131738610,
+      "lines": 289950,
+      "records": 282924,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 61,
+      "sessions": 94,
+      "firstDay": "2026-10-24",
+      "lastDay": "2026-10-30",
+      "sources": [
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "c416b1cf-a346-48a3-95a2-29785d88d048",
+          "hostId": "94817",
+          "records": 11073,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 11077
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "4a4255c7-9ca3-42f6-8a15-bef3771d851a",
+          "hostId": "91426",
+          "records": 21013,
+          "turns": 47,
+          "tools": 256,
+          "failures": 7,
+          "logLines": 21782
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "07ca80f8-df5a-45ce-abc2-de820c3d971b",
+          "hostId": "18288",
+          "records": 11075,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 11079
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6238324b-8793-4082-905e-339ba408d85e",
+          "hostId": "12675",
+          "records": 7924,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 7928
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "71f71993-9ab0-4f2d-a600-14e129d58e86",
+          "hostId": "77263",
+          "records": 9495,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 9499
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6179e663-8ffe-4509-b2ec-012e5365a8b3",
+          "hostId": "9147",
+          "records": 7910,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 7914
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "024a84ac-ed2b-4425-8806-f6d95468fcb4",
+          "hostId": "29236",
+          "records": 3193,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3197
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "4d03bbf0-30c6-4626-acac-59405ce04c4d",
+          "hostId": "63354",
+          "records": 7916,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 7920
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "d86b06ba-ce9e-4286-9877-fe97a19e50cc",
+          "hostId": "78121",
+          "records": 7920,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 7924
+        },
+        {
+          "pluginVersion": "0.1.151",
+          "windowId": "5856c6db-93be-43fc-8dae-cc26baeedfc5",
+          "hostId": "30626",
+          "records": 3185,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3189
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "834d0217-ec1c-458d-976b-165b8c9aecab",
+          "hostId": "27589",
+          "records": 390,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 419
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "e339e48f-bc47-4d31-8a5b-7b70af7f8885",
+          "hostId": "38816",
+          "records": 6887,
+          "turns": 3,
+          "tools": 16,
+          "failures": 2,
+          "logLines": 6945
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "a0c94429-60c7-46b7-b7e9-668a4fe8c260",
+          "hostId": "38813",
+          "records": 761,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 766
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 8810,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 8828
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 7537,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 7551
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "9527aa62-bfc1-486c-8eef-e7019d439c13",
+          "hostId": "38815",
+          "records": 6214,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6226
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "27f8b17c-b6e5-41dc-bbb9-9efe3afb57e0",
+          "hostId": "38821",
+          "records": 3774,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3782
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "f61a7691-911a-4ff0-8746-a9e230fecfb3",
+          "hostId": "38819",
+          "records": 6457,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6481
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 22852,
+          "turns": 47,
+          "tools": 801,
+          "failures": 49,
+          "logLines": 23674
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "60d74230-ce13-4a53-97bd-76022345b0dc",
+          "hostId": "38823",
+          "records": 14726,
+          "turns": 31,
+          "tools": 752,
+          "failures": 52,
+          "logLines": 15295
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "ea3deb43-b0d6-4c36-8b79-f453f3440eb2",
+          "hostId": "38820",
+          "records": 1214,
+          "turns": 1,
+          "tools": 32,
+          "failures": 3,
+          "logLines": 1253
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "b6caf540-f12b-487c-b0ad-1e051c87166c",
+          "hostId": "95146",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "b5c3d48c-404b-4097-b632-fce231530973",
+          "hostId": "95240",
+          "records": 5262,
+          "turns": 9,
+          "tools": 464,
+          "failures": 28,
+          "logLines": 5416
+        },
+        {
+          "pluginVersion": "0.1.173",
+          "windowId": "2e4cd111-b3e3-4f21-b8ae-3a07c8152e7f",
+          "hostId": "28954",
+          "records": 6802,
+          "turns": 11,
+          "tools": 88,
+          "failures": 7,
+          "logLines": 6997
+        },
+        {
+          "pluginVersion": "0.1.173",
+          "windowId": "1edeeedf-c501-4311-b3b2-50dedff1e578",
+          "hostId": "42199",
+          "records": 377,
+          "turns": 2,
+          "tools": 16,
+          "failures": 1,
+          "logLines": 422
+        },
+        {
+          "pluginVersion": "0.1.174",
+          "windowId": "8b434713-053a-4b4e-af86-8158cbc5f09e",
+          "hostId": "57384",
+          "records": 3807,
+          "turns": 4,
+          "tools": 67,
+          "failures": 12,
+          "logLines": 3891
+        },
+        {
+          "pluginVersion": "0.1.174",
+          "windowId": "e20a1977-fa9c-438c-9f92-99be267b3279",
+          "hostId": "81135",
+          "records": 1416,
+          "turns": 1,
+          "tools": 9,
+          "failures": 1,
+          "logLines": 1436
+        },
+        {
+          "pluginVersion": "0.1.175",
+          "windowId": "46581e5f-84e5-4569-a343-8506306cb338",
+          "hostId": "49962",
+          "records": 513,
+          "turns": 1,
+          "tools": 31,
+          "failures": 1,
+          "logLines": 543
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "1c810f91-3ef3-410f-a461-d9cda34b2ad9",
+          "hostId": "73287",
+          "records": 1202,
+          "turns": 2,
+          "tools": 101,
+          "failures": 4,
+          "logLines": 1247
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 8269,
+          "turns": 24,
+          "tools": 310,
+          "failures": 13,
+          "logLines": 8689
+        },
+        {
+          "pluginVersion": "0.1.177",
+          "windowId": "f1cb3248-2f16-425e-8702-f57cdb3afc1e",
+          "hostId": "7859",
+          "records": 5895,
+          "turns": 14,
+          "tools": 261,
+          "failures": 9,
+          "logLines": 6152
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "21158c6e-09c5-4db3-b96a-680aab3ad563",
+          "hostId": "44753",
+          "records": 7622,
+          "turns": 15,
+          "tools": 115,
+          "failures": 9,
+          "logLines": 7911
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 4442,
+          "turns": 1,
+          "tools": 65,
+          "failures": 2,
+          "logLines": 4472
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "5f33dc17-5107-46f1-bf90-2ff90c94aa84",
+          "hostId": "54288",
+          "records": 3,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 4
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "a4af1764-8eea-4f09-90d4-a5d550953a8c",
+          "hostId": "72400",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "89a949e4-d38b-47bd-9e54-de16c0af92c2",
+          "hostId": "72401",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "5a570554-36e3-4b18-9fe9-e2defd9df915",
+          "hostId": "72573",
+          "records": 69,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 74
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "9aa5f0e7-a095-4f33-be58-4761c5b48eab",
+          "hostId": "73151",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 3759,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3771
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 5859,
+          "turns": 9,
+          "tools": 300,
+          "failures": 45,
+          "logLines": 6040
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "292bb5a9-6261-4a0b-9202-70ca59ba958e",
+          "hostId": "79137",
+          "records": 12369,
+          "turns": 38,
+          "tools": 1075,
+          "failures": 69,
+          "logLines": 13057
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "277b8fc3-9325-4b4b-b2cb-c2592e834935",
+          "hostId": "79977",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "9c5f5087-7078-4753-b9c9-204bc640ede6",
+          "hostId": "3130",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "b35e8b0d-eb31-4c80-b206-383bdffc4d33",
+          "hostId": "3265",
+          "records": 2047,
+          "turns": 7,
+          "tools": 117,
+          "failures": 14,
+          "logLines": 2185
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "2afcbce4-a23a-4dfd-95c5-b8bfeb8bd76a",
+          "hostId": "16088",
+          "records": 852,
+          "turns": 7,
+          "tools": 45,
+          "failures": 3,
+          "logLines": 972
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "72a64faa-3efd-41fe-900d-8813d08e0ec5",
+          "hostId": "63011",
+          "records": 1802,
+          "turns": 4,
+          "tools": 101,
+          "failures": 12,
+          "logLines": 1892
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 9411,
+          "turns": 34,
+          "tools": 661,
+          "failures": 44,
+          "logLines": 10023
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 2050,
+          "turns": 3,
+          "tools": 24,
+          "failures": 3,
+          "logLines": 2119
+        },
+        {
+          "pluginVersion": "0.1.182",
+          "windowId": "a562585c-1740-46f0-9a81-5422305255e0",
+          "hostId": "18565",
+          "records": 2283,
+          "turns": 4,
+          "tools": 172,
+          "failures": 9,
+          "logLines": 2388
+        },
+        {
+          "pluginVersion": "0.1.184",
+          "windowId": "1054a813-e05b-4a73-b1ab-45b71618c5e4",
+          "hostId": "71559",
+          "records": 598,
+          "turns": 1,
+          "tools": 32,
+          "failures": 7,
+          "logLines": 634
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "hostId": "16319",
+          "records": 1109,
+          "turns": 5,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1279
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "hostId": "22238",
+          "records": 592,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 608
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "fc7251d9-8e8a-4728-8660-acf9fe5da27e",
+          "hostId": "52810",
+          "records": 493,
+          "turns": 1,
+          "tools": 18,
+          "failures": 3,
+          "logLines": 535
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 6830,
+          "turns": 1,
+          "tools": 67,
+          "failures": 6,
+          "logLines": 6868
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "488f9946-6b2d-4a4b-80ba-e7eb76185a7c",
+          "hostId": "85090",
+          "records": 6160,
+          "turns": 8,
+          "tools": 183,
+          "failures": 8,
+          "logLines": 6309
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "df85d18f-2356-4d3f-b448-4b3bd72b540a",
+          "hostId": "43806",
+          "records": 7712,
+          "turns": 22,
+          "tools": 384,
+          "failures": 21,
+          "logLines": 8079
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "b0480b2f-09a6-44c3-ab35-cc3d9edcfc6b",
+          "hostId": "73341",
+          "records": 1870,
+          "turns": 0,
+          "tools": 140,
+          "failures": 3,
+          "logLines": 1916
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "44ca173f-3309-41eb-a5b8-8d8553eb2d66",
+          "hostId": "77247",
+          "records": 28,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 29
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d",
+          "hostId": "77372",
+          "records": 405,
+          "turns": 0,
+          "tools": 23,
+          "failures": 0,
+          "logLines": 433
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd",
+          "hostId": "8490",
+          "records": 271,
+          "turns": 1,
+          "tools": 13,
+          "failures": 3,
+          "logLines": 295
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e",
+          "hostId": "17119",
+          "records": 395,
+          "turns": 1,
+          "tools": 22,
+          "failures": 0,
+          "logLines": 417
+        }
+      ],
+      "scanErrors": [],
+      "requestedToMs": 1793329481139,
+      "includedLines": 289950,
+      "outsideRangeLines": 0,
+      "unknownTimeLines": 0,
+      "fromMs": 1792771205153,
+      "toMs": 1793329476346
+    }
+  },
+  "scanTiming": {
+    "beforeMs": [
+      515,
+      468,
+      461
+    ],
+    "afterMs": [
+      502,
+      476,
+      470
+    ],
+    "beforeMedianMs": 468,
+    "afterMedianMs": 476,
+    "meaning": "进程内墙钟，受磁盘缓存影响；不是用户整轮耗时，未声称后端提速。"
+  },
+  "repairPrompt": {
+    "beforeChars": 108956,
+    "afterChars": 48945,
+    "savedChars": 60011,
+    "reductionPct": 55.1,
+    "findingsPreserved": 86,
+    "fullReportReferenced": true
+  },
+  "limitations": [
+    "未改变历史工具失败35次、真实HTTP拒绝或未知等待；减少的1条仅为相邻HTTP正文误分类。",
+    "源码覆盖仍为人工核验，Swift自动规则仍unsupported。",
+    "报告读取和故障注入不证明远端实际恢复。"
+  ]
+}

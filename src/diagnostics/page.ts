@@ -51,7 +51,14 @@ export class DiagnosticsPage {
   }
   private async message(message: { type?: string; id?: string; options?: unknown; category?: unknown }): Promise<void> {
     switch (message?.type) {
-      case 'webviewError': operationFailure('diagnostics.webview', new Error('页面脚本异常')); break;
+      case 'webviewError': {
+        const category = typeof message.category === 'string' ? message.category : '';
+        const match = /^(webview\.(?:runtime|unhandledrejection)): (Error|TypeError|RangeError|SyntaxError|ReferenceError|AbortError)$/.exec(category);
+        const error = new Error('页面脚本异常');
+        if (match) error.name = match[2];
+        operationFailure('diagnostics.webview', error, { phase: match?.[1] ?? 'webview.runtime' });
+        break;
+      }
       case 'ready': {
         const panel = this.panel;
         this.ready = true;

@@ -1028,6 +1028,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.reveal();
     }
     private async onSidebarMessage(m: FromWebview): Promise<void> {
+        if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.type !== 'string') {
+            operationFailure('webview.receive', new SyntaxError(), { surface: 'sidebar' }); return;
+        }
         this.sidebarMissedPings = 0;
         try {
             switch (m.type) {
@@ -1069,10 +1072,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         }
         catch (err) {
-            this.output.appendLine(`[onSidebarMessage:${m.type}] ${String(err)}`);
+            operationFailure('webview.receive', err, { surface: 'sidebar' });
         }
     }
     private async onPanelMessage(ctx: SessionCtx, m: FromWebview): Promise<void> {
+        if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.type !== 'string') {
+            operationFailure('webview.receive', new SyntaxError(), { surface: 'chat' }); return;
+        }
         ctx.missedPings = 0;
         try {
             switch (m.type) {
@@ -1108,7 +1114,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case "webviewError":
-                    this.output.appendLine(`[${new Date().toISOString()}] [webview] 聊天面板脚本错误: ${m.message}`);
+                    if (typeof m.message === 'string' && /^webview\.highlight\.fallback: (Error|TypeError|RangeError|SyntaxError|ReferenceError|URIError|AbortError)$/.test(m.message)) {
+                        operationLog('webview.highlight', 'fallback', { errorType: m.message.split(': ')[1], surface: 'chat' });
+                    } else this.output.appendLine(`[${new Date().toISOString()}] [webview] 聊天面板脚本错误: ${m.message}`);
                     break;
                 case "ready":
                     ctx.ready = true;
@@ -1298,7 +1306,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         }
                     }
                     catch (err) {
-                        this.output.appendLine(`[openExternalLink] ${m.url} 打开失败: ${String((err as Error)?.message ?? err)}`);
+                        operationFailure('panel.openExternalLink', err);
                         vscode.window.showErrorMessage(`无法打开链接: ${m.url}`);
                     }
                     break;
@@ -1338,7 +1346,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
         }
         catch (err) {
-            this.output.appendLine(`[onPanelMessage:${m.type}] ${String(err)}`);
+            operationFailure('webview.receive', err, { surface: 'chat' });
             this.post(ctx, { kind: "error", message: String((err as Error)?.message ?? err) });
         }
     }
@@ -2957,6 +2965,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         panel.webview.options = { enableScripts: true };
         let saving = false;
         const messageSub = panel.webview.onDidReceiveMessage(async (m: FromWebview) => {
+            if (!m || typeof m !== 'object' || Array.isArray(m) || typeof m.type !== 'string') {
+                operationFailure('webview.receive', new SyntaxError(), { surface: 'notification' }); return;
+            }
             try {
                 switch (m.type) {
                     case "webviewError":
@@ -3027,7 +3038,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             }
             catch (err) {
-                this.output.appendLine(`[notify] 面板消息处理失败(${m.type}): ${String(err)}`);
+                operationFailure('webview.receive', err, { surface: 'notification' });
                 postWebviewMessage(panel.webview, { kind: "notify_result", ok: false, message: `操作失败：${String((err as Error).message ?? err)}` } satisfies ToWebview);
                 if (m.type === "notifyCalendarRefresh") this.postNotifyCalendar();
             }
@@ -3654,6 +3665,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         status?: number;
         error?: string;
     }> {
+        const operationId = randomUUID(), started = performance.now();
+        let phase = 'configuration', status: number | undefined;
+        const result = (ok: boolean, fields: Record<string, string | number | boolean | undefined> = {}) =>
+            operationLog('notification.webhook', ok ? 'completed' : 'failed', { operationId, phase, status,
+                durationMs: Math.round(performance.now() - started), ...fields });
+        operationLog('notification.webhook', 'start', { operationId });
         try {
             const host = new URL(url).hostname;
             const feishu = isFeishuWebhook(url);
@@ -3661,21 +3678,29 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const payload = feishu ? { msg_type: "text", content: { text: msg } }
                 : otherBot ? { msgtype: "text", text: { content: msg } }
                 : { source: "codex-chat", text: msg, ...extra };
+            phase = 'request';
             const r = await fetch(url, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
                 signal: AbortSignal.timeout(10000),
             });
+            status = r.status;
             if (r.ok && (feishu || otherBot)) {
+                phase = 'response_parse';
                 const body = await r.json() as { code?: number; StatusCode?: number; errcode?: number } | null;
                 const code = feishu ? body?.code ?? body?.StatusCode : body?.errcode;
-                if (code !== 0) return { ok: false, status: r.status, error: `机器人未确认接收，错误码 ${Number.isInteger(code) ? code : '未知'}` };
+                phase = 'business_response';
+                if (code !== 0) {
+                    result(false, { businessCode: Number.isSafeInteger(code) ? code : undefined, failureCategory: 'business_rejected' });
+                    return { ok: false, status: r.status, error: `机器人未确认接收，错误码 ${Number.isSafeInteger(code) ? code : '未知'}` };
+                }
             }
+            result(r.ok, r.ok ? {} : { failureCategory: 'http_error' });
             return { ok: r.ok, status: r.status, ...(r.ok ? {} : { error: `HTTP ${r.status}` }) };
         }
         catch (error) {
-            operationFailure('notification.webhook', error);
+            operationFailure('notification.webhook', error, { operationId, phase, status, durationMs: Math.round(performance.now() - started) });
             return { ok: false, error: "请求超时、网络失败或机器人返回无效响应" };
         }
     }

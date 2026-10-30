@@ -1,4 +1,4 @@
-import { observeOperation } from './operations';
+import { observeOperation, operationLog, errorFields } from './operations';
 import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -87,8 +87,10 @@ export function localNotificationsSupported(): boolean {
 }
 
 /** 原生程序完成应用激活后，核对来源窗口确实获得焦点，不能仅凭命令返回就应答成功。 */
+let lastFocusFailureId: string | undefined;
 export async function focusNotificationWindow(): Promise<void> {
-    await observeOperation('notification.focus', async () => {
+    const recoveryCandidate = lastFocusFailureId;
+    try { await observeOperation('notification.focus', async () => {
         let focused = false;
         let onFocused: (() => void) | undefined;
         let timer: NodeJS.Timeout | undefined;
@@ -105,14 +107,19 @@ export async function focusNotificationWindow(): Promise<void> {
                 timer = setTimeout(() => {
                     // 扩展宿主繁忙时，状态更新和定时器可能在同一批次到达。
                     if (focused || vscode.window.state.focused) resolve();
-                    else reject(new Error("通知来源窗口未能切到前台。"));
+                    else reject(Object.assign(new Error("通知来源窗口未能切到前台。"), { code: 'ETIMEDOUT' }));
                 }, 2000);
             });
         } finally {
             clearTimeout(timer);
             subscription.dispose();
         }
-    });
+    }, { phase: 'window_focus', timeoutMs: 2000 }); }
+    catch (error) { lastFocusFailureId = errorFields(error).failureId as string | undefined; throw error; }
+    if (recoveryCandidate && lastFocusFailureId === recoveryCandidate) {
+        operationLog('notification.focus', 'recovered', { previousFailureId: recoveryCandidate });
+        lastFocusFailureId = undefined;
+    }
 }
 
 /** 通过独立 macOS 应用发送系统通知；与 webhook 完全独立，不使用 shell 拼接内容。 */

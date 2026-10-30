@@ -59,13 +59,15 @@ mdFull.renderer.rules.fence = (tokens, idx) => {
   } else if (lang && hljs.getLanguage(lang)) {
     try {
       body = hljs.highlight(token.content, { language: lang }).value;
-    } catch {
+    } catch (error) {
+      reportWebviewError('webview.highlight.fallback', error);
       body = escapeHtml(token.content);
     }
   } else if (token.content.length <= 10_000) {
     try {
       body = hljs.highlightAuto(token.content).value;
-    } catch {
+    } catch (error) {
+      reportWebviewError('webview.highlight.fallback', error);
       body = escapeHtml(token.content);
     }
   } else {
@@ -112,7 +114,8 @@ function codeBlock(code: string, lang: string): string {
   if (code.length <= MAX_HIGHLIGHT_CHARS && lang && hljs.getLanguage(lang)) {
     try {
       body = hljs.highlight(code, { language: lang }).value;
-    } catch {
+    } catch (error) {
+      reportWebviewError('webview.highlight.fallback', error);
       body = escapeHtml(code);
     }
   } else {

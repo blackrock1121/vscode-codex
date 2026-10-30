@@ -1,4 +1,4 @@
-import { expectedFileError, operationFailure, operationLog } from './operations';
+import { errorFields, expectedFileError, operationFailure, operationLog } from './operations';
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -90,7 +90,7 @@ export class WorkdayCalendar {
         const year = chinaDate(now).year;
         this.active = Promise.all([year, year + 1].map(y => this.updateYear(y, force, now.getTime(), this.abort!.signal)))
             .then(() => { if (!this.disposed) this.changed(); })
-            .catch(error => this.log(`[calendar] 更新失败: ${String(error)}`))
+            .catch(error => operationFailure('calendar.refresh', error))
             .finally(() => { this.active = undefined; });
         return this.active;
     }
@@ -109,11 +109,13 @@ export class WorkdayCalendar {
             (attempted !== undefined && now >= attempted && now - attempted < RETRY))) return;
         if (signal.aborted) return;
         this.attempts.set(year, now);
+        const operationId = randomUUID(), started = performance.now();
+        operationLog('calendar.update', 'start', { operationId, year });
         try {
             let data: HolidayYear | undefined;
             let lastError: unknown;
             for (const base of ["https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/", "https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/"]) {
-                if (signal.aborted) return;
+                if (signal.aborted) { operationLog('calendar.update', 'cancelled', { operationId, year }); return; }
                 const controller = new AbortController();
                 const cancel = () => controller.abort();
                 signal.addEventListener("abort", cancel, { once: true });
@@ -129,23 +131,26 @@ export class WorkdayCalendar {
                 finally { clearTimeout(timeout); signal.removeEventListener("abort", cancel); }
             }
             if (!data) throw lastError ?? new Error("日历下载失败");
-            if (signal.aborted) return;
+            if (signal.aborted) { operationLog('calendar.update', 'cancelled', { operationId, year }); return; }
             const record = { fetchedAt: now, data };
             this.cache.set(year, record);
-            if (this.errors.has(year)) operationLog('calendar.update', 'recovered', { year });
+            if (this.errors.has(year)) operationLog('calendar.update', 'recovered', { operationId, year, previousFailureId: this.errors.get(year) });
             this.errors.delete(year);
             const temp = path.join(this.directory, `${year}-${randomUUID()}.tmp`);
             try {
                 await fs.mkdir(this.directory, { recursive: true });
                 await fs.writeFile(temp, JSON.stringify(record));
                 await fs.rename(temp, path.join(this.directory, `${year}.json`));
-            } catch (error) { this.log(`[calendar] 缓存写入失败: ${String(error)}`); }
+            } catch (error) { operationFailure('calendar.cache.write', error, { operationId, year }); }
             finally { await fs.rm(temp, { force: true }).catch(error => { if (!expectedFileError(error)) operationFailure('calendar.cleanup', error, { year }); }); }
             this.log(`[calendar] ${year} 年日历${data.days.length ? "已更新（含节假日与调休）" : "尚未公布"}`);
+            operationLog('calendar.update', 'completed', { operationId, year, durationMs: Math.round(performance.now() - started) });
         } catch (error) {
-            if (signal.aborted) return;
-            this.errors.set(year, String(error));
-            this.log(`[calendar] ${year} 年更新失败，使用七天内有效缓存；无有效缓存时不静默: ${String(error)}`);
+            if (signal.aborted) { operationLog('calendar.update', 'cancelled', { operationId, year }); return; }
+            operationFailure('calendar.update', error, { operationId, year, fallback: this.usable(year, now) ? 'cached' : 'unavailable',
+                durationMs: Math.round(performance.now() - started) });
+            this.errors.set(year, String(errorFields(error).failureId ?? operationId));
+            this.log(`[calendar] ${year} 年更新失败，使用七天内有效缓存；无有效缓存时不静默`);
         }
     }
 

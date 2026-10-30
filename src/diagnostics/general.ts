@@ -4,6 +4,7 @@ import type { DiagnosticFinding } from './analysis';
 import { redactDiagnosticText } from './redact';
 
 export interface GeneralSummary { errors: number; warnings: number; retries: number; recoveries: number; compactionErrors: number; groups: number; overflow: number;
+  transportResponseLines?: number;
   correlatedErrors?: number; failureChains?: number; correlationOverflow?: number; correlatedToolErrors?: number; toolFailureChains?: number;
   linkedRecoveries?: number; recoveredFailureChains?: number; recoveryEvidence?: { failureId: string; operation: string; pluginVersion?: string; windowId?: string; failureLocation: string; recoveryLocation: string }[] }
 export interface LogLocation { file: string; line: number; atMs?: number; pluginVersion?: string; windowId?: string; traceId?: string }
@@ -15,8 +16,25 @@ const component = (line: string) => /compaction|compact|压缩/i.test(line) ? '�
   /notification|notify|webhook|通知/i.test(line) ? '通知' : /rpc|relay|transport|connection|连接|\bCLI\b|进程|stderr/i.test(line) ? '连接与进程' :
   /sessionSettings|config|设置|配置/i.test(line) ? '配置' : /tool|bash|command|工具|命令/i.test(line) ? '工具执行' : '插件运行';
 
+// 旧版本曾把多行 HTTP 验证页作为 stderr 异常保存。只辨认结构，不保留响应正文。
+function upstreamResponse(row?: PerformanceRow): { status: number; html: boolean; challenge: boolean; mcp: boolean } | undefined {
+  if (row?.type !== 'runtime_error') return;
+  const message = String(row.message ?? '');
+  const status = Number(row.httpStatusCode ?? message.match(/\bHTTP(?:\/[\d.]+)?[ :=]+([45]\d{2})\b/i)?.[1]);
+  if (!(status >= 400 && status <= 599)) return;
+  return { status, html: /<(?:!doctype|html|head|body)\b/i.test(message) || ['html', 'challenge_page'].includes(String(row.responseKind)),
+    challenge: /challenge-error-text|_cf_chl_|Enable JavaScript and cookies/i.test(message) || row.responseKind === 'challenge_page',
+    mcp: /rmcp::transport/.test(message) || row.targetKind === 'mcp_transport' };
+}
+
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
   if (row) {
+    const response = upstreamResponse(row);
+    if (response && (response.html || response.mcp || row.event === 'upstream_http_error')) return { category: '连接与进程', severity: 'error', title: '上游 HTTP 访问受阻',
+      message: `transport · HTTP ${response.status} · targetKind=${response.mcp ? 'mcp_transport' : 'unknown'} · responseKind=${response.challenge ? 'challenge_page' : response.html ? 'html' : 'text'} · processRunId=${diagnosticId(row.processRunId) ?? 'unknown'}` };
+    if (row.type === 'runtime_error' && (row.event === 'upstream_response_body' || /^\s*<(?:!doctype|div|html|head|body|script|noscript)\b/i.test(String(row.message ?? ''))))
+      return { category: '连接与进程', severity: row.severity === 'warning' ? 'warning' : 'error', title: '上游响应正文待关联',
+        message: `transport · responseKind=html · processRunId=${diagnosticId(row.processRunId) ?? 'unknown'} · 正文已省略，缺少可关联请求` };
     if (row.event === 'codex.tool_result' && row.expectedCancellation === true && row.cancellationReason === 'question_pause' && row.outcome === 'waiting_for_user' && ['unknown', 'interrupted'].includes(String(row.failureCategory))) return;
     const legacyRelay = /^compaction\.(?:http|websocket)(?:\.|$)/.test(String(row.operation ?? ''));
     const compaction = row.diagnosticType === 'compaction' || row.diagnosticType === 'compaction_route' ||
@@ -35,13 +53,15 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
       row.operation === 'remote.connection' ? '手机接入连接' : row.errorOrigin === 'backend' || row.event === 'codex.sse_event' ? '后端服务' :
       row.type === 'runtime_error' && /codex_skills_extension\b.*failed to install system skills/i.test(String(row.message ?? '')) ? '后端组件' :
       row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
-    const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code;
+    const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code ??
+      (row.operation === 'notification.webhook' && typeof row.status === 'number' ? row.status : undefined);
     const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.causeCode, row.transportReason, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
       diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
+      Number.isSafeInteger(row.businessCode) ? `businessCode=${row.businessCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
-      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin', 'connectionKind', 'connectionId', 'initiator', 'terminationReason'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'phase', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin', 'connectionKind', 'connectionId', 'initiator', 'terminationReason'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
       typeof row.timeoutMs === 'number' ? `timeoutMs=${row.timeoutMs}` : undefined,
       Number.isSafeInteger(row.requestId) ? `requestId=${row.requestId}` : undefined, row.message]
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');
@@ -68,7 +88,22 @@ export class GeneralAccumulator {
   private readonly recoveredChains = new Set<string>();
   private readonly recoveryEvidence: NonNullable<GeneralSummary['recoveryEvidence']> = [];
   private readonly toolFailures = new Set<string>();
+  private readonly httpResponses = new Map<string, { at: number; file: string; line: number }>();
   add(line: string, row: PerformanceRow | undefined, where: LogLocation): void {
+    const process = diagnosticId(row?.processRunId);
+    const key = process && where.windowId ? JSON.stringify([where.pluginVersion, where.windowId, process]) : undefined;
+    const response = upstreamResponse(row);
+    if (key && response && where.atMs !== undefined) {
+      if (this.httpResponses.size >= 256) this.httpResponses.delete(this.httpResponses.keys().next().value!);
+      this.httpResponses.set(key, { at: where.atMs, file: where.file, line: where.line });
+    } else if (key && row?.type === 'runtime_error' && /^\s*<(?:div|html|head|body|script|noscript)\b/i.test(String(row.message ?? ''))) {
+      const previous = this.httpResponses.get(key);
+      if (previous && where.atMs !== undefined && where.atMs >= previous.at && where.atMs - previous.at <= 2000 &&
+          where.file === previous.file && where.line > previous.line && where.line - previous.line <= 8) {
+        this.counts.transportResponseLines = (this.counts.transportResponseLines ?? 0) + 1;
+        return; // 同进程紧邻响应正文不是新的页面脚本或插件错误。
+      }
+    }
     if (row?.stage === 'recovered') {
       this.counts.recoveries++;
       const id = row.previousFailureId;
@@ -151,6 +186,7 @@ export class GeneralAccumulator {
           group.incident.category === '遥测采集' ? '此记录来自遥测导出链路，可能造成诊断数据缺失；不能据此认定主对话连接中断。请另行核对同一进程的 RPC、轮次和进程退出事件。' : '按文件和行号核对前后事件，确认是否恢复、是否影响用户和实际根因；区分插件故障、环境依赖、后端服务和预期取消，再实施修复。', traceIds: [...group.traces] }));
     const report = ['# 最近日志异常检查', '', `错误 ${this.counts.errors} 条，警告 ${this.counts.warnings} 条；压缩错误 ${this.counts.compactionErrors} 条，重试 ${this.counts.retries} 条，明确恢复 ${this.counts.recoveries} 条。`,
       '以上为日志事件数，同一次故障可能产生多条记录；恢复记录不代表所有错误都已恢复。',
+      `另有 ${this.counts.transportResponseLines ?? 0} 行历史 HTTP 响应正文关联到同进程相邻请求，不另计插件异常；未关联的错误仍保留。`,
       `其中 ${this.counts.linkedRecoveries ?? 0} 条恢复记录明确关联到本次扫描中的 ${this.recoveredChains.size} 条失败链；其余 ${this.counts.recoveries - (this.counts.linkedRecoveries ?? 0)} 条未建立失败关联，不能据此抵扣错误。`,
       `其中 ${this.counts.correlatedErrors ?? 0} 条错误通过明确 failureId 关联为 ${this.failureChains.size} 条故障链；另有 ${this.counts.correlatedToolErrors ?? 0} 条工具错误观测按同窗口、轮次或进程及 callId 关联为 ${this.toolFailures.size} 个失败调用。不同编号的嵌套调用不强行合并。`,
       `其余 ${this.counts.errors - (this.counts.correlatedErrors ?? 0) - (this.counts.correlatedToolErrors ?? 0)} 条缺少完整关联或超过上限，不能按事件数推算独立事故。关联上限未纳入 ${this.counts.correlationOverflow ?? 0} 条。`,

@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { randomUUID } from 'node:crypto';
 import { LocalTelemetry, TransportDiagnostic } from './telemetry';
-import { diagnosticId, failureCategory } from './performanceTrace';
+import { diagnosticId, failureCategory, failureType } from './performanceTrace';
 import { redactDiagnosticText } from '../diagnostics/redact';
 import { errorFields, operationFailure, operationLog } from '../operations';
 
@@ -24,6 +24,45 @@ function isRpcMessage(value: unknown): value is RpcMessage {
   if (!hasId || hasResult === hasError) return false;
   return !hasError || (!!msg.error && typeof msg.error === 'object' && !Array.isArray(msg.error)
     && Number.isInteger(msg.error.code) && typeof msg.error.message === 'string');
+}
+
+/** stderr 可能把同一 HTTP 错误拆成多行 HTML；只记录响应类别，不保留验证脚本。 */
+export class StderrDiagnostics {
+  private htmlResponse?: { at: number; lines: number; bytes: number };
+  classify(raw: string): TransportDiagnostic | undefined {
+    const line = raw.replace(/\x1b\[[0-9;]*m/g, '');
+    const timestamped = /^\s*\d{4}-\d\d-\d\dT/.test(line);
+    const html = /<(?:!doctype\s+html|html|head|body)\b/i.test(line);
+    const challenge = /challenge-error-text|_cf_chl_|Enable JavaScript and cookies/i.test(line);
+    const markup = html || challenge || /^\s*<\/?[a-z!][^>]*>/i.test(line);
+    const status = Number(line.match(/\bHTTP(?:\/[\d.]+)?[ :=]+([45]\d{2})\b/i)?.[1]);
+    const independent = timestamped || /^\s*(?:ERROR\b|WARN\b|FATAL\b|PANIC\b|panic(?:ked)?\b|Traceback\b|(?:Type|Reference|Syntax|Range|Timeout|Abort|Assertion)Error:)/i.test(line);
+    const context = this.htmlResponse;
+    if (context && (independent || status || Date.now() - context.at > 2000 || context.lines >= 8 || context.bytes + raw.length > 16384)) this.htmlResponse = undefined;
+    if (this.htmlResponse && !independent && !status) {
+      // 只合并明确的标签或脚本续行；无时间戳的真实异常也必须恢复独立记录。
+      const continuation = markup || /^\s*(?:\(?function\b|(?:window|document)\.|(?:var|let|const)\s|[.#][\w-]+\s*[{,]|[{};]+\s*$)/.test(line);
+      if (continuation) {
+        this.htmlResponse.lines++; this.htmlResponse.bytes += raw.length;
+        if (/<\/html>/i.test(line)) this.htmlResponse = undefined;
+        return;
+      }
+      this.htmlResponse = undefined;
+    }
+    if (markup) this.htmlResponse = /<\/html>/i.test(line) ? undefined : { at: Date.now(), lines: 0, bytes: raw.length };
+    if (status) return { event: 'upstream_http_error', severity: 'error', httpStatusCode: status,
+      responseKind: challenge ? 'challenge_page' : markup ? 'html' : 'text',
+      targetKind: /\brmcp::/.test(line) ? 'mcp_transport' : 'unknown',
+      failureCategory: failureCategory(`HTTP ${status}`), failureId: randomUUID(),
+      message: `上游 HTTP ${status} 响应；正文已省略` };
+    if (markup) return { event: 'upstream_response_body', severity: 'warning', responseKind: challenge ? 'challenge_page' : 'html',
+      targetKind: 'unknown', message: '发现未关联的 HTML 响应；正文已省略' };
+    const errorType = failureType(line);
+    if (!errorType && !/\b(?:error|warn|panic|fatal|exception)\b|失败|异常|报错/i.test(line)) return;
+    return { severity: errorType || /\b(?:error|panic|fatal|exception)\b/i.test(line) ? 'error' : 'warning',
+      ...(errorType ? { errorType } : {}), failureCategory: failureCategory(line),
+      message: errorType ? `CLI ${errorType} 异常；正文已省略` : independent ? redactDiagnosticText(line) : 'CLI 错误或警告；非结构化正文已省略' };
+  }
 }
 
 /** 只传输 JSONL，不记录提示词、凭据或完整 RPC 内容。 */
@@ -90,16 +129,18 @@ export class CodexRpc extends EventEmitter {
     child.stderr.on('error', e => this.fail(e, 'stderr'));
     // 只留有界、脱敏后的错误/警告线索；普通输出和整份 stderr 不落盘。
     let stderrTail = '', stderrWindow = Date.now(), stderrCount = 0;
+    const stderrDiagnostics = new StderrDiagnostics();
     let startupFailure: Error | undefined;
     const stderrLine = (line: string) => {
       // 管理连接也需要启动原因；仅识别固定错误，不把 stderr 原文/凭据展示或落盘。
       if (/^env: (?:node: |[‘']node[’']: )No such file or directory\s*$/.test(line.trim()))
         startupFailure = Object.assign(new Error('无法启动 Codex：当前 VS Code 环境找不到 Node.js。请检查 Codex 安装目录中的 node 或 codexChat.codexPath。'), { code: 'ENOENT' });
-      if (!this.diagnostics || !/\b(?:error|warn|panic|fatal|exception)\b|失败|异常|报错/i.test(line)) return;
+      if (!this.diagnostics) return;
+      const classified = stderrDiagnostics.classify(line);
+      if (!classified) return;
       if (Date.now() - stderrWindow >= 60000) { stderrWindow = Date.now(); stderrCount = 0; }
       if (++stderrCount > 30) { if (stderrCount === 31) this.diagnostic({ type: 'runtime_error', source: 'cli_stderr', severity: 'warning', event: 'stderr_limit', message: 'CLI 错误/警告摘要达到每分钟 30 条上限，后续重复摘要省略', sourceTimeMs: Date.now() }); return; }
-      this.diagnostic({ type: 'runtime_error', source: 'cli_stderr', severity: /\b(?:error|panic|fatal|exception)\b/i.test(line) ? 'error' : 'warning',
-        failureCategory: failureCategory(line), message: redactDiagnosticText(line), sourceTimeMs: Date.now() });
+      this.diagnostic({ type: 'runtime_error', source: 'cli_stderr', ...classified, sourceTimeMs: Date.now() });
     };
     child.stderr.setEncoding('utf8');
     child.stderr.on('data', (chunk: string) => {

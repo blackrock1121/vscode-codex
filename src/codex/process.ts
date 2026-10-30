@@ -478,6 +478,7 @@ export class CodexProcess {
       this.emit({ kind: "speed_context", model });
       if (this.busy && !this.pausedQuestion?.ready) this.turnId = r.turn.id;
     }).catch(e => {
+      operationFailure('turn.dispatch', e, { processRunId: this.rpc.runId, traceId: this.latency.currentTraceId });
       if (sequence === this.dispatchSequence && !this.exited) { this.error(e); this.finish(true); }
     }).finally(() => {
       if (sequence === this.dispatchSequence) { this.startingTurn = undefined; this.waitingForCatalog = false; }
@@ -807,7 +808,7 @@ export class CodexProcess {
           this.rememberEndedTurn(p.turn.id);
           clearTimeout(paused.timer); paused.ready = true; this.turnId = undefined;
           try { this.saveQuestion(); }
-          catch (e) { this.error(`保存等待中的问题失败：${String(e)}`); this.finish(true); return; }
+          catch (e) { operationFailure('question.persist', e, { processRunId: this.rpc.runId, traceId: this.latency.currentTraceId }); this.error(`保存等待中的问题失败：${String(e)}`); this.finish(true); return; }
           this.showPermission(paused.request);
         }
       }
@@ -1029,6 +1030,8 @@ export class CodexProcess {
     this.emit({ kind: 'status', label: '正在暂停，等待用户回答…' });
     paused.timer = setTimeout(() => {
       if (this.pausedQuestion !== paused || paused.ready) return;
+      operationFailure('question.pause', Object.assign(new Error('请求超时'), { code: 'ETIMEDOUT', errorOrigin: 'timeout' }),
+        { processRunId: this.rpc.runId, traceId: this.latency.currentTraceId, phase: 'await_pause_confirmation', timeoutMs: 10000 });
       this.error('未能确认模型暂停，已关闭连接。请重新发送消息。'); this.finish(true); this.rpc.dispose();
     }, 10000);
     paused.timer.unref();
@@ -1042,6 +1045,7 @@ export class CodexProcess {
     } catch (e) {
       // 未能确认暂停时关闭连接，不能放任模型继续，也不展示可用的问题卡片。
       if (this.pausedQuestion === paused && !paused.ready) {
+        operationFailure('question.pause', e, { processRunId: this.rpc.runId, traceId: this.latency.currentTraceId });
         this.error(`暂停等待用户失败：${String(e)}`); this.finish(true); this.rpc.dispose();
       }
     }
@@ -1115,6 +1119,8 @@ export class CodexProcess {
     const timeout = new Promise<void>(resolve => {
       this.stopSettled = resolve;
       this.stopTimer = setTimeout(() => {
+        operationFailure('turn.interrupt', Object.assign(new Error('请求超时'), { code: 'ETIMEDOUT', errorOrigin: 'timeout' }),
+          { processRunId: this.rpc.runId, traceId: this.latency.currentTraceId, phase: 'await_stop_confirmation', timeoutMs: 10000 });
         this.cancelCompactionRestore();
         this.exited = true; this.rpc.dispose();
         this.clearChildState();

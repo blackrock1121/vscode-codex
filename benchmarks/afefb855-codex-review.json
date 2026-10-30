@@ -1,0 +1,2211 @@
+{
+  "diagnosticId": "afefb855-38d6-4ff4-9400-b75242324b63",
+  "sourceVersion": "0.1.187",
+  "sourceHash": "73235527b5aaa2c8c97c6a51994a65537783fd43db77cdffdd70382954f6dfe7",
+  "reviewedCandidates": 148,
+  "counts": {
+    "调用链已覆盖": 128,
+    "合法协议/目标回退": 2,
+    "合法解析回退": 3,
+    "本次修复": 11,
+    "预期环境探测": 3,
+    "已处理的异步预热拒绝": 1
+  },
+  "scopeNotes": [
+    "逐条读取完整报告 src/codex 范围 148 个位置，并按实际函数与统一日志边界核验；静态审查不等于每分支完成运行注入。",
+    "工具超时/TypeError 来自工具结果，保留 failureEvidence，不改工作区代码或工具执行策略；未知等待保持未归因。",
+    "自动压缩 relay 仅修改单请求，不改会话配置；手动兼容模型覆盖恢复已在基线实现。",
+    "HTTP 非流式压缩可能在生成完成后才给响应头；没有连接挂起证据，不为缩短等待添加会误取消的响应头超时。",
+    "MCP stderr 未提供可靠服务标识时只记 targetKind=mcp_transport，不从邻近会话请求猜测具体服务。",
+    "未重新执行真实后端压缩/模型请求，不声称长等待或远端403已恢复。"
+  ],
+  "validation": [
+    "新增 test/diagnostic-afef-transport.test.cjs：6 个测试通过，涵盖分块HTML、后续请求成功、配置失败后继续发送、问题持久化 EACCES、停止确认超时、写盘与规则扫描检出。 追加未闭合 HTML 后无时间戳独立异常与孤立 HTML 安全分类、有界上下文验证。",
+    "专属 /tmp 构建回归：rpc、telemetry、performance-trace、compaction、compaction-input、compaction-policy、compaction-relay、session-model、session-selection、stop-recovery、child-threads 合计 141 个测试全部通过（3248 ms）。最终集成构建由主任务统一执行。"
+  ],
+  "metrics": {
+    "htmlErrorObservationsBefore": 2,
+    "htmlErrorObservationsAfter": 1,
+    "rawHtmlBytesLoggedAfter": 0,
+    "newFaultInjectionTestsPassed": 6
+  },
+  "candidates": [
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 30,
+      "function": "save",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "ENOENT 为正常缓存未命中；其他归档校验/空间/写入错误向 optimizeCompactionInput 上抛并记录 compaction.archive fallback；清理异常单独记录。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 64,
+      "function": "optimizeCompactionInput",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "低收益/受保护输入为合法原样返回；取消/预算触发 compaction.input cancelled/fallback，归档和改写失败分别落盘；成功 savings 由 CompactionRelay.onOptimized 落盘。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 66,
+      "function": "cancelled",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "AbortSignal 结束 Promise.race，abort 函数先记录取消或准备预算；不重复记录 resolve 回调。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 22,
+      "function": "save",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "ENOENT 为正常缓存未命中；其他归档校验/空间/写入错误向 optimizeCompactionInput 上抛并记录 compaction.archive fallback；清理异常单独记录。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 32,
+      "function": "reduce",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "归档容量计算中的 reduce 为纯求和；readdir/stat 失败向 save/optimizeCompactionInput 边界传播。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 53,
+      "function": "optimizeCompactionInput",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "低收益/受保护输入为合法原样返回；取消/预算触发 compaction.input cancelled/fallback，归档和改写失败分别落盘；成功 savings 由 CompactionRelay.onOptimized 落盘。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 29,
+      "function": "save",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "ENOENT 为正常缓存未命中；其他归档校验/空间/写入错误向 optimizeCompactionInput 上抛并记录 compaction.archive fallback；清理异常单独记录。"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "reportLine": 43,
+      "function": "save",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "ENOENT 为正常缓存未命中；其他归档校验/空间/写入错误向 optimizeCompactionInput 上抛并记录 compaction.archive fallback；清理异常单独记录。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 57,
+      "function": "routeCompaction",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "合法协议/目标回退",
+      "evidence": "routeCompaction 是纯解析与兼容转发，未知协议保持原字节；target 拒绝无效本机路径或 URL，返回 404/关闭 socket，不把外来畸形输入当作内部异常。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 146,
+      "function": "target",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "合法协议/目标回退",
+      "evidence": "routeCompaction 是纯解析与兼容转发，未知协议保持原字节；target 拒绝无效本机路径或 URL，返回 404/关闭 socket，不把外来畸形输入当作内部异常。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 285,
+      "function": "catch",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 290,
+      "function": "finally",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 309,
+      "function": "websocket",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 313,
+      "function": "websocket",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 114,
+      "function": "CompactionRelay",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 124,
+      "function": "start",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 130,
+      "function": "start",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 215,
+      "function": "upgrade",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 216,
+      "function": "upgrade",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 217,
+      "function": "upgrade",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 218,
+      "function": "upgrade",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 222,
+      "function": "upgrade",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 241,
+      "function": "upgrade",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 266,
+      "function": "websocket",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 277,
+      "function": "catch",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 287,
+      "function": "catch",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 295,
+      "function": "websocket",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 319,
+      "function": "websocket",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 320,
+      "function": "websocket",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 331,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 332,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 356,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 365,
+      "function": "upstream",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 366,
+      "function": "upstream",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 369,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 370,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 375,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 376,
+      "function": "http",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 119,
+      "function": "start",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 269,
+      "function": "catch",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 288,
+      "function": "catch",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 295,
+      "function": "websocket",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "reportLine": 134,
+      "function": "start",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "relay 的握手 operation start/completed/failed/cancelled，WebSocket failedWrite 与 incomplete 收口并按 routeId 结束；HTTP finish 幂等记录传输终态，不将 HTTP200 当压缩完成。解析失败仅透传并将已知压缩标为 incomplete；server/observer 异常独立记录，启动失败向 process.prepareCompactionRelay fallback 传播。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 83,
+      "function": "validateCompactionModel",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 84,
+      "function": "validateCompactionModel",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 85,
+      "function": "validateCompactionModel",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 86,
+      "function": "validateCompactionModel",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 62,
+      "function": "validateCompactionModel",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 87,
+      "function": "phase",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 110,
+      "function": "compacted",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 113,
+      "function": "answer",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "reportLine": 115,
+      "function": "validateCompactionModel",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "validateCompactionModel 仅用于隔离合成评测；RPC 生命周期由 CodexRpc 记录，完成/失败/取消由 process.runCompactionValidation 汇总，finally 关闭 relay/RPC 并清理临时目录；phase 注册先于 dispatch 防止先终态后回执。格式异常抛给评测边界，不记录答案。"
+    },
+    {
+      "file": "src/codex/events.ts",
+      "reportLine": 30,
+      "function": "parseQuestionReply",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "合法解析回退",
+      "evidence": "parseQuestionReply 只识别特定历史格式；maskQuestionReply 对损坏回答显示固定遮蔽文案；toolView 兼容旧工具格式。均为纯数据映射，不读写外部资源，不添加逐函数日志。"
+    },
+    {
+      "file": "src/codex/events.ts",
+      "reportLine": 60,
+      "function": "maskQuestionReply",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "合法解析回退",
+      "evidence": "parseQuestionReply 只识别特定历史格式；maskQuestionReply 对损坏回答显示固定遮蔽文案；toolView 兼容旧工具格式。均为纯数据映射，不读写外部资源，不添加逐函数日志。"
+    },
+    {
+      "file": "src/codex/events.ts",
+      "reportLine": 82,
+      "function": "toolView",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "合法解析回退",
+      "evidence": "parseQuestionReply 只识别特定历史格式；maskQuestionReply 对损坏回答显示固定遮蔽文案；toolView 兼容旧工具格式。均为纯数据映射，不读写外部资源，不添加逐函数日志。"
+    },
+    {
+      "file": "src/codex/performanceTrace.ts",
+      "reportLine": 102,
+      "function": "write",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "write 委派 DiagnosticHealth.failed 独立限流 console.warn；下次可写时 recovered 写入损失计数，避免日志出口递归。既有 diagnostic-3a1 测试覆盖落盘/检出。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 166,
+      "function": "CodexProcess",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 167,
+      "function": "CodexProcess",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 480,
+      "function": "finally",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "本次修复",
+      "evidence": "发送前速度能力等本地校验可能在 RPC 前抛错，原 catch 仅显示错误与结束统计；现在 turn.dispatch 记录脱敏分类/关联标识，原模型/档位/权限保持。失败后配置修正可继续发送；新增测试落盘与诊断检出。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 527,
+      "function": "compact",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 598,
+      "function": "stopInvalidQuestion",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 637,
+      "function": "checking",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "子线程核验的 RPC start/end 与 latency validate span 已覆盖失败/收尾；异步通知/发现的异常进入 handlerFailed，关闭不可复用状态；停止子线程失败由 RPC 记录并关闭根连接。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 663,
+      "function": "routeChildNotification",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "子线程核验的 RPC start/end 与 latency validate span 已覆盖失败/收尾；异步通知/发现的异常进入 handlerFailed，关闭不可复用状态；停止子线程失败由 RPC 记录并关闭根连接。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 679,
+      "function": "discoverChildren",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "子线程核验的 RPC start/end 与 latency validate span 已覆盖失败/收尾；异步通知/发现的异常进入 handlerFailed，关闭不可复用状态；停止子线程失败由 RPC 记录并关闭根连接。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 703,
+      "function": "stopping",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "子线程核验的 RPC start/end 与 latency validate span 已覆盖失败/收尾；异步通知/发现的异常进入 handlerFailed，关闭不可复用状态；停止子线程失败由 RPC 记录并关闭根连接。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 810,
+      "function": "notification",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "本次修复",
+      "evidence": "saveQuestion 持久化异常原先只有界面错误；新增 question.persist 统一落盘且不展示尚未保存的问题卡片；EACCES 故障注入验证终态和扫描检出。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 906,
+      "function": "notification",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1042,
+      "function": "pauseForQuestion",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "本次修复",
+      "evidence": "RPC 拒绝已有日志，但暂停/停止确认计时器只显示界面错误并以 AbortError 关闭，无法区分插件确认超时；新增 question.pause/turn.interrupt 固定 phase、timeoutMs 与 errorOrigin=timeout，正常停止保持原行为。停止注入验证 busy 释放且结果唯一。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1052,
+      "function": "respondPermission",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 156,
+      "function": "CodexProcess",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 166,
+      "function": "CodexProcess",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 167,
+      "function": "CodexProcess",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 168,
+      "function": "CodexProcess",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 428,
+      "function": "restoreQuestion",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 460,
+      "function": "dispatch",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "本次修复",
+      "evidence": "发送前速度能力等本地校验可能在 RPC 前抛错，原 catch 仅显示错误与结束统计；现在 turn.dispatch 记录脱敏分类/关联标识，原模型/档位/权限保持。失败后配置修正可继续发送；新增测试落盘与诊断检出。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 498,
+      "function": "dispatch",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "本次修复",
+      "evidence": "发送前速度能力等本地校验可能在 RPC 前抛错，原 catch 仅显示错误与结束统计；现在 turn.dispatch 记录脱敏分类/关联标识，原模型/档位/权限保持。失败后配置修正可继续发送；新增测试落盘与诊断检出。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 937,
+      "function": "request",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 938,
+      "function": "request",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 960,
+      "function": "request",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 975,
+      "function": "childRequest",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 980,
+      "function": "childRequest",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 990,
+      "function": "childRequest",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1129,
+      "function": "stop",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "本次修复",
+      "evidence": "RPC 拒绝已有日志，但暂停/停止确认计时器只显示界面错误并以 AbortError 关闭，无法区分插件确认超时；新增 question.pause/turn.interrupt 固定 phase、timeoutMs 与 errorOrigin=timeout，正常停止保持原行为。停止注入验证 busy 释放且结果唯一。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 167,
+      "function": "CodexProcess",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 200,
+      "function": "preTool",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 218,
+      "function": "timedRequest",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 244,
+      "function": "finally",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 258,
+      "function": "prepare",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 278,
+      "function": "startSession",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 306,
+      "function": "prefetchCompactionSettings",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 496,
+      "function": "dispatch",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 619,
+      "function": "checking",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "子线程核验的 RPC start/end 与 latency validate span 已覆盖失败/收尾；异步通知/发现的异常进入 handlerFailed，关闭不可复用状态；停止子线程失败由 RPC 记录并关闭根连接。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 695,
+      "function": "stopping",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "子线程核验的 RPC start/end 与 latency validate span 已覆盖失败/收尾；异步通知/发现的异常进入 handlerFailed，关闭不可复用状态；停止子线程失败由 RPC 记录并关闭根连接。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 935,
+      "function": "request",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 965,
+      "function": "childRequest",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "正常策略拒绝、历史问题校验与审批展示由 RPC/PerformanceTrace/问题恢复边界处理；invalid 与结束轮次不执行请求，错误进入 handlerFailed，问题内容不重复落盘。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1026,
+      "function": "pauseForQuestion",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "本次修复",
+      "evidence": "RPC 拒绝已有日志，但暂停/停止确认计时器只显示界面错误并以 AbortError 关闭，无法区分插件确认超时；新增 question.pause/turn.interrupt 固定 phase、timeoutMs 与 errorOrigin=timeout，正常停止保持原行为。停止注入验证 busy 释放且结果唯一。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1106,
+      "function": "interrupt",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "本次修复",
+      "evidence": "RPC 拒绝已有日志，但暂停/停止确认计时器只显示界面错误并以 AbortError 关闭，无法区分插件确认超时；新增 question.pause/turn.interrupt 固定 phase、timeoutMs 与 errorOrigin=timeout，正常停止保持原行为。停止注入验证 busy 释放且结果唯一。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1126,
+      "function": "stop",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "本次修复",
+      "evidence": "RPC 拒绝已有日志，但暂停/停止确认计时器只显示界面错误并以 AbortError 关闭，无法区分插件确认超时；新增 question.pause/turn.interrupt 固定 phase、timeoutMs 与 errorOrigin=timeout，正常停止保持原行为。停止注入验证 busy 释放且结果唯一。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 1206,
+      "function": "disposeAndWait",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 203,
+      "function": "preTool",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "reportLine": 297,
+      "function": "startSession",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "process 生命周期通过 CodexRpc、PerformanceTrace、compaction trace 统一收口；notification/request 异常委派 handlerFailed，preTool span 记录失败，compact 设置同步和请求 trace 分阶段，恢复模型设置有 compaction.restore start/completed/failed/cancelled。上游面板操作边界记录启动准备错误。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 130,
+      "function": "receiveLine",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 267,
+      "function": "codexSpawnEnvironment",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "预期环境探测",
+      "evidence": "可选安装目录/Node 同目录探测失败继续下一候选，最终 spawn 错误由 rpc.process 统一记录；不把不存在的可选目录计作插件故障。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 277,
+      "function": "resolveCodex",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "预期环境探测",
+      "evidence": "可选安装目录/Node 同目录探测失败继续下一候选，最终 spawn 错误由 rpc.process 统一记录；不把不存在的可选目录计作插件故障。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 285,
+      "function": "resolveCodex",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "预期环境探测",
+      "evidence": "可选安装目录/Node 同目录探测失败继续下一候选，最终 spawn 错误由 rpc.process 统一记录；不把不存在的可选目录计作插件故障。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 87,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 88,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 89,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 90,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 105,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "本次修复",
+      "evidence": "stderr 经 StderrDiagnostics 将 HTTP 状态和固定传输类型保留，HTML/验证脚本续行不独立记录；正常关闭/异常关闭仍由 rpc.process 终态统一记录。新增 afef transport 测试通过。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 112,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "本次修复",
+      "evidence": "stderr 经 StderrDiagnostics 将 HTTP 状态和固定传输类型保留，HTML/验证脚本续行不独立记录；正常关闭/异常关闭仍由 rpc.process 终态统一记录。新增 afef transport 测试通过。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 146,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 161,
+      "function": "initialize",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 251,
+      "function": "disposeAndWait",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 248,
+      "function": "disposeAndWait",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 67,
+      "function": "start",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 188,
+      "function": "request",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 211,
+      "function": "write",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "reportLine": 217,
+      "function": "write",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "start→initialize→request/write→fail 统一记录请求 start/end 和进程 start/ready/cancelled/failed/end；protocol JSON/结构错误调用 fail 回收子进程；pending 请求共用 failureId，保留 requestId；disposeAndWait 等待 close。已有 rpc/66f/3a1 故障注入覆盖。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 63,
+      "function": "connection",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "管理连接拒绝工具请求是预期策略；reject 写管道错误先经 CodexRpc.write→fail 落盘，catch 不重复记录；connection 初始化/重建由 RPC 生命周期记录。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 401,
+      "function": "prepareFork",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "已处理的异步预热拒绝",
+      "evidence": "ready.catch 防止预热 Promise 提前未处理拒绝；fork 必须 await ready 并 finally dispose，rpc.start 失败已经落盘；不把 catch 空函数当作吞掉主流程错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 63,
+      "function": "connection",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "管理连接拒绝工具请求是预期策略；reject 写管道错误先经 CodexRpc.write→fail 落盘，catch 不重复记录；connection 初始化/重建由 RPC 生命周期记录。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 64,
+      "function": "connection",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 71,
+      "function": "connection",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 227,
+      "function": "hydrateWith",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 237,
+      "function": "readTurnCount",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 271,
+      "function": "hydrateThread",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 421,
+      "function": "fork",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 421,
+      "function": "fork",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 422,
+      "function": "fork",
+      "rule": "操作分支未见直接日志，其他分支的记录不能证明此路径已覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 110,
+      "function": "readModelCatalog",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 169,
+      "function": "refreshInner",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 173,
+      "function": "results",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 222,
+      "function": "hydrateWith",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 232,
+      "function": "readTurnCount",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 244,
+      "function": "readTurnCountWith",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 261,
+      "function": "hydrateThread",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 355,
+      "function": "setCustomTitle",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 359,
+      "function": "archive",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 365,
+      "function": "delete",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 405,
+      "function": "fork",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 72,
+      "function": "connection",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 99,
+      "function": "readMetadata",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "SessionStore.read/hydrate→observeOperation/trackRead 与 CodexRpc.request 覆盖 RPC 及恢复；元数据读失败删除缓存并上抛。fork/变更操作失败向面板操作边界传播，真实 RPC 错误已落盘；不重放变更请求。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "reportLine": 235,
+      "function": "readTurnCount",
+      "rule": "错误继续传播但未见直接日志，需核验上游是否落盘",
+      "status": "调用链已覆盖",
+      "evidence": "hydrate 通过 observeOperation + trackRead 记录本地数据校验和相同会话后续恢复；readTurnCount 的 RPC 记录启动/终态，格式异常向面板发送准备操作边界传播，兼容旧协议时 hydrate。不得把合法完整/分页选择计成错误。"
+    },
+    {
+      "file": "src/codex/telemetry.ts",
+      "reportLine": 106,
+      "function": "transportDiagnostics",
+      "rule": "错误处理未见直接日志，可能静默忽略或返回默认值",
+      "status": "调用链已覆盖",
+      "evidence": "timing_metrics 解析失败通过 timingStatus=invalid_data 返回结构化记录；不输出原始 timing 字符串。"
+    },
+    {
+      "file": "src/codex/telemetry.ts",
+      "reportLine": 142,
+      "function": "LocalTelemetry",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "请求解码、接收器异常分别由 telemetry.decode/receiver 落盘；错误与 HTTP 状态分别处理。"
+    },
+    {
+      "file": "src/codex/telemetry.ts",
+      "reportLine": 171,
+      "function": "start",
+      "rule": "命令入口或事件回调未见直接日志，需核验实际处理函数是否记录结果",
+      "status": "调用链已覆盖",
+      "evidence": "listen 超时/失败抛给 CodexRpc.initialize 的 rpc.telemetry.start；成功产出 local_collector_ready。"
+    },
+    {
+      "file": "src/codex/telemetry.ts",
+      "reportLine": 166,
+      "function": "start",
+      "rule": "包含异步或外部操作，未见直接日志，需核验调用链覆盖",
+      "status": "调用链已覆盖",
+      "evidence": "listen 超时/失败抛给 CodexRpc.initialize 的 rpc.telemetry.start；成功产出 local_collector_ready。"
+    }
+  ],
+  "runtimeEvidence": {
+    "scan": {
+      "scope": "全部当前保留日志，跨工作区/窗口/会话/版本；按每文件读取开始长度固定快照，只读，不删除或改写原日志",
+      "files": [
+        {
+          "file": "codex-chat-2026-10-24.log",
+          "snapshotBytes": 16087183,
+          "lines": 38949
+        },
+        {
+          "file": "codex-chat-2026-10-25.log",
+          "snapshotBytes": 13348115,
+          "lines": 36370
+        },
+        {
+          "file": "codex-chat-2026-10-26.log",
+          "snapshotBytes": 26813719,
+          "lines": 57913
+        },
+        {
+          "file": "codex-chat-2026-10-27.log",
+          "snapshotBytes": 27905387,
+          "lines": 58035
+        },
+        {
+          "file": "codex-chat-2026-10-28.log",
+          "snapshotBytes": 32462833,
+          "lines": 66174
+        },
+        {
+          "file": "codex-chat-2026-10-29.log",
+          "snapshotBytes": 10174766,
+          "lines": 21417
+        },
+        {
+          "file": "codex-chat-2026-10-30.log",
+          "snapshotBytes": 4884135,
+          "lines": 10997
+        }
+      ],
+      "structuredParseFailures": 0,
+      "readOnly": true
+    },
+    "processes": [
+      {
+        "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+        "records": 25,
+        "firstRecordAtMs": 1793324417088,
+        "lastRecordAtMs": 1793324693818.0,
+        "http403Rows": [
+          {
+            "type": "runtime_error",
+            "sourceTimeMs": 1793324422299,
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "failureCategory": "permission",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6206,
+            "atMs": 1793324422299.0,
+            "eventAtMs": 1793324422299,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [
+              "rmcp::transport::worker"
+            ],
+            "hasHttp403": true,
+            "hasHtml": true,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          }
+        ],
+        "htmlContinuationRows": [],
+        "serviceFieldRows": [
+          {
+            "operation": "relay.websocket.handshake",
+            "stage": "start",
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6193,
+            "atMs": 1793324419087,
+            "eventAtMs": 1793324419087,
+            "diagnosticType": "operation",
+            "serviceFieldsPresent": [
+              "targetService"
+            ],
+            "safeServiceFields": {
+              "targetService": "chatgpt.com"
+            },
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          },
+          {
+            "operation": "relay.websocket.handshake",
+            "stage": "completed",
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6201,
+            "atMs": 1793324420983,
+            "eventAtMs": 1793324420983,
+            "diagnosticType": "operation",
+            "serviceFieldsPresent": [
+              "targetService"
+            ],
+            "safeServiceFields": {
+              "targetService": "chatgpt.com"
+            },
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          },
+          {
+            "type": "event",
+            "event": "codex.websocket_connect",
+            "sourceTimeMs": 1793324420984,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6203,
+            "atMs": 1793324421932.0,
+            "eventAtMs": 1793324420984,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6205,
+            "atMs": 1793324421932.0,
+            "eventAtMs": 1793324421932.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6572,
+            "atMs": 1793324693818.0,
+            "eventAtMs": 1793324693818.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          }
+        ],
+        "subsequentSuccessCount": 1,
+        "subsequentSuccessByMethodOrEvent": {
+          "codex.api_request": 1
+        },
+        "firstSubsequentSuccesses": [
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "1cf972da-3976-4e3a-b9fe-85fb64bb3691",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 6572,
+            "atMs": 1793324693818.0,
+            "eventAtMs": 1793324693818.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d"
+          }
+        ],
+        "processEndRows": [],
+        "runtimeModules": {
+          "rmcp::transport::worker": 1
+        },
+        "conclusion": "HTTP403 根错误模块为 rmcp::transport::worker；没有目标 MCP 服务名字段。随后 RPC/模型成功只证明对应进程继续服务，不证明原 MCP 连接恢复；不将其他 processRunId 的成功关联为恢复。",
+        "explicitServiceTokensInMessages": [],
+        "serviceIdentification": "403 错误行无目标服务字段，其他同进程 service 字段仅指向 relay.websocket.handshake 的 chatgpt.com 模型上游或固定 endpoint；这不是 MCP 服务身份，不能用它把 MCP403 归因于模型上游。"
+      },
+      {
+        "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+        "records": 92,
+        "firstRecordAtMs": 1793327069452,
+        "lastRecordAtMs": 1793327617522.0,
+        "http403Rows": [
+          {
+            "type": "runtime_error",
+            "sourceTimeMs": 1793327073999,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "failureCategory": "permission",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7672,
+            "atMs": 1793327073999.0,
+            "eventAtMs": 1793327073999,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [
+              "rmcp::transport::worker"
+            ],
+            "hasHttp403": true,
+            "hasHtml": true,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          }
+        ],
+        "htmlContinuationRows": [],
+        "serviceFieldRows": [
+          {
+            "operation": "relay.websocket.handshake",
+            "stage": "start",
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7668,
+            "atMs": 1793327072323,
+            "eventAtMs": 1793327072323,
+            "diagnosticType": "operation",
+            "serviceFieldsPresent": [
+              "targetService"
+            ],
+            "safeServiceFields": {
+              "targetService": "chatgpt.com"
+            },
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "operation": "relay.websocket.handshake",
+            "stage": "completed",
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7671,
+            "atMs": 1793327073819,
+            "eventAtMs": 1793327073819,
+            "diagnosticType": "operation",
+            "serviceFieldsPresent": [
+              "targetService"
+            ],
+            "safeServiceFields": {
+              "targetService": "chatgpt.com"
+            },
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.websocket_connect",
+            "sourceTimeMs": 1793327073820,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7674,
+            "atMs": 1793327074826.0,
+            "eventAtMs": 1793327073820,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7676,
+            "atMs": 1793327074826.0,
+            "eventAtMs": 1793327074826.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7813,
+            "atMs": 1793327345638.0,
+            "eventAtMs": 1793327345638.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8090,
+            "atMs": 1793327617522.0,
+            "eventAtMs": 1793327617522.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          }
+        ],
+        "subsequentSuccessCount": 30,
+        "subsequentSuccessByMethodOrEvent": {
+          "codex.api_request": 3,
+          "transport": 1,
+          "codex.websocket_request": 6,
+          "codex.tool_result": 17,
+          "compaction_route": 1,
+          "compaction": 1,
+          "turn_summary": 1
+        },
+        "firstSubsequentSuccesses": [
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7676,
+            "atMs": 1793327074826.0,
+            "eventAtMs": 1793327074826.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "rpc",
+            "sourceTimeMs": 1793327253759,
+            "stage": "end",
+            "outcome": "completed",
+            "requestId": 7,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "traceId": "0880ccc0-6717-422b-990f-f97b6dfa6bcb",
+            "threadId": "01a17c45-4c00-7b30-b3a1-09dc4dd3bb18",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7738,
+            "atMs": 1793327253866.0,
+            "eventAtMs": 1793327253759,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.websocket_request",
+            "sourceTimeMs": 1793327254722,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "traceId": "0880ccc0-6717-422b-990f-f97b6dfa6bcb",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7771,
+            "atMs": 1793327255352.0,
+            "eventAtMs": 1793327254722,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327269399,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "call_id": "exec-e4eb05d1-550c-47f1-9a23-db947c434162",
+            "traceId": "0880ccc0-6717-422b-990f-f97b6dfa6bcb",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7790,
+            "atMs": 1793327270397.0,
+            "eventAtMs": 1793327269399,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327269407,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "call_id": "exec-1bac9697-dc5a-41f4-8192-5a4906cd529d",
+            "traceId": "0880ccc0-6717-422b-990f-f97b6dfa6bcb",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7791,
+            "atMs": 1793327270397.0,
+            "eventAtMs": 1793327269407,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327269409,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "74a9baf7-ef81-4cd8-b165-da8220333a93",
+            "call_id": "call_c5bc4f0d31e94abdb9c4d5aaea7e7ac5",
+            "traceId": "0880ccc0-6717-422b-990f-f97b6dfa6bcb",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 7792,
+            "atMs": 1793327270397.0,
+            "eventAtMs": 1793327269409,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd"
+          }
+        ],
+        "processEndRows": [],
+        "runtimeModules": {
+          "rmcp::transport::worker": 1
+        },
+        "conclusion": "HTTP403 根错误模块为 rmcp::transport::worker；没有目标 MCP 服务名字段。随后 RPC/模型成功只证明对应进程继续服务，不证明原 MCP 连接恢复；不将其他 processRunId 的成功关联为恢复。",
+        "explicitServiceTokensInMessages": [],
+        "serviceIdentification": "403 错误行无目标服务字段，其他同进程 service 字段仅指向 relay.websocket.handshake 的 chatgpt.com 模型上游或固定 endpoint；这不是 MCP 服务身份，不能用它把 MCP403 归因于模型上游。"
+      },
+      {
+        "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+        "records": 139,
+        "firstRecordAtMs": 1793327676400,
+        "lastRecordAtMs": 1793329312028.0,
+        "http403Rows": [
+          {
+            "type": "runtime_error",
+            "sourceTimeMs": 1793327682067,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "failureCategory": "permission",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8237,
+            "atMs": 1793327682067.0,
+            "eventAtMs": 1793327682067,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [
+              "rmcp::transport::worker"
+            ],
+            "hasHttp403": true,
+            "hasHtml": true,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "runtime_error",
+            "sourceTimeMs": 1793327683685,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "failureCategory": "permission",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8239,
+            "atMs": 1793327683685.0,
+            "eventAtMs": 1793327683685,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [
+              "rmcp::transport::worker"
+            ],
+            "hasHttp403": true,
+            "hasHtml": true,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          }
+        ],
+        "htmlContinuationRows": [
+          {
+            "type": "runtime_error",
+            "sourceTimeMs": 1793327682069,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "failureCategory": "unknown",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8238,
+            "atMs": 1793327682069.0,
+            "eventAtMs": 1793327682069,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": true,
+            "hasChallengeMarker": true,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          }
+        ],
+        "serviceFieldRows": [
+          {
+            "operation": "relay.websocket.handshake",
+            "stage": "start",
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8224,
+            "atMs": 1793327677624,
+            "eventAtMs": 1793327677624,
+            "diagnosticType": "operation",
+            "serviceFieldsPresent": [
+              "targetService"
+            ],
+            "safeServiceFields": {
+              "targetService": "chatgpt.com"
+            },
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "operation": "relay.websocket.handshake",
+            "stage": "completed",
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8233,
+            "atMs": 1793327679750,
+            "eventAtMs": 1793327679750,
+            "diagnosticType": "operation",
+            "serviceFieldsPresent": [
+              "targetService"
+            ],
+            "safeServiceFields": {
+              "targetService": "chatgpt.com"
+            },
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.websocket_connect",
+            "sourceTimeMs": 1793327679750,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8234,
+            "atMs": 1793327680615.0,
+            "eventAtMs": 1793327679750,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8648,
+            "atMs": 1793327953488.0,
+            "eventAtMs": 1793327953488.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8898,
+            "atMs": 1793328225442.0,
+            "eventAtMs": 1793328225442.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 9281,
+            "atMs": 1793328497409.0,
+            "eventAtMs": 1793328497409.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 9545,
+            "atMs": 1793328769329.0,
+            "eventAtMs": 1793328769329.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 10403,
+            "atMs": 1793329041215.0,
+            "eventAtMs": 1793329041215.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.api_request",
+            "sourceTimeBasis": "unavailable",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 10853,
+            "atMs": 1793329312028.0,
+            "eventAtMs": 1793329312028.0,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [
+              "endpoint"
+            ],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          }
+        ],
+        "subsequentSuccessCount": 51,
+        "subsequentSuccessByMethodOrEvent": {
+          "transport": 1,
+          "codex.websocket_request": 11,
+          "codex.tool_result": 32,
+          "codex.api_request": 6,
+          "turn_summary": 1
+        },
+        "firstSubsequentSuccesses": [
+          {
+            "type": "rpc",
+            "sourceTimeMs": 1793327784215,
+            "stage": "end",
+            "outcome": "completed",
+            "requestId": 7,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "traceId": "0019f4bc-0446-4ab5-b00a-ad5b5e997652",
+            "threadId": "01a17c45-4c00-7b30-b3a1-09dc4dd3bb18",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8336,
+            "atMs": 1793327784328.0,
+            "eventAtMs": 1793327784215,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.websocket_request",
+            "sourceTimeMs": 1793327785174,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "traceId": "0019f4bc-0446-4ab5-b00a-ad5b5e997652",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8369,
+            "atMs": 1793327785939.0,
+            "eventAtMs": 1793327785174,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327796659,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "call_id": "exec-2556650c-1363-45da-8e3a-6ccb62cdb5a6",
+            "traceId": "0019f4bc-0446-4ab5-b00a-ad5b5e997652",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8387,
+            "atMs": 1793327796970.0,
+            "eventAtMs": 1793327796659,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327796689,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "call_id": "exec-533ef69c-9c11-4ad0-a6fe-84657fef34d5",
+            "traceId": "0019f4bc-0446-4ab5-b00a-ad5b5e997652",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8389,
+            "atMs": 1793327796970.0,
+            "eventAtMs": 1793327796689,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327796742,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "call_id": "exec-e270d146-18ac-4794-9d7c-689d37b291ef",
+            "traceId": "0019f4bc-0446-4ab5-b00a-ad5b5e997652",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8390,
+            "atMs": 1793327796970.0,
+            "eventAtMs": 1793327796742,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          },
+          {
+            "type": "event",
+            "event": "codex.tool_result",
+            "sourceTimeMs": 1793327796745,
+            "sourceTimeBasis": "event.timestamp",
+            "success": true,
+            "processRunId": "18f8c203-f71d-47ac-bcb1-2f15ad63591b",
+            "call_id": "call_0cf11d517cb44899a3c4d1da5b255462",
+            "traceId": "0019f4bc-0446-4ab5-b00a-ad5b5e997652",
+            "file": "codex-chat-2026-10-30.log",
+            "line": 8391,
+            "atMs": 1793327796970.0,
+            "eventAtMs": 1793327796745,
+            "diagnosticType": "transport",
+            "serviceFieldsPresent": [],
+            "safeServiceFields": {},
+            "modules": [],
+            "hasHttp403": false,
+            "hasHtml": false,
+            "hasChallengeMarker": false,
+            "pluginVersion": "0.1.187",
+            "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e"
+          }
+        ],
+        "processEndRows": [],
+        "runtimeModules": {
+          "rmcp::transport::worker": 2
+        },
+        "conclusion": "HTTP403 根错误模块为 rmcp::transport::worker；没有目标 MCP 服务名字段。随后 RPC/模型成功只证明对应进程继续服务，不证明原 MCP 连接恢复；不将其他 processRunId 的成功关联为恢复。",
+        "explicitServiceTokensInMessages": [],
+        "serviceIdentification": "403 错误行无目标服务字段，其他同进程 service 字段仅指向 relay.websocket.handshake 的 chatgpt.com 模型上游或固定 endpoint；这不是 MCP 服务身份，不能用它把 MCP403 归因于模型上游。"
+      }
+    ],
+    "toolFailures": {
+      "windowFrom": "2026-10-29T02:46:35.122Z",
+      "windowTo": "2026-10-30T02:46:35.122Z",
+      "deduplication": "按 windowId + callId 合并 perf span_end 与 codex.tool_result；剔除 expectedCancellation=true、cancellationReason=question_pause 且 outcome=waiting_for_user 的已确认提问暂停，仅统计明确失败",
+      "excludedConfirmedQuestionPauses": 11,
+      "uniqueCalls": 35,
+      "observations": 42,
+      "categories": {
+        "missing_file": 7,
+        "authentication": 1,
+        "nonzero_exit": 13,
+        "timeout": 7,
+        "unknown": 7
+      },
+      "rawCommandCalls": 0,
+      "rawOutputCalls": 0,
+      "cwdCalls": 0,
+      "fingerprintCalls": 28,
+      "exitCodeCalls": 28,
+      "timedCalls": 35,
+      "boundary": "历史失败仅保留脱敏分类/计时/退出码/部分进程内指纹，缺少完整命令、工具输出和工作目录，不能确认缺失文件前提、凭据或命令退出码语义，也不能从 TypeError/js 推断插件页面异常。timeout 来自 tool_output，不能反推插件执行器超时；这些工具由 Codex/外部工具执行，插件未有共用根因证据，不改业务项目、不复放命令。",
+      "confirmedQuestionPauseExclusionEvidence": "11 条 codex.tool_result 已明确 expectedCancellation=true、cancellationReason=question_pause、outcome=waiting_for_user，排除后与报告35个失败调用/42条观测一致。"
+    }
+  }
+}
