@@ -104,14 +104,23 @@ export function userView(content: any[]): Extract<TimelineItem, { type: 'user' }
 }
 export function timeline(turns: any[]): TimelineItem[] {
   const out: TimelineItem[] = [];
-  for (const turn of turns) for (const item of turn.items ?? []) {
-    const questions = asyncQuestions(item);
-    if (item.type === 'userMessage') out.push({ ...userView(item.content ?? []), ...(turn.id ? { turnId: turn.id } : {}) });
-    else if (questions) out.push({ type: 'tool', toolId: item.id, name: 'AskUserQuestion', input: { questions }, result: item.text || questions.map(q => q.question).join('\n') });
-    else if (item.type === 'agentMessage' || item.type === 'plan') out.push({ type: 'assistant_text', text: item.text ?? '', ...(item.id ? {sourceId: item.id} : {}) });
-    else if (item.type === 'reasoning') out.push({ type: 'thinking', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n'), ...(item.id ? {sourceId: item.id} : {}) });
-    else if (item.type === 'contextCompaction') out.push({ type: 'compaction', preTokens: 0, postTokens: 0 });
-    else if (item.type !== 'hookPrompt') out.push({ type: 'tool', toolId: item.id, ...toolView(item) });
+  for (const turn of turns) {
+    const from = out.length;
+    for (const item of turn.items ?? []) {
+      const questions = asyncQuestions(item);
+      if (item.type === 'userMessage') out.push({ ...userView(item.content ?? []), ...(turn.id ? { turnId: turn.id } : {}) });
+      else if (questions) out.push({ type: 'tool', toolId: item.id, name: 'AskUserQuestion', input: { questions }, result: item.text || questions.map(q => q.question).join('\n') });
+      else if (item.type === 'agentMessage' || item.type === 'plan') out.push({ type: 'assistant_text', text: item.text ?? '', ...(item.id ? {sourceId: item.id} : {}) });
+      else if (item.type === 'reasoning') out.push({ type: 'thinking', text: [...(item.summary ?? []), ...(item.content ?? [])].join('\n'), ...(item.id ? {sourceId: item.id} : {}) });
+      else if (item.type === 'contextCompaction') out.push({ type: 'compaction', preTokens: 0, postTokens: 0 });
+      else if (item.type !== 'hookPrompt') out.push({ type: 'tool', toolId: item.id, ...toolView(item) });
+    }
+    // 官方 Turn 时间为 Unix 秒；缺失时不以读取历史的当前时间冒充。
+    for (let i = from; i < out.length; i++) {
+      const seconds = out[i].type === 'user' ? turn.startedAt : turn.completedAt;
+      if (typeof seconds === 'number' && Number.isFinite(seconds) && seconds > 0 && Number.isFinite(new Date(seconds * 1000).getTime()))
+        out[i].timestamp = seconds * 1000;
+    }
   }
   return out;
 }

@@ -11,6 +11,20 @@ const {WorkspaceSnapshot}=require('../dist/test/snapshot.js');
 const {diffCounts}=require('../dist/test/diff.js');
 const {CheckpointManager}=require('../dist/test/checkpoints.js');
 const executable=path.resolve('test/fake-codex.cjs');
+test('官方历史秒时间转为毫秒，分别保留发送和回复完成时间，缺失与非法值不伪造',()=>{
+ const started=Date.parse('2026-10-30T09:01:00+08:00')/1000,completed=started+120;
+ const items=[{type:'userMessage',content:[{type:'text',text:'问题'}]},
+  {type:'commandExecution',id:'tool',command:'npm run build',exitCode:0},
+  {type:'agentMessage',id:'answer',text:'已完成'}];
+ const turns=[{id:'turn',startedAt:started,completedAt:completed,items}];
+ const view=timeline(turns);assert.deepEqual(view.map(x=>x.timestamp),[started*1000,completed*1000,completed*1000]);
+ assert.deepEqual(timeline(turns),view,'再次读取不能改为当前时间');
+ for(const value of [undefined,null,NaN,Infinity,-1,0,1e30,'2026-10-30']){
+  assert.ok(timeline([{startedAt:value,completedAt:value,items}]).every(x=>!Object.hasOwn(x,'timestamp')));
+ }
+ const active=timeline([{startedAt:started,completedAt:null,items}]);assert.equal(active[0].timestamp,started*1000);
+ assert.equal(active[2].timestamp,undefined,'运行中没有完成时间');
+});
 test('原生网页检索的 results 在实时通知和历史中保留完整链接',()=>{
  const events=[];
  const p=new CodexProcess({codexPath:executable,cwd:process.cwd(),permissionMode:'default'},

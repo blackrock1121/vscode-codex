@@ -26,6 +26,31 @@ function setup(t){
  const save=()=>w.document.querySelector('.user-edit-save').click();
  return {w,sent,errors,emit,items,checkpoints,load,users,edit,save,states};
 }
+test('编辑成功和重新生成刷新本轮时间，取消或失败保留原时间，更早消息不变',t=>{
+ const f=setup(t),old=Date.parse('2026-10-29T09:01:00+08:00');
+ f.items.forEach((item,index)=>item.timestamp=old+index*60000);f.load();
+ let now=old+24*60*60000;f.w.Date.now=()=>now;
+ const userTimes=()=>[...f.w.document.querySelectorAll('.msg.user > .msg-time')].map(n=>n.dateTime);
+ const original=userTimes();
+ f.edit();f.w.document.querySelector('.user-edit-cancel').click();assert.deepEqual(userTimes(),original);
+ let input=f.edit();input.value='B';f.save();let request=f.sent.filter(m=>m.type==='editMessage').at(-1);
+ f.emit({kind:'edit_message_result',requestId:request.requestId,ok:false,message:'还原失败'});assert.deepEqual(userTimes(),original);
+ f.save();request=f.sent.filter(m=>m.type==='editMessage').at(-1);
+ f.emit({kind:'edit_message_result',requestId:request.requestId,ok:true,sessionId:'branch'});f.emit({kind:'restored'});
+ assert.deepEqual(userTimes(),[original[0],new Date(now).toISOString()]);
+ f.emit({kind:'checkpoint_marker',checkpointId:'new-B',sendId:request.requestId});
+ f.emit({kind:'text_delta',text:'新的回复'});
+ const completed=now+3*60000;f.emit({kind:'result',isError:false,timestamp:completed});f.emit({kind:'busy',busy:false});
+ assert.equal(f.w.document.querySelector('.msg.assistant:last-child .msg-time').dateTime,new Date(completed).toISOString());
+ now+=10*60000;f.w.document.querySelector('.msg.assistant:last-child .regen').click();
+ assert.equal(f.sent.filter(m=>m.type==='editMessage').at(-1).checkpointId,'new-B');
+ assert.deepEqual(userTimes(),[original[0],new Date(now).toISOString()]);
+ assert.equal(f.w.document.querySelectorAll('.msg.assistant .msg-time').length,1,'旧 B 回复连同旧时间一起移除');
+ f.emit({kind:'restored'});f.emit({kind:'busy',busy:true});f.emit({kind:'text_delta',text:'重新生成后的回复'});
+ f.emit({kind:'result',isError:false,timestamp:now+2*60000});
+ assert.equal(f.w.document.querySelector('.msg.assistant:last-child .msg-time').dateTime,new Date(now+2*60000).toISOString());
+ assert.deepEqual(f.errors,[]);
+});
 test('编辑 b 开始：回退确认前保留全部对话，确认后仅保留 a 完整轮次并发送 B',t=>{
  const f=setup(t);f.items[2].images=['data:image/png;base64,aGVsbG8='];f.items[2].context='原始选区内容';f.load();
  const composer=f.w.document.getElementById('input');composer.value='未发送的另一条草稿';

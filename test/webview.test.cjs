@@ -34,6 +34,38 @@ function scrollFixture(w){
  return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
+test('发送时间在用户气泡外，回复完成时间紧随复制，显示本地日期且只精确到分钟',t=>{
+ const f=setup(t),sentAt=new Date(2026,9,30,9,1,49).getTime(),completedAt=sentAt+65000;
+ f.w.Date.now=()=>sentAt;
+ f.w.document.getElementById('input').value='检查构建';f.w.document.getElementById('btn-send').click();
+ const user=f.w.document.querySelector('.msg.user'),time=user.querySelector(':scope > time');
+ assert.equal(time.textContent,'2026-10-30 09:01');assert.equal(time.dateTime,new Date(sentAt).toISOString());
+ assert.equal(user.querySelector('.msg-body time'),null);
+ f.emit({kind:'text_delta',text:'已完成'});assert.equal(f.w.document.querySelector('.msg.assistant .msg-time'),null);
+ f.w.Date.now=()=>completedAt+5*60000;
+ f.emit({kind:'result',isError:false,timestamp:completedAt});
+ const reply=f.w.document.querySelector('.msg-actions time');assert.equal(reply.textContent,'2026-10-30 09:02');
+ assert.equal(reply.previousElementSibling.textContent,'复制');assert.equal(reply.dateTime,new Date(completedAt).toISOString());
+ assert.equal(user.querySelector('time').dateTime,time.dateTime);assert.deepEqual(f.errors,[]);
+});
+test('历史重载、分页保留原时间，缺失或非法时间不伪造，只有工具的回复也显示完成时间',async t=>{
+ const f=setup(t),old=new Date(2026,9,29,8,0).getTime();
+ const items=Array.from({length:25},(_,i)=>[{type:'user',text:`问题${i}`,timestamp:old+i*60000},
+  {type:'assistant_text',text:`回复${i}`,timestamp:old+i*60000+30000}]).flat();
+ f.emit({kind:'load_history',items,checkpoints:[]});
+ const latest=f.w.document.querySelector('.msg.assistant:last-child time').dateTime;
+ f.w.document.querySelector('.history-expand').click();await new Promise(r=>setTimeout(r,100));
+ assert.equal(f.w.document.querySelectorAll('.msg-time').length,50);
+ assert.equal(f.w.document.querySelector('.msg.user > time').dateTime,new Date(old).toISOString());
+ assert.equal(f.w.document.querySelector('.msg.assistant:last-child time').dateTime,latest);
+ f.emit({kind:'load_history',items,checkpoints:[]});assert.equal(f.w.document.querySelector('.msg.assistant:last-child time').dateTime,latest);
+ for(const timestamp of [undefined,null,NaN,0,-1,Infinity,1e30]){
+  f.emit({kind:'load_history',items:[{type:'user',text:'无时间',timestamp},{type:'assistant_text',text:'旧回复',timestamp}],checkpoints:[]});
+  assert.equal(f.w.document.querySelector('.msg-time'),null);
+ }
+ f.emit({kind:'load_history',items:[{type:'tool',toolId:'build',name:'Bash',input:{command:'npm run build'},result:'通过',timestamp:old}],checkpoints:[]});
+ assert.equal(f.w.document.querySelector('.msg-actions time').dateTime,new Date(old).toISOString());assert.deepEqual(f.errors,[]);
+});
 
 test('仅校验通过的文件链接启用原生 Finder 菜单，撤销链接时清除菜单',t=>{
  const {w,sent,emit,errors}=setup(t);

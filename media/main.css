@@ -324,7 +324,7 @@ body.vscode-dark .question-bar, body.vscode-high-contrast .question-bar { color:
 }
 
 /* User messages: right-aligned bubble */
-.msg.user { justify-content: flex-end; align-items: center; }
+.msg.user { flex-direction: column; align-items: flex-end; gap: 5px; }
 .msg.user .msg-body {
   flex: 0 1 auto;
   max-width: min(86%, 520px);
@@ -342,7 +342,12 @@ body.vscode-dark .question-bar, body.vscode-high-contrast .question-bar { color:
 
 /* Reply actions. Pulled out of the timeline column (the rail is 22px + 8px gap)
    so they hang off the message, not off the last tool step. */
-.msg-actions { margin: 6px 0 0 -18px; display: flex; align-items: center; gap: 4px; }
+.msg-actions { margin: 6px 0 0 -18px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.msg-time {
+  color: var(--vscode-descriptionForeground); font-size: 11px; line-height: 18px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.msg-actions .msg-time { margin-left: 4px; }
 .msg-act {
   display: inline-flex; align-items: center; gap: 6px;
   height: 26px; padding: 0 10px 0 8px; border: none; cursor: pointer;
@@ -908,7 +913,8 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 }
 .askq-reanswer:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
 .askq-reanswer:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
-.msg.user.question-reply { justify-content: flex-start; }
+.msg.user.question-reply { align-items: stretch; }
+.msg.user.question-reply > .msg-time { align-self: flex-end; }
 .msg.user.question-reply .msg-body { max-width: 100%; width: 100%; padding: 0; background: transparent; color: var(--vscode-foreground); }
 /* user-stopped marker at the end of an AI reply */
 .msg-interrupted {

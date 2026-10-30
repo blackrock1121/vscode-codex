@@ -186,7 +186,7 @@ export type ToWebview =
   | { kind: "context"; used: number; total: number }
   | { kind: "refs_validated"; invalid: string[]; valid?: string[] }
   | { kind: "local_image"; path: string; dataUri?: string }
-  | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number }
+  | { kind: "result"; isError: boolean; costUsd?: number; durationMs?: number; numTurns?: number; timestamp?: number }
   /** 后台轮次已结束，等待文件还原点归档；此时仍不能发送下一轮。 */
   | { kind: "finalizing" }
   /** weekModel*: 除 "all models" 外的按模型周限额行（CLI 输出哪个模型就显示哪个，
@@ -273,7 +273,7 @@ export const CTX_OPEN = "<user-attached-context>";
 export const CTX_CLOSE = "</user-attached-context>";
 
 /** A persisted/rehydratable timeline item (used when reloading a session). */
-export type TimelineItem =
+export type TimelineItem = (
   | { type: "user"; text: string; context?: string; images?: string[]; files?: string[]; turnId?: string }
   | { type: "image"; src: string } // standalone image (assistant/tool), data: URI
   | { type: "assistant_text"; text: string; sourceId?: string }
@@ -290,7 +290,8 @@ export type TimelineItem =
       permission?: "allow" | "deny" | "pending";
     }
   | { type: "checkpoint"; id: string; label: string }
-  | { type: "compaction"; preTokens: number; postTokens: number };
+  | { type: "compaction"; preTokens: number; postTokens: number }
+) & { /** Unix 毫秒：用户发送时间，或 AI 所在轮次的完成时间；旧历史可能缺失。 */ timestamp?: number };
 
 // ---- Webview -> extension host --------------------------------------------
 

@@ -369,7 +369,7 @@ function ensureAssistant(): HTMLElement {
   return assistantEl.querySelector(".msg-body") as HTMLElement;
 }
 
-function finalizeTurn() {
+function finalizeTurn(timestamp?: number) {
   finalizeLive();
   removeWorking();
   cancelPendingInteractions();
@@ -398,6 +398,8 @@ function finalizeTurn() {
       endTimelineAtLastNode(assistantEl); // stop the line at the last node
       // Footer: a row of borderless icon buttons under the reply.
       if (!body.querySelector(".msg-actions")) {
+        // 直播在轮次结束时记时；历史只使用后端保存的时间，分页和重载不刷新。
+        if (!assistantEl.dataset.historical) assistantEl.dataset.timestamp = String(timestamp ?? Date.now());
         body.appendChild(buildReplyActions(assistantEl));
       }
     }
@@ -1383,7 +1385,7 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       else setGlow(m.isError ? "error" : "done");
       if (turnHasReply && !userStopped && !pinnedToBottom) newReplyAvailable = true;
       turnHasReply = false;
-      finalizeTurn();
+      finalizeTurn(m.timestamp);
       updateJumpLatest();
       // 压缩的收尾也是一个普通 result。只靠 compacted 复位的话，压缩失败、或
       // 会话太小 CLI 直接跳过压缩（实测此时不发 compact_boundary）时，
@@ -2927,12 +2929,17 @@ function renderItemRange(items: TimelineItem[], from: number, to: number, cpByOr
   for (let i = 0; i < from; i++) if (items[i].type === "user") userOrdinal++;
   for (let i = from; i < to; i++) {
     const it = items[i];
+    if (it.type === "assistant_text" || it.type === "image" || it.type === "tool") {
+      ensureAssistant();
+      assistantEl!.dataset.historical = "true";
+      if (it.timestamp != null) assistantEl!.dataset.timestamp = String(it.timestamp);
+    }
     if (it.type === "user") {
       userOrdinal++;
       finalizeTurn();
       const cp = cpByOrdinal.get(userOrdinal);
       if (cp) messagesEl.appendChild(renderCheckpointDivider(cp.id, cp.synthetic, userOrdinal > 0)); // 第一条前也画：还原到它之前 = 清空对话重来
-      const m = appendUser(it.text, it.files || [], it.images || [], false);
+      const m = appendUser(it.text, it.files || [], it.images || [], false, it.timestamp ?? null);
       userAttachments.set(m, { context: it.context, files: it.files, labels: it.files });
       if (cp) {
         m.dataset.checkpointId = cp.id;
@@ -4794,7 +4801,20 @@ messagesEl.addEventListener("click", (e) => {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-function appendUser(text: string, contextLabels: string[] = [], images: string[] = [], scroll = true) {
+/** 时间始终按本机时区显示到分钟，语义化 datetime 保留原始时刻。 */
+function messageTime(timestamp: number | null | undefined, label: string): HTMLTimeElement | undefined {
+  if (typeof timestamp !== "number" || !Number.isFinite(timestamp) || timestamp <= 0) return;
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return;
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const text = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  const time = el("time", "msg-time", text) as HTMLTimeElement;
+  time.dateTime = date.toISOString();
+  time.setAttribute("aria-label", `${label} ${text}`);
+  return time;
+}
+
+function appendUser(text: string, contextLabels: string[] = [], images: string[] = [], scroll = true, timestamp: number | null = Date.now()) {
   messagesEl.querySelector(".empty-state")?.remove();
   const msg = el("div", "msg user");
   msg.dataset.rawText = text;
@@ -4848,6 +4868,8 @@ function appendUser(text: string, contextLabels: string[] = [], images: string[]
     });
   }
   msg.appendChild(body);
+  const time = messageTime(timestamp, "发送时间");
+  if (time) msg.appendChild(time);
   messagesEl.appendChild(msg);
   lastUserEl = msg;
   userMsgCount++;
@@ -4979,6 +5001,8 @@ function buildReplyActions(aEl: HTMLElement): HTMLElement {
   // 赞/踩 were pure decoration — nothing on either side of the wire consumed
   // the rating, so they were two buttons that did nothing.
   acts.append(regen, copy);
+  const time = messageTime(Number(aEl.dataset.timestamp), "回复时间");
+  if (time) acts.appendChild(time);
   return acts;
 }
 

@@ -1198,7 +1198,7 @@ export class CodexProcess {
     this.rootCompletion = undefined; this.stoppingTree = false; this.childQuestions.clear();
     for (const key of this.pending.keys()) this.emit({ kind: 'permission_resolved', requestId: key, behavior: 'deny', auto: true });
     this.pending.clear(); this.emit({ kind: 'busy', busy: false });
-    this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1 });
+    this.emit({ kind: 'result', isError, durationMs: Date.now() - this.beganAt, numTurns: 1, timestamp: Date.now() });
     this.scheduleCompactionValidation();
   }
   private cancelCompactionRestore(): void {
