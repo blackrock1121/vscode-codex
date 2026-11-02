@@ -814,12 +814,25 @@ function renderUsage(sessionPct?: number, sessionResetAt?: number, weekPct?: num
 }
 
 function cnReset(resetAt?: number): string {
+  if (typeof resetAt !== "number" || !Number.isFinite(new Date(resetAt * 1000).getTime())) return "";
+  const remaining = resetAt * 1000 - Date.now();
+  if (remaining <= 0) return "等待额度刷新";
+  const mins = Math.floor(remaining / 60000);
+  if (mins === 0) return "即将重置";
+  const days = Math.floor(mins / 1440);
+  const hours = Math.floor(mins / 60) % 24;
+  const minutes = mins % 60;
+  if (days) return `${days}天${hours ? `${hours}小时` : ""}后重置`;
+  return `${hours ? `${hours}小时` : ""}${minutes ? `${minutes}分钟` : ""}后重置`;
+}
+function resetDateTitle(resetAt?: number): string {
   if (typeof resetAt !== "number") return "";
   const date = new Date(resetAt * 1000);
   if (Number.isNaN(date.getTime())) return "";
-  return `${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 重置`;
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 重置`;
 }
-function usageRow(label: string, pct: number | undefined, resetText: string): string {
+function usageRow(label: string, pct: number | undefined, resetAt?: number): string {
+  const resetText = cnReset(resetAt);
   const has = typeof pct === "number";
   const p = has ? Math.max(0, Math.min(100, pct as number)) : 0;
   const shown = has ? `${pct}%` : "—";
@@ -827,7 +840,7 @@ function usageRow(label: string, pct: number | undefined, resetText: string): st
   // 左边是下次重置时间；右边将额度名与已用百分比紧挨着展示。
   return (
     `<div class="usage-row${warn}">` +
-    `<div class="usage-row-top">${resetText ? `<span class="usage-reset">${resetText}</span>` : ""}` +
+    `<div class="usage-row-top">${resetText ? `<span class="usage-reset" title="${resetDateTitle(resetAt)}">${resetText}</span>` : ""}` +
     `<span class="usage-metric"><span class="usage-name">${label}</span><span class="usage-pct">${shown}</span></span></div>` +
     `<div class="usage-bar"><span style="width:${p}%"></span></div>` +
     `</div>`
@@ -864,16 +877,20 @@ function buildUsageMenu() {
   const d = lastUsageData;
   const plan = currentPlanName();
   let html = `<div class="pick-head usage-head">每周限额${plan ? ` · ${plan}` : ""}</div>`;
-  if (typeof d.sessionPct === "number") html += usageRow("5 小时限额", d.sessionPct, cnReset(d.sessionResetAt));
-  if (typeof d.weekPct === "number") html += usageRow("已使用", d.weekPct, cnReset(d.weekResetAt));
+  if (typeof d.sessionPct === "number") html += usageRow("5 小时限额", d.sessionPct, d.sessionResetAt);
+  if (typeof d.weekPct === "number") html += usageRow("已使用", d.weekPct, d.weekResetAt);
   // 按模型的周限额行：CLI 输出了才显示（模型名由服务端提供）。
   // 模型名来自解析 CLI 的 stdout——外部字符串进 innerHTML 必须转义。
   if (typeof d.weekModelPct === "number") {
-    html += usageRow(`仅 ${escapeHtml(d.weekModelName || "特定模型")}`, d.weekModelPct, "");
+    html += usageRow(`仅 ${escapeHtml(d.weekModelName || "特定模型")}`, d.weekModelPct);
   }
   html += resetCreditsHtml();
   usageMenu.innerHTML = html;
 }
+// 倒计时不依赖服务端推送；关闭弹层时不重绘，重新打开时立即按当前时间计算。
+window.setInterval(() => {
+  if (!usageMenu.classList.contains("hidden")) buildUsageMenu();
+}, 30000);
 /** Anchor the popover directly above the usage pill (right edges aligned). */
 function positionUsageMenu() {
   const parent = usageMenu.offsetParent as HTMLElement | null;

@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const {JSDOM}=require('jsdom');
 const source=fs.readFileSync('src/panel/chatViewProvider.ts','utf8');
-function setup(t,sessionId,initialState){
+function setup(t,sessionId,initialState,beforeEval){
  const section=source.slice(source.indexOf('  private html('));
  const raw=section.match(/return (?:\/\* html \*\/ )?`([\s\S]*?)`;\s*\n\s+}/)[1];
  const html=raw.replace(/\$\{[^}]+\}/g,'').replace(/<script[^>]*><\/script>/g,'');
@@ -20,6 +20,7 @@ function setup(t,sessionId,initialState){
  w.matchMedia=()=>({matches:false,addEventListener(){},removeEventListener(){}});
  w.document.queryCommandSupported=()=>false;
  w.addEventListener('error',e=>errors.push(e.message));
+ beforeEval?.(w);
  w.eval(fs.readFileSync('media/webview.js','utf8'));
  const emit=data=>w.dispatchEvent(new w.MessageEvent('message',{data}));
  return {w,sent,errors,emit,states,resizeObservers,resize:target=>resizeObservers.filter(o=>o.targets.includes(target)).forEach(o=>o.callback())};
@@ -1036,7 +1037,30 @@ test('排队图片缩略图与文字同一行，最多两张并显示余量，�
 });
 test('撤回指定排队消息不影响其他排队消息',t=>{const {w,sent,emit}=setup(t);const input=w.document.getElementById('input');emit({kind:'busy',busy:true});for(const text of ['第一条','第二条']){input.value=text;w.document.getElementById('btn-send').click();}const queue=w.document.getElementById('task-queue');queue.querySelectorAll('.tq-recall')[1].click();assert.equal(input.value,'第二条');assert.equal(queue.querySelectorAll('.tq-row').length,1);assert.match(queue.textContent,/第一条/);assert.equal(sent.some(m=>m.type==='send'),false);});
 test('快照跳过清单可逐项排除、全部排除或忽略提醒',t=>{const {w,sent,emit,errors}=setup(t);const files=[{path:'/tmp/p/.DS_Store',rel:'.DS_Store',reason:'二进制'},{path:'/tmp/p/media/icon.png',rel:'media/icon.png',reason:'二进制'}];emit({kind:'snapshot_skips',files,total:2});let card=w.document.querySelector('.snapshot-skips');assert.ok(card);assert.equal(card.querySelectorAll('.ss-row').length,2);card.querySelector('.ss-row .ss-action').click();assert.ok(sent.some(m=>m.type==='excludeSnapshotPaths'&&m.paths?.[0]===files[0].path));emit({kind:'snapshot_exclude_result',ok:true,message:'已排除',paths:[files[0].path]});card=w.document.querySelector('.snapshot-skips');assert.equal(card.querySelectorAll('.ss-row').length,1);card.querySelector('.ss-actions .ss-action').click();assert.ok(sent.some(m=>m.type==='excludeSnapshotPaths'&&m.all===true));emit({kind:'snapshot_exclude_result',ok:true,message:'已排除',paths:[files[1].path]});assert.equal(w.document.querySelector('.snapshot-skips'),null);emit({kind:'snapshot_skips',files,total:2});w.document.querySelectorAll('.ss-actions .ss-action')[1].click();assert.equal(w.document.querySelector('.snapshot-skips'),null);assert.deepEqual(errors,[]);});
-test('只有周额度时显示已用百分比、每周限额、重置时间和实际套餐',t=>{const {w,emit,errors}=setup(t);emit({kind:'usage',weekPct:93,weekResetAt:1790754733,planType:'pro'});const pill=w.document.getElementById('usage-pill');assert.match(pill.textContent,/周.*93%/);assert.doesNotMatch(pill.textContent,/会话/);pill.click();const menu=w.document.getElementById('usage-menu');assert.match(menu.querySelector('.usage-head').textContent,/每周限额 · ChatGPT Pro 200/);assert.match(menu.querySelector('.usage-metric').textContent,/已使用93%/);assert.doesNotMatch(menu.textContent,/套餐用量|全部模型/);assert.match(menu.textContent,/\d+月\d+日 \d{2}:\d{2} 重置/);assert.doesNotMatch(menu.textContent,/5 小时/);assert.equal(menu.querySelector('.usage-bar span').style.width,'93%');emit({kind:'speed_context',billing:'chatgpt',planType:'prolite'});assert.match(menu.querySelector('.usage-head').textContent,/ChatGPT Pro 100/);emit({kind:'speed_context',billing:'chatgpt',planType:'promax'});assert.match(menu.querySelector('.usage-head').textContent,/ChatGPT Pro 500/);emit({kind:'speed_context',billing:'chatgpt',planType:'plus'});assert.match(menu.textContent,/ChatGPT Plus/);emit({kind:'speed_context',billing:'api'});assert.doesNotMatch(menu.textContent,/ChatGPT Plus/);assert.deepEqual(errors,[]);});
+test('只有周额度时显示已用百分比、每周限额、重置时间和实际套餐',t=>{const {w,emit,errors}=setup(t);w.Date.now=()=>new Date(2026,10,2,10).getTime();emit({kind:'usage',weekPct:93,weekResetAt:new Date(2026,10,4,12).getTime()/1000,planType:'pro'});const pill=w.document.getElementById('usage-pill');assert.match(pill.textContent,/周.*93%/);assert.doesNotMatch(pill.textContent,/会话/);pill.click();const menu=w.document.getElementById('usage-menu');assert.match(menu.querySelector('.usage-head').textContent,/每周限额 · ChatGPT Pro 200/);assert.match(menu.querySelector('.usage-metric').textContent,/已使用93%/);assert.doesNotMatch(menu.textContent,/套餐用量|全部模型/);assert.match(menu.textContent,/2天2小时后重置/);assert.equal(menu.querySelector('.usage-reset').title,'2026年11月4日 12:00 重置');assert.doesNotMatch(menu.textContent,/5 小时/);assert.equal(menu.querySelector('.usage-bar span').style.width,'93%');emit({kind:'speed_context',billing:'chatgpt',planType:'prolite'});assert.match(menu.querySelector('.usage-head').textContent,/ChatGPT Pro 100/);emit({kind:'speed_context',billing:'chatgpt',planType:'promax'});assert.match(menu.querySelector('.usage-head').textContent,/ChatGPT Pro 500/);emit({kind:'speed_context',billing:'chatgpt',planType:'plus'});assert.match(menu.textContent,/ChatGPT Plus/);emit({kind:'speed_context',billing:'api'});assert.doesNotMatch(menu.textContent,/ChatGPT Plus/);assert.deepEqual(errors,[]);});
+test('额度倒计时覆盖天、小时、分钟边界和无效时间，打开期间自动刷新',t=>{
+ const intervals=[];
+ const {w,emit,errors}=setup(t,undefined,undefined,window=>{
+  const original=window.setInterval.bind(window);
+  window.setInterval=(fn,ms,...args)=>{intervals.push({fn,ms});return original(fn,ms,...args);};
+ });
+ let now=new Date(2026,10,2,10).getTime();w.Date.now=()=>now;
+ const pill=w.document.getElementById('usage-pill'),menu=w.document.getElementById('usage-menu');
+ emit({kind:'usage',weekPct:35,weekResetAt:now/1000+50*3600});pill.click();
+ assert.equal(menu.querySelector('.usage-reset').textContent,'2天2小时后重置');
+ const tick=intervals.find(i=>i.ms===30000);assert.ok(tick);
+ now+=3600000;tick.fn();assert.equal(menu.querySelector('.usage-reset').textContent,'2天1小时后重置');
+ for(const [seconds,expected] of [[86400,'1天后重置'],[86399,'23小时59分钟后重置'],[9000,'2小时30分钟后重置'],[3600,'1小时后重置'],[60,'1分钟后重置'],[59,'即将重置'],[0,'等待额度刷新'],[-60,'等待额度刷新']]){
+  emit({kind:'usage',sessionPct:10,sessionResetAt:now/1000+seconds,weekPct:35,weekResetAt:now/1000+seconds});
+  assert.deepEqual(Array.from(menu.querySelectorAll('.usage-reset'),e=>e.textContent),[expected,expected]);
+ }
+ for(const value of [undefined,NaN,Infinity,1e30]){
+  emit({kind:'usage',weekPct:35,weekResetAt:value});assert.equal(menu.querySelector('.usage-reset'),null);
+ }
+ emit({kind:'usage',weekPct:35,weekResetAt:now/1000+120});pill.click();
+ const closedHtml=menu.innerHTML;now+=60000;tick.fn();assert.equal(menu.innerHTML,closedHtml);
+ pill.click();assert.equal(menu.querySelector('.usage-reset').textContent,'1分钟后重置');assert.deepEqual(errors,[]);
+});
 test('重置时间在左，额度和百分比相邻；重置卡列出各自有效期并保留有限详情',t=>{
  const {w,emit,errors}=setup(t),now=Math.floor(Date.now()/1000);
  emit({kind:'usage',weekPct:93,weekResetAt:now+86400,resetCredits:{availableCount:3,cards:[
