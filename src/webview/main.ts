@@ -844,7 +844,8 @@ function cnReset(resetAt?: number): string {
   const days = Math.floor(mins / 1440);
   const hours = Math.floor(mins / 60) % 24;
   const minutes = mins % 60;
-  return `${days ? `${days}天` : ""}${days || hours ? `${hours}小时` : ""}${minutes}分钟后重置`;
+  if (days) return `${days}天${hours}小时后重置`;
+  return `${hours ? `${hours}小时` : ""}${minutes}分钟后重置`;
 }
 function resetDateTitle(resetAt?: number): string {
   if (typeof resetAt !== "number") return "";
