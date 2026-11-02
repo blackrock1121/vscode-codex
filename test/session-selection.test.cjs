@@ -278,7 +278,7 @@ test('宿主删除先处理派生会话，单项失败仍继续，刷新列表�
   const f = host(t, { remove: async id => { if (id === 'a') throw new Error('forked history still references it (-32600)'); } });
   await f.provider.onSidebarMessage({ type: 'deleteSessions', sessionIds: ['a', 'b', 'c', 'a'] });
   assert.deepEqual(f.removed, ['b', 'a', 'c']);
-  const result = f.events.at(-1);
+  const result = f.events.findLast(e => e.kind === 'sessions_delete_status');
   assert.equal(result.busy, false); assert.equal(result.error, true);
   assert.deepEqual(result.deletedIds, ['b', 'c']); assert.deepEqual(result.failedIds, ['a']);
   assert.match(result.message, /已删除 2 个会话/); assert.match(result.message, /派生会话/);
@@ -293,10 +293,62 @@ test('宿主确认期间防重复；取消和异常都结束等待且不删除',
   await f.provider.deleteSessions(['a']);
   assert.equal(f.events.filter(e => e.kind === 'sessions_delete_status').length, 1);
   resolve(undefined); await pending;
-  assert.deepEqual(f.removed, []); assert.equal(f.events.at(-1).busy, false);
-  assert.match(f.events.at(-1).message, /取消/);
+  assert.deepEqual(f.removed, []); assert.equal(f.events.findLast(e => e.kind === 'sessions_delete_status').busy, false);
+  assert.match(f.events.findLast(e => e.kind === 'sessions_delete_status').message, /取消/);
   vscode.window.showWarningMessage = async () => { throw new Error('确认窗口失败'); };
   await f.provider.deleteSessions(['a']);
-  assert.equal(f.events.at(-1).error, true); assert.equal(f.events.at(-1).busy, false);
+  const result = f.events.findLast(e => e.kind === 'sessions_delete_status');
+  assert.equal(result.error, true); assert.equal(result.busy, false);
   assert.deepEqual(f.removed, []); assert.equal(f.provider.deletingSessions, false);
 });
+
+for (const alreadyRefreshing of [false, true]) {
+  for (const refreshFails of [false, true]) {
+    test(`删除不等待${alreadyRefreshing ? '已有' : '新启动'}刷新，后台${refreshFails ? '失败' : '旧记录晚到'}不影响真实结果`, async t => {
+      const f = host(t);
+      const oldThreads = [...f.store.threads.values()];
+      let release;
+      const gate = new Promise(resolve => { release = resolve; });
+      f.store.delete = SessionStore.prototype.delete.bind(f.store);
+      f.store.connection = async () => ({ request: async (_, { threadId }) => {
+        if (threadId === 'a') throw new Error('forked history still references it (-32600)');
+        return {};
+      } });
+      f.store.refresh = SessionStore.prototype.refresh.bind(f.store);
+      f.store.read = async (_, { archived }) => {
+        await gate;
+        if (refreshFails) throw new Error('后台列表查询失败');
+        return { data: archived ? [] : oldThreads, nextCursor: null };
+      };
+      if (alreadyRefreshing) f.provider.refreshSessions();
+      let completed = false;
+      const deletion = f.provider.deleteSessions(['a', 'b']).then(() => { completed = true; });
+      try {
+        // 让本地异步删除走完，列表查询保持未完成；不依赖机器速度设毫秒阈值。
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(completed, true, '删除结果不能等待后台列表查询');
+        assert.ok(f.provider.sessionsRefreshing, '查询仍在进行');
+        assert.equal(f.provider.deletingSessions, false);
+        const result = f.events.findLast(e => e.kind === 'sessions_delete_status');
+        assert.equal(result.busy, false);
+        assert.equal(result.error, true);
+        assert.deepEqual(result.deletedIds, ['b']);
+        assert.deepEqual(result.failedIds, ['a']);
+        assert.deepEqual(f.events.findLast(e => e.kind === 'sessions').list.map(s => s.id), ['a', 'c']);
+        // 慢刷新期间仍可继续删除其他会话。
+        await f.provider.deleteSessions(['c']);
+        assert.deepEqual(f.events.findLast(e => e.kind === 'sessions_delete_status').deletedIds, ['c']);
+      } finally {
+        release();
+        await deletion;
+        await f.provider.sessionsRefreshing;
+      }
+      assert.deepEqual(f.store.list().map(s => s.id), ['a']);
+      assert.deepEqual(f.events.findLast(e => e.kind === 'sessions').list.map(s => s.id), ['a']);
+      const result = f.events.findLast(e => e.kind === 'sessions_delete_status');
+      assert.equal(result.error, false);
+      assert.match(result.message, /已删除 1 个会话/);
+      assert.equal(f.logs.some(line => line.includes('后台列表查询失败')), refreshFails);
+    });
+  }
+}

@@ -3968,12 +3968,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.output.appendLine(`[deleteSessions] ${String(err)}`);
         } finally {
             this.broadcastRunning();
-            this.refreshSessions();
-            await this.sessionsRefreshing;
+            // delete 已更新缓存；先反馈真实删除结果，不能被正在进行的慢列表查询拖住。
+            // 后台刷新仍由 store.deletedIds 过滤迟到的旧记录，失败也不影响删除结果。
             this.renderSessions();
             this.deletingSessions = false;
             this.post2(this.view?.webview, { kind: "sessions_delete_status", busy: false, message, deletedIds, failedIds, error });
             if (error) void vscode.window.showErrorMessage(message);
+            this.refreshSessions();
         }
     }
     private async renameSession(sessionId: string, title: string): Promise<void> {
