@@ -787,6 +787,27 @@ function currentPlanName(): string | undefined {
   return currentPlanType && Object.hasOwn(PLAN_NAMES, currentPlanType) ? PLAN_NAMES[currentPlanType] : undefined;
 }
 const usageMenu = $("usage-menu");
+const usageResetTip = document.createElement("div");
+usageResetTip.id = "usage-reset-tooltip";
+usageResetTip.className = "usage-reset-tooltip";
+usageResetTip.hidden = true;
+usageResetTip.setAttribute("role", "tooltip");
+document.body.appendChild(usageResetTip);
+function hideUsageResetTip() { usageResetTip.hidden = true; }
+function showUsageResetTip(event: Event) {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || !target.matches(".usage-reset")) return;
+  usageResetTip.textContent = resetDateTitle(Number(target.dataset.resetAt));
+  usageResetTip.hidden = false;
+  positionSpeedPopover(usageResetTip, target);
+}
+usageMenu.addEventListener("mouseover", showUsageResetTip);
+usageMenu.addEventListener("focusin", showUsageResetTip);
+usageMenu.addEventListener("mouseout", hideUsageResetTip);
+usageMenu.addEventListener("focusout", hideUsageResetTip);
+window.addEventListener("resize", hideUsageResetTip);
+document.addEventListener("scroll", hideUsageResetTip, true);
+document.addEventListener("keydown", event => { if (event.key === "Escape") hideUsageResetTip(); });
 function renderUsage(sessionPct?: number, sessionResetAt?: number, weekPct?: number, weekResetAt?: number, weekModelPct?: number, weekModelName?: string) {
   lastUsageData = { sessionPct, sessionResetAt, weekPct, weekResetAt, weekModelPct, weekModelName };
   // Dim label + bright number, no mini bars — the pill is a glance value, the
@@ -801,6 +822,7 @@ function renderUsage(sessionPct?: number, sessionResetAt?: number, weekPct?: num
   if (!parts.length) {
     usagePill.classList.add("hidden");
     usageMenu.classList.add("hidden");
+    hideUsageResetTip();
     return;
   }
   usagePill.classList.remove("hidden");
@@ -818,18 +840,18 @@ function cnReset(resetAt?: number): string {
   const remaining = resetAt * 1000 - Date.now();
   if (remaining <= 0) return "等待额度刷新";
   const mins = Math.floor(remaining / 60000);
-  if (mins === 0) return "即将重置";
+  if (mins === 0) return "1分钟内重置";
   const days = Math.floor(mins / 1440);
   const hours = Math.floor(mins / 60) % 24;
   const minutes = mins % 60;
-  if (days) return `${days}天${hours ? `${hours}小时` : ""}后重置`;
-  return `${hours ? `${hours}小时` : ""}${minutes ? `${minutes}分钟` : ""}后重置`;
+  return `${days ? `${days}天` : ""}${days || hours ? `${hours}小时` : ""}${minutes}分钟后重置`;
 }
 function resetDateTitle(resetAt?: number): string {
   if (typeof resetAt !== "number") return "";
   const date = new Date(resetAt * 1000);
   if (Number.isNaN(date.getTime())) return "";
-  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 重置`;
+  const year = date.getFullYear() === new Date(Date.now()).getFullYear() ? "" : `${date.getFullYear()}年`;
+  return `${year}${date.getMonth() + 1}月${date.getDate()}日 ${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")} 重置`;
 }
 function usageRow(label: string, pct: number | undefined, resetAt?: number): string {
   const resetText = cnReset(resetAt);
@@ -840,7 +862,7 @@ function usageRow(label: string, pct: number | undefined, resetAt?: number): str
   // 左边是下次重置时间；右边将额度名与已用百分比紧挨着展示。
   return (
     `<div class="usage-row${warn}">` +
-    `<div class="usage-row-top">${resetText ? `<span class="usage-reset" title="${resetDateTitle(resetAt)}">${resetText}</span>` : ""}` +
+    `<div class="usage-row-top">${resetText ? `<span class="usage-reset" tabindex="0" aria-describedby="usage-reset-tooltip" data-reset-at="${resetAt}">${resetText}</span>` : ""}` +
     `<span class="usage-metric"><span class="usage-name">${label}</span><span class="usage-pct">${shown}</span></span></div>` +
     `<div class="usage-bar"><span style="width:${p}%"></span></div>` +
     `</div>`
@@ -874,6 +896,7 @@ function resetCreditsHtml(): string {
 }
 /** Expanded weekly usage panel — mirrors the official Plan-usage popover. */
 function buildUsageMenu() {
+  hideUsageResetTip();
   const d = lastUsageData;
   const plan = currentPlanName();
   let html = `<div class="pick-head usage-head">每周限额${plan ? ` · ${plan}` : ""}</div>`;
@@ -887,10 +910,13 @@ function buildUsageMenu() {
   html += resetCreditsHtml();
   usageMenu.innerHTML = html;
 }
-// 倒计时不依赖服务端推送；关闭弹层时不重绘，重新打开时立即按当前时间计算。
+// 每分钟只更新倒计时文字，保留悬停/焦点与提示框，不重新请求用量。
 window.setInterval(() => {
-  if (!usageMenu.classList.contains("hidden")) buildUsageMenu();
-}, 30000);
+  if (usageMenu.classList.contains("hidden")) return;
+  usageMenu.querySelectorAll<HTMLElement>(".usage-reset").forEach(target => {
+    target.textContent = cnReset(Number(target.dataset.resetAt));
+  });
+}, 60000);
 /** Anchor the popover directly above the usage pill (right edges aligned). */
 function positionUsageMenu() {
   const parent = usageMenu.offsetParent as HTMLElement | null;
@@ -4588,6 +4614,7 @@ function syncPickers() {
 syncPickers(); // paint the real labels immediately (host `config` refines them)
 
 function closePickers() {
+  hideUsageResetTip();
   const focused = [[effortMenu, effortTrigger], [modeMenu, modeTrigger], [modelMenu, modelTrigger], [usageMenu, usagePill]]
     .find(([menu]) => menu.contains(document.activeElement));
   effortMenu.classList.add("hidden");

@@ -1627,10 +1627,11 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .usage-row.warn-mid { --bar: #e0a33e; }
 .usage-row.warn-high { --bar: #e5534b; }
 /* Reset time on the left, quota name and percentage as one group on the right. */
-.usage-row-top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.usage-row-top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 8px; }
 .usage-metric { display: inline-flex; align-items: baseline; gap: 5px; flex: 0 0 auto; }
 .usage-name { font-size: 12px; color: var(--vscode-foreground); white-space: nowrap; }
-.usage-reset { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; }
+.usage-reset { min-width: 0; font-size: 11px; color: var(--vscode-descriptionForeground); white-space: nowrap; cursor: help; }
+.usage-reset:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .usage-pct {
   font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums;
   color: var(--vscode-foreground);
@@ -2131,7 +2132,7 @@ body.vscode-high-contrast-light #speed-trigger[aria-checked="true"] {
 #speed-trigger:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 
 /* Compact, immediate hint above the composer; never use native title delays. */
-.speed-tooltip, .speed-feedback, .diagnostics-feedback {
+.speed-tooltip, .speed-feedback, .diagnostics-feedback, .usage-reset-tooltip {
   position: fixed; z-index: 100; box-sizing: border-box;
   max-width: calc(100vw - 16px); max-height: calc(100vh - 16px);
   pointer-events: none; overflow: hidden;
@@ -2141,8 +2142,8 @@ body.vscode-high-contrast-light #speed-trigger[aria-checked="true"] {
   box-shadow: 0 5px 18px rgba(0,0,0,.22); font-size: 11px; line-height: 1.5;
 }
 .speed-tooltip { width: 254px; padding: 12px 14px; border-radius: 10px; }
-.speed-feedback, .diagnostics-feedback { width: max-content; padding: 7px 10px; border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
-.speed-tooltip[hidden], .speed-feedback[hidden], .diagnostics-feedback[hidden] { display: none; }
+.speed-feedback, .diagnostics-feedback, .usage-reset-tooltip { width: max-content; padding: 7px 10px; border-radius: 8px; font-size: 12px; overflow-wrap: anywhere; }
+.speed-tooltip[hidden], .speed-feedback[hidden], .diagnostics-feedback[hidden], .usage-reset-tooltip[hidden] { display: none; }
 .speed-tip-heading { font-size: 12px; font-weight: 600; margin-bottom: 9px; }
 .speed-tip-row { display: flex; justify-content: space-between; gap: 12px; margin: 4px 0; }
 .speed-tip-row > :last-child { font-variant-numeric: tabular-nums; }
