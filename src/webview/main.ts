@@ -4215,7 +4215,44 @@ function addImagePreview(uri: string) {
 // Lightbox (click any chat image to view full size; copy/save from the toolbar)
 let lightboxReturnFocus: HTMLElement | null = null;
 const lightboxInert = new Map<HTMLElement, boolean>();
+// 预览层不在消息流里；阻止 VS Code 的通用文本菜单，保留图片复制的真实点击手势。
+const lightboxMenu = el("div", "lightbox-menu hidden");
+lightboxMenu.setAttribute("role", "menu");
+lightboxMenu.setAttribute("aria-label", "图片操作");
+const lightboxMenuCopy = el("button", "", "复制图片") as HTMLButtonElement;
+lightboxMenuCopy.type = "button";
+lightboxMenuCopy.setAttribute("role", "menuitem");
+lightboxMenu.append(lightboxMenuCopy);
+lightbox.append(lightboxMenu);
+let lightboxMenuReturnFocus: HTMLElement | null = null;
+function hideLightboxMenu(returnFocus = false) {
+  if (lightboxMenu.classList.contains("hidden")) return;
+  lightboxMenu.classList.add("hidden");
+  if (returnFocus) (lightboxMenuReturnFocus?.isConnected ? lightboxMenuReturnFocus : $("lb-copy")).focus({ preventScroll: true });
+  lightboxMenuReturnFocus = null;
+}
+lightbox.addEventListener("contextmenu", event => {
+  event.preventDefault();
+  hideLightboxMenu(true);
+  if (event.target !== lightboxImg || !lightboxImg.getAttribute("src")) return;
+  lightboxMenuReturnFocus = document.activeElement as HTMLElement | null;
+  lightboxMenu.classList.remove("hidden");
+  lightboxMenu.style.left = `${Math.max(8, Math.min(event.clientX, window.innerWidth - lightboxMenu.offsetWidth - 8))}px`;
+  lightboxMenu.style.top = `${Math.max(8, Math.min(event.clientY, window.innerHeight - lightboxMenu.offsetHeight - 8))}px`;
+  lightboxMenuCopy.focus({ preventScroll: true });
+});
+lightbox.addEventListener("mousedown", event => {
+  if (!lightboxMenu.contains(event.target as Node)) hideLightboxMenu(true);
+});
+lightboxMenu.onclick = event => event.stopPropagation();
+lightboxMenuCopy.onclick = event => {
+  event.stopPropagation();
+  hideLightboxMenu(true);
+  void copyLightboxImage();
+};
+window.addEventListener("resize", () => hideLightboxMenu(true));
 function openLightbox(src: string) {
+  hideLightboxMenu();
   if (lightbox.classList.contains("hidden")) {
     lightboxReturnFocus = document.activeElement as HTMLElement | null;
     for (const sibling of Array.from($("app").children)) {
@@ -4230,6 +4267,7 @@ function openLightbox(src: string) {
 }
 function closeLightbox() {
   if (lightbox.classList.contains("hidden")) return;
+  hideLightboxMenu();
   lightbox.classList.add("hidden");
   // 空 src 会启动一次无效图片加载并触发全局 error；移除属性才是取消资源。
   lightboxImg.removeAttribute("src");
@@ -4240,9 +4278,18 @@ function closeLightbox() {
 }
 lightbox.addEventListener("keydown", e => {
   if (e.isComposing || e.keyCode === 229) return;
-  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeLightbox(); }
+  if (e.key === "Escape") {
+    e.preventDefault(); e.stopPropagation();
+    if (!lightboxMenu.classList.contains("hidden")) hideLightboxMenu(true);
+    else closeLightbox();
+  }
+  else if (!lightboxMenu.classList.contains("hidden") && ["ArrowUp", "ArrowDown", "Home", "End"].includes(e.key)) {
+    e.preventDefault(); e.stopPropagation(); lightboxMenuCopy.focus();
+  }
   else if (e.key === "Tab") {
-    const buttons = Array.from(lightbox.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"));
+    hideLightboxMenu(true);
+    const buttons = Array.from(lightbox.querySelectorAll<HTMLButtonElement>("button:not(:disabled)"))
+      .filter(button => !button.closest(".hidden"));
     const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
     e.preventDefault();
     buttons[(index + (e.shiftKey ? -1 : 1) + buttons.length) % buttons.length]?.focus();
@@ -4258,10 +4305,14 @@ $("lb-save").onclick = (e) => {
   e.stopPropagation();
   if (lightboxImg.src) send({ type: "saveImage", dataUri: lightboxImg.src });
 };
-$<HTMLButtonElement>("lb-copy").onclick = async (e) => {
+$<HTMLButtonElement>("lb-copy").onclick = (e) => {
   e.stopPropagation();
+  hideLightboxMenu();
+  void copyLightboxImage();
+};
+async function copyLightboxImage() {
   const btn = $("lb-copy");
-  const src = lightboxImg.src;
+  const src = lightboxImg.getAttribute("src");
   if (!src) return;
   try {
     // Clipboard only takes PNG — round-trip through a canvas (also normalizes jpeg/webp).
@@ -4278,16 +4329,14 @@ $<HTMLButtonElement>("lb-copy").onclick = async (e) => {
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, "image/png"));
     if (!blob) throw new Error("blob");
     await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
-    const old = btn.textContent;
     btn.textContent = "已复制 ✓";
     setTimeout(() => (btn.innerHTML = `${ICON.copy} 复制`), 1200);
-    void old;
   } catch (error) {
     btn.textContent = "复制失败，请用「保存」";
     reportWebviewError('webview.image.copy', error);
     setTimeout(() => (btn.innerHTML = `${ICON.copy} 复制`), 2000);
   }
-};
+}
 
 // ---- Attached files (active editor file + drag-and-drop from the explorer) ----
 let attachedFiles: { path: string; auto: boolean }[] = [];

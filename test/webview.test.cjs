@@ -2234,6 +2234,66 @@ test('持续输出与最终排版保留文字选区，正文更正时不错误�
  assert.deepEqual(errors,[]);
 });
 
+test('放大图片右键只有复制图片，遮罩和工具栏不再出现文本菜单，菜单不越界且先响应 Esc',t=>{
+ const {w,emit,errors}=setup(t);
+ emit({kind:'draft',text:'',images:[{mediaType:'image/png',data:'aGVsbG8='}]});
+ w.document.querySelector('#image-previews img').click();
+ const box=w.document.getElementById('lightbox'),img=w.document.getElementById('lightbox-img'),menu=box.querySelector('.lightbox-menu');
+ Object.defineProperties(menu,{offsetWidth:{value:140},offsetHeight:{value:36}});
+ const rightClick=target=>{const event=new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true,clientX:w.innerWidth-1,clientY:w.innerHeight-1});target.dispatchEvent(event);assert.equal(event.defaultPrevented,true);};
+ rightClick(img);assert.equal(menu.classList.contains('hidden'),false);
+ assert.deepEqual([...menu.querySelectorAll('button')].map(b=>b.textContent),['复制图片']);
+ assert.equal(menu.style.left,`${w.innerWidth-148}px`);assert.equal(menu.style.top,`${w.innerHeight-44}px`);
+ assert.equal(w.document.activeElement,menu.querySelector('button'));
+ const escape=()=>w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true,cancelable:true}));
+ escape();assert.equal(menu.classList.contains('hidden'),true);assert.equal(box.classList.contains('hidden'),false);
+ rightClick(img);rightClick(box);assert.equal(menu.classList.contains('hidden'),true);
+ rightClick(w.document.getElementById('lb-copy'));assert.equal(menu.classList.contains('hidden'),true);
+ rightClick(img);w.dispatchEvent(new w.Event('resize'));assert.equal(menu.classList.contains('hidden'),true);
+ rightClick(img);img.dispatchEvent(new w.MouseEvent('mousedown',{bubbles:true}));assert.equal(menu.classList.contains('hidden'),true);
+ escape();assert.equal(box.classList.contains('hidden'),true);
+ w.document.querySelector('#image-previews img').click();assert.equal(menu.classList.contains('hidden'),true);
+ assert.deepEqual(errors,[]);
+});
+test('图片右键与工具栏共用 PNG 图片复制，JPEG 也按原尺寸转换，不复制图片地址或消息文字',async t=>{
+ const copies=[],loaded=[],draws=[],encodings=[];let png;
+ const {w,emit,sent,errors}=setup(t,undefined,undefined,w=>{
+  png=new w.Blob(['png-binary'],{type:'image/png'});
+  w.Image=class{naturalWidth=640;naturalHeight=480;set src(value){loaded.push(value);queueMicrotask(()=>this.onload());}};
+  w.HTMLCanvasElement.prototype.getContext=function(){return {drawImage:(_img,x,y)=>draws.push([this.width,this.height,x,y])};};
+  w.HTMLCanvasElement.prototype.toBlob=function(callback,type){encodings.push(type);callback(png);};
+  w.ClipboardItem=class{constructor(data){this.data=data;}};
+  Object.defineProperty(w.navigator,'clipboard',{value:{write:async items=>copies.push(items)}});
+ });
+ emit({kind:'draft',text:'正文不能冒充图片',images:[{mediaType:'image/jpeg',data:'aGVsbG8='}]});
+ w.document.querySelector('#image-previews img').click();
+ const box=w.document.getElementById('lightbox'),img=w.document.getElementById('lightbox-img');
+ img.dispatchEvent(new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));box.querySelector('.lightbox-menu button').click();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(box.classList.contains('hidden'),false);assert.equal(box.querySelector('.lightbox-menu').classList.contains('hidden'),true);
+ assert.equal(w.document.getElementById('lb-copy').textContent,'已复制 ✓');
+ w.document.getElementById('lb-copy').click();await new Promise(resolve=>setImmediate(resolve));
+ assert.equal(copies.length,2);assert.ok(copies.every(items=>items.length===1&&items[0].data['image/png']===png));
+ assert.deepEqual(loaded,['data:image/jpeg;base64,aGVsbG8=','data:image/jpeg;base64,aGVsbG8=']);
+ assert.deepEqual(draws,[[640,480,0,0],[640,480,0,0]]);assert.deepEqual(encodings,['image/png','image/png']);
+ assert.equal(sent.some(m=>m.type==='copy'||m.type==='saveImage'),false);assert.deepEqual(errors,[]);
+});
+test('图片复制失败显示失败反馈并保留预览和保存入口',async t=>{
+ const {w,emit,sent,errors}=setup(t,undefined,undefined,w=>{
+  w.Image=class{naturalWidth=1;naturalHeight=1;set src(value){queueMicrotask(()=>this.onload());}};
+  w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});
+  w.HTMLCanvasElement.prototype.toBlob=callback=>callback(new w.Blob(['png'],{type:'image/png'}));
+  w.ClipboardItem=class{};
+  Object.defineProperty(w.navigator,'clipboard',{value:{write:async()=>{throw new Error('clipboard denied');}}});
+ });
+ emit({kind:'draft',images:[{mediaType:'image/png',data:'aGVsbG8='}]});w.document.querySelector('#image-previews img').click();
+ w.document.getElementById('lightbox-img').dispatchEvent(new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+ w.document.querySelector('.lightbox-menu button').click();await new Promise(resolve=>setImmediate(resolve));
+ assert.match(w.document.getElementById('lb-copy').textContent,/复制失败/);assert.equal(w.document.getElementById('lightbox').classList.contains('hidden'),false);
+ assert.ok(sent.some(m=>m.type==='webviewError'));w.document.getElementById('lb-save').click();assert.equal(sent.at(-1).type,'saveImage');
+ assert.deepEqual(errors,[]);
+});
+
 test('图片预览限制焦点在弹层内，Esc 关闭并恢复原输入；中文取消组字不关闭预览',t=>{
  const {w,emit,sent,errors}=setup(t),input=w.document.getElementById('input');
  emit({kind:'draft',text:'未发送草稿',images:[{mediaType:'image/png',data:'aGVsbG8='}]});input.focus();
