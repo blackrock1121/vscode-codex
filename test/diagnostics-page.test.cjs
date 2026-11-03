@@ -231,3 +231,21 @@ test('短时间多次诊断更新合并一次刷新，旧选择迟到不切回�
  const first=page.message({type:'select',id:b.id}),second=page.message({type:'select',id:c.id});resolveC();await second;resolveB();await first;
  await page.message({type:'refresh'});assert.equal(currentPanel.messages.at(-1).selectedId,c.id);
 });
+
+test('问题台账分别展示修复与验证状态，按钮绑定当前诊断且原始分析不重复计数',t=>{
+ const {w,sent,emit,errors}=setup(t),doc=w.document;
+ const issue={id:'issue-a',title:'目录超时',state:'awaiting_verification',firstDetectedAt:record.createdAt,lastDetectedAt:record.createdAt,
+  findingIds:['timeout'],relation:'historical',history:[],result:{outcome:'fixed',reason:'修复请求退避',version:'0.1.199',commit:'abcdef0',tests:'通过'}};
+ const tracked={...record,repair:{status:'started',sessionId:'session',workspaceId:'project-a'},tracking:{issues:[issue],modelCount:1,legacy:false,
+  batch:{id:'batch',sessionId:'session',receiptPath:'/tmp/receipt.json',revision:1,reported:1,total:2}}};
+ emit({type:'state',records:[tracked],workspaceId:'project-a'});openRecord(w);
+ assert.match(doc.getElementById('detail').textContent,/已修改，待验证/);assert.match(doc.getElementById('detail').textContent,/重复历史证据/);
+ assert.match(doc.querySelector('.record-summary').textContent,/待核验问题 0 项/);
+ assert.match(doc.getElementById('detail').textContent,/已回写 1\/2 项/);
+ const click=text=>[...doc.querySelectorAll('#detail button')].find(b=>b.textContent===text).click();
+ click('修复后本地复测（不调用模型）');assert.equal(sent.at(-1).type,'retest');assert.equal(sent.at(-1).id,record.id);
+ click('重新核验此项');assert.equal(sent.at(-1).type,'reopenIssue');assert.equal(sent.at(-1).issueId,'issue-a');
+ const report=doc.querySelector('details.full-report');report.open=true;report.dispatchEvent(new w.Event('toggle'));
+ emit({type:'state',records:[{...tracked,updatedAt:Date.now()+100}],workspaceId:'project-a'});
+ assert.equal(doc.querySelector('details.full-report').open,true);assert.deepEqual(errors,[]);
+});

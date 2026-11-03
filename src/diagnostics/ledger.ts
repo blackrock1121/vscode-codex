@@ -17,7 +17,7 @@ const isModel = (f: DiagnosticFinding) => f.origin === 'model' || f.id.startsWit
 
 /** 历史分组不强行迁移到新指纹；规则升级不伪造“首次发生”或继承关闭结论。 */
 export function issueKey(record: DiagnosticRecord, finding: DiagnosticFinding): string {
-  const source = finding.id.startsWith('logging-source-') ? `source:${record.loggingAudit?.sourceHash ?? record.pluginVersion}:` : '';
+  const source = !finding.fingerprint && finding.id.startsWith('logging-source-') ? `source:${record.loggingAudit?.sourceHash ?? record.pluginVersion}:` : '';
   return `issue-${hash(source + (finding.fingerprint ?? `legacy:${finding.id}`))}`;
 }
 
@@ -33,7 +33,7 @@ export class DiagnosticLedger {
       const lockPath = path.join(this.dir, 'ledger.lock');
       let lock: fs.FileHandle | undefined;
       for (let n = 0; n < 100; n++) {
-        try { lock = await fs.open(lockPath, 'wx', 0o600); await lock.writeFile(JSON.stringify({ pid: process.pid })); break; }
+        try { lock = await fs.open(lockPath, 'wx', 0o600); break; }
         catch (e) {
           if ((e as NodeJS.ErrnoException).code !== 'EEXIST') throw e;
           // 只回收明确已退出的持锁进程；不根据耗时删除活跃锁。
@@ -49,6 +49,7 @@ export class DiagnosticLedger {
       }
       if (!lock) throw Error('问题台账正在被其他窗口更新，请稍后刷新');
       try {
+        await lock.writeFile(JSON.stringify({ pid: process.pid }));
         const file = path.join(this.dir, 'ledger.json'); let data: Ledger;
         try { data = JSON.parse(await fs.readFile(file, 'utf8')); }
         catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; data = { schema: 1, issues: {}, records: {}, batches: {} }; }

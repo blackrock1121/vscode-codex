@@ -14,5 +14,5 @@ export function diagnosticNotification(record: DiagnosticRecord): { text: string
     '\n在 VS Code 点击输入框旁的虫子图标，按编号找到记录，点击“创建修复会话”开始修复。';
   return { text, extra: { diagnosticId: record.id, isError: !success,
     durationMs: Math.max(0, (record.finishedAt ?? record.createdAt) - record.createdAt), project: record.workspaceName,
-    question: `诊断 ${record.id.slice(0, 8)} · ${success ? `发现 ${findingCount(record.findings)} 项待核验问题` : '未全部完成，请查看诊断记录'}` } };
+    question: `诊断 ${record.id.slice(0, 8)} · ${success ? record.tracking ? trackingSummary(record.tracking) : `发现 ${findingCount(record.findings)} 项待核验问题` : '未全部完成，请查看诊断记录'}` } };
 }

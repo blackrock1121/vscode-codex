@@ -66,7 +66,7 @@ export function auditLoggingCoverage(data: LoggingAuditManifest | undefined = ma
     const priority: Record<CandidateKind, number> = { 'catch-unlogged': 0, 'entry-unlogged': 1, 'branch-unlogged': 1, 'operation-unlogged': 2, 'error-propagated': 3, 'handler-delegated': 3 };
     const details = [...file.candidates].sort((a, b) => priority[a.kind] - priority[b.kind] || a.line - b.line)
       .map(c => `${file.file}:${c.line} · ${c.symbol}：${labels[c.kind]}`);
-    findings.push({ id: `logging-source-${file.file}`, category: '日志覆盖审查', severity: 'warning', traceIds: [], occurrences: details.length,
+    findings.push({ id: `logging-source-${file.file}`, fingerprint: `source-v1:${file.file}:${file.sha256}`, category: '日志覆盖审查', severity: 'warning', traceIds: [], occurrences: details.length,
       title: `日志覆盖待核验：${file.file}（${details.length} 处）`,
       evidence: `源码版本 ${data.version}，与运行日志是否存在无关。\n${details.slice(0, 8).join('\n')}${details.length > 8 ? `\n其余 ${details.length - 8} 处见完整报告。` : ''}`,
       recommendation: advice });

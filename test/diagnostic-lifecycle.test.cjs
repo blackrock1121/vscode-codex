@@ -107,3 +107,20 @@ test('Jobs修复提示包含结果协议，回写后可开始本地复测且保�
  await jobs.get(r.id);const retest=await jobs.retest(r.id);await jobs.dispose();
  assert.equal(retest.verificationOf,r.id);assert.equal(retest.options.engine,'rules');assert.equal(retest.options.targetVersion,'0.1.198');assert.equal((await jobs.get(r.id)).options.model,'chosen');
 });
+
+test('同一文件内容指纹跨构建复用，人工重新核验保留历史且拒绝旧回报',async t=>{
+ const {ledger}=await fixture(t),a={...record([{...finding('logging-source-file'),fingerprint:'source-v1:file:hash'}]),loggingAudit:{sourceHash:'build-a'}};
+ const b={...record(a.findings),loggingAudit:{sourceHash:'build-b'}};
+ let views=await ledger.sync([a,b]);const id=views.get(a.id).issues[0].id;assert.equal(views.get(b.id).issues[0].id,id);
+ const batch=await begin(ledger,a);await receipt(ledger,a,batch,[{issueId:id,outcome:'not_a_bug',reason:'调用方已记录'}]);
+ await ledger.reopen(a.id,id);let v=await receipt(ledger,a,batch,[{issueId:id,outcome:'external',reason:'迟到回报'}],2);
+ assert.equal(v.issues[0].state,'open');assert.match(v.batch.error,/旧修复批次/);assert.ok(v.issues[0].history.some(h=>h.state==='dismissed'));
+});
+
+test('补充测试回报不会擦掉该修复之后已经观察到的复发',async t=>{
+ const {ledger}=await fixture(t),r=record(),batch=await begin(ledger,r),id=(await ledger.sync([r])).get(r.id).issues[0].id;
+ const fixed={issueId:id,outcome:'fixed',reason:'修复',version:'0.1.199',commit:'abcdef0',tests:'初次通过'};
+ await receipt(ledger,r,batch,[fixed]);
+ const recurring=record([finding('timeout',Date.now()+1000,'0.1.199')],Date.now()+1001);await ledger.sync([recurring]);
+ const v=await receipt(ledger,r,batch,[{...fixed,tests:'补充测试通过'}],2);assert.equal(v.issues[0].state,'recurred');
+});
