@@ -4788,6 +4788,32 @@ cfHeader.onclick = (e) => {
   changedFiles.classList.toggle("collapsed");
 };
 
+// VS Code 在事件冒泡到 window 时读取菜单上下文。此时固定复制内容，
+// 避免原生菜单夺走焦点后依赖已消失的选区，也不在只读消息上显示剪切/粘贴。
+messagesEl.addEventListener("contextmenu", (event) => {
+  const target = event.target instanceof Element ? event.target : null;
+  const input = target?.closest('input, textarea, [contenteditable]');
+  const editable = input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement
+    ? !input.readOnly && !input.disabled : input instanceof HTMLElement && input.isContentEditable;
+  if (editable) {
+    delete messagesEl.dataset.vscodeContext;
+    return;
+  }
+  const msg = target?.closest<HTMLElement>(".msg");
+  const selection = window.getSelection();
+  const selected = msg && selection?.rangeCount && !selection.isCollapsed
+    && messagesEl.contains(selection.anchorNode) && messagesEl.contains(selection.focusNode)
+    && selection.getRangeAt(0).intersectsNode(msg) ? selection.toString() : "";
+  const text = selected || (msg?.classList.contains("user") ? msg.dataset.rawText ?? ""
+    : Array.from(msg?.querySelectorAll<HTMLElement>(".msg-body .text-seg") ?? [])
+      .map(node => node.innerText ?? node.textContent ?? "").join("\n\n").trim());
+  messagesEl.dataset.vscodeContext = JSON.stringify({
+    preventDefaultContextMenuItems: true,
+    codexMessageCopy: !!text,
+    codexCopyText: text,
+  });
+});
+
 // Event delegation: copy buttons & file links inside the message stream.
 messagesEl.addEventListener("click", (e) => {
   const t = e.target as HTMLElement;

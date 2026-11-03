@@ -11,7 +11,7 @@ const vscode={
   Uri:{parse:url=>({fsPath:decodeURIComponent(new URL(url).pathname),scheme:new URL(url).protocol.slice(0,-1)}),file:p=>({fsPath:p})},
   workspace:{findFiles:async()=>{calls.push('findFiles');return found.map(fsPath=>({fsPath}));},asRelativePath:p=>p,openTextDocument:async p=>{calls.push(['openTextDocument',p]);return {lineCount:2,lineAt:n=>({text:n?'末行':'首行'})};}},
   commands:{executeCommand:async(...args)=>{calls.push(['command',...args]);}},
-  env:{openExternal:async uri=>{calls.push(['external',uri.fsPath]);return true;}},
+  env:{clipboard:{writeText:async text=>{calls.push(['clipboard',text]);}},openExternal:async uri=>{calls.push(['external',uri.fsPath]);return true;}},
   window:{showTextDocument:async()=>({selection:null,revealRange:range=>calls.push(['revealRange',range])}),showErrorMessage:m=>calls.push(['error',m]),showWarningMessage:m=>calls.push(['warning',m])},
   Position:class{constructor(line,character){this.line=line;this.character=character;}},
   Selection:class{constructor(start,end){this.start=start;this.end=end;}},
@@ -23,6 +23,19 @@ Module._load=function(id,...args){if(id==='vscode')return vscode;return original
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
 const proto=ChatViewProvider.prototype;
+
+test('消息菜单通过宿主写入准确正文，拒绝无效参数并反馈剪贴板失败',async t=>{
+  calls.length=0;
+  for(const context of [undefined,null,{},'正文',{codexCopyText:123},{codexCopyText:''}]) await proto.copyMessageText(context);
+  assert.deepEqual(calls,[]);
+  const text='中文 **原文**\n  保留缩进\n';
+  await proto.copyMessageText({codexCopyText:text});
+  assert.deepEqual(calls,[['clipboard',text]]);
+  const original=vscode.env.clipboard.writeText;t.after(()=>{vscode.env.clipboard.writeText=original;});
+  vscode.env.clipboard.writeText=async()=>{throw new Error('clipboard unavailable');};
+  await proto.copyMessageText({codexCopyText:text});
+  assert.deepEqual(calls.at(-1),['error','复制失败，请重试。']);
+});
 
 test('Finder 菜单定位实际文件，支持空格、中文和行号，拒绝目录及网页',async t=>{
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'codex-finder-'));

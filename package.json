@@ -2,7 +2,7 @@
   "name": "vscode-codex",
   "displayName": "Codex Copilot",
   "description": "Copilot 风格的 Codex 编程助手，复用本机 Codex 登录与订阅",
-  "version": "0.1.193",
+  "version": "0.1.194",
   "publisher": "blackrock1121",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -51,6 +51,10 @@
       ]
     },
     "commands": [
+      {
+        "command": "codex-chat.copyMessageText",
+        "title": "复制"
+      },
       {
         "command": "codex-chat.revealFileInFinder",
         "title": "在 Finder 中显示"
@@ -145,11 +149,20 @@
     "menus": {
       "commandPalette": [
         {
+          "command": "codex-chat.copyMessageText",
+          "when": "false"
+        },
+        {
           "command": "codex-chat.revealFileInFinder",
           "when": "false"
         }
       ],
       "webview/context": [
+        {
+          "command": "codex-chat.copyMessageText",
+          "when": "(webviewId == 'codex-chat.editor' || webviewId == 'codex-chat.chatView') && codexMessageCopy",
+          "group": "9_cutcopypaste@2"
+        },
         {
           "command": "codex-chat.revealFileInFinder",
           "when": "isMac && (webviewId == 'codex-chat.editor' || webviewId == 'codex-chat.chatView') && webviewSection == 'codex-file-link'",

@@ -4204,6 +4204,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return undefined;
         }
     }
+    /** 原生右键菜单使用打开菜单时保存的正文，不再依赖 Webview 当前焦点/选区。 */
+    async copyMessageText(context: unknown): Promise<void> {
+        const text = (context as { codexCopyText?: unknown } | null)?.codexCopyText;
+        if (typeof text !== "string" || !text) return;
+        try {
+            await vscode.env.clipboard.writeText(text);
+        } catch (error) {
+            operationFailure('message.copy', error);
+            vscode.window.showErrorMessage("复制失败，请重试。");
+        }
+    }
     /** 仅接受文件链接菜单的路径；执行前重新校验，避免文件已删除或变成目录。 */
     async revealFileInFinder(context: unknown): Promise<void> {
         const p = (context as { codexFilePath?: unknown } | null)?.codexFilePath;

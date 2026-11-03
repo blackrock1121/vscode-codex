@@ -26,6 +26,19 @@ function setup(t){
  const save=()=>w.document.querySelector('.user-edit-save').click();
  return {w,sent,errors,emit,items,checkpoints,load,users,edit,save,states};
 }
+test('右键只读消息隐藏剪切粘贴，进入编辑后恢复输入框菜单，取消后再次只允许复制',t=>{
+ const f=setup(t),messages=f.w.document.getElementById('messages');
+ const open=target=>target.dispatchEvent(new f.w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+ open(f.w.document.querySelectorAll('.msg.user')[1]);
+ assert.equal(JSON.parse(messages.dataset.vscodeContext).codexCopyText,'b');
+ const input=f.edit();input.value='编辑中的草稿';open(input);
+ assert.equal(messages.dataset.vscodeContext,undefined,'编辑框交由 VS Code 原生剪切/复制/粘贴处理');
+ f.w.document.querySelector('.user-edit-cancel').click();open(f.w.document.querySelectorAll('.msg.user')[1]);
+ assert.equal(JSON.parse(messages.dataset.vscodeContext).preventDefaultContextMenuItems,true);
+ assert.equal(JSON.parse(messages.dataset.vscodeContext).codexCopyText,'b');
+ assert.deepEqual(f.errors,[]);
+});
+
 test('编辑成功和重新生成刷新本轮时间，取消或失败保留原时间，更早消息不变',t=>{
  const f=setup(t),old=Date.parse('2026-10-29T09:01:00+08:00');
  f.items.forEach((item,index)=>item.timestamp=old+index*60000);f.load();

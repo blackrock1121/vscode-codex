@@ -68,6 +68,32 @@ test('历史重载、分页保留原时间，缺失或非法时间不伪造，�
  assert.equal(f.w.document.querySelector('.msg-actions time').dateTime,new Date(old).toISOString());assert.deepEqual(f.errors,[]);
 });
 
+test('只读消息菜单固定整条正文或选区，失去焦点后仍能复制，其他消息选区不串入',t=>{
+ const {w,emit,errors}=setup(t);
+ const text='原始 **消息**\n第二行 <标签>\n'+('长消息\n'.repeat(20));
+ emit({kind:'load_history',items:[{type:'user',text},{type:'user',text:'另一条消息'},{type:'assistant_text',text:'回复正文'}],checkpoints:[]});
+ const messages=w.document.getElementById('messages'),users=w.document.querySelectorAll('.msg.user');
+ const contextMenu=target=>{
+  target.dispatchEvent(new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+  return JSON.parse(messages.dataset.vscodeContext);
+ };
+ assert.deepEqual(contextMenu(users[0].querySelector('.md')),{preventDefaultContextMenuItems:true,codexMessageCopy:true,codexCopyText:text});
+ const selection=w.getSelection(),range=w.document.createRange(),node=users[0].querySelector('.md').firstChild;
+ range.setStart(node,3);range.setEnd(node,9);selection.addRange(range);
+ const selected=selection.toString(),snapshot=contextMenu(users[0].querySelector('.md'));
+ assert.equal(snapshot.codexCopyText,selected);
+ assert.equal(contextMenu(users[1]).codexCopyText,'另一条消息','不能复制别的消息中的旧选区');
+ selection.removeAllRanges();w.document.getElementById('input').focus();
+ assert.equal(snapshot.codexCopyText,selected,'菜单参数不依赖点击复制时的焦点或选区');
+ assert.equal(contextMenu(w.document.querySelector('.msg.assistant')).codexCopyText,'回复正文');
+ assert.equal(contextMenu(messages).codexMessageCopy,false,'空白处不提供无效复制');
+ emit({kind:'load_history',items:[{type:'user',text:'',images:['data:image/png;base64,aGVsbG8=']}],checkpoints:[]});
+ assert.equal(contextMenu(w.document.querySelector('.msg.user')).codexMessageCopy,false,'纯图片消息不清空剪贴板');
+ const menus=JSON.parse(fs.readFileSync('package.json','utf8')).contributes.menus;
+ assert.ok(menus['webview/context'].some(item=>item.command==='codex-chat.copyMessageText'&&item.when.includes('codexMessageCopy')));
+ assert.deepEqual(errors,[]);
+});
+
 test('仅校验通过的文件链接启用原生 Finder 菜单，撤销链接时清除菜单',t=>{
  const {w,sent,emit,errors}=setup(t);
  emit({kind:'load_history',sessionId:'finder',items:[{type:'assistant_text',text:'[文件](/tmp/配置%20文件.yaml#L8) [目录](/tmp/folder/) [网页](https://example.com) 普通文字 `SomeSymbol`'}],checkpoints:[]});
@@ -80,11 +106,13 @@ test('仅校验通过的文件链接启用原生 Finder 菜单，撤销链接时
  assert.deepEqual(JSON.parse(element.dataset.vscodeContext),{webviewSection:'codex-file-link',codexFilePath:'/tmp/配置 文件.yaml'});
  assert.equal(w.document.querySelectorAll('[data-vscode-context]').length,1);
  element.dispatchEvent(new w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
+ assert.equal(JSON.parse(w.document.getElementById('messages').dataset.vscodeContext).preventDefaultContextMenuItems,true);
+ assert.equal(JSON.parse(element.dataset.vscodeContext).webviewSection,'codex-file-link','复制菜单不能覆盖 Finder 菜单上下文');
  assert.equal(sent.some(m=>m.type==='openFile'),false,'右键不能触发左键打开');
  element.click();
  assert.ok(sent.some(m=>m.type==='openFile'&&m.path==='/tmp/配置 文件.yaml'&&m.line===8));
  emit({kind:'refs_validated',invalid:[file.id]});
- assert.equal(w.document.querySelector('[data-vscode-context]'),null);
+ assert.equal(w.document.querySelector('.code-ref[data-vscode-context]'),null);
  assert.deepEqual(errors,[]);
 });
 
