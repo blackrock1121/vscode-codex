@@ -364,9 +364,11 @@ body.vscode-dark .question-bar, body.vscode-high-contrast .question-bar { color:
    避免点旧回复连带砍掉后面的对话。「复制」仍保留在每条回复上。 */
 .msg.assistant:has(~ .msg) .msg-act.regen { display: none; }
 
-.user-actions { display: flex; justify-content: flex-end; margin-top: 5px; }
-.user-actions .msg-act { color: inherit; opacity: .85; }
-.user-actions .msg-act:hover { color: inherit; opacity: 1; background: rgba(0,0,0,.14); }
+.user-meta { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; max-width: 100%; }
+.user-actions { display: flex; align-items: center; gap: 2px; }
+.user-actions .msg-act { width: 26px; padding: 0; justify-content: center; }
+.user-actions .user-delete:hover { color: var(--vscode-errorForeground, #f48771); }
+.user-actions .msg-act:disabled { opacity: .35; cursor: default; background: transparent; }
 .msg.user.editing .msg-body { width: 100%; max-width: min(100%, 640px); }
 .msg.user.editing .user-fold, .msg.user.editing .user-more, .msg.user.editing .user-actions { display: none; }
 .user-editor { display: flex; flex-direction: column; gap: 10px; }
@@ -914,7 +916,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .askq-reanswer:hover { color: var(--vscode-foreground); background: var(--vscode-list-hoverBackground); }
 .askq-reanswer:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 2px; }
 .msg.user.question-reply { align-items: stretch; }
-.msg.user.question-reply > .msg-time { align-self: flex-end; }
+.msg.user.question-reply > .user-meta { align-self: flex-end; }
 .msg.user.question-reply .msg-body { max-width: 100%; width: 100%; padding: 0; background: transparent; color: var(--vscode-foreground); }
 /* user-stopped marker at the end of an AI reply */
 .msg-interrupted {

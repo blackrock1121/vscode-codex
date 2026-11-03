@@ -5,7 +5,9 @@ const os=require('node:os');
 const path=require('node:path');
 const Module=require('node:module');
 const originalLoad=Module._load;
-Module._load=function(id,...args){if(id==='vscode')return {workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})},Uri:{file:p=>p}};return originalLoad.call(this,id,...args);};
+let confirmDelete=true;
+const confirmations=[];
+Module._load=function(id,...args){if(id==='vscode')return {window:{showWarningMessage:async(...args)=>{confirmations.push(args);return confirmDelete?args[2]:undefined;}},workspace:{getConfiguration:()=>({get:(_key,fallback)=>fallback})},Uri:{file:p=>p}};return originalLoad.call(this,id,...args);};
 const {ChatViewProvider}=require('../dist/test/panel/chatViewProvider.js');
 Module._load=originalLoad;
 const {SessionStore}=require('../dist/test/codex/session.js');
@@ -46,6 +48,46 @@ async function fixture(t, withAdded=false){
  const submit=()=>provider.editMessage(ctx,request.checkpointId,request.text,request.images,request);
  return {dir,workspace,file,turns,store,ctx,provider,events,forks,sent,steps,ids,request,submit};
 }
+test('删除 b 真正还原到 a/A 结束：撤销 b/c 文件及新增文件，不回填原文和图片、不重发',async t=>{
+ const f=await fixture(t,true);
+ f.ctx.checkpoints.accept(f.file);f.ctx.draft='自己的草稿';f.ctx.draftImages=[{mediaType:'image/png',data:'draft-image'}];
+ await f.provider.onPanelMessage(f.ctx,{type:'restoreCheckpoint',checkpointId:f.ids[1],restoreDraft:false});
+ assert.deepEqual(f.forks,[{source:'source',leaf:'turn-a'}]);assert.equal(await fs.readFile(f.file,'utf8'),'a结束时');
+ await assert.rejects(fs.access(path.join(f.workspace,'c-added.txt')),{code:'ENOENT'});
+ assert.deepEqual(f.store.threads.get('branch').turns,[f.turns[0]]);assert.deepEqual(f.store.threads.get('source').turns,f.turns);
+ assert.deepEqual(f.events.find(m=>m.kind==='load_history').items.map(i=>i.text),['a','a结束']);
+ assert.equal(f.events.some(m=>m.kind==='draft'),false);assert.equal(f.sent.length,0);
+ assert.equal(f.ctx.draft,'自己的草稿');assert.equal(f.ctx.draftImages[0].data,'draft-image');
+ assert.equal(confirmations.at(-1)[2],'删除并还原');assert.match(confirmations.at(-1)[1].detail,/不会放回输入框/);
+ assert.equal(f.provider.restoring.has(f.ctx),false);
+});
+test('删除第一条回到空对话和最初文件，不恢复消息到输入框',async t=>{
+ const f=await fixture(t);
+ await f.provider.restoreCheckpoint(f.ctx,f.ids[0],false,undefined,false);
+ assert.equal(f.ctx.sessionId,undefined);assert.equal(await fs.readFile(f.file,'utf8'),'a开始前');
+ assert.deepEqual(f.events.find(m=>m.kind==='load_history').items,[]);
+ assert.equal(f.events.some(m=>m.kind==='draft'),false);assert.equal(f.sent.length,0);
+});
+test('取消删除或发现文件冲突均保留原会话、文件和草稿',async t=>{
+ const f=await fixture(t);f.ctx.draft='未发草稿';confirmDelete=false;t.after(()=>{confirmDelete=true;});
+ await f.provider.restoreCheckpoint(f.ctx,f.ids[1],false,undefined,false);
+ assert.equal(f.forks.length,0);assert.equal(f.events.length,0);assert.equal(await fs.readFile(f.file,'utf8'),'c结束时');
+ confirmDelete=true;await fs.writeFile(f.file,'外部刚改过');
+ await f.provider.restoreCheckpoint(f.ctx,f.ids[1],false,undefined,false);
+ assert.equal(f.forks.length,0);assert.equal(f.ctx.sessionId,'source');assert.equal(await fs.readFile(f.file,'utf8'),'外部刚改过');
+ assert.equal(f.events.some(m=>m.kind==='draft'||m.kind==='load_history'),false);assert.ok(f.events.some(m=>m.kind==='error'));
+ assert.equal(f.ctx.draft,'未发草稿');assert.equal(f.sent.length,0);
+});
+test('删除正在回复的消息先停止进程、收齐快照再回滚，不再次启动回复',async t=>{
+ const f=await fixture(t);let release;
+ f.ctx.proc={isBusy:true,disposeAndWait:()=>new Promise(resolve=>{f.steps.push('正在停止');release=()=>{f.steps.push('已停止');resolve();};})};
+ f.provider.captureFinalSnapshot=async()=>{f.steps.push('快照');};
+ const task=f.provider.restoreCheckpoint(f.ctx,f.ids[1],false,undefined,false);
+ await new Promise(resolve=>setImmediate(resolve));assert.deepEqual(f.steps,['正在停止']);assert.equal(f.forks.length,0);
+ release();await task;assert.deepEqual(f.steps,['正在停止','已停止','快照','派生','释放连接']);
+ assert.equal(f.sent.length,0);assert.equal(f.events.some(m=>m.kind==='draft'),false);
+});
+
 test('a开始→a结束→b开始→b结束→c：编辑 b 后回到 a结束的文件和完整对话，再发送 B',async t=>{
  const f=await fixture(t,true);
  const added=path.join(f.workspace,'c-added.txt');

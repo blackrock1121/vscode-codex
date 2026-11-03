@@ -39,7 +39,7 @@ test('发送时间在用户气泡外，回复完成时间紧随复制，显示�
  const f=setup(t),sentAt=new Date(2026,9,30,9,1,49).getTime(),completedAt=sentAt+65000;
  f.w.Date.now=()=>sentAt;
  f.w.document.getElementById('input').value='检查构建';f.w.document.getElementById('btn-send').click();
- const user=f.w.document.querySelector('.msg.user'),time=user.querySelector(':scope > time');
+ const user=f.w.document.querySelector('.msg.user'),time=user.querySelector(':scope > .user-meta > time');
  assert.equal(time.textContent,'2026-10-30 09:01');assert.equal(time.dateTime,new Date(sentAt).toISOString());
  assert.equal(user.querySelector('.msg-body time'),null);
  f.emit({kind:'text_delta',text:'已完成'});assert.equal(f.w.document.querySelector('.msg.assistant .msg-time'),null);
@@ -57,7 +57,7 @@ test('历史重载、分页保留原时间，缺失或非法时间不伪造，�
  const latest=f.w.document.querySelector('.msg.assistant:last-child time').dateTime;
  f.w.document.querySelector('.history-expand').click();await new Promise(r=>setTimeout(r,100));
  assert.equal(f.w.document.querySelectorAll('.msg-time').length,50);
- assert.equal(f.w.document.querySelector('.msg.user > time').dateTime,new Date(old).toISOString());
+ assert.equal(f.w.document.querySelector('.msg.user > .user-meta > time').dateTime,new Date(old).toISOString());
  assert.equal(f.w.document.querySelector('.msg.assistant:last-child time').dateTime,latest);
  f.emit({kind:'load_history',items,checkpoints:[]});assert.equal(f.w.document.querySelector('.msg.assistant:last-child time').dateTime,latest);
  for(const timestamp of [undefined,null,NaN,0,-1,Infinity,1e30]){

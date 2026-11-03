@@ -4939,8 +4939,20 @@ function appendUser(text: string, contextLabels: string[] = [], images: string[]
     });
   }
   msg.appendChild(body);
+  const meta = el("div", "user-meta");
+  const actions = el("div", "user-actions");
+  const copy = userAction("user-copy", ICON.copy, "复制消息", () => {
+    send({ type: "copy", text: msg.dataset.rawText ?? "" });
+    copy.classList.add("done");
+    setTimeout(() => copy.classList.remove("done"), 1000);
+  });
+  copy.disabled = !text;
+  if (!text) copy.title = "此消息没有可复制的文字";
+  actions.append(copy);
+  meta.append(actions);
   const time = messageTime(timestamp, "发送时间");
-  if (time) msg.appendChild(time);
+  if (time) meta.append(time);
+  msg.append(meta);
   messagesEl.appendChild(msg);
   lastUserEl = msg;
   userMsgCount++;
@@ -4948,17 +4960,36 @@ function appendUser(text: string, contextLabels: string[] = [], images: string[]
   return msg;
 }
 
-/** 只有已有还原点的普通用户消息可以编辑；问题答案沿用专门的重新回答入口。 */
+function userAction(className: string, icon: string, label: string, onClick: () => void): HTMLButtonElement {
+  const button = el("button", `msg-act ${className}`) as HTMLButtonElement;
+  button.type = "button";
+  button.innerHTML = icon;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.onclick = onClick;
+  return button;
+}
+
+/** 只有已有还原点的普通用户消息可以编辑/删除；问题答案沿用专门的重新回答入口。 */
 function attachMessageEdit(msg: HTMLElement) {
   if (!msg.dataset.checkpointId || msg.classList.contains("question-reply") || msg.querySelector(".user-edit")) return;
-  const actions = el("div", "user-actions");
-  const button = el("button", "msg-act user-edit") as HTMLButtonElement;
-  button.type = "button";
-  button.innerHTML = `${ICONS.acceptEdits}<span>编辑消息</span>`;
+  const actions = msg.querySelector(".user-actions")!;
+  const button = userAction("user-edit", ICONS.acceptEdits, "编辑消息", () => beginMessageEdit(msg));
   button.title = "修改这条消息，并从发送它之前重新继续";
-  button.onclick = () => beginMessageEdit(msg);
-  actions.appendChild(button);
-  msg.querySelector(".msg-body")!.appendChild(actions);
+  const remove = userAction("user-delete", ICON.trash, "删除消息并还原", () => {
+    if (restoreInProgress || forkingCheckpoint || historyPending) return;
+    if (activeMessageEdit?.msg.isConnected) {
+      activeMessageEdit.error.textContent = "请先发送或取消当前编辑，再删除消息。";
+      activeMessageEdit.input.focus();
+      return;
+    }
+    send({ type: "restoreCheckpoint", checkpointId: msg.dataset.checkpointId!, restoreDraft: false });
+  });
+  remove.title = msg.dataset.checkpointId.startsWith("turn:")
+    ? "删除本条及后续对话，不放回输入框（此处无文件快照，文件保持现状）"
+    : "删除本条及后续对话，还原此后的文件改动，不放回输入框";
+  actions.prepend(button);
+  actions.append(remove);
 }
 
 function closeMessageEdit() {

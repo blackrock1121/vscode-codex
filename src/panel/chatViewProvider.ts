@@ -1206,7 +1206,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case "restoreCheckpoint":
-                    await this.restoreCheckpoint(ctx, m.checkpointId, false, m.draft);
+                    await this.restoreCheckpoint(ctx, m.checkpointId, false, m.draft, m.restoreDraft);
                     break;
                 case "reanswerQuestion":
                     await this.restoreCheckpoint(ctx, m.checkpointId, true);
@@ -2616,7 +2616,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
     }
     private async restoreCheckpoint(ctx: SessionCtx, checkpointId: string, reanswer = false,
-        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"]): Promise<void> {
+        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"], restoreDraft = true): Promise<void> {
         if (this.forking.has(ctx)) {
             this.post(ctx, { kind: "notice", message: "正在派生，请完成后再还原。" });
             return;
@@ -2628,13 +2628,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (this.restoring.has(ctx)) return;
         this.restoring.add(ctx);
         try {
-            await this.restoreCheckpointInner(ctx, checkpointId, reanswer, draft);
+            await this.restoreCheckpointInner(ctx, checkpointId, reanswer, draft, restoreDraft);
         } finally {
             this.restoring.delete(ctx);
         }
     }
     private async restoreCheckpointInner(ctx: SessionCtx, checkpointId: string, reanswer = false,
-        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"]): Promise<void> {
+        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"], restoreDraft = true): Promise<void> {
         const sourceId = ctx.sessionId;
         const blocked = reanswer ? ctx.checkpoints.restoreBlockReason(checkpointId, false) : undefined;
         if (blocked) {
@@ -2642,15 +2642,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             return;
         }
         const preview = this.cpPreview(ctx, checkpointId);
-        const confirm = await vscode.window.showWarningMessage(reanswer ? "还原到提交这次答案之前，重新回答？" : "还原到这条消息之前？", {
+        const deleting = !reanswer && !restoreDraft;
+        const action = deleting ? "删除并还原" : "还原";
+        const confirm = await vscode.window.showWarningMessage(reanswer ? "还原到提交这次答案之前，重新回答？" : deleting ? "删除这条消息及后续对话，并还原到发送前？" : "还原到这条消息之前？", {
             modal: true,
             detail: (preview ? `消息：${preview.userText}\n\n` : "") +
+                (deleting ? "保留上一轮完整回复，删除的消息不会放回输入框。\n\n" : "") +
                 (reanswer ? "将撤回旧答案及之后的全部对话，并回滚旧答案提交后的文件改动（包括后续轮次和已点击保留的改动）。完成还原后重新展示问题卡，提交新答案后才继续。\n\n" : "") + (checkpointId.startsWith("turn:")
                     ? "当前窗口会从这里开新分支，原会话保留在历史中。此处没有可用的文件快照：只回退对话，工作区文件保持现状。"
                     : "将回滚此后的文件改动，并从这里开新分支；原会话保留在历史中。若快照期间存在并行会话，或文件后来又被修改，将中止还原以保留当前成果。文件回滚不可撤销。") +
                 (ctx.proc?.isBusy ? "\n\nCodex 正在回复中，还原会先自动停止本轮。" : ""),
-        }, "还原");
-        if (confirm !== "还原")
+        }, action);
+        if (confirm !== action)
             return;
         if (!sourceId || ctx.sessionId !== sourceId) {
             this.post(ctx, { kind: "error", message: "原会话已切换，请重新选择还原位置。" });
@@ -2661,7 +2664,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ? this.store.prepareFork() : undefined;
         const startedAt = performance.now();
         try {
-            await this.restoreCheckpointPrepared(ctx, checkpointId, reanswer, sourceId, preparation, startedAt, draft);
+            await this.restoreCheckpointPrepared(ctx, checkpointId, reanswer, sourceId, preparation, startedAt, draft, restoreDraft);
         } finally {
             await preparation?.dispose();
             this.output.appendLine(`[restore] 流程结束 elapsedMs=${Math.round(performance.now() - startedAt)}`);
@@ -2669,7 +2672,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     private async restoreCheckpointPrepared(ctx: SessionCtx, checkpointId: string, reanswer: boolean,
         sourceId: string, preparation: ForkPreparation | undefined, startedAt: number,
-        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"]): Promise<void> {
+        draft?: Extract<FromWebview, { type: "restoreCheckpoint" }>["draft"], restoreDraft = true): Promise<void> {
         const progress = (label: string) => {
             this.post(ctx, { kind: "status", label });
             this.output.appendLine(`[restore] ${label} +${Math.round(performance.now() - startedAt)}ms`);
@@ -2768,7 +2771,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         const draftText = draft ? draft.text : result.userText === "(图片)" ? "" : result.userText;
         const draftImages = draft ? draft.images : nextTurn?.images.length ? nextTurn.images : undefined;
-        if (draftText || draftImages) {
+        if (restoreDraft && (draftText || draftImages)) {
             ctx.draft = draftText;
             ctx.draftImages = draftImages;
             this.post(ctx, { kind: "draft", ...draft, text: draftText, images: draftImages });

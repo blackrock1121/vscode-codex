@@ -26,6 +26,36 @@ function setup(t){
  const save=()=>w.document.querySelector('.user-edit-save').click();
  return {w,sent,errors,emit,items,checkpoints,load,users,edit,save,states};
 }
+test('消息底部按编辑、复制、删除、时间排列，图标无文字，复制保留完整原文',t=>{
+ const f=setup(t);f.items[2].timestamp=Date.now();f.items[2].text='b\n**原始消息**';f.checkpoints[1].userText=f.items[2].text;f.load();
+ const msg=f.w.document.querySelectorAll('.msg.user')[1],meta=msg.querySelector(':scope > .user-meta');
+ assert.equal(msg.querySelector('.msg-body .user-actions'),null);
+ assert.equal(meta.firstElementChild.className,'user-actions');assert.equal(meta.lastElementChild.tagName,'TIME');
+ assert.deepEqual([...meta.querySelectorAll('button')].map(b=>b.getAttribute('aria-label')),['编辑消息','复制消息','删除消息并还原']);
+ for(const button of meta.querySelectorAll('button')){assert.equal(button.textContent,'');assert.ok(button.querySelector('svg'));assert.ok(button.title);}
+ msg.querySelector('.user-copy').click();assert.equal(f.sent.at(-1).type,'copy');assert.equal(f.sent.at(-1).text,f.items[2].text);
+ assert.deepEqual(f.errors,[]);
+});
+test('删除 b 请求回滚但不回填，宿主成功前保留对话，成功后保留 a/A 和已有草稿',t=>{
+ const f=setup(t),input=f.w.document.getElementById('input');input.value='自己的未发草稿';
+ f.w.document.querySelectorAll('.user-delete')[1].click();
+ assert.deepEqual(JSON.parse(JSON.stringify(f.sent.at(-1))),{type:'restoreCheckpoint',checkpointId:'cp-b',restoreDraft:false});
+ assert.deepEqual(f.users(),['a','b','c']);assert.equal(input.value,'自己的未发草稿');
+ f.emit({kind:'restoring'});f.w.document.querySelectorAll('.user-delete')[2].click();
+ assert.equal(f.sent.filter(m=>m.type==='restoreCheckpoint').length,1,'还原中不能重复删除');
+ f.emit({kind:'load_history',sessionId:'branch',items:f.items.slice(0,2),checkpoints:f.checkpoints.slice(0,1)});
+ assert.deepEqual(f.users(),['a']);assert.equal(f.w.document.querySelector('.msg.assistant .text-seg').textContent.trim(),'a结束');
+ assert.equal(input.value,'自己的未发草稿');assert.equal(f.sent.some(m=>m.type==='send'||m.type==='editMessage'),false);
+ assert.deepEqual(f.errors,[]);
+});
+test('未完成的编辑阻止删除其他消息；没有还原点时可复制但不提供删除',t=>{
+ const f=setup(t),edit=f.edit();edit.value='未完成的编辑';f.w.document.querySelector('.user-delete').click();
+ assert.equal(f.sent.some(m=>m.type==='restoreCheckpoint'),false);assert.equal(edit.value,'未完成的编辑');
+ assert.match(f.w.document.querySelector('.user-edit-error').textContent,/先发送或取消/);
+ f.emit({kind:'load_history',items:[{type:'user',text:'尚无还原点'}],checkpoints:[]});
+ assert.equal(f.w.document.querySelector('.user-delete'),null);f.w.document.querySelector('.user-copy').click();assert.equal(f.sent.at(-1).text,'尚无还原点');
+ assert.deepEqual(f.errors,[]);
+});
 test('右键只读消息隐藏剪切粘贴，进入编辑后恢复输入框菜单，取消后再次只允许复制',t=>{
  const f=setup(t),messages=f.w.document.getElementById('messages');
  const open=target=>target.dispatchEvent(new f.w.MouseEvent('contextmenu',{bubbles:true,cancelable:true}));
@@ -43,7 +73,7 @@ test('编辑成功和重新生成刷新本轮时间，取消或失败保留原�
  const f=setup(t),old=Date.parse('2026-10-29T09:01:00+08:00');
  f.items.forEach((item,index)=>item.timestamp=old+index*60000);f.load();
  let now=old+24*60*60000;f.w.Date.now=()=>now;
- const userTimes=()=>[...f.w.document.querySelectorAll('.msg.user > .msg-time')].map(n=>n.dateTime);
+ const userTimes=()=>[...f.w.document.querySelectorAll('.msg.user > .user-meta > .msg-time')].map(n=>n.dateTime);
  const original=userTimes();
  f.edit();f.w.document.querySelector('.user-edit-cancel').click();assert.deepEqual(userTimes(),original);
  let input=f.edit();input.value='B';f.save();let request=f.sent.filter(m=>m.type==='editMessage').at(-1);
