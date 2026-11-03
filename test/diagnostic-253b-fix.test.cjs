@@ -68,11 +68,13 @@ for(const mode of ['status','cut','cancel'])test(`253b HTTP ${mode} 终态落盘
  const responding=once(req,'response');req.end('{}');const remote=await seen,[res]=await responding;
  let text='';res.on('data',c=>{text+=c;});const done=new Promise(r=>res.on('close',r));
  if(mode==='cut')remote.destroy();if(mode==='cancel')req.destroy();await done;await tick();await tick();
- const end=f.rows.find(r=>r.operation==='relay.http'&&r.stage!=='start');assert.equal(end.processRunId,runId);assert.equal(end.requestKind,'passthrough');assert.equal(routes.length,0);
+ const terminal=f.rows.filter(r=>r.operation==='relay.http'&&['completed','failed','cancelled','incomplete'].includes(r.stage));
+ assert.equal(terminal.length,1);const end=terminal[0];assert.equal(end.processRunId,runId);assert.equal(end.requestKind,'passthrough');assert.equal(routes.length,0);
  if(mode==='status'){assert.equal(res.statusCode,403);assert.equal(text,'PRIVATE_RESPONSE');assert.equal(end.stage,'failed');}
  if(mode==='cut'){assert.equal(res.complete,false);assert.equal(end.stage,'failed');}
  if(mode==='cancel')assert.equal(end.stage,'cancelled');
- assert.equal(f.rows.filter(r=>r.operation==='relay.http').length,2);assert.equal((await f.scan()).general.compactionErrors,0);
+ const headers=f.rows.filter(r=>r.operation==='relay.http'&&r.stage==='response_headers');assert.equal(headers.length,1);assert.equal(headers[0].operationId,end.operationId);
+ assert.equal((await f.scan()).general.compactionErrors,0);
  assert.doesNotMatch(JSON.stringify(f.rows),/PRIVATE_RESPONSE|data: partial/);
 });
 test('253b 页面消息投递拒绝、后续成功关联到同一故障链',async t=>{

@@ -1,5 +1,5 @@
 import { postWebviewMessage } from '../webviewDelivery';
-import { operationFailure, operationLog } from '../operations';
+import { observeOperation, operationFailure, operationLog } from '../operations';
 import * as vscode from 'vscode';
 import { randomUUID } from 'node:crypto';
 import { DiagnosticJobs } from './jobs';
@@ -50,6 +50,16 @@ export class DiagnosticsPage {
     postWebviewMessage(this.panel?.webview, { type: 'started', id: record.id });
   }
   private async message(message: { type?: string; id?: string; options?: unknown; category?: unknown }): Promise<void> {
+    const type = message?.type;
+    if (!message || Array.isArray(message) || typeof type !== 'string' ||
+      !['webviewError', 'ready', 'refresh', 'start', 'configure', 'reloadModels', 'cancel', 'collapse', 'select', 'repair', 'notify', 'settings'].includes(type)) {
+      operationFailure('diagnostics.page.message', new SyntaxError('诊断页面消息无效')); return;
+    }
+    // 错误桥已有专用终态；折叠只是内存状态，不重复包裹日志。
+    if (type === 'webviewError' || type === 'collapse') return this.messageInner(message);
+    await observeOperation('diagnostics.page.message', () => this.messageInner(message), { phase: type });
+  }
+  private async messageInner(message: { type?: string; id?: string; options?: unknown; category?: unknown }): Promise<void> {
     switch (message?.type) {
       case 'webviewError': {
         const category = typeof message.category === 'string' ? message.category : '';

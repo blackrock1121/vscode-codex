@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { diagnosticId, type PerformanceRow } from '../codex/performanceTrace';
+import { diagnosticId, failureCategory, type PerformanceRow } from '../codex/performanceTrace';
 import type { DiagnosticFinding } from './analysis';
 import { redactDiagnosticText } from './redact';
 
@@ -29,6 +29,9 @@ function upstreamResponse(row?: PerformanceRow): { status: number; html: boolean
 
 export function classifyIncident(line: string, row?: PerformanceRow): Incident | undefined {
   if (row) {
+    if (row.type === 'runtime_error' && (row.event === 'tool_cancelled' || /dynamic tool call was cancelled before receiving a response/.test(String(row.message ?? ''))))
+      return { category: '工具执行', severity: 'warning', title: '工具取消来源待核验',
+        message: `transport · tool_cancelled · cancellationReason=unknown · processRunId=${diagnosticId(row.processRunId) ?? 'unknown'} · 需关联父轮次与进程终态，不能直接认定为插件故障或用户停止` };
     const response = upstreamResponse(row);
     if (response && (response.html || response.mcp || row.event === 'upstream_http_error')) return { category: '连接与进程', severity: 'error', title: '上游 HTTP 访问受阻',
       message: `transport · HTTP ${response.status} · targetKind=${response.mcp ? 'mcp_transport' : 'unknown'} · responseKind=${response.challenge ? 'challenge_page' : response.html ? 'html' : 'text'} · processRunId=${diagnosticId(row.processRunId) ?? 'unknown'}` };
@@ -51,11 +54,12 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' || row.event === 'logging_health' ? '采集完整性' : compaction ? '压缩' :
       legacyRelay || String(row.operation ?? '').startsWith('relay.') ? '连接与进程' :
       row.operation === 'remote.connection' ? '手机接入连接' : row.errorOrigin === 'backend' || row.event === 'codex.sse_event' ? '后端服务' :
-      row.type === 'runtime_error' && /codex_skills_extension\b.*failed to install system skills/i.test(String(row.message ?? '')) ? '后端组件' :
+      row.type === 'runtime_error' && /codex_skills_extension\b.*failed to install system skills|codex_models_manager\b.*failed to refresh available models/i.test(String(row.message ?? '')) ? '后端组件' :
       row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code ??
       (row.operation === 'notification.webhook' && typeof row.status === 'number' ? row.status : undefined);
-    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? row.failureCategory, row.errorCode, row.causeCode, row.transportReason, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
+    const classification = row.type === 'runtime_error' && (!row.failureCategory || row.failureCategory === 'unknown') ? failureCategory(row.message) : row.failureCategory;
+    const detail = [row.diagnosticType, row.operation, row.method, stage, outcome, row.errorCategory ?? classification, row.errorCode, row.causeCode, row.transportReason, row.rpcCode, row.targetKind, row.errorType, row.failureEvidence,
       diagnosticId(row.tool_name ?? row.tool ?? row['tool.name']) ? `tool=${diagnosticId(row.tool_name ?? row.tool ?? row['tool.name'])}` : undefined,
       diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId) ? `callId=${diagnosticId(row.call_id ?? row.tool_call_id ?? row.itemId)}` : undefined,
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
@@ -76,7 +80,7 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
   if (!bad.test(signal) && !warning.test(signal)) return;
   // 用户主动取消不是内部错误；原有错误仍通过其它记录呈现。
   if (/用户.*(?:取消|停止)|user.*(?:cancel|interrupt)|outcome[=:]cancelled/i.test(line)) return;
-  const category = component(line);
+  const category = /Selected model is at capacity/i.test(line) ? '后端服务' : component(line);
   const severity = bad.test(signal) && !/\[(?:warn|warning|notice|status)\]/i.test(line) ? 'error' : 'warning';
   return { category, severity, title: `${category}${severity === 'error' ? '异常' : '警告'}`, message: redactDiagnosticText(line.replace(/^\[\d\d:\d\d:\d\d\]\s*/, '').replace(/\[pluginVersion=[^\]]+\]\s*/, '').replace(/\[\d{4}-\d\d-\d\dT[^\]]+\]\s*/, '')) };
 }
@@ -181,7 +185,9 @@ export class GeneralAccumulator {
       .map(([id, group]) => ({ id: `log-${id}`, category: group.incident.category, origin: 'rule', occurrences: group.count,
         title: group.incident.title, severity: group.incident.severity, evidence: `${group.count} 条异常/警告日志。\n${group.examples.join('\n')}`,
         recommendation: group.incident.category === '手机接入连接' ? '此记录来自独立手机接入桥接，不代表 Codex 子进程崩溃。按 connectionId、reason、initiator 和 previousFailureId 核对关闭与重连。' :
-          group.incident.category === '后端组件' ? '此记录来自 CLI 系统技能安装组件；核对进程、目录状态和后续安装结果。目录非空不能单独证明权限问题、竞争或插件缺陷，不直接删除技能目录。' :
+          group.incident.category === '后端组件' ? /codex_models_manager/.test(group.incident.message)
+            ? '此记录来自 CLI 模型目录刷新；核对同进程 model/list、缓存使用和后续刷新结果，不能把目录刷新超时等同于对话连接失效，也不能与 MCP 403 合并为同一根因。'
+            : '此记录来自 CLI 系统技能安装组件；核对进程、目录状态和后续安装结果。目录非空不能单独证明权限问题、竞争或插件缺陷，不直接删除技能目录。' :
           group.incident.category === '后端服务' ? '同一 failureId 为一次后端失败的多层记录；不能仅由错误分类区分网络、鉴权或服务内部原因，检查同类请求的后续恢复。' :
           group.incident.category === '遥测采集' ? '此记录来自遥测导出链路，可能造成诊断数据缺失；不能据此认定主对话连接中断。请另行核对同一进程的 RPC、轮次和进程退出事件。' : '按文件和行号核对前后事件，确认是否恢复、是否影响用户和实际根因；区分插件故障、环境依赖、后端服务和预期取消，再实施修复。', traceIds: [...group.traces] }));
     const report = ['# 最近日志异常检查', '', `错误 ${this.counts.errors} 条，警告 ${this.counts.warnings} 条；压缩错误 ${this.counts.compactionErrors} 条，重试 ${this.counts.retries} 条，明确恢复 ${this.counts.recoveries} 条。`,

@@ -12,6 +12,8 @@ interface RelayOptions {
   processRunId?: string;
   /** 上游握手预算；不限制已连接的生成流。 */
   handshakeTimeoutMs?: number;
+  /** 响应头等待心跳；非流式压缩可能在生成完成后才返回响应头，不能据此中断请求。 */
+  responseHeaderHeartbeatMs?: number;
   constrain?: (raw: Buffer) => Buffer;
   archiveDirectory?: string;
   /** 内部适配测试可延长预算；生产调用省略，使用 250ms。 */
@@ -340,11 +342,14 @@ export class CompactionRelay {
     const routed = req.method === 'POST' ? await this.rewrite(original, req, target, 'http', controller.signal, undefined, requestId) : { body: original };
     const body = routed.body;
     let ended = false, httpStatusCode: number | undefined, firstResponseMs: number | undefined;
+    let headerTimer: NodeJS.Timeout | undefined;
+    const heartbeatMs = this.options.responseHeaderHeartbeatMs ?? 30_000;
     operationLog('relay.http', 'start', { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough' });
     // HTTP 只观察传输终态，不把 2xx/SSE 结束冒充压缩语义成功。
     const finish = (outcome: CompactionRoute['outcome'], reason: string, error?: unknown) => {
       if (ended) return;
       ended = true;
+      clearInterval(headerTimer);
       const failureId = outcome === 'failed' ? randomUUID() : undefined;
       const details = { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough',
         httpStatusCode, firstResponseMs, durationMs: Date.now() - started, reason, failureId };
@@ -359,8 +364,11 @@ export class CompactionRelay {
     const upstream = (target.protocol === 'https:' ? https : http).request(target, {
       method: req.method, headers, agent: this.agent,
     }, response => {
+      clearInterval(headerTimer);
       httpStatusCode = response.statusCode;
       firstResponseMs = Date.now() - started;
+      operationLog('relay.http', 'response_headers', { ...fields, routeId: routed.route?.routeId,
+        requestKind: routed.route ? 'compaction' : 'passthrough', httpStatusCode, firstResponseMs });
       res.writeHead(response.statusCode ?? 502, forwardedHeaders(response.headers, false));
       response.on('end', () => finish(httpStatusCode && httpStatusCode >= 400 ? 'failed' : undefined, 'http_stream_ended'));
       response.on('error', error => { finish(controller.signal.aborted ? 'cancelled' : 'failed', 'response_error', error); res.destroy(); }); response.pipe(res);
@@ -368,10 +376,16 @@ export class CompactionRelay {
     this.requests.add(upstream);
     upstream.on('close', () => this.requests.delete(upstream));
     upstream.on('error', error => {
+      if (ended) return;
       finish(this.closed || controller.signal.aborted ? 'cancelled' : 'failed', 'upstream_error', error);
       // 已经转发部分 SSE 后必须中断响应，不能伪装成完整的 HTTP 200。
       if (res.headersSent) res.destroy(); else { res.writeHead(502); res.end(); }
     });
+    headerTimer = setInterval(() => {
+      operationLog('relay.http', 'waiting', { ...fields, routeId: routed.route?.routeId,
+        requestKind: routed.route ? 'compaction' : 'passthrough', phase: 'response_headers', elapsedMs: Date.now() - started });
+    }, heartbeatMs);
+    headerTimer.unref();
     req.on('aborted', () => upstream.destroy());
     res.on('close', () => { if (!res.writableEnded) upstream.destroy(); });
     upstream.end(body);

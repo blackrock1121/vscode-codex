@@ -47,7 +47,7 @@ test('目录过期后完整刷新分页，同时更新发送能力；并发打�
   await proc.refreshModels(); assert.equal(calls.length, 3, '30 秒内复用成功目录');
 });
 
-test('刷新中途失败保留完整旧目录，重新打开菜单可立即重试', async t => {
+test('刷新中途失败保留完整旧目录，冷却后重新打开菜单可重试', async t => {
   const { proc, events } = fixture(t);
   await proc.prepare(); await proc.modelsReady;
   const previous = proc.models;
@@ -60,6 +60,9 @@ test('刷新中途失败保留完整旧目录，重新打开菜单可立即重�
   assert.equal(proc.models, previous);
   assert.ok(events.some(e => e.kind === 'notice' && e.message.includes('模拟网络中断')));
   proc.rpc.request = async () => ({ data: [model('gpt-6.1-terra')] });
+  await proc.refreshModels();
+  assert.equal(proc.models, previous, '冷却期间保留旧目录');
+  proc.modelsRetryAt = 0;
   await proc.refreshModels();
   assert.equal(proc.models[0].id, 'gpt-6.1-terra');
 });

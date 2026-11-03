@@ -291,7 +291,11 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             const items=this.host.store.load(sourceId!);let item;
             try{item=checkedItem(items,op.item,op.revision);}catch{return denied('MESSAGE_CHANGED');}
             if(op.kind==='session.image'){
-                try{return {accepted:true,result:{...await (this.remoteImageReader??=new RemoteImageReader()).read(item,op.index,op.offset,this.host.cwd()),item:op.item,index:op.index,revision:op.revision}};}catch(error){return denied(['IMAGE_TOO_LARGE','INVALID_OFFSET'].includes((error as Error).message)?(error as Error).message:'IMAGE_NOT_AVAILABLE');}
+                try{return {accepted:true,result:{...await (this.remoteImageReader??=new RemoteImageReader()).read(item,op.index,op.offset,this.host.cwd()),item:op.item,index:op.index,revision:op.revision}};}catch(error){
+                    // 回复给手机仍用固定错误码；不能吞掉实际文件 I/O 失败。
+                    if (!['IMAGE_TOO_LARGE','INVALID_OFFSET','IMAGE_NOT_AVAILABLE'].includes((error as Error).message))
+                        operationFailure('remote.image.read', error);
+                    return denied(['IMAGE_TOO_LARGE','INVALID_OFFSET'].includes((error as Error).message)?(error as Error).message:'IMAGE_NOT_AVAILABLE');}
             }
             const index=sourceUserIndex(items,op.item),user=items[index];if(user.type!=='user')return denied('MESSAGE_NOT_EDITABLE');
             const point=this.host.checkpointsForView(ctx,sourceId!)[items.slice(0,index).filter(i=>i.type==='user').length];

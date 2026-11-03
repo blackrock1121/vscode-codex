@@ -1,0 +1,1423 @@
+{
+  "diagnosticId": "a86dec96-a71d-478c-bba8-cc13095c8ce1",
+  "baseline": "35daf5c05f215ef6c8e718f8931d9061888eab01",
+  "currentVersion": "0.1.197",
+  "snapshot": [
+    {
+      "file": "codex-chat-2026-10-28.log",
+      "bytes": 32462833,
+      "sha256": "1945a39766c5a199d5be385a08514f4bfa17faa929a062ba1c0132be22bc72c6"
+    },
+    {
+      "file": "codex-chat-2026-10-29.log",
+      "bytes": 10174766,
+      "sha256": "a0c1dd3de43be7ed1bc2b6f498b730b8a865a9a2ada3f2cb0c300bef110cdc16"
+    },
+    {
+      "file": "codex-chat-2026-10-30.log",
+      "bytes": 17369176,
+      "sha256": "8404c8bb1b3f635e7c76a7e434f68fe1fca6020c251258fa00794581e771752f"
+    },
+    {
+      "file": "codex-chat-2026-10-31.log",
+      "bytes": 13413091,
+      "sha256": "570d504cc465597be374cc3d93298719d8056f0b24027ce0c01d84586aa0d77c"
+    },
+    {
+      "file": "codex-chat-2026-11-01.log",
+      "bytes": 12872083,
+      "sha256": "026aa1cdfc2f8ba5c3f2599461f654cacab0f8ffefe0e0ac08e671795ab59dd9"
+    },
+    {
+      "file": "codex-chat-2026-11-02.log",
+      "bytes": 20745536,
+      "sha256": "8f22553d5bf0ad28b9bec37dc8c69a05fe983e8a7231c3f4064a69de1a6686d2"
+    },
+    {
+      "file": "codex-chat-2026-11-03.log",
+      "bytes": 14738657,
+      "sha256": "915e721be4d06f781d8bba8d89cfd50728613f08baada94a350b547a10d4911f"
+    }
+  ],
+  "before": {
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 121776142,
+      "lines": 252755,
+      "records": 244249,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 57,
+      "sessions": 80,
+      "firstDay": "2026-10-28",
+      "lastDay": "2026-11-03",
+      "scanErrors": [],
+      "requestedToMs": 1793685131625,
+      "includedLines": 251186,
+      "outsideRangeLines": 1569,
+      "unknownTimeLines": 0,
+      "fromMs": 1793116801248,
+      "toMs": 1793685131625
+    },
+    "summary": {
+      "turns": 355,
+      "tools": 6711,
+      "failures": 416,
+      "longestTurnMs": 68055066,
+      "versions": [
+        "0.1.169",
+        "0.1.178",
+        "0.1.179",
+        "0.1.177",
+        "0.1.176",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186",
+        "0.1.187",
+        "0.1.189",
+        "0.1.190",
+        "0.1.191",
+        "0.1.192",
+        "0.1.193",
+        "0.1.195",
+        "0.1.196"
+      ]
+    },
+    "general": {
+      "errors": 2230,
+      "warnings": 102,
+      "retries": 85,
+      "recoveries": 46,
+      "compactionErrors": 0,
+      "groups": 160,
+      "overflow": 885,
+      "correlatedToolErrors": 463,
+      "correlatedErrors": 342,
+      "linkedRecoveries": 43,
+      "transportResponseLines": 2,
+      "failureChains": 237,
+      "toolFailureChains": 440,
+      "recoveredFailureChains": 24
+    },
+    "classifications": {
+      "日志覆盖审查": 38,
+      "插件运行": 14,
+      "工具执行": 33,
+      "连接与进程": 3,
+      "后端服务": 18,
+      "通知": 2,
+      "后端组件": 4,
+      "遥测采集": 86,
+      "undefined": 20
+    }
+  },
+  "after": {
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 121776142,
+      "lines": 252755,
+      "records": 244249,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 57,
+      "sessions": 80,
+      "firstDay": "2026-10-28",
+      "lastDay": "2026-11-03",
+      "scanErrors": [],
+      "requestedToMs": 1793685131625,
+      "includedLines": 251186,
+      "outsideRangeLines": 1569,
+      "unknownTimeLines": 0,
+      "fromMs": 1793116801248,
+      "toMs": 1793685131625
+    },
+    "summary": {
+      "turns": 355,
+      "tools": 6711,
+      "failures": 416,
+      "longestTurnMs": 68055066,
+      "versions": [
+        "0.1.169",
+        "0.1.178",
+        "0.1.179",
+        "0.1.177",
+        "0.1.176",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186",
+        "0.1.187",
+        "0.1.189",
+        "0.1.190",
+        "0.1.191",
+        "0.1.192",
+        "0.1.193",
+        "0.1.195",
+        "0.1.196"
+      ]
+    },
+    "general": {
+      "errors": 2190,
+      "warnings": 142,
+      "retries": 85,
+      "recoveries": 46,
+      "compactionErrors": 0,
+      "groups": 160,
+      "overflow": 885,
+      "correlatedToolErrors": 463,
+      "correlatedErrors": 342,
+      "linkedRecoveries": 43,
+      "transportResponseLines": 2,
+      "failureChains": 237,
+      "toolFailureChains": 440,
+      "recoveredFailureChains": 24
+    },
+    "classifications": {
+      "日志覆盖审查": 38,
+      "插件运行": 13,
+      "工具执行": 33,
+      "连接与进程": 3,
+      "后端服务": 19,
+      "通知": 2,
+      "后端组件": 4,
+      "遥测采集": 86,
+      "undefined": 20
+    }
+  },
+  "allRetained": {
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 121776142,
+      "lines": 252755,
+      "records": 245777,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 57,
+      "sessions": 81,
+      "firstDay": "2026-10-28",
+      "lastDay": "2026-11-03",
+      "scanErrors": [],
+      "includedLines": 252755,
+      "outsideRangeLines": 0,
+      "unknownTimeLines": 0,
+      "fromMs": 1793116801248,
+      "toMs": 1793686135725
+    },
+    "summary": {
+      "turns": 357,
+      "tools": 6841,
+      "failures": 425,
+      "longestTurnMs": 68055066,
+      "versions": [
+        "0.1.169",
+        "0.1.178",
+        "0.1.179",
+        "0.1.177",
+        "0.1.176",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186",
+        "0.1.187",
+        "0.1.189",
+        "0.1.190",
+        "0.1.191",
+        "0.1.192",
+        "0.1.193",
+        "0.1.195",
+        "0.1.196"
+      ]
+    },
+    "general": {
+      "errors": 2205,
+      "warnings": 143,
+      "retries": 85,
+      "recoveries": 46,
+      "compactionErrors": 0,
+      "groups": 160,
+      "overflow": 891,
+      "correlatedToolErrors": 472,
+      "correlatedErrors": 345,
+      "linkedRecoveries": 43,
+      "transportResponseLines": 2,
+      "failureChains": 239,
+      "toolFailureChains": 449,
+      "recoveredFailureChains": 24
+    },
+    "classifications": {
+      "日志覆盖审查": 38,
+      "插件运行": 13,
+      "工具执行": 33,
+      "连接与进程": 3,
+      "后端服务": 19,
+      "通知": 2,
+      "后端组件": 4,
+      "遥测采集": 86,
+      "undefined": 20
+    }
+  },
+  "scanMs": {
+    "before": 946,
+    "after": 886
+  },
+  "historicalEvidence": {
+    "signals": {
+      "mcp403": 31,
+      "modelsRefreshTimeout": 298,
+      "systemSkillsInstallFailed": 5,
+      "dynamicToolCancellation": 40
+    },
+    "account": [
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6072,
+        "atMs": 1793653974943,
+        "operation": "rpc.request",
+        "stage": "end",
+        "outcome": "failed",
+        "operationId": "193fd3f3-b0ec-4c4a-8bcd-37c0d785b4cb",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+        "durationMs": 19729
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6073,
+        "atMs": 1793653974944,
+        "operation": "session.read",
+        "stage": "failed",
+        "operationId": "193fd3f3-b0ec-4c4a-8bcd-37c0d785b4cb",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+        "durationMs": 19730
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6074,
+        "atMs": 1793653974945,
+        "operation": "account.usage",
+        "stage": "failed",
+        "operationId": "562fed7e-4011-489b-b312-ac2c03fa00a6",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+        "durationMs": 19731
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6088,
+        "atMs": 1793654031070,
+        "operation": "rpc.request",
+        "stage": "end",
+        "outcome": "failed",
+        "operationId": "0fc8c68d-4b22-49c8-90be-6cfc8c06b92a",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+        "durationMs": 21105
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6089,
+        "atMs": 1793654031070,
+        "operation": "session.read",
+        "stage": "failed",
+        "operationId": "0fc8c68d-4b22-49c8-90be-6cfc8c06b92a",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+        "durationMs": 21105
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6090,
+        "atMs": 1793654031071,
+        "operation": "account.usage",
+        "stage": "failed",
+        "operationId": "09891cce-8d9b-4686-92e4-9cea3d168f14",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+        "durationMs": 21106
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6166,
+        "atMs": 1793654318735,
+        "operation": "session.read",
+        "stage": "recovered",
+        "operationId": "39652eca-2d3d-46b1-bd5a-4564ebfe1f42",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "previousProcessRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "previousFailureId": "a4b11ad9-b245-4652-8130-c4b311a67baf"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6169,
+        "atMs": 1793654318737,
+        "operation": "account.usage",
+        "stage": "recovered",
+        "operationId": "562fed7e-4011-489b-b312-ac2c03fa00a6",
+        "previousProcessRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "previousFailureId": "a4b11ad9-b245-4652-8130-c4b311a67baf"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6184,
+        "atMs": 1793654370851,
+        "operation": "session.read",
+        "stage": "recovered",
+        "operationId": "9395caf2-ac86-4498-b1d8-cd78a57d012f",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "previousProcessRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "previousFailureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6187,
+        "atMs": 1793654370853,
+        "operation": "account.usage",
+        "stage": "recovered",
+        "operationId": "09891cce-8d9b-4686-92e4-9cea3d168f14",
+        "previousProcessRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "previousFailureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2"
+      }
+    ],
+    "notification": [
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24560,
+        "atMs": 1793601625175,
+        "operation": "notification.activate",
+        "stage": "prepared",
+        "operationId": "66d5270e-15d5-4e40-af77-b5e9ad56c68f"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24561,
+        "atMs": 1793601625181,
+        "operation": "notification.click",
+        "stage": "start",
+        "operationId": "a8303100-3e38-403a-8f88-ecbbb04897e5"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24562,
+        "atMs": 1793601625183,
+        "operation": "notification.focus",
+        "stage": "start",
+        "phase": "window_focus",
+        "operationId": "d728fd68-5c46-47b8-9653-ef72e1b2f33b"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24567,
+        "atMs": 1793601627233,
+        "operation": "notification.focus",
+        "stage": "failed",
+        "phase": "window_focus",
+        "operationId": "d728fd68-5c46-47b8-9653-ef72e1b2f33b",
+        "failureId": "52866a84-160a-4cf1-b41b-0edc40a53036",
+        "durationMs": 2049
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24568,
+        "atMs": 1793601627233,
+        "operation": "notification.click",
+        "stage": "failed",
+        "operationId": "a8303100-3e38-403a-8f88-ecbbb04897e5",
+        "failureId": "52866a84-160a-4cf1-b41b-0edc40a53036",
+        "durationMs": 2052
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24601,
+        "atMs": 1793601641928,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "ef5b874f-2786-47a5-a9ae-011c8fff7ec5"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24602,
+        "atMs": 1793601641930,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "5f7949bb-1016-4bcc-9136-4266de2ff865"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24603,
+        "atMs": 1793601641930,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "48063991-24fd-400a-9e77-c37ac85bd40c"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24604,
+        "atMs": 1793601641930,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "db2fc474-27e9-43f1-a636-62d095509473"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24607,
+        "atMs": 1793601642095,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "48063991-24fd-400a-9e77-c37ac85bd40c",
+        "durationMs": 165
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24608,
+        "atMs": 1793601642095,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "a750c724-65a3-485a-9663-71d950ec7d55"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24610,
+        "atMs": 1793601642234,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "a750c724-65a3-485a-9663-71d950ec7d55",
+        "durationMs": 139
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24611,
+        "atMs": 1793601642234,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "513aeec9-fc60-4c88-b0c1-dd5f3b509dd6"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24612,
+        "atMs": 1793601642246,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "5f7949bb-1016-4bcc-9136-4266de2ff865",
+        "durationMs": 316
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24613,
+        "atMs": 1793601642246,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "98377df5-335b-4b7d-b7c5-026bbccdb8a9"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24615,
+        "atMs": 1793601642277,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "db2fc474-27e9-43f1-a636-62d095509473",
+        "durationMs": 346
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24616,
+        "atMs": 1793601642277,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "93c0aa40-183a-4fe3-b0e4-dd0556737ec9"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24617,
+        "atMs": 1793601642292,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "513aeec9-fc60-4c88-b0c1-dd5f3b509dd6",
+        "durationMs": 58
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24618,
+        "atMs": 1793601642292,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "637439e8-eee5-4356-9421-626547f3d0bc"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24619,
+        "atMs": 1793601642307,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "ef5b874f-2786-47a5-a9ae-011c8fff7ec5",
+        "durationMs": 379
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24621,
+        "atMs": 1793601642324,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "98377df5-335b-4b7d-b7c5-026bbccdb8a9",
+        "durationMs": 78
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24622,
+        "atMs": 1793601642324,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "b18427f1-c708-4942-88c0-ede5790d677c"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24623,
+        "atMs": 1793601642384,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "637439e8-eee5-4356-9421-626547f3d0bc",
+        "durationMs": 92
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24624,
+        "atMs": 1793601642384,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "df495bb1-b5a7-4636-9a6b-a800ded56103"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24625,
+        "atMs": 1793601642418,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "b18427f1-c708-4942-88c0-ede5790d677c",
+        "durationMs": 95
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24626,
+        "atMs": 1793601642418,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "a88c09f0-0453-4cc3-b7ad-3a69967ba888"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24627,
+        "atMs": 1793601642451,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "df495bb1-b5a7-4636-9a6b-a800ded56103",
+        "durationMs": 67
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24628,
+        "atMs": 1793601642451,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "cef3e280-345a-43a7-88de-cd80372a5613"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24629,
+        "atMs": 1793601642453,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "93c0aa40-183a-4fe3-b0e4-dd0556737ec9",
+        "durationMs": 176
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24630,
+        "atMs": 1793601642453,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "77a094c8-fe4f-4e82-a1d9-5ca9d4d65693"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24631,
+        "atMs": 1793601642516,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "cef3e280-345a-43a7-88de-cd80372a5613",
+        "durationMs": 66
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24632,
+        "atMs": 1793601642516,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "87812c93-d48e-4798-8a77-93be4902353f"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24633,
+        "atMs": 1793601642578,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "87812c93-d48e-4798-8a77-93be4902353f",
+        "durationMs": 61
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24634,
+        "atMs": 1793601642578,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "abe8e7f2-790e-400d-a7f6-defbc799b437"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24635,
+        "atMs": 1793601642582,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "a88c09f0-0453-4cc3-b7ad-3a69967ba888",
+        "durationMs": 163
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24636,
+        "atMs": 1793601642582,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "eed5c044-b802-4004-bfa9-f6ad42c6c52c"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24637,
+        "atMs": 1793601642649,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "77a094c8-fe4f-4e82-a1d9-5ca9d4d65693",
+        "durationMs": 196
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24638,
+        "atMs": 1793601642649,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "600f6b5b-e6a5-4524-88bb-00ed55642dda"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24639,
+        "atMs": 1793601642669,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "eed5c044-b802-4004-bfa9-f6ad42c6c52c",
+        "durationMs": 87
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24640,
+        "atMs": 1793601642669,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "4efdc62e-791f-4290-b349-b0bd15fa9ec1"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24641,
+        "atMs": 1793601642702,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "600f6b5b-e6a5-4524-88bb-00ed55642dda",
+        "durationMs": 53
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24642,
+        "atMs": 1793601642702,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "504bdc74-de23-47ea-956a-3ed22d43b790"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24643,
+        "atMs": 1793601642733,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "4efdc62e-791f-4290-b349-b0bd15fa9ec1",
+        "durationMs": 64
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24644,
+        "atMs": 1793601642733,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "788a92d8-8a31-4f48-ac6d-fb7e1b103c70"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24645,
+        "atMs": 1793601642740,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "abe8e7f2-790e-400d-a7f6-defbc799b437",
+        "durationMs": 162
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24646,
+        "atMs": 1793601642740,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "8d452949-aa63-4e57-9f8b-48d765914314"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24647,
+        "atMs": 1793601642796,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "788a92d8-8a31-4f48-ac6d-fb7e1b103c70",
+        "durationMs": 63
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24648,
+        "atMs": 1793601642865,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "504bdc74-de23-47ea-956a-3ed22d43b790",
+        "durationMs": 163
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24649,
+        "atMs": 1793601642930,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "8d452949-aa63-4e57-9f8b-48d765914314",
+        "durationMs": 191
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24753,
+        "atMs": 1793601686768,
+        "operation": "notification.show",
+        "stage": "start",
+        "operationId": "8b7f5f61-4773-47ac-b691-45f8c2ee92d2"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24760,
+        "atMs": 1793601686966,
+        "operation": "notification.show",
+        "stage": "completed",
+        "operationId": "8b7f5f61-4773-47ac-b691-45f8c2ee92d2",
+        "durationMs": 198
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24790,
+        "atMs": 1793601709740,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "16891f17-6799-494e-8e1e-c9160fff9ed0"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24791,
+        "atMs": 1793601709741,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "ae38d803-af87-4566-949f-d57af60215c1"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24792,
+        "atMs": 1793601709741,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "df7860e1-4a4e-4562-939f-94507ccee9a0"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24793,
+        "atMs": 1793601709741,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "587b7d3c-83f2-4446-9cd8-3d9d244f351f"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24797,
+        "atMs": 1793601709888,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "587b7d3c-83f2-4446-9cd8-3d9d244f351f",
+        "durationMs": 147
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24798,
+        "atMs": 1793601709888,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "cddf127c-2699-4f87-a623-428912183e56"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24799,
+        "atMs": 1793601709951,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "16891f17-6799-494e-8e1e-c9160fff9ed0",
+        "durationMs": 211
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24801,
+        "atMs": 1793601709959,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "df7860e1-4a4e-4562-939f-94507ccee9a0",
+        "durationMs": 218
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24802,
+        "atMs": 1793601709959,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "e27ebeaf-e038-40b9-aa61-7fb8c7526a6f"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24803,
+        "atMs": 1793601709991,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "cddf127c-2699-4f87-a623-428912183e56",
+        "durationMs": 103
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24804,
+        "atMs": 1793601709991,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "adb75b24-4c12-4912-a80e-79e6edd27687"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24806,
+        "atMs": 1793601710025,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "e27ebeaf-e038-40b9-aa61-7fb8c7526a6f",
+        "durationMs": 66
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24807,
+        "atMs": 1793601710025,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "ae38d803-af87-4566-949f-d57af60215c1",
+        "durationMs": 284
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24808,
+        "atMs": 1793601710025,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "f22a5691-3540-45ce-8628-bb9d33c70707"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24809,
+        "atMs": 1793601710025,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "4770ae88-e0dc-4ebc-b324-63105f038be5"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24810,
+        "atMs": 1793601710056,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "adb75b24-4c12-4912-a80e-79e6edd27687",
+        "durationMs": 65
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24811,
+        "atMs": 1793601710056,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "5e74ebfe-3bf7-4344-8de5-20a2986d0817"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24812,
+        "atMs": 1793601710125,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "f22a5691-3540-45ce-8628-bb9d33c70707",
+        "durationMs": 100
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24813,
+        "atMs": 1793601710125,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "bc319681-7d91-4960-8b65-0407d9d86b6f"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24814,
+        "atMs": 1793601710196,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "5e74ebfe-3bf7-4344-8de5-20a2986d0817",
+        "durationMs": 140
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24815,
+        "atMs": 1793601710196,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "6dd1779b-3268-4824-bf17-b1849d683a8c"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24816,
+        "atMs": 1793601710262,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "4770ae88-e0dc-4ebc-b324-63105f038be5",
+        "durationMs": 237
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24817,
+        "atMs": 1793601710262,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "6dd1779b-3268-4824-bf17-b1849d683a8c",
+        "durationMs": 66
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24818,
+        "atMs": 1793601710262,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "95ae7108-b337-4005-ae99-433a8686908d"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24819,
+        "atMs": 1793601710262,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "5ab3a478-7da1-4c48-92af-b430d77f7718"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24820,
+        "atMs": 1793601710327,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "95ae7108-b337-4005-ae99-433a8686908d",
+        "durationMs": 65
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24821,
+        "atMs": 1793601710327,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "9a432cf8-b100-4562-a70b-740962642647"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24822,
+        "atMs": 1793601710329,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "bc319681-7d91-4960-8b65-0407d9d86b6f",
+        "durationMs": 203
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24823,
+        "atMs": 1793601710329,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "0153accd-9f5e-47e8-b28a-c936c2397077"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24824,
+        "atMs": 1793601710359,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "5ab3a478-7da1-4c48-92af-b430d77f7718",
+        "durationMs": 97
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24825,
+        "atMs": 1793601710359,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "903f2527-7482-45d8-a6fe-eb7fcfac64e1"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24826,
+        "atMs": 1793601710390,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "9a432cf8-b100-4562-a70b-740962642647",
+        "durationMs": 63
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24827,
+        "atMs": 1793601710390,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "87e2f372-48d8-48de-9a9e-96f50102c225"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24828,
+        "atMs": 1793601710450,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "903f2527-7482-45d8-a6fe-eb7fcfac64e1",
+        "durationMs": 91
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24829,
+        "atMs": 1793601710450,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "11cab4d6-ed9a-4a40-a2e9-f2cc97e50297"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24830,
+        "atMs": 1793601710479,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "87e2f372-48d8-48de-9a9e-96f50102c225",
+        "durationMs": 89
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24831,
+        "atMs": 1793601710479,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "3c1709ef-0388-41aa-bd2a-612fbe0d7fee"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24832,
+        "atMs": 1793601710508,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "11cab4d6-ed9a-4a40-a2e9-f2cc97e50297",
+        "durationMs": 58
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24833,
+        "atMs": 1793601710508,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "f75a1c6a-dc18-405f-90f9-c5ae8230dd8b"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24834,
+        "atMs": 1793601710521,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "0153accd-9f5e-47e8-b28a-c936c2397077",
+        "durationMs": 192
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24835,
+        "atMs": 1793601710521,
+        "operation": "notification.clear",
+        "stage": "start",
+        "operationId": "e7363f04-0422-4efe-8efd-23ceb1691cc4"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24836,
+        "atMs": 1793601710568,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "f75a1c6a-dc18-405f-90f9-c5ae8230dd8b",
+        "durationMs": 60
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24837,
+        "atMs": 1793601710601,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "e7363f04-0422-4efe-8efd-23ceb1691cc4",
+        "durationMs": 80
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 24838,
+        "atMs": 1793601710638,
+        "operation": "notification.clear",
+        "stage": "completed",
+        "operationId": "3c1709ef-0388-41aa-bd2a-612fbe0d7fee",
+        "durationMs": 159
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25098,
+        "atMs": 1793601861222,
+        "operation": "notification.show",
+        "stage": "start",
+        "operationId": "3dd7c333-1ed5-44ed-a315-aed5b6981692"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25105,
+        "atMs": 1793601861360,
+        "operation": "notification.show",
+        "stage": "completed",
+        "operationId": "3dd7c333-1ed5-44ed-a315-aed5b6981692",
+        "durationMs": 138
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25338,
+        "atMs": 1793602142534,
+        "operation": "notification.activate",
+        "stage": "prepared",
+        "operationId": "bb316276-603f-4262-b6e0-a33b6c304bbd"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25339,
+        "atMs": 1793602142540,
+        "operation": "notification.click",
+        "stage": "start",
+        "operationId": "29bdb9e9-e462-4592-b5a0-92429bd75850"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25340,
+        "atMs": 1793602142540,
+        "operation": "notification.focus",
+        "stage": "start",
+        "phase": "window_focus",
+        "operationId": "b8732244-5eb2-4ba7-b3ad-f941b718c4d2"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25341,
+        "atMs": 1793602142586,
+        "operation": "notification.focus",
+        "stage": "completed",
+        "phase": "window_focus",
+        "operationId": "b8732244-5eb2-4ba7-b3ad-f941b718c4d2",
+        "durationMs": 46
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25342,
+        "atMs": 1793602142586,
+        "operation": "notification.focus",
+        "stage": "recovered",
+        "operationId": "29bdb9e9-e462-4592-b5a0-92429bd75850",
+        "previousFailureId": "52866a84-160a-4cf1-b41b-0edc40a53036"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 25345,
+        "atMs": 1793602142746,
+        "operation": "notification.click",
+        "stage": "completed",
+        "operationId": "29bdb9e9-e462-4592-b5a0-92429bd75850",
+        "durationMs": 206
+      }
+    ],
+    "compactionTerminals": [
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 21003,
+        "atMs": 1793598955308,
+        "stage": "end",
+        "outcome": "completed",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "cc383b9b-2f0d-43dc-a9fa-03992d7aaabd",
+        "durationMs": 64
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 21220,
+        "atMs": 1793599099863,
+        "stage": "usage_updated",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "cc383b9b-2f0d-43dc-a9fa-03992d7aaabd",
+        "elapsedMs": 135672,
+        "model": "gpt-6-astra",
+        "effort": "max"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 21222,
+        "atMs": 1793599099865,
+        "stage": "end",
+        "outcome": "completed",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "cc383b9b-2f0d-43dc-a9fa-03992d7aaabd",
+        "elapsedMs": 135674,
+        "model": "gpt-6-astra",
+        "effort": "max"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 21969,
+        "atMs": 1793599741295,
+        "event": "turn_summary",
+        "outcome": "completed",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "cc383b9b-2f0d-43dc-a9fa-03992d7aaabd",
+        "elapsedMs": 786860
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 22500,
+        "atMs": 1793600413743,
+        "stage": "end",
+        "outcome": "completed",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "b3ac2ee9-97e4-4bef-854f-38bcdf8e936c",
+        "durationMs": 20
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 22622,
+        "atMs": 1793600594694,
+        "stage": "usage_updated",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "b3ac2ee9-97e4-4bef-854f-38bcdf8e936c",
+        "elapsedMs": 170935,
+        "model": "gpt-6-astra",
+        "effort": "max"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 22624,
+        "atMs": 1793600594696,
+        "stage": "end",
+        "outcome": "completed",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "b3ac2ee9-97e4-4bef-854f-38bcdf8e936c",
+        "elapsedMs": 170937,
+        "model": "gpt-6-astra",
+        "effort": "max"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 23738,
+        "atMs": 1793601072708,
+        "event": "turn_summary",
+        "outcome": "completed",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "traceId": "b3ac2ee9-97e4-4bef-854f-38bcdf8e936c",
+        "elapsedMs": 659396
+      }
+    ],
+    "interpretation": [
+      "两次账户读取失败均有同 failureId 的 account.usage recovered，属于已恢复历史故障。",
+      "通知失败后新的点击 operationId 有完整 completed；不是原失败点击迟到成功，也不保证用户看到通知。",
+      "压缩只改请求副本；日志语义完成和下一轮配置、取消恢复由现有回归验证；无真实后端耗时改善结论。",
+      "signals 是日志行计数，可能重复，不能当作独立故障次数。"
+    ]
+  },
+  "faultInjection": {
+    "verification": "test/diagnostic-a86-fix.test.cjs；发送释放、目录冷却、工具分类在旧版均失败；修复后七项通过，并检查日志落盘和诊断检出。",
+    "sendCleanup": {
+      "before": "ENOSPC 后 sending=true，下一次被阻挡",
+      "after": "sending=false，可再次发送；原始发送异常不被收尾错误覆盖"
+    },
+    "modelMenu": {
+      "threeOpensBeforeRequests": 4,
+      "threeOpensAfterRequests": 1,
+      "reductionPercent": 75,
+      "retryCooldownMs": [
+        5000,
+        60000
+      ],
+      "selectionChanged": false
+    },
+    "relay": {
+      "before": "响应头等待只有请求开始与最终结束，不能区分首响应",
+      "afterHeaderHeartbeatMs": 30000,
+      "testHeartbeatMs": 20,
+      "forcedTimeoutAdded": false,
+      "streamNotTruncated": true,
+      "clientCancellationObserved": true
+    },
+    "logging": "磁盘不可写且输出回调抛错仍走独立 console；恢复后落盘并检出",
+    "classification": "patch_mismatch / tool_session_missing；动态取消来源保持 unknown"
+  },
+  "limitations": [
+    "扫描耗时单次测量不代表性能提升；历史 summary 必须一致，不能靠删除历史错误证明改善。",
+    "固定诊断时刻扫描与全部保留日志扫描分别呈现，原报告默认24小时不能直接比较总数。",
+    "未复验历史上游访问控制、真实收费模型压缩、系统通知可见性或休眠恢复。",
+    "保留全部日志，仅删除本脚本临时副本。"
+  ],
+  "validation": {
+    "typecheck": "passed",
+    "fullTests": 933,
+    "passed": 933,
+    "failed": 0,
+    "cancelled": 0,
+    "skipped": 0,
+    "testCommand": "npm test",
+    "testDurationMs": 17596.761958,
+    "targetedInjectionTests": 7
+  }
+}

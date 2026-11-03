@@ -105,6 +105,9 @@ export class CodexProcess {
   private modelsReady: Promise<void> = Promise.resolve();
   private modelsLoaded = false;
   private modelsReadAt = 0;
+  private modelsRetryAt = 0;
+  private modelLoadFailures = 0;
+  private modelLoadFailureId?: string;
   private refreshingModels?: Promise<void>;
   private preparing?: Promise<void>;
   private starting?: Promise<void>;
@@ -233,10 +236,18 @@ export class CodexProcess {
       } while (cursor);
       this.models = models;
       this.modelsReadAt = Date.now();
+      this.modelsRetryAt = 0; this.modelLoadFailures = 0;
+      if (this.modelLoadFailureId) {
+        operationLog('models.load', 'recovered', { processRunId: this.rpc.runId, previousProcessRunId: this.rpc.runId, previousFailureId: this.modelLoadFailureId, count: models.length });
+        this.modelLoadFailureId = undefined;
+      }
       this.emit({ kind: 'models', models });
     } catch (e) {
-      operationFailure('models.load', e);
-      if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，普通模式仍可使用：${String(e)}` });
+      const retryAfterMs = Math.min(60_000, 5000 * 2 ** Math.min(this.modelLoadFailures++, 4));
+      this.modelsRetryAt = Date.now() + retryAfterMs;
+      operationFailure('models.load', e, { processRunId: this.rpc.runId, retryAfterMs, cached: this.models.length > 0 });
+      this.modelLoadFailureId = errorFields(e).failureId as string | undefined;
+      if (!this.exited) this.emit({ kind: 'notice', message: `模型列表读取失败，保留已有目录，${retryAfterMs / 1000} 秒后可重新打开菜单重试：${String(e)}` });
     } finally { this.modelsLoaded = true; this.scheduleCompactionValidation(); }
   }
   /** 菜单打开时刷新当前连接的目录及能力；短期复用并合并并发读取，不影响正在执行的轮次。 */
@@ -245,6 +256,11 @@ export class CodexProcess {
       await this.prepare();
       await this.modelsReady;
       if (this.exited || this.disposed) return;
+      // 初次加载失败后，同一次打开菜单不能立刻再等一次；连续操作也遵守冷却。
+      if (Date.now() < this.modelsRetryAt) {
+        if (this.models.length) this.emit({ kind: 'models', models: this.models });
+        return;
+      }
       if (this.modelsReadAt && Date.now() - this.modelsReadAt < 30_000) {
         this.emit({ kind: 'models', models: this.models });
         return;

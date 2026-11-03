@@ -13,6 +13,7 @@ export * from '../../src/diagnostics/page';
 export * from '../../src/codex/performanceTrace';
 export * from '../../src/diagnostics/configuration';
 export * from '../../src/remote/bridgeClient';
+export * from '../../src/remote/sessionAdapter';
 export * from '../../src/panel/chatViewProvider';
 export * from '../../src/remote/taskQueue';
 export * from '../../src/remote/timeline';

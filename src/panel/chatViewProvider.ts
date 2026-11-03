@@ -1,5 +1,6 @@
 import { postWebviewMessage } from '../webviewDelivery';
 import { errorFields, expectedFileError, operationFailure, operationLog } from '../operations';
+import { DiagnosticHealth } from '../diagnosticHealth';
 import * as vscode from "vscode";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -1555,17 +1556,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.sending = true;
         const mySeq = (ctx.sendSeq = (ctx.sendSeq ?? 0) + 1);
         const priorSnapshot = ctx.snapshot;
-        let accepted = false;
+        let accepted = false, sendFailed = false;
         try { accepted = await this.handleSendInner(ctx, text, context, images, files, allowed, queueMs, sendId); return accepted; }
+        catch (error) { sendFailed = true; throw error; }
         finally {
-            if (!accepted && !ctx.proc?.isBusy) {
-                ctx.checkpoints.finishWorkspaceActivity();
-                if (ctx.snapshot !== priorSnapshot) ctx.snapshot = undefined;
-            }
-            ctx.sending = false;
-            if (!accepted && (ctx.stopSeq ?? -1) >= mySeq) {
-                if (sendId) this.post(ctx, { kind: "send_cancelled", sendId });
-                if (!ctx.proc?.isBusy) this.post(ctx, { kind: "busy", busy: false });
+            try {
+                if (!accepted && !ctx.proc?.isBusy) {
+                    ctx.checkpoints.finishWorkspaceActivity();
+                    if (ctx.snapshot !== priorSnapshot) ctx.snapshot = undefined;
+                }
+            } catch (error) {
+                operationFailure('send.cleanup', error);
+                if (!sendFailed) throw error;
+            } finally {
+                // 磁盘收尾失败仍保留活动记录供下次核验，但不能锁死发送入口。
+                ctx.sending = false;
+                if (!accepted && (ctx.stopSeq ?? -1) >= mySeq) {
+                    if (sendId) this.post(ctx, { kind: "send_cancelled", sendId });
+                    if (!ctx.proc?.isBusy) this.post(ctx, { kind: "busy", busy: false });
+                }
             }
         }
     }
@@ -1576,9 +1585,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const mySeq = ctx.sendSeq!;
         const trace = performanceContext(queueMs);
         const enabled = this.config().get<boolean>("transportDiagnostics", true);
+        const diagnosticHealth = new DiagnosticHealth('send.preparation');
         const record = (event: string, fields: Record<string, unknown>) => {
-            try { if (enabled) this.output.appendLine(`[perf] ${JSON.stringify({ schema: 1, event, traceId: trace.traceId, threadId: ctx.sessionId ?? null, atMs: Date.now(), ...fields })}`); }
-            catch { /* 诊断失败不能取消发送 */ }
+            try { if (enabled) {
+                diagnosticHealth.recovered(line => this.output.appendLine(line));
+                this.output.appendLine(`[perf] ${JSON.stringify({ schema: 1, event, traceId: trace.traceId, threadId: ctx.sessionId ?? null, atMs: Date.now(), ...fields })}`);
+            } }
+            catch (error) { diagnosticHealth.failed(error); }
         };
         const stage = async <T>(name: string, work: () => T | Promise<T>): Promise<T> => {
             const at = performance.now(); let outcome = "completed";

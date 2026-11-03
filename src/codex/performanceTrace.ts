@@ -49,6 +49,8 @@ export function failureCategory(value: unknown, exitCode?: number | null): strin
   if (/\bHTTP(?:\/\d(?:\.\d)?)?\s+401\b|401 Unauthorized|authentication failed|unauthorized/i.test(text)) return 'authentication';
   if (/ECONNRESET|ECONNREFUSED|connection reset|connection refused|error sending request|fetch failed|network unreachable|ENETUNREACH|EHOSTUNREACH|502 Bad Gateway|503 Service|\b(?:HTTP(?:\/[\d.]+)?|status(?:_code| code)?)[ :="']+5\d{2}\b/i.test(text)) return 'network_or_service';
   if (/syntax error|SyntaxError|unexpected token|unterminated/i.test(text)) return 'syntax';
+  if (/apply_patch verification failed|Failed to find expected lines|invalid patch:/i.test(text)) return 'patch_mismatch';
+  if (/\bUnknown process id\b|\bNo session found for (?:id|session)\b/i.test(text)) return 'tool_session_missing';
   if (/\berror TS\d+\b|\b(?:compilation|build) failed\b|\btests? (?:\d+ )?failed\b|(?:^|\n)[ \t]*(?:[✗✘×❌ℹ]\uFE0F?[ \t]*)?(?:FAIL(?:ED)?(?![ \t]+(?:0|false|to)\b)[ \t]+|not ok \d+\b)/i.test(text)) return 'build_or_test';
   if (/No such file or directory|ENOENT/i.test(text)) return 'missing_file';
   return exitCode ? 'nonzero_exit' : 'unknown';

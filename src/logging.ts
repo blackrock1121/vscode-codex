@@ -82,7 +82,8 @@ export class DailyLogWriter {
     const line = `[logging] ${JSON.stringify({ atMs: Date.now(), operationId: this.operationId, operation, stage: error ? 'failed' : 'recovered',
       errorCode: typeof code === 'string' && /^E[A-Z0-9_]{1,32}$/.test(code) ? code : undefined })}`;
     // 不经过队列；磁盘不可写时也能在扩展宿主/输出通道看到故障，不递归写同一日志。
-    try { this.onHealth(line); } catch { /* 最终反馈通道也可能已经关闭 */ }
+    try { this.onHealth(line); }
+    catch { try { console.warn(line); } catch { /* 宿主标准错误也不可用，不递归 */ } }
     if (!this.closed) this.write(line);
   }
 

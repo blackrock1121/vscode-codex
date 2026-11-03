@@ -57,6 +57,9 @@ export class StderrDiagnostics {
       message: `上游 HTTP ${status} 响应；正文已省略` };
     if (markup) return { event: 'upstream_response_body', severity: 'warning', responseKind: challenge ? 'challenge_page' : 'html',
       targetKind: 'unknown', message: '发现未关联的 HTML 响应；正文已省略' };
+    if (/dynamic tool call was cancelled before receiving a response/.test(line))
+      return { event: 'tool_cancelled', severity: 'warning', cancellationReason: 'unknown',
+        message: 'CLI 动态工具已取消；取消来源未报告，需关联父轮次终态' };
     const errorType = failureType(line);
     if (!errorType && !/\b(?:error|warn|panic|fatal|exception)\b|失败|异常|报错/i.test(line)) return;
     return { severity: errorType || /\b(?:error|panic|fatal|exception)\b/i.test(line) ? 'error' : 'warning',
