@@ -2,6 +2,7 @@ let listWarning: string | undefined;
 import { installWebviewErrors } from './errors';
 import { preserveTextSelection } from './selection';
 import MarkdownIt from 'markdown-it';
+import { actionable, findingCount, trackingSummary, issueStateLabel } from '../diagnostics/tracking';
 import type { DiagnosticRecord } from '../diagnostics/jobs';
 import { kindLabel, DiagnosticOptions } from '../diagnostics/options';
 import type { ModelChoice } from '../shared';
@@ -70,7 +71,7 @@ function render() {
   finally { restoreSelection(); }
 }
 function renderContent() {
-  const detail = $('detail'), previous = detail.dataset.recordId, oldDetails = detail.querySelector('details');
+  const detail = $('detail'), previous = detail.dataset.recordId, oldDetails = detail.querySelector<HTMLDetailsElement>('details.full-report');
   if (previous && oldDetails) { if (oldDetails.open) expandedReports.add(previous); else expandedReports.delete(previous); }
   const query = ($('search') as HTMLInputElement).value.trim().toLowerCase();
   // 详情随记录展开；先移出列表，避免重建列表时丢失详情容器。
@@ -89,7 +90,7 @@ function renderContent() {
     item.append(heading,
       node('small', new Date(record.createdAt).toLocaleString(), 'muted'), node('small', `${kindLabel(record.options?.kind)} · ${scopeLabel(record)} · ${record.pluginVersion}`, 'muted'),
       node('small', `发起位置：${record.workspaceName}`, 'muted'));
-    item.append(node('small', record.status === 'running' ? record.progress : record.error ?? `待核验问题 ${record.findings.length} 项 · 通知：${notice[record.notification.status]}`, 'record-summary'));
+    item.append(node('small', record.status === 'running' ? record.progress : record.error ?? `${record.tracking ? trackingSummary(record.tracking) : `待核验线索 ${findingCount(record.findings)} 项`} · 通知：${notice[record.notification.status]}`, 'record-summary'));
     item.onclick = () => { select(expanded ? undefined : record.id); document.getElementById(item.id)?.focus({ preventScroll: true }); };
     entry.append(item); list.append(entry);
     if (expanded) { detail.hidden = false; detail.setAttribute('aria-labelledby', item.id); entry.append(detail); }
@@ -105,6 +106,7 @@ function renderContent() {
     node('p', `范围：${scopeLabel(current)} · 诊断器 ${current.pluginVersion} · ${new Date(current.createdAt).toLocaleString()}`, 'muted'),
     node('p', `发起位置：${current.workspaceName}；此位置不限制诊断范围。`, 'muted'));
   detail.append(node('p', `${kindLabel(current.options?.kind)} · ${current.options?.hours ? `最近 ${current.options.hours} 小时` : '全部保留日志'} · ${current.options?.engine === 'model' ? `模型 ${current.options.model} / ${current.options.effort}` : '本地规则检查（未使用模型）'}`, 'muted'));
+  if (current.verificationOf) detail.append(node('p', `修复后本地复测 · 原诊断 ${current.verificationOf.slice(0, 8)} · 仅版本 ${current.options?.targetVersion}。未发现异常只代表本次未检出，相关场景和样本不足时仍待验证。`, 'progress'));
   const coverage = current.coverage;
   if (coverage) {
     detail.append(node('p', `覆盖 ${coverage.windows} 个窗口、${coverage.sessions} 个会话/子线程；完整读取 ${coverage.readFiles}/${coverage.files} 个日志文件，${coverage.records} 条结构化记录，${(coverage.bytes / 1048576).toFixed(2)} MiB。`, 'progress'),
@@ -124,7 +126,7 @@ function renderContent() {
   const summary = current.summary;
   if (summary) {
     const stats = node('div', '', 'stats');
-    for (const [label, value] of [['分析任务', summary.turns], ['工具调用', summary.tools], ['失败调用', summary.failures], ['待核验问题', current.findings.length]]) {
+    for (const [label, value] of [['分析任务', summary.turns], ['工具调用', summary.tools], ['失败调用', summary.failures], ['归类线索（非缺陷数）', current.tracking?.issues.length ?? findingCount(current.findings)]]) {
       const stat = node('div', '', 'stat'); stat.append(node('b', String(value)), node('span', String(label), 'muted')); stats.append(stat);
     }
     detail.append(stats);
@@ -146,15 +148,49 @@ function renderContent() {
   actions.append(button('全局通知设置', () => send('settings'), false, true)); detail.append(actions);
   if (wrongWorkspace) detail.append(node('p', '请到已有修复会话或旧诊断所属的工作区打开修复会话。', 'muted'));
   else if (current.diagnosticScope === 'local-plugin-full' && !current.repair?.sessionId) detail.append(node('p', '修复会话在当前工作区创建，目标为插件源码；会先核验源码位置，避免修改无关业务项目。', 'muted'));
+  if (current.trackingError) detail.append(node('p', current.trackingError, 'progress'));
   if (current.repair?.message) detail.append(node('p', current.repair.message, 'progress'));
+  const tracking = current.tracking;
+  if (tracking) {
+    detail.append(node('h3', '问题台账'), node('p', trackingSummary(tracking), 'progress'));
+    detail.append(node('p', '按问题归类跟踪，模型分析不重复计数。原始日志和历史报告保留；修复回报与自动检出分开显示。', 'muted'));
+    if (tracking.legacy) detail.append(node('p', '历史记录仅补录线索，未自动继承旧修复结论；规则指纹变化无法可靠匹配的项目仍需核验。', 'muted'));
+    if (tracking.batch) {
+      detail.append(node('p', `本次修复已回写 ${tracking.batch.reported}/${tracking.batch.total} 项 · 结果版本 ${tracking.batch.revision}；未回写项仍未完成。`, 'progress'));
+      detail.append(node('p', `结果文件：${tracking.batch.receiptPath}`, 'muted'));
+      if (tracking.batch.error) detail.append(node('p', `回写未应用：${tracking.batch.error}`, 'progress'));
+      if (tracking.issues.some(i => i.state === 'repairing')) actions.append(button('结束本批次并释放未完成项', () => send('releaseRepair', current.id), wrongWorkspace, true));
+    }
+    if (current.repair?.sessionId && tracking.issues.some(i => actionable(i.state))) actions.append(button('为待处理项创建后续修复会话', () => send('repairAgain', current.id), wrongWorkspace, true));
+    if (tracking.issues.some(i => i.result?.outcome === 'fixed')) actions.append(button('修复后本地复测（不调用模型）', () => send('retest', current.id), false, true));
+    const relation = { first: '台账首次收录', historical: '重复历史证据', new_events: '包含后续事件', unknown: '证据时间不足，无法比较' };
+    for (const issue of tracking.issues) {
+      const item = node('section', '', 'finding');
+      item.append(node('h3', `${issueStateLabel[issue.state]} · ${issue.title}`), node('p', `${issue.id} · ${relation[issue.relation]}`, 'muted'));
+      item.append(node('p', `首次发现 ${new Date(issue.firstDetectedAt).toLocaleString()} · 最近检出 ${new Date(issue.lastDetectedAt).toLocaleString()}${issue.lastEventAt ? ` · 最近事件 ${new Date(issue.lastEventAt).toLocaleString()}` : ''}`, 'muted'));
+      if (issue.result) {
+        item.append(node('p', issue.result.reason));
+        if (issue.result.version) item.append(node('p', `修复版本 ${issue.result.version} · 提交 ${issue.result.commit} · ${issue.result.tests}`, 'muted'));
+        if (issue.result.verification) item.append(node('p', `会话回报的复测：${issue.result.verification.scenario}；${issue.result.verification.evidence}`, 'muted'));
+      }
+      const evidence = node('details'); evidence.append(node('summary', '查看关联证据与处理历史'));
+      for (const finding of current.findings.filter(f => issue.findingIds.includes(f.id))) evidence.append(node('p', finding.evidence), node('p', finding.recommendation, 'muted'));
+      for (const event of issue.history) evidence.append(node('p', `${new Date(event.at).toLocaleString()} · ${issueStateLabel[event.state]}${event.sessionId ? ` · 修复会话 ${event.sessionId}` : ''}`, 'muted'));
+      item.append(evidence);
+      if (!['open', 'repairing', 'recurred'].includes(issue.state)) item.append(button('重新核验此项', () => api.postMessage({ type: 'reopenIssue', id: current.id, issueId: issue.id }), false, true));
+      detail.append(item);
+    }
+  }
+  const rawFindings = node('details'); rawFindings.append(node('summary', `模型分析与原始线索（${current.findings.length} 条，不相加作为缺陷数）`));
   for (const finding of current.findings) {
     const item = node('section', '', `finding ${finding.severity}`);
     item.append(node('h3', `${finding.origin === 'model' ? '模型结论 · ' : ''}${finding.title}`), node('p', finding.evidence), node('p', finding.recommendation, 'muted'));
-    if (finding.traceIds.length) item.append(node('p', `任务：${finding.traceIds.join('、')}`, 'muted')); detail.append(item);
+    if (finding.traceIds.length) item.append(node('p', `任务：${finding.traceIds.join('、')}`, 'muted')); rawFindings.append(item);
   }
+  detail.append(rawFindings);
   if (current.status === 'completed' && !current.findings.length && summary?.turns) detail.append(node('p', '已读取的日志中没有发现符合检查条件的问题。可查看完整报告。', 'progress'));
   if (current.status === 'completed') {
-    const details = node('details'), title = node('summary', '完整诊断证据'); details.append(title);
+    const details = node('details', '', 'full-report'), title = node('summary', '完整诊断证据'); details.append(title);
     details.open = expandedReports.has(current.id);
     details.addEventListener('toggle', () => { if (details.open) expandedReports.add(current.id); else expandedReports.delete(current.id); });
     const report = node('div', '', 'report'); report.innerHTML = reports.get(current.id) ?? '<p>正在加载报告…</p>'; details.append(report); detail.append(details);

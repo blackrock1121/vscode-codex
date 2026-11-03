@@ -113,7 +113,7 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
       if (typeof f.title !== 'string' || !['warning','error'].includes(f.severity) || typeof f.explanation !== 'string' || typeof f.recommendation !== 'string' ||
         !Array.isArray(f.evidenceIds) || !f.evidenceIds.length || f.evidenceIds.some((id: unknown) => id !== 'coverage' && (typeof id !== 'string' || !evidence.has(id)))) throw new Error('模型诊断引用了无效证据');
       const refs = f.evidenceIds.filter((id: string) => evidence.has(id));
-      return { id: `model-${index + 1}`, origin: 'model', title: redactDiagnosticText(f.title, 160), severity: f.severity,
+      return { id: `model-${index + 1}`, origin: 'model', evidenceIds: [...new Set<string>(f.evidenceIds)], title: redactDiagnosticText(f.title, 160), severity: f.severity,
         evidence: `${redactDiagnosticText(f.explanation, 2000)}\n证据：${f.evidenceIds.join('、')}`,
         recommendation: redactDiagnosticText(f.recommendation, 2000), traceIds: [...new Set<string>(refs.flatMap((id: string) => evidence.get(id)!.traceIds))].slice(0, 8) };
     });

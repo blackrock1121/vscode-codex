@@ -101,6 +101,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
       return;
     }
     if (request && at !== undefined && (at < (request.fromMs ?? 0) || at > request.toMs)) { coverage.outsideRangeLines!++; return; }
+    if (request?.targetVersion && meta.pluginVersion !== request.targetVersion) { coverage.outsideRangeLines!++; return; }
     coverage.includedLines!++;
     if (invalid) coverage.invalidLines++;
     const dropped = line.match(/\[logging\] droppedLines=(\d+)/);
@@ -169,7 +170,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
   if (coverage.unreadableFiles || coverage.invalidLines || coverage.oversizedLines || coverage.droppedLines) analyzed.findings.push({ id: 'log-coverage', title: '部分观测证据缺失', severity: 'warning', traceIds: [],
     evidence: `未完整读取 ${coverage.unreadableFiles} 个文件；损坏记录 ${coverage.invalidLines} 行；超长行 ${coverage.oversizedLines} 行；日志缓冲丢弃 ${coverage.droppedLines} 行。${scanErrors.length ? ` 读取失败分类：${scanErrors.map(e => `${e.phase}/${e.errorCode ?? e.failureCategory}`).join('、')}` : ''}`,
     recommendation: '先核对目录权限、日志写入和采集开关，修复证据缺失；已删除或未采集的数据无法追溯恢复。' });
-  const sourceNote = `诊断范围：本机整个插件，不按工作区或会话过滤。扫描全部 ${coverage.files} 个保留日志文件，完整读取 ${coverage.readFiles} 个，已读 ${(coverage.bytes / 1048576).toFixed(2)} MiB、${coverage.records} 条结构化记录。${request?.fromMs !== undefined ? `仅分析 ${new Date(request.fromMs).toISOString()} 至 ${new Date(request.toMs).toISOString()} 的日志；区间内 ${coverage.includedLines} 行，区间外 ${coverage.outsideRangeLines} 行，时间缺失未纳入 ${coverage.unknownTimeLines} 行。` : ''}`;
+  const sourceNote = `${request?.targetVersion ? `修复后本地复测：仅版本 ${request.targetVersion}；无相关场景样本不能判定通过。` : ''}诊断范围：本机整个插件，不按工作区或会话过滤。扫描全部 ${coverage.files} 个保留日志文件，完整读取 ${coverage.readFiles} 个，已读 ${(coverage.bytes / 1048576).toFixed(2)} MiB、${coverage.records} 条结构化记录。${request?.fromMs !== undefined ? `仅分析 ${new Date(request.fromMs).toISOString()} 至 ${new Date(request.toMs).toISOString()} 的日志；区间内 ${coverage.includedLines} 行，区间外 ${coverage.outsideRangeLines} 行，时间缺失未纳入 ${coverage.unknownTimeLines} 行。` : ''}`;
   const overview = ['# 插件全局诊断范围', '', sourceNote, '',
     `文件日期：${coverage.firstDay ?? '无'} 至 ${coverage.lastDay ?? '无'}；可识别窗口 ${coverage.windows} 个、会话/子线程 ${coverage.sessions} 个。`,
     `全量汇总：${analyzed.summary.turns} 轮任务、${analyzed.summary.tools} 次工具调用、${analyzed.summary.failures} 次失败。`, '',

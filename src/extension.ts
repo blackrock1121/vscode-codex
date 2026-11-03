@@ -83,7 +83,7 @@ export function activate(context: vscode.ExtensionContext): void {
   }, record => provider.notifyDiagnostic(record));
   diagnosticServices.add(diagnostics);
   const diagnosticsPage = new DiagnosticsPage(context, diagnostics,
-    async id => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }); },
+    async (id, newBatch) => { await diagnostics.repair(id, (prompt, title) => provider.createDiagnosticRepairSession(prompt, title), async sessionId => { await provider.openSession(sessionId); }, newBatch); },
     async () => { provider.showNotifyConfig(); }, {
       load: forceModels => loadDiagnosticConfiguration(context.globalState.get('codexChat.diagnosticOptions'), {
         model: vscode.workspace.getConfiguration('codexChat').get<string>('model'),

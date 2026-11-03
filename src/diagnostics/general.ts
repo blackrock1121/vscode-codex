@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { diagnosticId, failureCategory, type PerformanceRow } from '../codex/performanceTrace';
+import type { Observation } from './tracking';
 import type { DiagnosticFinding } from './analysis';
 import { redactDiagnosticText } from './redact';
 
@@ -87,7 +88,7 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
 
 export class GeneralAccumulator {
   private readonly counts: GeneralSummary = { errors: 0, warnings: 0, retries: 0, recoveries: 0, compactionErrors: 0, groups: 0, overflow: 0 };
-  private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string> }>();
+  private readonly groups = new Map<string, { incident: Incident; count: number; examples: string[]; traces: Set<string>; observations: Map<string, Observation> }>();
   private readonly failureChains = new Map<string, string>();
   private readonly recoveredChains = new Set<string>();
   private readonly recoveryEvidence: NonNullable<GeneralSummary['recoveryEvidence']> = [];
@@ -147,7 +148,7 @@ export class GeneralAccumulator {
     }
     if (/retry|重试/i.test(String(row?.stage ?? row?.event ?? line))) this.counts.retries++;
     if (incident.category === '压缩' && incident.severity === 'error') this.counts.compactionErrors++;
-    const signature = incident.message.replace(/(ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)[^@]*)(?:@.*)?/i, '$1')
+    const signature = incident.message.replace(/\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})/g, '<timestamp>').replace(/(ResizeObserver loop (?:completed with undelivered notifications|limit exceeded)[^@]*)(?:@.*)?/i, '$1')
       .replace(/\b[a-f\d]{8}(?:-[a-f\d]{4}){3}-[a-f\d]{12}\b/gi, '<id>')
       .replace(/\bcallId=[\w.:-]+/g, 'callId=<id>')
       .replace(/\b(?:attempt|elapsedMs|durationMs|requestId|request_id|retry)\s*[:=]?\s*\d+(?:\.\d+)?/gi, match => match.replace(/\d+(?:\.\d+)?$/, '<n>'))
@@ -167,7 +168,13 @@ export class GeneralAccumulator {
         if (!replace) { this.counts.overflow++; return; }
         this.groups.delete(replace[0]); this.counts.overflow += replace[1].count;
       }
-      group = { incident, count: 0, examples: [], traces: new Set() }; this.groups.set(id, group);
+      group = { incident, count: 0, examples: [], traces: new Set(), observations: new Map() }; this.groups.set(id, group);
+    }
+    if (where.atMs !== undefined && where.pluginVersion) {
+      const version = where.pluginVersion, at = where.atMs;
+      const observation = group.observations.get(version) ?? { version, firstAt: at, lastAt: at, count: 0 };
+      observation.firstAt = Math.min(observation.firstAt, at); observation.lastAt = Math.max(observation.lastAt, at); observation.count++;
+      group.observations.set(version, observation);
     }
     group.count++;
     const time = where.atMs ? new Date(where.atMs).toISOString() : '时间未标注';
@@ -182,7 +189,7 @@ export class GeneralAccumulator {
     this.counts.recoveredFailureChains = this.recoveredChains.size;
     this.counts.recoveryEvidence = this.recoveryEvidence;
     const findings: DiagnosticFinding[] = [...this.groups].sort(([, a], [, b]) => (a.incident.severity === 'error' ? 0 : 1) - (b.incident.severity === 'error' ? 0 : 1) || b.count - a.count)
-      .map(([id, group]) => ({ id: `log-${id}`, category: group.incident.category, origin: 'rule', occurrences: group.count,
+      .map(([id, group]) => ({ id: `log-${id}`, fingerprint: `runtime-v1:${id}`, observations: [...group.observations.values()], category: group.incident.category, origin: 'rule', occurrences: group.count,
         title: group.incident.title, severity: group.incident.severity, evidence: `${group.count} 条异常/警告日志。\n${group.examples.join('\n')}`,
         recommendation: group.incident.category === '手机接入连接' ? '此记录来自独立手机接入桥接，不代表 Codex 子进程崩溃。按 connectionId、reason、initiator 和 previousFailureId 核对关闭与重连。' :
           group.incident.category === '后端组件' ? /codex_models_manager/.test(group.incident.message)

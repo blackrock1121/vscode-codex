@@ -1,10 +1,12 @@
 import { diagnosticId, observedChildTailMs, type PerformanceRow } from '../codex/performanceTrace';
+import type { Observation } from './tracking';
 import type { GeneralSummary } from './general';
 import type { LoggingAuditSummary } from './loggingAudit';
 
 export interface DiagnosticFinding {
   id: string; title: string; severity: 'warning' | 'error'; evidence: string; recommendation: string; traceIds: string[];
   category?: string; origin?: 'rule' | 'model'; occurrences?: number;
+  fingerprint?: string; observations?: Observation[]; evidenceIds?: string[];
 }
 export interface DiagnosticSummary {
   turns: number; tools: number; failures: number; longestTurnMs: number; versions: string[];
@@ -39,7 +41,7 @@ const special: [string, string, (r: PerformanceRow) => boolean, string][] = [
   ['host', '扩展宿主出现延迟', r => n(r.maxEventLoopDelayMs) > 500 || n(r.maxHandlerMs) > 100 || n(r.maxDecodeMs) > 100,
     '检查扩展宿主的消息处理、JSON 解码、渲染和其他扩展活动，测量后定位阻塞点。共享宿主指标不等于本插件独占耗时。'],
 ];
-interface Group { count: number; totalMs: number; maxMs: number; unknownDurations: number; traceIds: Set<string> }
+interface Group { count: number; totalMs: number; maxMs: number; unknownDurations: number; traceIds: Set<string>; observations: Map<string, Observation> }
 
 /** 逐条累计全部记录，仅保留每类问题的计数和有限示例，不在内存堆积整份历史日志。 */
 export class PerformanceAccumulator {
@@ -48,7 +50,13 @@ export class PerformanceAccumulator {
   private readonly versions = new Set<string>();
   private readonly groups = new Map<string, Group>();
   private group(id: string, row: PerformanceRow, ms?: number): void {
-    const group = this.groups.get(id) ?? { count: 0, totalMs: 0, maxMs: 0, unknownDurations: 0, traceIds: new Set<string>() };
+    const group = this.groups.get(id) ?? { count: 0, totalMs: 0, maxMs: 0, unknownDurations: 0, traceIds: new Set<string>(), observations: new Map<string, Observation>() };
+    const at = Number(row.logAtMs), version = typeof row.pluginVersion === 'string' ? row.pluginVersion : '';
+    if (version && Number.isFinite(at) && at > 0) {
+      const observed = group.observations.get(version) ?? { version, firstAt: at, lastAt: at, count: 0 };
+      observed.firstAt = Math.min(observed.firstAt, at); observed.lastAt = Math.max(observed.lastAt, at); observed.count++;
+      group.observations.set(version, observed);
+    }
     group.count++; group.totalMs += ms ?? 0; group.maxMs = Math.max(group.maxMs, ms ?? 0);
     if (ms === undefined) group.unknownDurations++;
     if (typeof row.traceId === 'string' && group.traceIds.size < 8) group.traceIds.add(row.traceId);
@@ -86,7 +94,7 @@ export class PerformanceAccumulator {
   result(): Pick<DiagnosticOutput, 'summary' | 'findings'> {
     const findings: DiagnosticFinding[] = [];
     for (const [id, group] of this.groups) {
-      const base = { id, traceIds: [...group.traceIds] };
+      const base = { id, fingerprint: `performance-v1:${id}`, occurrences: group.count, observations: [...group.observations.values()], traceIds: [...group.traceIds] };
       if (id.startsWith('failure-')) findings.push({ ...base, title: `工具失败：${id.slice(8)}`, severity: group.count > 1 ? 'error' : 'warning',
         evidence: `${group.count} 次失败；${group.count - group.unknownDurations} 次有计时，已观测工具累计耗时 ${group.unknownDurations === group.count ? '未观测' : seconds(group.totalMs)}（可能重叠）；${group.unknownDurations} 次耗时未知，不按 0 秒计算。计时和显示均可能取整。`,
         recommendation: '先按任务和工具 ID 核对失败条件，区分环境依赖、参数、网络和代码问题；验证后修复共性原因，避免原样重跑。' });

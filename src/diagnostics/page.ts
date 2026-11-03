@@ -21,7 +21,7 @@ export class DiagnosticsPage {
     this.refreshTimer.unref();
   };
   constructor(private readonly context: vscode.ExtensionContext, private readonly jobs: DiagnosticJobs,
-    private readonly repair: (id: string) => Promise<void>, private readonly settings: () => Promise<void>,
+    private readonly repair: (id: string, newBatch?: boolean) => Promise<void>, private readonly settings: () => Promise<void>,
     private readonly configuration?: { load: (forceModels?: boolean) => Promise<DiagnosticConfiguration>; save: (options: DiagnosticOptions) => Promise<void> }) {
     jobs.on('changed', this.changed);
   }
@@ -49,17 +49,17 @@ export class DiagnosticsPage {
     await this.refresh();
     postWebviewMessage(this.panel?.webview, { type: 'started', id: record.id });
   }
-  private async message(message: { type?: string; id?: string; options?: unknown; category?: unknown }): Promise<void> {
+  private async message(message: { type?: string; id?: string; options?: unknown; category?: unknown; issueId?: string }): Promise<void> {
     const type = message?.type;
     if (!message || Array.isArray(message) || typeof type !== 'string' ||
-      !['webviewError', 'ready', 'refresh', 'start', 'configure', 'reloadModels', 'cancel', 'collapse', 'select', 'repair', 'notify', 'settings'].includes(type)) {
+      !['webviewError', 'ready', 'refresh', 'start', 'configure', 'reloadModels', 'cancel', 'collapse', 'select', 'repair', 'repairAgain', 'retest', 'releaseRepair', 'reopenIssue', 'notify', 'settings'].includes(type)) {
       operationFailure('diagnostics.page.message', new SyntaxError('诊断页面消息无效')); return;
     }
     // 错误桥已有专用终态；折叠只是内存状态，不重复包裹日志。
     if (type === 'webviewError' || type === 'collapse') return this.messageInner(message);
     await observeOperation('diagnostics.page.message', () => this.messageInner(message), { phase: type });
   }
-  private async messageInner(message: { type?: string; id?: string; options?: unknown; category?: unknown }): Promise<void> {
+  private async messageInner(message: { type?: string; id?: string; options?: unknown; category?: unknown; issueId?: string }): Promise<void> {
     switch (message?.type) {
       case 'webviewError': {
         const category = typeof message.category === 'string' ? message.category : '';
@@ -98,6 +98,13 @@ export class DiagnosticsPage {
         const report = await this.jobs.report(record.id);
         if (selection === this.selectionSequence && panel === this.panel) postWebviewMessage(panel?.webview, { type: 'detail', id: record.id, report }); break;
       }
+      case 'retest': {
+        const record = await this.jobs.retest(message.id!); this.selected = record.id;
+        await this.refresh(); postWebviewMessage(this.panel?.webview, { type: 'started', id: record.id }); break;
+      }
+      case 'reopenIssue': await this.jobs.reopenIssue(message.id!, message.issueId!); await this.refresh(); break;
+      case 'releaseRepair': await this.jobs.releaseRepair(message.id!); await this.refresh(); break;
+      case 'repairAgain': await this.repair(message.id!, true); await this.refresh(); break;
       case 'repair': await this.repair(message.id!); await this.refresh(); break;
       case 'notify': await this.jobs.retryNotification(message.id!); await this.refresh(); break;
       case 'settings': await this.settings(); break;

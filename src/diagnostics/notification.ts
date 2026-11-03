@@ -1,4 +1,5 @@
 import type { DiagnosticRecord } from './jobs';
+import { findingCount, trackingSummary } from './tracking';
 import { kindLabel } from './options';
 
 export function diagnosticNotification(record: DiagnosticRecord): { text: string; extra: Record<string, unknown> } {
@@ -9,9 +10,9 @@ export function diagnosticNotification(record: DiagnosticRecord): { text: string
     (record.general ? `错误 ${record.general.errors} 条，警告 ${record.general.warnings} 条，压缩错误 ${record.general.compactionErrors} 条。\n` : '') +
     (record.options ? `方式：${record.options.engine === 'model' ? `${record.options.model} / ${record.options.effort}` : '本地规则'}；时间：${record.options.hours ? `最近 ${record.options.hours} 小时` : '全部保留日志'}。\n` : '') +
     (record.modelAnalysis?.status === 'failed' ? '模型诊断失败，本地检查结果已保留。\n' : '') +
-    (success ? `发现 ${record.findings.length} 项待核验问题；分析 ${record.summary?.turns ?? 0} 轮任务。` : '请在诊断中心查看失败记录并重试。') +
+    (success ? `${record.tracking ? trackingSummary(record.tracking) : `发现 ${findingCount(record.findings)} 项待核验问题（线索，未确认为缺陷）`}；分析 ${record.summary?.turns ?? 0} 轮任务。` : '请在诊断中心查看失败记录并重试。') +
     '\n在 VS Code 点击输入框旁的虫子图标，按编号找到记录，点击“创建修复会话”开始修复。';
   return { text, extra: { diagnosticId: record.id, isError: !success,
     durationMs: Math.max(0, (record.finishedAt ?? record.createdAt) - record.createdAt), project: record.workspaceName,
-    question: `诊断 ${record.id.slice(0, 8)} · ${success ? `发现 ${record.findings.length} 项待核验问题` : '未全部完成，请查看诊断记录'}` } };
+    question: `诊断 ${record.id.slice(0, 8)} · ${success ? `发现 ${findingCount(record.findings)} 项待核验问题` : '未全部完成，请查看诊断记录'}` } };
 }

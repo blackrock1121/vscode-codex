@@ -1,7 +1,7 @@
 export interface DiagnosticOptions {
   kind: 'general' | 'performance'; hours: 0 | 24 | 168; engine: 'rules' | 'model'; model?: string; effort?: string;
 }
-export interface DiagnosticRequest extends DiagnosticOptions { fromMs?: number; toMs: number }
+export interface DiagnosticRequest extends DiagnosticOptions { fromMs?: number; toMs: number; targetVersion?: string }
 export const DEFAULT_DIAGNOSTIC_OPTIONS: DiagnosticOptions = { kind: 'general', hours: 24, engine: 'rules' };
 export function diagnosticOptions(value: unknown): DiagnosticOptions {
   const v = value as Partial<DiagnosticOptions> | undefined;

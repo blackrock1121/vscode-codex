@@ -1,4 +1,7 @@
 import * as fs from 'node:fs/promises';
+import { watch, type FSWatcher } from 'node:fs';
+import { DiagnosticLedger } from './ledger';
+import type { TrackingView } from './tracking';
 import * as path from 'node:path';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +18,7 @@ export interface DiagnosticRecord extends DiagnosticScope {
   options?: DiagnosticRequest; general?: GeneralSummary; loggingAudit?: LoggingAuditSummary; modelAnalysis?: DiagnosticModelAnalysis;
   id: string; createdAt: number; updatedAt: number; finishedAt?: number; ownerPid: number;
   status: 'running' | 'completed' | 'failed' | 'interrupted'; progress: string; error?: string;
+  trackingSchema?: 1; tracking?: TrackingView; trackingError?: string; verificationOf?: string;
   findings: DiagnosticFinding[]; summary?: DiagnosticSummary; sourceNote?: string;
   notification: { status: 'pending' | 'sending' | NotificationResult['status']; message?: string; ownerPid?: number };
   repair?: { status: 'creating' | 'started' | 'failed'; sessionId?: string; message?: string; ownerPid?: number; workspaceId?: string };
@@ -75,13 +79,36 @@ export class DiagnosticJobs extends EventEmitter {
   private runningId?: string;
   private disposed = false;
   listWarning?: string;
+  readonly ledger: DiagnosticLedger;
+  private receiptWatcher?: FSWatcher;
+  private watchTimer?: NodeJS.Timeout;
   constructor(private readonly dir: string, readonly scope: DiagnosticScope, private readonly run: DiagnosticRunner,
-    private readonly notify: (record: DiagnosticRecord) => Promise<NotificationResult>) { super(); }
+    private readonly notify: (record: DiagnosticRecord) => Promise<NotificationResult>) { super(); this.ledger = new DiagnosticLedger(dir); }
   private file(id: string, suffix = '.json') { if (!validId(id)) throw new Error('诊断记录编号无效'); return path.join(this.dir, id + suffix); }
-  async get(id: string): Promise<DiagnosticRecord> {
+  async get(id: string, withTracking = true): Promise<DiagnosticRecord> {
     const data = JSON.parse(await fs.readFile(this.file(id), 'utf8')) as DiagnosticRecord;
     if (data.id !== id || !['running', 'completed', 'failed', 'interrupted'].includes(data.status) || !Array.isArray(data.findings)) throw new Error('诊断记录已损坏');
+    if (withTracking && data.status === 'completed') await this.track([data]);
     return data;
+  }
+  private async track(records: DiagnosticRecord[]): Promise<void> {
+    if (!records.some(r => r.status === 'completed')) return;
+    try {
+      const views = await this.ledger.sync(records);
+      for (const r of records) r.tracking = views.get(r.id);
+      if (!this.receiptWatcher && !this.disposed) {
+        this.receiptWatcher = watch(this.ledger.dir, (_event, name) => {
+          if (this.disposed || !name || (String(name) !== 'ledger.json' && !/^receipt-[a-f\d-]+\.json$/.test(String(name)))) return;
+          clearTimeout(this.watchTimer);
+          this.watchTimer = setTimeout(() => { if (!this.disposed) { try { this.emit('changed'); } catch (error) { operationFailure('diagnostics.tracking.changed', error); } } }, 150);
+          this.watchTimer.unref();
+        });
+        this.receiptWatcher.on('error', error => { operationFailure('diagnostics.tracking.watch', error); this.receiptWatcher?.close(); this.receiptWatcher = undefined; });
+      }
+    } catch (error) {
+      operationFailure('diagnostics.tracking', error);
+      for (const r of records) r.trackingError = '问题台账暂不可用，原诊断报告仍可查看：' + String((error as Error).message).slice(0, 200);
+    }
   }
   private save(record: DiagnosticRecord): Promise<void> {
     return observeOperation('diagnostics.save', () => this.saveInner(record), { diagnosticId: record.id, status: record.status });
@@ -89,7 +116,7 @@ export class DiagnosticJobs extends EventEmitter {
   private async saveInner(record: DiagnosticRecord): Promise<void> {
     await fs.mkdir(this.dir, { recursive: true });
     const file = this.file(record.id), temp = file + '.' + randomUUID() + '.tmp';
-    try { await fs.writeFile(temp, JSON.stringify(record), { mode: 0o600 }); await fs.rename(temp, file); }
+    try { await fs.writeFile(temp, JSON.stringify({ ...record, tracking: undefined, trackingError: undefined }), { mode: 0o600 }); await fs.rename(temp, file); }
     finally { await fs.unlink(temp).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.cleanup', error, { diagnosticId: record.id }); }); }
     try { this.emit('changed', record.id); } catch (error) { operationFailure('diagnostics.changed', error, { diagnosticId: record.id }); }
   }
@@ -105,7 +132,7 @@ export class DiagnosticJobs extends EventEmitter {
         }
       }
       if (!lock) throw new Error('诊断记录正在更新，请稍后重试。');
-      try { const record = await this.get(id); change(record); record.updatedAt = Date.now(); await this.save(record); return record; }
+      try { const record = await this.get(id, false); change(record); record.updatedAt = Date.now(); await this.save(record); return record; }
       finally { await lock.close(); await fs.unlink(this.file(id, '.update.lock')).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.lock.cleanup', error, { diagnosticId: id }); }); }
     });
     this.mutations.set(id, next);
@@ -121,7 +148,7 @@ export class DiagnosticJobs extends EventEmitter {
     for (let i = 0; i < files.length; i += 20) {
       const batch = await Promise.all(files.slice(i, i + 20).map(async name => {
         try {
-          let record = await this.get(name.slice(0, -5));
+          let record = await this.get(name.slice(0, -5), false);
           if (record.status === 'running' && !alive(record.ownerPid)) {
             record = await this.update(record.id, row => {
               // 列表读取与获得跨窗口写锁之间，另一窗口可能已经更新终态。
@@ -146,23 +173,26 @@ export class DiagnosticJobs extends EventEmitter {
       }));
       records.push(...batch.filter((r): r is DiagnosticRecord => !!r));
     }
+    await this.track(records);
     this.listWarning = unreadable ? `${unreadable} 条诊断记录读取失败，列表不完整；请检查日志后重试。` : undefined;
     return records.sort((a, b) => b.createdAt - a.createdAt);
   }
   async report(id: string): Promise<string> { await this.get(id); return fs.readFile(this.file(id, '.report.md'), 'utf8'); }
-  start(settings: DiagnosticOptions = DEFAULT_DIAGNOSTIC_OPTIONS): Promise<DiagnosticRecord> {
+  start(settings: DiagnosticOptions = DEFAULT_DIAGNOSTIC_OPTIONS, verification?: { recordId: string; version: string; fromMs: number }): Promise<DiagnosticRecord> {
     if (this.disposed) return Promise.reject(new Error('诊断服务已关闭'));
     if (this.starting) return this.starting;
     this.starting = (async () => {
       const options = diagnosticOptions(settings), now = Date.now();
       if (this.runningId) {
+        if (verification) throw new Error('请等待当前诊断完成后再开始复测');
         const existing = await this.get(this.runningId), previous = existing.options;
         if (previous && (previous.kind !== options.kind || previous.hours !== options.hours || previous.engine !== options.engine || previous.model !== options.model || previous.effort !== options.effort))
           throw new Error('当前窗口已有不同设置的诊断运行中，请等待完成或先停止该诊断。');
         return existing;
       }
       const record: DiagnosticRecord = { ...this.scope, id: randomUUID(), createdAt: Date.now(), updatedAt: Date.now(), ownerPid: process.pid,
-        options: { ...options, toMs: now, fromMs: options.hours ? now - options.hours * 3600000 : undefined },
+        options: { ...options, toMs: now, fromMs: verification?.fromMs ?? (options.hours ? now - options.hours * 3600000 : undefined), ...(verification ? { targetVersion: verification.version } : {}) },
+        trackingSchema: 1, ...(verification ? { verificationOf: verification.recordId } : {}),
         diagnosticScope: 'local-plugin-full', status: 'running', progress: '正在准备插件全局诊断…', findings: [], notification: { status: 'pending' } };
       await this.save(record); this.runningId = record.id;
       if (this.disposed) return this.update(record.id, row => { row.status = 'interrupted'; row.finishedAt = Date.now(); row.progress = '窗口已关闭，诊断中断'; });
@@ -246,7 +276,7 @@ export class DiagnosticJobs extends EventEmitter {
     try { await handle.writeFile(JSON.stringify({ pid: process.pid, windowId: this.scope.windowId })); return handle; }
     catch (error) { await handle.close(); await fs.unlink(file).catch(cleanup => { if (!expectedFileError(cleanup)) operationFailure('diagnostics.lock.cleanup', cleanup, { diagnosticId: id }); }); throw error; }
   }
-  async repair(id: string, create: (prompt: string, title: string) => Promise<string>, open: (sessionId: string) => Promise<void>): Promise<string> {
+  async repair(id: string, create: (prompt: string, title: string) => Promise<string>, open: (sessionId: string) => Promise<void>, newBatch = false): Promise<string> {
     let record = await this.get(id);
     if (record.diagnosticScope !== 'local-plugin-full' && record.workspaceId !== this.scope.workspaceId) throw new Error('请在旧诊断记录所属工作区中创建修复会话。');
     const checkRepairWorkspace = () => {
@@ -255,29 +285,49 @@ export class DiagnosticJobs extends EventEmitter {
     };
     if (record.status !== 'completed' || !record.findings.length) throw new Error('该记录尚无可修复的诊断问题。');
     checkRepairWorkspace();
-    if (record.repair?.sessionId) { await open(record.repair.sessionId); return record.repair.sessionId; }
+    if (record.repair?.sessionId && !newBatch) { await open(record.repair.sessionId); return record.repair.sessionId; }
     const lockFile = this.file(id, '.repair.lock');
     let lock: import('node:fs/promises').FileHandle;
     try { lock = await this.lock(id, '.repair.lock'); }
     catch (error) { if (!expectedFileError(error, ['EEXIST'])) throw error; throw new Error('该诊断正在创建修复会话，请稍后刷新查看。'); }
-    let creating = false;
+    let creating = false, batchId: string | undefined;
     try {
       record = await this.get(id);
       checkRepairWorkspace();
-      if (record.repair?.sessionId) { await open(record.repair.sessionId); return record.repair.sessionId; }
+      if (record.repair?.sessionId && !newBatch) { await open(record.repair.sessionId); return record.repair.sessionId; }
+      const batch = await this.ledger.begin(record); batchId = batch.batchId;
       await this.update(id, row => { row.repair = { status: 'creating', ownerPid: process.pid, workspaceId: this.scope.workspaceId }; });
       creating = true;
-      const prompt = diagnosticRepairPrompt(record, await this.report(id), this.file(id, '.report.md'));
+      const prompt = diagnosticRepairPrompt(record, await this.report(id), this.file(id, '.report.md')) + batch.prompt;
       const sessionId = await create(prompt, `诊断修复 ${id.slice(0, 8)}`);
+      await this.ledger.bind(batch.batchId, sessionId);
       await this.update(id, row => { row.repair = { status: 'started', sessionId, workspaceId: this.scope.workspaceId }; });
       return sessionId;
     } catch (error) {
+      if (batchId) await this.ledger.cancel(batchId);
       if (creating) await this.update(id, row => { row.repair = { status: 'failed', message: String((error as Error).message).slice(0, 300) }; }).catch(error => operationFailure('diagnostics.repair.save', error, { diagnosticId: id }));
       throw error;
     } finally { await lock.close(); await fs.unlink(lockFile).catch(error => { if (!expectedFileError(error)) operationFailure('diagnostics.lock.cleanup', error, { diagnosticId: id }); }); }
   }
+  async retest(id: string): Promise<DiagnosticRecord> {
+    const record = await this.get(id);
+    const targets = record.tracking?.issues.filter(i => i.result?.outcome === 'fixed') ?? [];
+    const versions = [...new Set(targets.map(i => i.result!.version!))];
+    if (!versions.length) throw new Error('请先回写修复版本和验证证据，再开始修复后复测');
+    if (versions.length !== 1) throw new Error('此诊断涉及多个修复版本，请分别创建指定范围的诊断，避免混合比较');
+    const fromMs = Math.min(...targets.map(i => i.resultAt!));
+    return this.start({ ...(record.options ?? DEFAULT_DIAGNOSTIC_OPTIONS), engine: 'rules' }, { recordId: id, version: versions[0], fromMs });
+  }
+  async releaseRepair(id: string): Promise<void> {
+    const record = await this.get(id), batch = record.tracking?.batch;
+    if (!batch) throw new Error('没有可释放的修复批次');
+    await this.ledger.cancel(batch.id); this.emit('changed', id);
+  }
+  async reopenIssue(id: string, issueId: string): Promise<void> {
+    await this.get(id); await this.ledger.reopen(id, issueId); this.emit('changed', id);
+  }
   async dispose(): Promise<void> {
-    this.disposed = true;
+    this.disposed = true; this.receiptWatcher?.close(); clearTimeout(this.watchTimer);
     await this.starting?.catch(() => {});
     for (const controller of this.controllers.values()) controller.abort();
     await Promise.allSettled([...this.tasks]);
