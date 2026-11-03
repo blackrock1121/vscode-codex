@@ -181,7 +181,7 @@ export async function scanPluginLogs(dir: string, progress: (message: string) =>
     '## 代表性明细', '', '上述统计和问题检测处理了全部有效记录；以下仅展示有限的最慢项与近期示例，以控制报告大小，不代表只分析了这些示例。', ''];
   const compactionEvidence = samples.rows().filter(row => ['compaction', 'compaction_route'].includes(String(row.diagnosticType))).slice(-20)
     .map(row => Object.fromEntries(['stage', 'model', 'fromModel', 'toModel', 'effort', 'trigger', 'speedMode', 'serviceTier', 'outcome', 'reason', 'scope', 'errorCategory', 'httpStatusCode', 'elapsedMs',
-      'id', 'compactionId', 'traceId', 'threadId', 'processRunId', 'pluginVersion', 'windowId', 'logAtMs']
+      'id', 'routeId', 'connectionId', 'failureId', 'compactionId', 'traceId', 'threadId', 'processRunId', 'pluginVersion', 'windowId', 'logAtMs']
       .filter(key => typeof row[key] === 'string' || typeof row[key] === 'number').map(key => [key, typeof row[key] === 'string' ? redactDiagnosticText(row[key] as string, 160) : row[key] as number])));
   const performance = performanceReport(samples.rows(), '明细展示经过筛选；全量统计以上方全局汇总为准。');
   return { ...analyzed, coverage, sourceNote, general: generic.summary, loggingAudit: audit?.loggingAudit, compactionEvidence, report: overview.join('\n') + '\n' +

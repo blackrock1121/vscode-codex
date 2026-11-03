@@ -1,0 +1,1924 @@
+{
+  "diagnosticId": "4d94bbc6-a6ea-4687-9b49-0c8539141058",
+  "baseline": "0440923",
+  "currentVersion": "0.1.198",
+  "baselineTests": {
+    "exitCode": 1,
+    "pass": 0,
+    "fail": 6
+  },
+  "titleProbe": {
+    "before": {
+      "outcome": "failed",
+      "rpcCode": -32600,
+      "reason": "no_rollout",
+      "durationMs": 1
+    },
+    "after": {
+      "outcome": "completed",
+      "durationMs": 318
+    },
+    "generationRequests": 0
+  },
+  "report": {
+    "bytes": 120938,
+    "lines": 1324,
+    "sha256": "8c6a860839008fee357416d8d597ad46f3ea411a9bfb6f434d13e0aab0ddb045",
+    "sourceCandidatesInOriginal": 0
+  },
+  "files": [
+    {
+      "name": "codex-chat-2026-10-28.log",
+      "bytes": 32462833,
+      "sha256": "1945a39766c5a199d5be385a08514f4bfa17faa929a062ba1c0132be22bc72c6"
+    },
+    {
+      "name": "codex-chat-2026-10-29.log",
+      "bytes": 10174766,
+      "sha256": "a0c1dd3de43be7ed1bc2b6f498b730b8a865a9a2ada3f2cb0c300bef110cdc16"
+    },
+    {
+      "name": "codex-chat-2026-10-30.log",
+      "bytes": 17369176,
+      "sha256": "8404c8bb1b3f635e7c76a7e434f68fe1fca6020c251258fa00794581e771752f"
+    },
+    {
+      "name": "codex-chat-2026-10-31.log",
+      "bytes": 13413091,
+      "sha256": "570d504cc465597be374cc3d93298719d8056f0b24027ce0c01d84586aa0d77c"
+    },
+    {
+      "name": "codex-chat-2026-11-01.log",
+      "bytes": 12872083,
+      "sha256": "026aa1cdfc2f8ba5c3f2599461f654cacab0f8ffefe0e0ac08e671795ab59dd9"
+    },
+    {
+      "name": "codex-chat-2026-11-02.log",
+      "bytes": 20745536,
+      "sha256": "8f22553d5bf0ad28b9bec37dc8c69a05fe983e8a7231c3f4064a69de1a6686d2"
+    },
+    {
+      "name": "codex-chat-2026-11-03.log",
+      "bytes": 17368842,
+      "sha256": "694ea7caa8db6bb9733b7359f4b0c47bdc2b936660338944d409eb7bc4185a9e"
+    }
+  ],
+  "before": {
+    "summary": {
+      "turns": 92,
+      "tools": 1690,
+      "failures": 83,
+      "longestTurnMs": 60019679,
+      "versions": [
+        "0.1.189",
+        "0.1.192",
+        "0.1.169",
+        "0.1.179",
+        "0.1.193",
+        "0.1.178",
+        "0.1.195",
+        "0.1.196",
+        "0.1.197"
+      ]
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 124406327,
+      "lines": 258206,
+      "records": 48759,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 18,
+      "sessions": 14,
+      "firstDay": "2026-10-28",
+      "lastDay": "2026-11-03",
+      "sources": [
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "hostId": "53119",
+          "records": 5639,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5644
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "hostId": "61060",
+          "records": 13275,
+          "turns": 41,
+          "tools": 591,
+          "failures": 10,
+          "logLines": 13970
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "8efaaba9-9c3e-42bb-a695-a8ebf83694f5",
+          "hostId": "99683",
+          "records": 40,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 40
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "57da4541-700e-47ce-ad14-4a5d380e210f",
+          "hostId": "76217",
+          "records": 183,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 192
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "671eb02d-9460-4c54-90d5-000a70b007f5",
+          "hostId": "94005",
+          "records": 56,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 59
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "7f15132d-f6bb-4747-bcc2-35f15316ef0f",
+          "hostId": "99124",
+          "records": 3201,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3203
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 623,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 625
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 931,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 933
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "1ff8dedd-753c-4928-9020-58e5da39aed0",
+          "hostId": "39890",
+          "records": 3417,
+          "turns": 5,
+          "tools": 46,
+          "failures": 2,
+          "logLines": 3509
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "82d970b1-14c7-4a5b-8faf-fe5eeda74e10",
+          "hostId": "40121",
+          "records": 4207,
+          "turns": 3,
+          "tools": 72,
+          "failures": 7,
+          "logLines": 4275
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 259,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 261
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 311,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 313
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "bcacce6f-4e36-42af-8506-d2152d9ce37c",
+          "hostId": "59249",
+          "records": 5330,
+          "turns": 10,
+          "tools": 202,
+          "failures": 9,
+          "logLines": 5518
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "4d9c94d7-0630-478a-ad6d-f0cf3cbac65e",
+          "hostId": "85927",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "058fefd2-cfde-4812-83fa-f4e6d79e853e",
+          "hostId": "85987",
+          "records": 8442,
+          "turns": 25,
+          "tools": 626,
+          "failures": 49,
+          "logLines": 8870
+        },
+        {
+          "pluginVersion": "0.1.195",
+          "windowId": "74b6edfd-9feb-40f0-a43f-55c91a2198ff",
+          "hostId": "8810",
+          "records": 343,
+          "turns": 1,
+          "tools": 15,
+          "failures": 0,
+          "logLines": 368
+        },
+        {
+          "pluginVersion": "0.1.196",
+          "windowId": "e18e1a67-2d79-4b07-8531-f43adcb3bd80",
+          "hostId": "14093",
+          "records": 2352,
+          "turns": 7,
+          "tools": 138,
+          "failures": 6,
+          "logLines": 2495
+        },
+        {
+          "pluginVersion": "0.1.197",
+          "windowId": "071318cf-31d2-4b1a-af99-cfc3c8e3418b",
+          "hostId": "49178",
+          "records": 146,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 160
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1793601260214,
+      "requestedToMs": 1793687660214,
+      "includedLines": 50440,
+      "outsideRangeLines": 207688,
+      "unknownTimeLines": 78,
+      "fromMs": 1793601266410,
+      "toMs": 1793687660214
+    },
+    "general": {
+      "errors": 208,
+      "warnings": 34,
+      "retries": 1,
+      "recoveries": 6,
+      "compactionErrors": 0,
+      "groups": 112,
+      "overflow": 0,
+      "correlatedToolErrors": 102,
+      "correlatedErrors": 24,
+      "linkedRecoveries": 5,
+      "failureChains": 18,
+      "toolFailureChains": 97,
+      "recoveredFailureChains": 3,
+      "recoveryEvidence": [
+        {
+          "failureId": "52866a84-160a-4cf1-b41b-0edc40a53036",
+          "operation": "notification.focus",
+          "pluginVersion": "0.1.193",
+          "windowId": "1ff8dedd-753c-4928-9020-58e5da39aed0",
+          "failureLocation": "codex-chat-2026-11-02.log:24567",
+          "recoveryLocation": "codex-chat-2026-11-02.log:25342"
+        },
+        {
+          "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+          "operation": "session.read",
+          "pluginVersion": "0.1.193",
+          "windowId": "bcacce6f-4e36-42af-8506-d2152d9ce37c",
+          "failureLocation": "codex-chat-2026-11-03.log:6072",
+          "recoveryLocation": "codex-chat-2026-11-03.log:6166"
+        },
+        {
+          "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-03.log:6088",
+          "recoveryLocation": "codex-chat-2026-11-03.log:6184"
+        }
+      ]
+    },
+    "findingsByCategory": {
+      "性能阶段/工具分类": 11,
+      "工具执行": 28,
+      "连接与进程": 3,
+      "后端服务": 10,
+      "后端组件": 62,
+      "通知": 2,
+      "插件运行": 5,
+      "压缩": 2
+    }
+  },
+  "after": {
+    "summary": {
+      "turns": 92,
+      "tools": 1690,
+      "failures": 83,
+      "longestTurnMs": 60019679,
+      "versions": [
+        "0.1.189",
+        "0.1.192",
+        "0.1.169",
+        "0.1.179",
+        "0.1.193",
+        "0.1.178",
+        "0.1.195",
+        "0.1.196",
+        "0.1.197"
+      ],
+      "longestTurn": {
+        "traceId": "f8e60f6d-73da-4373-8442-98b05174e2e8",
+        "elapsedMs": 60019679,
+        "phasesMs": {
+          "preparation": 433,
+          "user_wait": 59538499,
+          "compaction": 152948,
+          "tools": 55,
+          "model_visible": 16166,
+          "unobserved": 311578
+        },
+        "incompleteSpans": 0
+      }
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 124406327,
+      "lines": 258206,
+      "records": 48759,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 18,
+      "sessions": 14,
+      "firstDay": "2026-10-28",
+      "lastDay": "2026-11-03",
+      "sources": [
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "hostId": "53119",
+          "records": 5639,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5644
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "hostId": "61060",
+          "records": 13275,
+          "turns": 41,
+          "tools": 591,
+          "failures": 10,
+          "logLines": 13970
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "8efaaba9-9c3e-42bb-a695-a8ebf83694f5",
+          "hostId": "99683",
+          "records": 40,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 40
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "57da4541-700e-47ce-ad14-4a5d380e210f",
+          "hostId": "76217",
+          "records": 183,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 192
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "671eb02d-9460-4c54-90d5-000a70b007f5",
+          "hostId": "94005",
+          "records": 56,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 59
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "7f15132d-f6bb-4747-bcc2-35f15316ef0f",
+          "hostId": "99124",
+          "records": 3201,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3203
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 623,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 625
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 931,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 933
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "1ff8dedd-753c-4928-9020-58e5da39aed0",
+          "hostId": "39890",
+          "records": 3417,
+          "turns": 5,
+          "tools": 46,
+          "failures": 2,
+          "logLines": 3509
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "82d970b1-14c7-4a5b-8faf-fe5eeda74e10",
+          "hostId": "40121",
+          "records": 4207,
+          "turns": 3,
+          "tools": 72,
+          "failures": 7,
+          "logLines": 4275
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 259,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 261
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 311,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 313
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "bcacce6f-4e36-42af-8506-d2152d9ce37c",
+          "hostId": "59249",
+          "records": 5330,
+          "turns": 10,
+          "tools": 202,
+          "failures": 9,
+          "logLines": 5518
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "4d9c94d7-0630-478a-ad6d-f0cf3cbac65e",
+          "hostId": "85927",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "058fefd2-cfde-4812-83fa-f4e6d79e853e",
+          "hostId": "85987",
+          "records": 8442,
+          "turns": 25,
+          "tools": 626,
+          "failures": 49,
+          "logLines": 8870
+        },
+        {
+          "pluginVersion": "0.1.195",
+          "windowId": "74b6edfd-9feb-40f0-a43f-55c91a2198ff",
+          "hostId": "8810",
+          "records": 343,
+          "turns": 1,
+          "tools": 15,
+          "failures": 0,
+          "logLines": 368
+        },
+        {
+          "pluginVersion": "0.1.196",
+          "windowId": "e18e1a67-2d79-4b07-8531-f43adcb3bd80",
+          "hostId": "14093",
+          "records": 2352,
+          "turns": 7,
+          "tools": 138,
+          "failures": 6,
+          "logLines": 2495
+        },
+        {
+          "pluginVersion": "0.1.197",
+          "windowId": "071318cf-31d2-4b1a-af99-cfc3c8e3418b",
+          "hostId": "49178",
+          "records": 146,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 160
+        }
+      ],
+      "scanErrors": [],
+      "requestedFromMs": 1793601260214,
+      "requestedToMs": 1793687660214,
+      "includedLines": 50440,
+      "outsideRangeLines": 207688,
+      "unknownTimeLines": 78,
+      "fromMs": 1793601266410,
+      "toMs": 1793687660214
+    },
+    "general": {
+      "errors": 208,
+      "warnings": 34,
+      "retries": 1,
+      "recoveries": 6,
+      "compactionErrors": 0,
+      "groups": 112,
+      "overflow": 0,
+      "correlatedToolErrors": 102,
+      "correlatedErrors": 24,
+      "linkedRecoveries": 5,
+      "failureChains": 18,
+      "toolFailureChains": 97,
+      "recoveredFailureChains": 3,
+      "recoveryEvidence": [
+        {
+          "failureId": "52866a84-160a-4cf1-b41b-0edc40a53036",
+          "operation": "notification.focus",
+          "pluginVersion": "0.1.193",
+          "windowId": "1ff8dedd-753c-4928-9020-58e5da39aed0",
+          "failureLocation": "codex-chat-2026-11-02.log:24567",
+          "recoveryLocation": "codex-chat-2026-11-02.log:25342"
+        },
+        {
+          "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+          "operation": "session.read",
+          "pluginVersion": "0.1.193",
+          "windowId": "bcacce6f-4e36-42af-8506-d2152d9ce37c",
+          "failureLocation": "codex-chat-2026-11-03.log:6072",
+          "recoveryLocation": "codex-chat-2026-11-03.log:6166"
+        },
+        {
+          "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-03.log:6088",
+          "recoveryLocation": "codex-chat-2026-11-03.log:6184"
+        }
+      ]
+    },
+    "findingsByCategory": {
+      "性能阶段/工具分类": 11,
+      "工具执行": 28,
+      "连接与进程": 3,
+      "后端服务": 10,
+      "后端组件": 62,
+      "通知": 2,
+      "插件运行": 5,
+      "压缩": 2
+    }
+  },
+  "allRetained": {
+    "summary": {
+      "turns": 370,
+      "tools": 7047,
+      "failures": 445,
+      "longestTurnMs": 68055066,
+      "versions": [
+        "0.1.169",
+        "0.1.178",
+        "0.1.179",
+        "0.1.177",
+        "0.1.176",
+        "0.1.180",
+        "0.1.181",
+        "0.1.182",
+        "0.1.184",
+        "0.1.185",
+        "0.1.186",
+        "0.1.187",
+        "0.1.189",
+        "0.1.190",
+        "0.1.191",
+        "0.1.192",
+        "0.1.193",
+        "0.1.195",
+        "0.1.196",
+        "0.1.197"
+      ],
+      "longestTurn": {
+        "traceId": "1e9f1967-811a-4d5e-ae64-b1cc25de49f6",
+        "elapsedMs": 68055066,
+        "phasesMs": {
+          "preparation": 76,
+          "user_wait": 67689881,
+          "tools": 11419,
+          "model_visible": 17317,
+          "unobserved": 336373
+        },
+        "incompleteSpans": 0
+      }
+    },
+    "coverage": {
+      "mode": "local-plugin-full",
+      "files": 7,
+      "readFiles": 7,
+      "unreadableFiles": 0,
+      "bytes": 124406327,
+      "lines": 258206,
+      "records": 249155,
+      "invalidLines": 0,
+      "oversizedLines": 0,
+      "droppedLines": 0,
+      "windows": 58,
+      "sessions": 82,
+      "firstDay": "2026-10-28",
+      "lastDay": "2026-11-03",
+      "sources": [
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "66d02707-3c75-48aa-b992-e5baba272181",
+          "hostId": "38822",
+          "records": 4512,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 4520
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "21158c6e-09c5-4db3-b96a-680aab3ad563",
+          "hostId": "44753",
+          "records": 4343,
+          "turns": 8,
+          "tools": 71,
+          "failures": 3,
+          "logLines": 4480
+        },
+        {
+          "pluginVersion": "0.1.178",
+          "windowId": "7eea21a5-89a7-4b0b-a3c2-58d53704dbfb",
+          "hostId": "50192",
+          "records": 3960,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3974
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "69eaa915-5bca-4eaa-90ca-908a1761af39",
+          "hostId": "73775",
+          "records": 3652,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3665
+        },
+        {
+          "pluginVersion": "0.1.177",
+          "windowId": "f1cb3248-2f16-425e-8702-f57cdb3afc1e",
+          "hostId": "7859",
+          "records": 1931,
+          "turns": 1,
+          "tools": 57,
+          "failures": 0,
+          "logLines": 1958
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "e339e48f-bc47-4d31-8a5b-7b70af7f8885",
+          "hostId": "38816",
+          "records": 1318,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1318
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "9527aa62-bfc1-486c-8eef-e7019d439c13",
+          "hostId": "38815",
+          "records": 1349,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1351
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "6853749e-8527-409d-a4ad-6d0254aea2a5",
+          "hostId": "38818",
+          "records": 3892,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 3904
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "0ecae2fb-e328-4f32-a049-98f45bbfa25c",
+          "hostId": "38817",
+          "records": 6004,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 6016
+        },
+        {
+          "pluginVersion": "0.1.169",
+          "windowId": "f61a7691-911a-4ff0-8746-a9e230fecfb3",
+          "hostId": "38819",
+          "records": 1579,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1593
+        },
+        {
+          "pluginVersion": "0.1.176",
+          "windowId": "18d143fe-2193-446c-a871-eb07baa16929",
+          "hostId": "75858",
+          "records": 5628,
+          "turns": 16,
+          "tools": 232,
+          "failures": 10,
+          "logLines": 5901
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "fa752703-2658-4c05-9107-9b895e53f85b",
+          "hostId": "56607",
+          "records": 9722,
+          "turns": 9,
+          "tools": 300,
+          "failures": 45,
+          "logLines": 9911
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "292bb5a9-6261-4a0b-9202-70ca59ba958e",
+          "hostId": "79137",
+          "records": 12369,
+          "turns": 38,
+          "tools": 1075,
+          "failures": 69,
+          "logLines": 13057
+        },
+        {
+          "pluginVersion": "0.1.179",
+          "windowId": "277b8fc3-9325-4b4b-b2cb-c2592e834935",
+          "hostId": "79977",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "9c5f5087-7078-4753-b9c9-204bc640ede6",
+          "hostId": "3130",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "b35e8b0d-eb31-4c80-b206-383bdffc4d33",
+          "hostId": "3265",
+          "records": 2047,
+          "turns": 7,
+          "tools": 117,
+          "failures": 14,
+          "logLines": 2185
+        },
+        {
+          "pluginVersion": "0.1.180",
+          "windowId": "2afcbce4-a23a-4dfd-95c5-b8bfeb8bd76a",
+          "hostId": "16088",
+          "records": 852,
+          "turns": 7,
+          "tools": 45,
+          "failures": 3,
+          "logLines": 972
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "72a64faa-3efd-41fe-900d-8813d08e0ec5",
+          "hostId": "63011",
+          "records": 1802,
+          "turns": 4,
+          "tools": 101,
+          "failures": 12,
+          "logLines": 1892
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "456ee30d-3239-4c7c-9561-f1bd433e4f43",
+          "hostId": "81350",
+          "records": 9471,
+          "turns": 34,
+          "tools": 661,
+          "failures": 44,
+          "logLines": 10083
+        },
+        {
+          "pluginVersion": "0.1.181",
+          "windowId": "40696996-bdb9-4ec7-a7a9-2f590a707614",
+          "hostId": "48104",
+          "records": 2208,
+          "turns": 3,
+          "tools": 24,
+          "failures": 3,
+          "logLines": 2280
+        },
+        {
+          "pluginVersion": "0.1.182",
+          "windowId": "a562585c-1740-46f0-9a81-5422305255e0",
+          "hostId": "18565",
+          "records": 2283,
+          "turns": 4,
+          "tools": 172,
+          "failures": 9,
+          "logLines": 2388
+        },
+        {
+          "pluginVersion": "0.1.184",
+          "windowId": "1054a813-e05b-4a73-b1ab-45b71618c5e4",
+          "hostId": "71559",
+          "records": 598,
+          "turns": 1,
+          "tools": 32,
+          "failures": 7,
+          "logLines": 634
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "hostId": "16319",
+          "records": 1109,
+          "turns": 5,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 1279
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "hostId": "22238",
+          "records": 592,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 608
+        },
+        {
+          "pluginVersion": "0.1.185",
+          "windowId": "fc7251d9-8e8a-4728-8660-acf9fe5da27e",
+          "hostId": "52810",
+          "records": 493,
+          "turns": 1,
+          "tools": 18,
+          "failures": 3,
+          "logLines": 535
+        },
+        {
+          "pluginVersion": "0.1.186",
+          "windowId": "99941b10-cfdb-478d-a967-186b5a8c2fcc",
+          "hostId": "60057",
+          "records": 6830,
+          "turns": 1,
+          "tools": 67,
+          "failures": 6,
+          "logLines": 6868
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "488f9946-6b2d-4a4b-80ba-e7eb76185a7c",
+          "hostId": "85090",
+          "records": 6988,
+          "turns": 8,
+          "tools": 183,
+          "failures": 8,
+          "logLines": 7142
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "df85d18f-2356-4d3f-b448-4b3bd72b540a",
+          "hostId": "43806",
+          "records": 8124,
+          "turns": 22,
+          "tools": 384,
+          "failures": 21,
+          "logLines": 8493
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "b0480b2f-09a6-44c3-ab35-cc3d9edcfc6b",
+          "hostId": "73341",
+          "records": 2657,
+          "turns": 4,
+          "tools": 195,
+          "failures": 9,
+          "logLines": 2744
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "44ca173f-3309-41eb-a5b8-8d8553eb2d66",
+          "hostId": "77247",
+          "records": 28,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 29
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "d4d5390e-03d5-46d3-8618-d9ed5a71aa8d",
+          "hostId": "77372",
+          "records": 405,
+          "turns": 0,
+          "tools": 23,
+          "failures": 0,
+          "logLines": 433
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "9cb2fc6d-be13-482d-958f-4a5c145239fd",
+          "hostId": "8490",
+          "records": 271,
+          "turns": 1,
+          "tools": 13,
+          "failures": 3,
+          "logLines": 295
+        },
+        {
+          "pluginVersion": "0.1.187",
+          "windowId": "08913ba3-9dd7-4cf2-a38a-8fc9a3d1679e",
+          "hostId": "17119",
+          "records": 729,
+          "turns": 4,
+          "tools": 29,
+          "failures": 0,
+          "logLines": 800
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "0f18f372-a3be-4925-911c-ba6c0072c6af",
+          "hostId": "60436",
+          "records": 12434,
+          "turns": 5,
+          "tools": 76,
+          "failures": 3,
+          "logLines": 12555
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "hostId": "61060",
+          "records": 29301,
+          "turns": 64,
+          "tools": 1131,
+          "failures": 21,
+          "logLines": 30384
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "ab3f3fb1-812d-4d8d-b33d-7cecc38f558d",
+          "hostId": "29948",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "95f942c7-7ab0-4eee-b7c6-376b896cc07a",
+          "hostId": "30058",
+          "records": 1153,
+          "turns": 3,
+          "tools": 77,
+          "failures": 2,
+          "logLines": 1214
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "hostId": "53119",
+          "records": 27948,
+          "turns": 7,
+          "tools": 133,
+          "failures": 7,
+          "logLines": 28110
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "885b8c62-eb77-412c-8138-f2d11237b3b9",
+          "hostId": "92682",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "5aca4b22-bb96-43f1-b077-e0b34f1cf8dc",
+          "hostId": "93476",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "72a41303-33ac-4d9c-84da-fd508e6b9add",
+          "hostId": "93664",
+          "records": 723,
+          "turns": 1,
+          "tools": 29,
+          "failures": 5,
+          "logLines": 752
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "65ab5d9a-0a09-4bc3-9648-bfcb4b0838d7",
+          "hostId": "18967",
+          "records": 16342,
+          "turns": 29,
+          "tools": 460,
+          "failures": 42,
+          "logLines": 16824
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "28114ea1-4c62-4906-a838-6a18ce4d3ba8",
+          "hostId": "25420",
+          "records": 162,
+          "turns": 1,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 184
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "a0197483-6381-42d9-a296-eb721d3aa149",
+          "hostId": "65108",
+          "records": 9070,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 9087
+        },
+        {
+          "pluginVersion": "0.1.189",
+          "windowId": "57da4541-700e-47ce-ad14-4a5d380e210f",
+          "hostId": "76217",
+          "records": 12697,
+          "turns": 13,
+          "tools": 136,
+          "failures": 9,
+          "logLines": 12927
+        },
+        {
+          "pluginVersion": "0.1.190",
+          "windowId": "cd46b421-cde8-4585-8dd2-7af828975844",
+          "hostId": "78685",
+          "records": 1010,
+          "turns": 7,
+          "tools": 23,
+          "failures": 4,
+          "logLines": 1121
+        },
+        {
+          "pluginVersion": "0.1.191",
+          "windowId": "2f1ebbfa-6710-4437-8d33-f53e56a73d36",
+          "hostId": "91586",
+          "records": 244,
+          "turns": 1,
+          "tools": 7,
+          "failures": 0,
+          "logLines": 265
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "671eb02d-9460-4c54-90d5-000a70b007f5",
+          "hostId": "94005",
+          "records": 1321,
+          "turns": 3,
+          "tools": 37,
+          "failures": 3,
+          "logLines": 1391
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "7f15132d-f6bb-4747-bcc2-35f15316ef0f",
+          "hostId": "99124",
+          "records": 3835,
+          "turns": 1,
+          "tools": 5,
+          "failures": 0,
+          "logLines": 3859
+        },
+        {
+          "pluginVersion": "0.1.192",
+          "windowId": "8efaaba9-9c3e-42bb-a695-a8ebf83694f5",
+          "hostId": "99683",
+          "records": 908,
+          "turns": 5,
+          "tools": 35,
+          "failures": 7,
+          "logLines": 992
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "1ff8dedd-753c-4928-9020-58e5da39aed0",
+          "hostId": "39890",
+          "records": 3417,
+          "turns": 5,
+          "tools": 46,
+          "failures": 2,
+          "logLines": 3509
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "82d970b1-14c7-4a5b-8faf-fe5eeda74e10",
+          "hostId": "40121",
+          "records": 4207,
+          "turns": 3,
+          "tools": 72,
+          "failures": 7,
+          "logLines": 4275
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "bcacce6f-4e36-42af-8506-d2152d9ce37c",
+          "hostId": "59249",
+          "records": 5330,
+          "turns": 10,
+          "tools": 202,
+          "failures": 9,
+          "logLines": 5518
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "4d9c94d7-0630-478a-ad6d-f0cf3cbac65e",
+          "hostId": "85927",
+          "records": 4,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 5
+        },
+        {
+          "pluginVersion": "0.1.193",
+          "windowId": "058fefd2-cfde-4812-83fa-f4e6d79e853e",
+          "hostId": "85987",
+          "records": 8442,
+          "turns": 25,
+          "tools": 626,
+          "failures": 49,
+          "logLines": 8870
+        },
+        {
+          "pluginVersion": "0.1.195",
+          "windowId": "74b6edfd-9feb-40f0-a43f-55c91a2198ff",
+          "hostId": "8810",
+          "records": 343,
+          "turns": 1,
+          "tools": 15,
+          "failures": 0,
+          "logLines": 368
+        },
+        {
+          "pluginVersion": "0.1.196",
+          "windowId": "e18e1a67-2d79-4b07-8531-f43adcb3bd80",
+          "hostId": "14093",
+          "records": 2352,
+          "turns": 7,
+          "tools": 138,
+          "failures": 6,
+          "logLines": 2495
+        },
+        {
+          "pluginVersion": "0.1.197",
+          "windowId": "071318cf-31d2-4b1a-af99-cfc3c8e3418b",
+          "hostId": "49178",
+          "records": 146,
+          "turns": 0,
+          "tools": 0,
+          "failures": 0,
+          "logLines": 160
+        }
+      ],
+      "scanErrors": [],
+      "requestedToMs": 1793687660214,
+      "includedLines": 256368,
+      "outsideRangeLines": 1838,
+      "unknownTimeLines": 0,
+      "fromMs": 1793116801248,
+      "toMs": 1793687660214
+    },
+    "general": {
+      "errors": 2229,
+      "warnings": 148,
+      "retries": 85,
+      "recoveries": 46,
+      "compactionErrors": 0,
+      "groups": 160,
+      "overflow": 898,
+      "correlatedToolErrors": 492,
+      "correlatedErrors": 346,
+      "linkedRecoveries": 43,
+      "transportResponseLines": 2,
+      "failureChains": 240,
+      "toolFailureChains": 469,
+      "recoveredFailureChains": 24,
+      "recoveryEvidence": [
+        {
+          "failureId": "42806ce6-6692-4de0-a176-a8d04ee198f6",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "999f4a5c-ab17-4980-a721-3171507af209",
+          "failureLocation": "codex-chat-2026-10-28.log:59701",
+          "recoveryLocation": "codex-chat-2026-10-28.log:60175"
+        },
+        {
+          "failureId": "9fa40e06-587e-43d7-868a-15ab4a49a625",
+          "operation": "session.read",
+          "pluginVersion": "0.1.185",
+          "windowId": "3d041879-4e42-48f5-b737-f72b00ddf9f5",
+          "failureLocation": "codex-chat-2026-10-28.log:58210",
+          "recoveryLocation": "codex-chat-2026-10-29.log:3830"
+        },
+        {
+          "failureId": "a6918e92-5704-4931-bd18-8929d1013ae2",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "failureLocation": "codex-chat-2026-10-30.log:18760",
+          "recoveryLocation": "codex-chat-2026-10-30.log:19290"
+        },
+        {
+          "failureId": "a92b8534-29d3-491c-9253-0ea32ee0ab4e",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "a0197483-6381-42d9-a296-eb721d3aa149",
+          "failureLocation": "codex-chat-2026-10-31.log:13212",
+          "recoveryLocation": "codex-chat-2026-10-31.log:13313"
+        },
+        {
+          "failureId": "824a4eee-767d-46d6-bbb9-58a26949d1d9",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "0f18f372-a3be-4925-911c-ba6c0072c6af",
+          "failureLocation": "codex-chat-2026-10-31.log:18776",
+          "recoveryLocation": "codex-chat-2026-10-31.log:18870"
+        },
+        {
+          "failureId": "39c3b19d-ab1a-4b0c-843b-1010cde93226",
+          "operation": "notification.focus",
+          "pluginVersion": "0.1.189",
+          "windowId": "65ab5d9a-0a09-4bc3-9648-bfcb4b0838d7",
+          "failureLocation": "codex-chat-2026-10-31.log:23105",
+          "recoveryLocation": "codex-chat-2026-10-31.log:23456"
+        },
+        {
+          "failureId": "dffe0e58-a9b3-4dbc-9433-e337669626d3",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "57da4541-700e-47ce-ad14-4a5d380e210f",
+          "failureLocation": "codex-chat-2026-11-01.log:6688",
+          "recoveryLocation": "codex-chat-2026-11-01.log:6783"
+        },
+        {
+          "failureId": "48735d55-77fd-4624-a3d3-9147fc973d80",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "0f18f372-a3be-4925-911c-ba6c0072c6af",
+          "failureLocation": "codex-chat-2026-11-01.log:12312",
+          "recoveryLocation": "codex-chat-2026-11-01.log:12405"
+        },
+        {
+          "failureId": "768738dd-7bd4-4c77-a8e7-fb8a5d034c79",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-01.log:13811",
+          "recoveryLocation": "codex-chat-2026-11-01.log:13903"
+        },
+        {
+          "failureId": "1c0650a5-6607-47e4-8c04-cc2c91b222e7",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "57da4541-700e-47ce-ad14-4a5d380e210f",
+          "failureLocation": "codex-chat-2026-11-02.log:2262",
+          "recoveryLocation": "codex-chat-2026-11-02.log:2360"
+        },
+        {
+          "failureId": "697640bb-f8b9-49c3-b608-4cdbe06ee342",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "failureLocation": "codex-chat-2026-11-02.log:8890",
+          "recoveryLocation": "codex-chat-2026-11-02.log:8970"
+        },
+        {
+          "failureId": "f5c509b4-a336-47e9-b5c4-c2975c1e5b1b",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-02.log:8893",
+          "recoveryLocation": "codex-chat-2026-11-02.log:8978"
+        },
+        {
+          "failureId": "ae2a07f4-a191-4a74-abe6-c016adf78ae4",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "65ab5d9a-0a09-4bc3-9648-bfcb4b0838d7",
+          "failureLocation": "codex-chat-2026-11-02.log:8896",
+          "recoveryLocation": "codex-chat-2026-11-02.log:8986"
+        },
+        {
+          "failureId": "21268122-0212-4848-b929-86ced73b244d",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "a0197483-6381-42d9-a296-eb721d3aa149",
+          "failureLocation": "codex-chat-2026-11-02.log:8906",
+          "recoveryLocation": "codex-chat-2026-11-02.log:8998"
+        },
+        {
+          "failureId": "b75c1a62-b21a-4208-bf79-6f6c390b2375",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "57da4541-700e-47ce-ad14-4a5d380e210f",
+          "failureLocation": "codex-chat-2026-11-02.log:10016",
+          "recoveryLocation": "codex-chat-2026-11-02.log:10074"
+        },
+        {
+          "failureId": "5f7b6269-d573-4a6a-b809-d8c09a93b984",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "failureLocation": "codex-chat-2026-11-02.log:10029",
+          "recoveryLocation": "codex-chat-2026-11-02.log:10092"
+        },
+        {
+          "failureId": "267ffdf7-fef9-455c-957a-73161970ab25",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-02.log:10022",
+          "recoveryLocation": "codex-chat-2026-11-02.log:10100"
+        },
+        {
+          "failureId": "6442420a-fd54-4081-8f9c-50e2bd52f89c",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "a0197483-6381-42d9-a296-eb721d3aa149",
+          "failureLocation": "codex-chat-2026-11-02.log:10033",
+          "recoveryLocation": "codex-chat-2026-11-02.log:10109"
+        },
+        {
+          "failureId": "57ebf591-df5a-4990-9121-2a079e75107a",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "a0197483-6381-42d9-a296-eb721d3aa149",
+          "failureLocation": "codex-chat-2026-11-02.log:11342",
+          "recoveryLocation": "codex-chat-2026-11-02.log:11472"
+        },
+        {
+          "failureId": "204ed94b-26e8-446d-a461-67331f4241d0",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "b3f7e6b3-6675-491f-b21c-fa698e3fcd59",
+          "failureLocation": "codex-chat-2026-11-02.log:11991",
+          "recoveryLocation": "codex-chat-2026-11-02.log:12433"
+        },
+        {
+          "failureId": "1d269f86-af4b-4f14-a413-b4f42766aab4",
+          "operation": "notification.focus",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-02.log:10957",
+          "recoveryLocation": "codex-chat-2026-11-02.log:24353"
+        },
+        {
+          "failureId": "52866a84-160a-4cf1-b41b-0edc40a53036",
+          "operation": "notification.focus",
+          "pluginVersion": "0.1.193",
+          "windowId": "1ff8dedd-753c-4928-9020-58e5da39aed0",
+          "failureLocation": "codex-chat-2026-11-02.log:24567",
+          "recoveryLocation": "codex-chat-2026-11-02.log:25342"
+        },
+        {
+          "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+          "operation": "session.read",
+          "pluginVersion": "0.1.193",
+          "windowId": "bcacce6f-4e36-42af-8506-d2152d9ce37c",
+          "failureLocation": "codex-chat-2026-11-03.log:6072",
+          "recoveryLocation": "codex-chat-2026-11-03.log:6166"
+        },
+        {
+          "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+          "operation": "session.read",
+          "pluginVersion": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "failureLocation": "codex-chat-2026-11-03.log:6088",
+          "recoveryLocation": "codex-chat-2026-11-03.log:6184"
+        }
+      ]
+    },
+    "findingsByCategory": {
+      "日志覆盖审查": 38,
+      "插件运行": 13,
+      "工具执行": 33,
+      "连接与进程": 3,
+      "后端服务": 19,
+      "通知": 2,
+      "后端组件": 4,
+      "遥测采集": 86,
+      "性能阶段/工具分类": 20
+    }
+  },
+  "historicalEvidence": {
+    "signals": {
+      "mcp403": 13,
+      "modelCatalogTimeout": 61,
+      "systemSkillsInstall": 1
+    },
+    "unknownTimeByFile": {
+      "codex-chat-2026-10-28.log": 12,
+      "codex-chat-2026-10-29.log": 24,
+      "codex-chat-2026-10-30.log": 54,
+      "codex-chat-2026-10-31.log": 2,
+      "codex-chat-2026-11-02.log": 25,
+      "codex-chat-2026-11-03.log": 53
+    },
+    "evidence": [
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 34041,
+        "atMs": 1793610188961,
+        "stage": "usage_updated",
+        "traceId": "f8e60f6d-73da-4373-8442-98b05174e2e8",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "elapsedMs": 152946,
+        "model": "gpt-6-astra",
+        "effort": "max"
+      },
+      {
+        "file": "codex-chat-2026-11-02.log",
+        "line": 34043,
+        "atMs": 1793610188963,
+        "stage": "end",
+        "outcome": "completed",
+        "traceId": "f8e60f6d-73da-4373-8442-98b05174e2e8",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "elapsedMs": 152948,
+        "model": "gpt-6-astra",
+        "effort": "max"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6072,
+        "atMs": 1793653974943,
+        "operation": "rpc.request",
+        "method": "account/rateLimits/read",
+        "stage": "end",
+        "outcome": "failed",
+        "operationId": "193fd3f3-b0ec-4c4a-8bcd-37c0d785b4cb",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+        "requestId": 347,
+        "durationMs": 19729,
+        "rpcCode": -32603
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6073,
+        "atMs": 1793653974944,
+        "operation": "session.read",
+        "method": "account/rateLimits/read",
+        "stage": "failed",
+        "operationId": "193fd3f3-b0ec-4c4a-8bcd-37c0d785b4cb",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+        "requestId": 347,
+        "durationMs": 19730,
+        "rpcCode": -32603
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6074,
+        "atMs": 1793653974945,
+        "operation": "account.usage",
+        "stage": "failed",
+        "operationId": "562fed7e-4011-489b-b312-ac2c03fa00a6",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "failureId": "a4b11ad9-b245-4652-8130-c4b311a67baf",
+        "requestId": 347,
+        "durationMs": 19731,
+        "rpcCode": -32603
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6088,
+        "atMs": 1793654031070,
+        "operation": "rpc.request",
+        "method": "account/rateLimits/read",
+        "stage": "end",
+        "outcome": "failed",
+        "operationId": "0fc8c68d-4b22-49c8-90be-6cfc8c06b92a",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+        "requestId": 1967,
+        "durationMs": 21105,
+        "rpcCode": -32603
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6089,
+        "atMs": 1793654031070,
+        "operation": "session.read",
+        "method": "account/rateLimits/read",
+        "stage": "failed",
+        "operationId": "0fc8c68d-4b22-49c8-90be-6cfc8c06b92a",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+        "requestId": 1967,
+        "durationMs": 21105,
+        "rpcCode": -32603
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6090,
+        "atMs": 1793654031071,
+        "operation": "account.usage",
+        "stage": "failed",
+        "operationId": "09891cce-8d9b-4686-92e4-9cea3d168f14",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "failureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2",
+        "requestId": 1967,
+        "durationMs": 21106,
+        "rpcCode": -32603
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6166,
+        "atMs": 1793654318735,
+        "operation": "session.read",
+        "method": "account/rateLimits/read",
+        "stage": "recovered",
+        "operationId": "39652eca-2d3d-46b1-bd5a-4564ebfe1f42",
+        "processRunId": "251b92ff-ed83-4043-a7ff-ddcd4cc55df7",
+        "previousFailureId": "a4b11ad9-b245-4652-8130-c4b311a67baf"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6169,
+        "atMs": 1793654318737,
+        "operation": "account.usage",
+        "stage": "recovered",
+        "operationId": "562fed7e-4011-489b-b312-ac2c03fa00a6",
+        "previousFailureId": "a4b11ad9-b245-4652-8130-c4b311a67baf"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6184,
+        "atMs": 1793654370851,
+        "operation": "session.read",
+        "method": "account/rateLimits/read",
+        "stage": "recovered",
+        "operationId": "9395caf2-ac86-4498-b1d8-cd78a57d012f",
+        "processRunId": "3e8223af-eeb1-4ae3-9016-c9eed85dbe31",
+        "previousFailureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 6187,
+        "atMs": 1793654370853,
+        "operation": "account.usage",
+        "stage": "recovered",
+        "operationId": "09891cce-8d9b-4686-92e4-9cea3d168f14",
+        "previousFailureId": "32203c32-4bd1-4a8f-bc25-cee1f74a2ac2"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 11246,
+        "atMs": 1793670038128,
+        "event": "turn_summary",
+        "outcome": "answered",
+        "traceId": "f8e60f6d-73da-4373-8442-98b05174e2e8",
+        "processRunId": "06e8fa29-d10e-43ea-9eb5-81e914e40932",
+        "elapsedMs": 60019679,
+        "phasesMs": {
+          "preparation": 433,
+          "unobserved": 311578,
+          "model_visible": 16166,
+          "tools": 55,
+          "compaction": 152948,
+          "user_wait": 59538499
+        }
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 14196,
+        "atMs": 1793673561742,
+        "event": "retry",
+        "traceId": "6b29ca1b-8d1d-4f76-a502-ba62bb8d0da6"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 14201,
+        "atMs": 1793673561748,
+        "event": "turn_summary",
+        "outcome": "failed",
+        "traceId": "6b29ca1b-8d1d-4f76-a502-ba62bb8d0da6",
+        "processRunId": "7bc85763-a07d-46d1-86e7-1910c905addd",
+        "elapsedMs": 288319,
+        "phasesMs": {
+          "preparation": 220,
+          "unobserved": 238518,
+          "model_visible": 9263,
+          "tools": 40318
+        }
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 27233,
+        "atMs": 1793685272551,
+        "operation": "rpc.request",
+        "method": "thread/name/set",
+        "stage": "end",
+        "outcome": "failed",
+        "operationId": "a0851600-d0b8-4ef8-97f1-f4ef82c7e44d",
+        "processRunId": "4c64720c-1d8d-4d9c-8767-1c716add45cb",
+        "failureId": "336f0770-bd88-4e36-b1fa-31cd0b269fda",
+        "requestId": 25,
+        "durationMs": 41,
+        "rpcCode": -32600
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 27234,
+        "atMs": 1793685272551,
+        "operation": "session.repair.title",
+        "stage": "failed",
+        "operationId": "57d7ca6d-0aae-4c5f-905b-54ec76f52d7d",
+        "processRunId": "4c64720c-1d8d-4d9c-8767-1c716add45cb",
+        "failureId": "336f0770-bd88-4e36-b1fa-31cd0b269fda",
+        "requestId": 25,
+        "rpcCode": -32600
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 30118,
+        "atMs": 1793686870051,
+        "stage": "request",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "routeId": "f3af027d-080b-44b3-8906-1229ea79cde7",
+        "connectionId": "41bdc836-9124-4cd4-a7f5-f40a3e51ff17",
+        "effort": "xhigh",
+        "serviceTier": null
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 30398,
+        "atMs": 1793686980490,
+        "stage": "response",
+        "outcome": "incomplete",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "routeId": "f3af027d-080b-44b3-8906-1229ea79cde7",
+        "connectionId": "41bdc836-9124-4cd4-a7f5-f40a3e51ff17",
+        "reason": "upstream_closed",
+        "effort": "xhigh",
+        "serviceTier": null
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 30403,
+        "atMs": 1793686981714,
+        "stage": "request",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "routeId": "0a3f48e9-7c76-4762-b125-e15bae5b6bfd",
+        "connectionId": "d601ae7b-7a6f-433c-aa64-92aedb9fedec",
+        "effort": "xhigh",
+        "serviceTier": null
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 30659,
+        "atMs": 1793687112042,
+        "stage": "response",
+        "outcome": "completed",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "routeId": "0a3f48e9-7c76-4762-b125-e15bae5b6bfd",
+        "connectionId": "d601ae7b-7a6f-433c-aa64-92aedb9fedec",
+        "effort": "xhigh",
+        "serviceTier": null
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 30660,
+        "atMs": 1793687112062,
+        "stage": "usage_updated",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "elapsedMs": 242023,
+        "model": "gpt-6.1-sol",
+        "effort": "xhigh"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 30662,
+        "atMs": 1793687112063,
+        "stage": "end",
+        "outcome": "completed",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "elapsedMs": 242024,
+        "model": "gpt-6.1-sol",
+        "effort": "xhigh"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32016,
+        "atMs": 1793687618655,
+        "method": "config/read",
+        "stage": "start",
+        "traceId": null,
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "requestId": 2
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32017,
+        "atMs": 1793687618655,
+        "method": "getAuthStatus",
+        "stage": "start",
+        "traceId": null,
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "requestId": 3
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32029,
+        "atMs": 1793687618916,
+        "stage": "fallback",
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "reason": "startup_budget_expired",
+        "scope": "native"
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32030,
+        "atMs": 1793687618916,
+        "method": "thread/resume",
+        "stage": "start",
+        "traceId": null,
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "requestId": 5
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32035,
+        "atMs": 1793687619268,
+        "method": "config/read",
+        "stage": "end",
+        "outcome": "completed",
+        "traceId": null,
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "requestId": 2,
+        "durationMs": 613
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32036,
+        "atMs": 1793687619270,
+        "method": "getAuthStatus",
+        "stage": "end",
+        "outcome": "completed",
+        "traceId": null,
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "requestId": 3,
+        "durationMs": 615
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32041,
+        "atMs": 1793687620036,
+        "event": "turn_summary",
+        "outcome": "completed",
+        "traceId": "e44ce531-bb50-4356-9edd-2b21ab36c909",
+        "processRunId": "0c6464cb-61e0-457d-b279-25327c82a644",
+        "elapsedMs": 757417,
+        "phasesMs": {
+          "preparation": 64,
+          "unobserved": 458101,
+          "model_visible": 15283,
+          "tools": 41945,
+          "compaction": 242024
+        }
+      },
+      {
+        "file": "codex-chat-2026-11-03.log",
+        "line": 32065,
+        "atMs": 1793687621144,
+        "method": "thread/resume",
+        "stage": "end",
+        "outcome": "completed",
+        "traceId": null,
+        "processRunId": "f1f6b5b6-581f-4fa9-9677-4642a993274d",
+        "requestId": 5,
+        "durationMs": 2227
+      }
+    ]
+  },
+  "limitations": [
+    "所有保留文件在固定长度快照上读取；24 小时与全部保留口径分别报告。未修改或删除原日志。",
+    "原始报告未含源码候选；另附当前构建审查清单，规则候选不是已确认缺口。",
+    "历史 HTTP403/503、容量、限流、模型目录刷新和技能安装无法由本机改动证明恢复。",
+    "工具失败未整体归因插件；历史缺失的命令正文、休眠与请求关联不能补造。",
+    "合成超时、取消和断流测试不证明真实后端任务总耗时降低；未做收费生成。"
+  ],
+  "verification": {
+    "types": "passed",
+    "baselineRegression": {
+      "pass": 0,
+      "fail": 6
+    },
+    "currentRegression": {
+      "pass": 6,
+      "fail": 0
+    },
+    "fullSuite": {
+      "total": 940,
+      "passed": 940,
+      "failed": 0,
+      "command": "npm test",
+      "durationMs": 17545
+    },
+    "modelsChanged": false,
+    "permissionsChanged": false
+  }
+}

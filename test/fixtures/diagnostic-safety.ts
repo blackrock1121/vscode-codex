@@ -25,3 +25,5 @@ export * from '../../src/notificationRouter';
 export * from '../../src/imageFile';
 export * from '../../src/workspaceActivity';
 export * from '../../src/workdayCalendar';
+export * from '../../src/notifications';
+export * from '../../src/diagnostics/analysis';

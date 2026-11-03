@@ -1,4 +1,4 @@
-import { observedChildTailMs, type PerformanceRow } from '../codex/performanceTrace';
+import { diagnosticId, observedChildTailMs, type PerformanceRow } from '../codex/performanceTrace';
 import type { GeneralSummary } from './general';
 import type { LoggingAuditSummary } from './loggingAudit';
 
@@ -6,7 +6,10 @@ export interface DiagnosticFinding {
   id: string; title: string; severity: 'warning' | 'error'; evidence: string; recommendation: string; traceIds: string[];
   category?: string; origin?: 'rule' | 'model'; occurrences?: number;
 }
-export interface DiagnosticSummary { turns: number; tools: number; failures: number; longestTurnMs: number; versions: string[] }
+export interface DiagnosticSummary {
+  turns: number; tools: number; failures: number; longestTurnMs: number; versions: string[];
+  longestTurn?: { traceId?: string; elapsedMs: number; phasesMs: Record<string, number>; incompleteSpans?: number };
+}
 export interface DiagnosticSource { pluginVersion: string; windowId: string; hostId: string; records: number; turns: number; tools: number; failures: number; logLines?: number }
 export interface DiagnosticCoverage {
   mode: 'local-plugin-full'; files: number; readFiles: number; unreadableFiles: number; bytes: number; lines: number;
@@ -20,7 +23,7 @@ export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[
 const n = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
 const failureCategories = new Set(['command_not_found', 'missing_dependency', 'architecture_mismatch', 'permission', 'timeout',
-  'rate_limit', 'dns', 'network_or_service', 'authentication', 'syntax', 'build_or_test', 'missing_file', 'nonzero_exit', 'interrupted', 'unknown']);
+  'rate_limit', 'dns', 'network_or_service', 'authentication', 'syntax', 'build_or_test', 'missing_file', 'nonzero_exit', 'interrupted', 'unknown', 'patch_mismatch', 'tool_session_missing']);
 const phases: Record<string, { title: string; min: number; advice: string }> = {
   preparation: { title: '发送前准备较慢', min: 5000, advice: '检查快照、历史、连接和自动保存的分项耗时，优化最慢步骤。' },
   compaction: { title: '上下文压缩耗时较长', min: 30000, advice: '核对实际压缩模型、重试、上下文增长和配置恢复耗时，验证重复压缩与等待原因。' },
@@ -41,6 +44,7 @@ interface Group { count: number; totalMs: number; maxMs: number; unknownDuration
 /** 逐条累计全部记录，仅保留每类问题的计数和有限示例，不在内存堆积整份历史日志。 */
 export class PerformanceAccumulator {
   private turns = 0; private tools = 0; private failures = 0; private longestTurnMs = 0;
+  private longestTurn?: DiagnosticSummary['longestTurn'];
   private readonly versions = new Set<string>();
   private readonly groups = new Map<string, Group>();
   private group(id: string, row: PerformanceRow, ms?: number): void {
@@ -62,7 +66,17 @@ export class PerformanceAccumulator {
       }
     }
     if (row.event !== 'turn_summary') return;
-    this.turns++; this.longestTurnMs = Math.max(this.longestTurnMs, n(row.elapsedMs));
+    this.turns++;
+    if (!this.longestTurn || n(row.elapsedMs) > this.longestTurnMs) {
+      this.longestTurnMs = n(row.elapsedMs);
+      const observed = row.phasesMs as Record<string, unknown> | undefined;
+      // 只带实际记录的分项；缺失值不能伪造成零，也不能称为有效计算耗时。
+      this.longestTurn = { traceId: diagnosticId(row.traceId), elapsedMs: this.longestTurnMs,
+        phasesMs: Object.fromEntries(['preparation', 'user_wait', 'compaction', 'tools', 'model_visible', 'unobserved', 'local_preparation', 'child_tail', 'agent_wait']
+          .filter(key => typeof observed?.[key] === 'number' && Number.isFinite(observed[key]) && Number(observed[key]) >= 0)
+          .map(key => [key, Number(observed![key])])),
+        ...(typeof row.incompleteSpans === 'number' ? { incompleteSpans: n(row.incompleteSpans) } : {}) };
+    }
     for (const [key, rule] of Object.entries(phases)) {
       const ms = n((row.phasesMs as Record<string, unknown>)?.[key]);
       if (ms >= rule.min) this.group(`phase-${key}`, row, ms);
@@ -85,7 +99,7 @@ export class PerformanceAccumulator {
       }
     }
     return { findings: findings.slice(0, 24), summary: { turns: this.turns, tools: this.tools, failures: this.failures,
-      longestTurnMs: this.longestTurnMs, versions: [...this.versions] } };
+      longestTurnMs: this.longestTurnMs, versions: [...this.versions], ...(this.longestTurn ? { longestTurn: this.longestTurn } : {}) } };
   }
 }
 export function analyzePerformance(rows: PerformanceRow[]): Pick<DiagnosticOutput, 'summary' | 'findings'> {

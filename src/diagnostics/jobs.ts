@@ -285,13 +285,19 @@ export class DiagnosticJobs extends EventEmitter {
 }
 
 export function diagnosticRepairPrompt(record: DiagnosticRecord, report: string, reportPath?: string): string {
+  const fromMs = record.options?.fromMs ?? record.coverage?.requestedFromMs;
+  const toMs = record.options?.toMs ?? record.coverage?.requestedToMs;
+  const timeScope = fromMs !== undefined && toMs !== undefined
+    ? `${new Date(fromMs).toISOString()} 至 ${new Date(toMs).toISOString()}`
+    : record.options?.hours === 0 ? '全部保留日志'
+    : record.options?.hours ? `最近 ${record.options.hours} 小时` : '时间范围见完整报告';
   // 长报告已经原子落盘；问题清单和截断正文高度重复，且截断不能替代完整源码审查。
   const reportSection = report.length > 60000 && reportPath
     ? `\n\n完整报告文件：${JSON.stringify(reportPath)}。为避免重复输入，不再附加截断正文；请读取完整报告，包含全部源码覆盖位置和未展示的证据，不能只处理消息中列出的示例。\n`
     : (report.length > 60000 ? '\n报告较长，以下仅附前 60000 字符。其余源码覆盖位置请在诊断中心的完整报告中查看。\n' : '') +
       '\n\n诊断报告（全量汇总与代表性证据）：\n' + report.slice(0, 60000);
   return `请修复${kindLabel(record.options?.kind)} ${record.id} 发现的问题，目标是提高插件稳定性、解决内部异常并缩短任务耗时。\n` +
-    `诊断范围：${record.diagnosticScope === 'local-plugin-full' ? '本机整个 vscode-codex 插件，全部保留日志，跨工作区、窗口、会话和版本' : '旧版全局采样'}\n发起位置：${record.workspaceName}（不是诊断过滤条件）\n诊断器插件版本：${record.pluginVersion}\n诊断时间：${new Date(record.createdAt).toISOString()}\n\n` +
+    `诊断范围：${record.diagnosticScope === 'local-plugin-full' ? `本机整个 vscode-codex 插件，跨工作区、窗口、会话和版本；日志时间：${timeScope}` : '旧版全局采样'}\n发起位置：${record.workspaceName}（不是诊断过滤条件）\n诊断器插件版本：${record.pluginVersion}\n诊断时间：${new Date(record.createdAt).toISOString()}\n\n` +
     (record.diagnosticScope === 'local-plugin-full' ? '修复目标是 vscode-codex 插件本身。先核对当前工作区是否为插件源码；不是则定位插件源码，无法定位时请用户指定目录，不能把无关业务项目当作插件修改。\n' : '') +
     '以下是日志证据和待核验线索。请先结合当前代码验证根因，区分插件问题、工作区代码、环境依赖和后端等待，再实施有证据支持的修复。' +
     '源码日志覆盖线索不依赖运行中已经报错：优先核验静默捕获、委派错误处理和无日志的操作路径；不要因为没有运行错误记录就忽略它们。核对源码版本与行号，沿调用链验证是否已有统一记录，补齐实际缺口后用成功、失败及恢复场景验证落盘和诊断检出；不为纯计算或已有统一日志重复埋点。' +

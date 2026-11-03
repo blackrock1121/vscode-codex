@@ -16,15 +16,22 @@ type Rpc = Pick<CodexRpc, 'start' | 'request' | 'on' | 'off' | 'reject' | 'dispo
 
 export function diagnosticModelPrompt(output: DiagnosticOutput): string {
   // 输入限于脱敏后的归类、来源与有界证据；不发送原始整份日志。
-  const candidates = selectDiagnosticEvidence(output.findings).map(f => ({ id: f.id, title: f.title, severity: f.severity,
+  const selected = selectDiagnosticEvidence(output.findings), selectedIds = new Set(selected.map(f => f.id));
+  const omittedByCategory: Record<string, number> = Object.create(null);
+  for (const finding of output.findings) if (!selectedIds.has(finding.id)) {
+    const category = redactDiagnosticText(finding.category ?? '其他', 80);
+    omittedByCategory[category] = (omittedByCategory[category] ?? 0) + 1;
+  }
+  const candidates = selected.map(f => ({ id: f.id, title: f.title, severity: f.severity,
     evidence: redactDiagnosticText(f.evidence, 800), recommendation: f.recommendation, traceIds: f.traceIds }));
   return '请诊断整个插件的异常、稳定性、压缩配置/恢复、连接/进程、页面脚本、通知、工具和性能问题。按影响与复现价值排序，合并同一根因，指出恢复或证据不足。\n' +
     '全面诊断还包括当前构建的源码日志覆盖审查：即使没有运行错误记录，也必须评估静默错误处理和未见日志的操作路径。源码规则结果是待核验线索，不可断言必然漏记；指出需检查的调用链、日志阶段和复验方法。无日志不等于无问题，当前源码审查不代表历史版本。\n' +
     'evidenceIds 只能引用以下问题 id 或 coverage。模型看到的是全量本地扫描生成的脱敏摘要，原始日志未全部发送，不能宣称读过所有原始行。\n' +
+    'longestTurn 中 user_wait 是已观测的用户审批/回答等待，不能算作模型执行；缺失分项不等于零。evidenceOmittedByCategory 仅是未发送证据的类别计数，不可据此推断具体故障或恢复。\n' +
     JSON.stringify({ coverage: output.coverage ? { ...output.coverage, sources: output.coverage.sources.slice(0, 100) } : undefined,
       general: output.general, loggingAudit: output.loggingAudit, performance: output.summary,
       compactionEvidence: output.compactionEvidence?.map(row => Object.fromEntries(Object.entries(row).map(([key, value]) => [key, typeof value === 'string' ? redactDiagnosticText(value, 160) : value]))),
-      evidence: candidates, evidenceNotSent: Math.max(0, output.findings.length - candidates.length) });
+      evidence: candidates, evidenceNotSent: Math.max(0, output.findings.length - candidates.length), evidenceOmittedByCategory: omittedByCategory });
 }
 
 /** 独立临时线程，不附加到业务会话；普通服务档位，诊断期间不执行工具。 */

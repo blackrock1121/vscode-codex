@@ -1,5 +1,5 @@
 import { postWebviewMessage } from '../webviewDelivery';
-import { errorFields, expectedFileError, operationFailure, operationLog } from '../operations';
+import { errorFields, expectedFileError, observeOperation, operationFailure, operationLog } from '../operations';
 import { DiagnosticHealth } from '../diagnosticHealth';
 import * as vscode from "vscode";
 import * as os from "node:os";
@@ -949,7 +949,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (!this.alive(ctx)) throw new Error('修复会话已关闭');
                     this.post(ctx, { kind: 'remote_user', text: prompt });
                     if (!await this.handleSend(ctx, prompt) || !ctx.sessionId) throw new Error('修复消息尚未发送，请检查新会话中的提示后重试。');
-                    void this.store.setCustomTitle(ctx.sessionId, title).then(() => this.refreshSessions()).catch(error => operationFailure('session.repair.title', error));
+                    void observeOperation('session.repair.title', () => this.store.setCustomTitle(ctx.sessionId!, title, ctx.proc))
+                        .then(() => this.refreshSessions()).catch(() => {
+                            // 标题失败不影响已经派发的修复任务；上层必须反馈，不能只留一个失效标签。
+                            if (this.alive(ctx)) this.post(ctx, { kind: 'notice', message: '修复任务已发送，但会话名称未能保存，可稍后重新命名。' });
+                        });
                     return ctx.sessionId;
                 })().then(resolve, reject);
             };

@@ -1,0 +1,4523 @@
+{
+  "diagnosticId": "4d94bbc6-a6ea-4687-9b49-0c8539141058",
+  "baseline": "0440923",
+  "version": "0.1.198",
+  "sourceHash": "ed9881076be3de0a695a5407c82c6dd450fdc58823cbd2d50067974c169e2b89",
+  "scope": "原完整报告没有源码位置清单；本次独立生成全部当前源码候选。优先沿消息/RPC/进程/压缩/通知/更新/会话修复检查实际日志出口；不声称逐条动态注入所有候选。",
+  "files": [
+    {
+      "file": "src/checkpoints.ts",
+      "sha256": "88a90aa342572e714d298980a790bedb00e239456d7e686ed1ebdc57f93431cc",
+      "functions": 69,
+      "operations": 1,
+      "catches": 12,
+      "logSites": 11,
+      "candidates": [
+        {
+          "line": 356,
+          "symbol": "restore",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 372,
+          "symbol": "restore",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 395,
+          "symbol": "restore",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "restore 的预检与写入失败由 panel.restoreCheckpoint/forkRewind 捕获；失败回滚后的 failure 最终抛出，rollback/临时清理已有独立日志。ENOENT 预检仅表示尚不存在。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/codex/childThreads.ts",
+      "sha256": "4dd8502fbf12e09694ae48b7aea003ca7f1e3a2b0ddb7d559171b11dd4d4b9c4",
+      "functions": 13,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/codex/compactionInput.ts",
+      "sha256": "f9a38d87434f72b555d62f9664a3155f07a447fc0d28b13f9e4d88e7a404f2bd",
+      "functions": 35,
+      "operations": 4,
+      "catches": 5,
+      "logSites": 4,
+      "candidates": [
+        {
+          "line": 22,
+          "symbol": "save",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 29,
+          "symbol": "save",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 30,
+          "symbol": "save",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 32,
+          "symbol": "reduce",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 43,
+          "symbol": "save",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 53,
+          "symbol": "optimizeCompactionInput",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 64,
+          "symbol": "optimizeCompactionInput",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 66,
+          "symbol": "cancelled",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "save 的 ENOENT/EEXIST 是内容寻址归档探测；其它错误传播至 optimizeCompactionInput.prepare 的 fallback。预算/取消已记录；纯 reduce 不单独埋点。归档失败保留输入，不能当成压缩失败。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/codex/compactionPolicy.ts",
+      "sha256": "ad8d9bd005ea6ac144a4d5fb0b1edd69476a7c2ab30b0d565cf759f26b0dfb11",
+      "functions": 26,
+      "operations": 0,
+      "catches": 4,
+      "logSites": 7,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "sha256": "9a167278c111e138107e715a7f1b05f6f1c4752c5262935ecee2de92b8a22ef0",
+      "functions": 59,
+      "operations": 6,
+      "catches": 13,
+      "logSites": 22,
+      "candidates": [
+        {
+          "line": 61,
+          "symbol": "routeCompaction",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 119,
+          "symbol": "CompactionRelay",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 124,
+          "symbol": "start",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 129,
+          "symbol": "start",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 135,
+          "symbol": "start",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 139,
+          "symbol": "start",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 151,
+          "symbol": "target",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 230,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 231,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 232,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 233,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 237,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 256,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 281,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 305,
+          "symbol": "finally",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 284,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 292,
+          "symbol": "catch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 300,
+          "symbol": "catch",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 302,
+          "symbol": "catch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 303,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 310,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 310,
+          "symbol": "websocket",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 324,
+          "symbol": "websocket",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 328,
+          "symbol": "websocket",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 334,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 335,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 346,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 347,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 374,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 386,
+          "symbol": "upstream",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 387,
+          "symbol": "upstream",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 390,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 391,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 402,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 403,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "rewrite -> report(request) -> websocket response/incomplete 或 HTTP finish；新增每次 routeId 的单调时钟耗时。断流终态清理本次计时，重连生成新 routeId，普通请求不改配置。onRoute 抛错由 compaction.observer 记录；JSON/URL 未匹配原样转发。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/codex/compactionValidation.ts",
+      "sha256": "9bc6c76fa66bb4bdc0c8b78cef22904086f5b740fd878faac2fc7111e8933dd6",
+      "functions": 20,
+      "operations": 4,
+      "catches": 1,
+      "logSites": 1,
+      "candidates": [
+        {
+          "line": 62,
+          "symbol": "validateCompactionModel",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 83,
+          "symbol": "validateCompactionModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 84,
+          "symbol": "validateCompactionModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 85,
+          "symbol": "validateCompactionModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "validateCompactionModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 87,
+          "symbol": "phase",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 110,
+          "symbol": "compacted",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 113,
+          "symbol": "answer",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 115,
+          "symbol": "validateCompactionModel",
+          "kind": "error-propagated"
+        }
+      ],
+      "review": "validateCompactionModel/phase 错误向 runCompactionValidation 的 failed/cancelled 终态传播；通知、close、拒绝工具汇入 phase，finally 清理临时 RPC/目录。评测纯答案解析失败转换为评测失败。未运行真实收费评测。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/codex/events.ts",
+      "sha256": "75e0f7a4b67438198ad71096437d5213e29dafb76a8fe408851fce29da75340d",
+      "functions": 38,
+      "operations": 0,
+      "catches": 3,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 30,
+          "symbol": "parseQuestionReply",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 60,
+          "symbol": "maskQuestionReply",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 82,
+          "symbol": "toolView",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "parseQuestionReply/maskQuestionReply/toolView 是纯格式解析和脱敏，非 JSON 按普通文本/安全掩码处理；真正提交由 process.request/answerQuestion 和 panel.submitQuestionAnswer 记录。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/codex/executionPolicy.ts",
+      "sha256": "f4c1b107486c663b5a487b68e6109f9909b27a4c7b6e78b32bd3cad0e6266710",
+      "functions": 3,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/codex/performanceTrace.ts",
+      "sha256": "f3c7ea222a192e0bd8eba3f3b982f46978a99bc35eafc16c2a1bd523a4c3e255",
+      "functions": 39,
+      "operations": 0,
+      "catches": 1,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 104,
+          "symbol": "write",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "write 的最终出口由 DiagnosticHealth 独立反馈；阶段 start/end/heartbeat/finish 已存在。补丁不匹配和不存在的工具会话新增分类；未归因等待继续保留未知，不将观测跨度当作持续计算。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "sha256": "66e145c53e4365c29c592882857016ef00d8bc388f000adf596b57a166072d4e",
+      "functions": 130,
+      "operations": 24,
+      "catches": 24,
+      "logSites": 21,
+      "candidates": [
+        {
+          "line": 159,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 169,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 169,
+          "symbol": "CodexProcess",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "CodexProcess",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "CodexProcess",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 171,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 187,
+          "symbol": "setCustomTitle",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 208,
+          "symbol": "preTool",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 211,
+          "symbol": "preTool",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 226,
+          "symbol": "timedRequest",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 260,
+          "symbol": "finally",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 279,
+          "symbol": "prepare",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 299,
+          "symbol": "startSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 318,
+          "symbol": "startSession",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 327,
+          "symbol": "prefetchCompactionSettings",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 449,
+          "symbol": "restoreQuestion",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 481,
+          "symbol": "dispatch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 518,
+          "symbol": "dispatch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 520,
+          "symbol": "dispatch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 549,
+          "symbol": "compact",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 620,
+          "symbol": "stopInvalidQuestion",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 641,
+          "symbol": "checking",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 659,
+          "symbol": "checking",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 685,
+          "symbol": "routeChildNotification",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 701,
+          "symbol": "discoverChildren",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 717,
+          "symbol": "stopping",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 725,
+          "symbol": "stopping",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 928,
+          "symbol": "notification",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 957,
+          "symbol": "request",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 959,
+          "symbol": "request",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 960,
+          "symbol": "request",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 982,
+          "symbol": "request",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 987,
+          "symbol": "childRequest",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 997,
+          "symbol": "childRequest",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1002,
+          "symbol": "childRequest",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1012,
+          "symbol": "childRequest",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1077,
+          "symbol": "respondPermission",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1131,
+          "symbol": "interrupt",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1153,
+          "symbol": "stop",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1156,
+          "symbol": "stop",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1233,
+          "symbol": "disposeAndWait",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "rpc 诊断/通知/请求 -> PerformanceTrace、handlerFailed、panel.handleEmitInner 统一落盘；新增 setCustomTitle 仅走所属 RPC，不修改用户模型/effort/速度/权限。压缩启动预算是可选优化等待，迟到配置不接管已启动线程；手动兼容路径 finally 恢复，取消/断连/重启由现有回归覆盖。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/codex/rpc.ts",
+      "sha256": "675626f3fabe403579ad4c771fdfe910f2d04aa5a6e93c9df80361a7bf616d39",
+      "functions": 40,
+      "operations": 2,
+      "catches": 12,
+      "logSites": 20,
+      "candidates": [
+        {
+          "line": 109,
+          "symbol": "start",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 129,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 130,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 131,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 132,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 149,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 156,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 174,
+          "symbol": "receiveLine",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 190,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 205,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 232,
+          "symbol": "request",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 255,
+          "symbol": "write",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 261,
+          "symbol": "write",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 292,
+          "symbol": "disposeAndWait",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 295,
+          "symbol": "disposeAndWait",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 311,
+          "symbol": "codexSpawnEnvironment",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 321,
+          "symbol": "resolveCodex",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 329,
+          "symbol": "resolveCodex",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "request 现在分配一次 operationId，成功/失败/超时/取消复用，failureId 跨层保留；管理连接也可串联。write 管道异常经 fail 统一落盘和拒绝 pending，因此管理连接 reject 的 catch 不重复记同一底层错误。initialize/process end/kill 清理已有日志。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "sha256": "873da56999a5f11055d73bece1ed3fdac2ec039569bdeed7ae933a262048a196",
+      "functions": 76,
+      "operations": 15,
+      "catches": 8,
+      "logSites": 8,
+      "candidates": [
+        {
+          "line": 63,
+          "symbol": "connection",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 63,
+          "symbol": "connection",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 64,
+          "symbol": "connection",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 71,
+          "symbol": "connection",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 72,
+          "symbol": "connection",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 99,
+          "symbol": "readMetadata",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 110,
+          "symbol": "readModelCatalog",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 169,
+          "symbol": "refreshInner",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 173,
+          "symbol": "results",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 222,
+          "symbol": "hydrateWith",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 227,
+          "symbol": "hydrateWith",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 232,
+          "symbol": "readTurnCount",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 235,
+          "symbol": "readTurnCount",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 237,
+          "symbol": "readTurnCount",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 244,
+          "symbol": "readTurnCountWith",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 261,
+          "symbol": "hydrateThread",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 271,
+          "symbol": "hydrateThread",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 355,
+          "symbol": "setCustomTitle",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 357,
+          "symbol": "setCustomTitle",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 360,
+          "symbol": "setCustomTitle",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 363,
+          "symbol": "archive",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 369,
+          "symbol": "delete",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 405,
+          "symbol": "prepareFork",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 409,
+          "symbol": "fork",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 425,
+          "symbol": "fork",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 425,
+          "symbol": "fork",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 426,
+          "symbol": "fork",
+          "kind": "branch-unlogged"
+        }
+      ],
+      "review": "setCustomTitle 接受所属连接，核对 thread ID，再完成写入才更新缓存；未打开的历史会话仍使用管理连接。读取/缓存/hydrate 走 observeOperation 与 session.read recovered；元数据默认探测与错误传播不重复记录。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/codex/telemetry.ts",
+      "sha256": "b83ccffea977f943ea96fd697c083929ee2de0afb31c8341da2dce4ea1dcfa75",
+      "functions": 26,
+      "operations": 1,
+      "catches": 3,
+      "logSites": 4,
+      "candidates": [
+        {
+          "line": 106,
+          "symbol": "transportDiagnostics",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 142,
+          "symbol": "LocalTelemetry",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 166,
+          "symbol": "start",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 171,
+          "symbol": "start",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "OTLP 属性解析失败保留 timingStatus；接收/解码/观察者已有安全日志，已有 listen 后持续 server.error 边界。仅证明本机采集器，CLI 内部导出重试/丢弃不可从一次 ExportError 推断。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/diagnosticHealth.ts",
+      "sha256": "166adcc4147ecccdd1a685d7575ab16ff3272375adc3a90c5cf6b45ed433bb0a",
+      "functions": 4,
+      "operations": 0,
+      "catches": 1,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 14,
+          "symbol": "failed",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "最终健康反馈不递归写业务日志；失败与恢复标识一致，fallback 自身失败停止递归。磁盘和独立输出都不可用时无法保证留痕，保留这一限制。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/diagnostics/analysis.ts",
+      "sha256": "70818507ba4a4f71b99b3325f3d4849ce6479b05de53f988512983d9529c9a95",
+      "functions": 14,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/configuration.ts",
+      "sha256": "e721c3e1d98bdbd4ba21c3797c9c2b7901fdcecfabd704985f1c253db3402558",
+      "functions": 3,
+      "operations": 1,
+      "catches": 2,
+      "logSites": 3,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/evidence.ts",
+      "sha256": "6c1e5869251095831058f9e0a8d4c38963017b12bceb2dda5c082af9e6b376f5",
+      "functions": 2,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/general.ts",
+      "sha256": "5156783632fc524200009ce384302a9a1c8e1115dc0969551816c02e15f1f810",
+      "functions": 18,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/jobs.ts",
+      "sha256": "44fe383fd6916111969366d9e0d1747b60d71184a3985b666b335d35e2c0131f",
+      "functions": 70,
+      "operations": 14,
+      "catches": 28,
+      "logSites": 26,
+      "candidates": [
+        {
+          "line": 25,
+          "symbol": "alive",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 44,
+          "symbol": "workerRunner",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 48,
+          "symbol": "workerRunner",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 60,
+          "symbol": "workerRunner",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 65,
+          "symbol": "workerRunner",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 81,
+          "symbol": "get",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 96,
+          "symbol": "update",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 98,
+          "symbol": "then",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 98,
+          "symbol": "next",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 102,
+          "symbol": "next",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 114,
+          "symbol": "list",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 125,
+          "symbol": "batch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 132,
+          "symbol": "batch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 138,
+          "symbol": "batch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 152,
+          "symbol": "report",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 156,
+          "symbol": "finally",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 158,
+          "symbol": "finally",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 168,
+          "symbol": "finally",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 187,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 213,
+          "symbol": "execute",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 224,
+          "symbol": "retryNotification",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 234,
+          "symbol": "lock",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 238,
+          "symbol": "lock",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 242,
+          "symbol": "lock",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 247,
+          "symbol": "lock",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 249,
+          "symbol": "repair",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 258,
+          "symbol": "repair",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 262,
+          "symbol": "repair",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 267,
+          "symbol": "repair",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 274,
+          "symbol": "repair",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 275,
+          "symbol": "repair",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 279,
+          "symbol": "dispose",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 281,
+          "symbol": "dispose",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "workerRunner/execute/save/repair 边界统一记录；修复提示按 options/coverage 的真实时间范围生成，缺少旧记录配置时保持未知。报告路径不是可执行命令；长正文保留完整报告入口。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/diagnostics/loggingAudit.ts",
+      "sha256": "4cd1e461e74ab2611c4cc681ae4d0ab63f4cf890b2b77703884e3e72b119a5f2",
+      "functions": 6,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/loggingAuditData.ts",
+      "sha256": "bcdd27a791bf5637911c0558038e5a7a8bc233f78940c8500b6a40973696f673",
+      "functions": 0,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/model.ts",
+      "sha256": "d2afbc2d74804309043f8f2c196db0f7c8847b209fcb49e9cf515f270417d70b",
+      "functions": 33,
+      "operations": 3,
+      "catches": 7,
+      "logSites": 6,
+      "candidates": [
+        {
+          "line": 48,
+          "symbol": "analyzeWithModel",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 59,
+          "symbol": "serverRequest",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "analyzeWithModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "analyzeWithModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "analyzeWithModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "analyzeWithModel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 91,
+          "symbol": "configured",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 99,
+          "symbol": "session",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 107,
+          "symbol": "analyzeWithModel",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 133,
+          "symbol": "analyzeWithModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 133,
+          "symbol": "analyzeWithModel",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "只发送白名单摘要；补充最长轮次分项与未发送类别计数，不扩大工具权限。model fail/abort/serverRequest 在唯一终态结算，result.catch 只是提前观察拒绝，finally dispose 记录错误。摘要拼装是纯计算。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/diagnostics/notification.ts",
+      "sha256": "9d660a71ba326b0f7eb8181213f5a8d00e2643be3ad67f052d24d5711e0fe127",
+      "functions": 1,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/options.ts",
+      "sha256": "b9e56e72c9ecc723168377547b9ae9684166c9d525a0ed0ceb6b226781cd66db",
+      "functions": 2,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/page.ts",
+      "sha256": "171ae4c8816c8886a7813cafc80d3f68713fc6487263ed304401155d925ff7c7",
+      "functions": 20,
+      "operations": 4,
+      "catches": 4,
+      "logSites": 7,
+      "candidates": [
+        {
+          "line": 26,
+          "symbol": "DiagnosticsPage",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 39,
+          "symbol": "show",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 40,
+          "symbol": "show",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 40,
+          "symbol": "show",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 42,
+          "symbol": "show",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 45,
+          "symbol": "begin",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 72,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 76,
+          "symbol": "messageInner",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 79,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 80,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 81,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 82,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 84,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 90,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 92,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 97,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 101,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 102,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 103,
+          "symbol": "messageInner",
+          "kind": "branch-unlogged"
+        }
+      ],
+      "review": "show/begin 错误通过 error 统一落盘，refresh 与 Webview 投递已有失败/恢复。新增消息类型校验和操作边界，覆盖 configure/select/cancel/repair 等；已有脚本错误桥与纯折叠不重复记录。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/diagnostics/redact.ts",
+      "sha256": "3e7210b08d8c75c0f1474ff493daf65137447b43e479434c68a4ae8d9ebfde77",
+      "functions": 1,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "sha256": "cc0206bb7a7d8b34e5d93938c4c249f51e53e177631a789066b85212195e5044",
+      "functions": 22,
+      "operations": 2,
+      "catches": 4,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 61,
+          "symbol": "scanPluginLogs",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 64,
+          "symbol": "filter",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 73,
+          "symbol": "snapshots",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 75,
+          "symbol": "snapshots",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 94,
+          "symbol": "consume",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 156,
+          "symbol": "scanPluginLogs",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "扫描文件长度快照，错误/坏行/丢行记覆盖缺口；增加压缩 routeId/connectionId/failureId 供摘要关联，避免不同压缩尝试混淆。报告中的当前源码审查仍仅在 general 模式开启，performance 模式未冒充已审查。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/diagnostics/wait.ts",
+      "sha256": "512c15706e732bbe1956d242bcaf460d8d2983c877bcb62e72ecf898fa201552",
+      "functions": 8,
+      "operations": 0,
+      "catches": 1,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 13,
+          "symbol": "diagnosticWait",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 17,
+          "symbol": "diagnosticWait",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "timeout/abort/rejection 拒绝原 Promise，由 model/configuration 记录最终状态；迟到回调忽略是防重复结算，不是隐藏失败。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/diagnostics/worker.ts",
+      "sha256": "c0cab78df09587d9dd521771af27db2123c5141dece6458789f96ba13287a81d",
+      "functions": 2,
+      "operations": 2,
+      "catches": 1,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 6,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 8,
+          "symbol": "result",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 11,
+          "symbol": "匿名回调",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "扫描失败发送脱敏 errorFields 给父线程，再由 workerRunner/jobs.execute 结算；主线程日志出口统一落盘。父任务取消后的迟到消息忽略。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/diagnosticsReport.ts",
+      "sha256": "0a8ff659f94896e3f0222342e893e2e59b54e75068b494bedf2ff173e3cb76b3",
+      "functions": 40,
+      "operations": 2,
+      "catches": 2,
+      "logSites": 1,
+      "candidates": [
+        {
+          "line": 107,
+          "symbol": "readPerformanceData",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 126,
+          "symbol": "readPerformanceData",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 133,
+          "symbol": "readPerformanceReport",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "坏行计入 invalidLines 和报告说明；目录读取非 ENOENT 记录并传播。旧抽样报告不能替代 scanPluginLogs 全量统计。0.1.160 已修 analysis 中 durationMs 缺失被当 0 秒累计的缺陷。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/diff.ts",
+      "sha256": "75b058ef925a414d409120b61805c3e5f3f2801b545bef44e4cdfc9e523bf236",
+      "functions": 3,
+      "operations": 1,
+      "catches": 2,
+      "logSites": 1,
+      "candidates": [
+        {
+          "line": 32,
+          "symbol": "readDiffFile",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "UTF-8 解析失败为 binary 展示状态；读取权限/磁盘错误已有 operationFailure，missing 与 unreadable 分开，不返回伪造空正文。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/extension.ts",
+      "sha256": "fdb9fb2e83dac851d43a724567a716374609ed2cd6e55dc1e7feb75b3f14955b",
+      "functions": 68,
+      "operations": 8,
+      "catches": 3,
+      "logSites": 12,
+      "candidates": [
+        {
+          "line": 86,
+          "symbol": "diagnosticsPage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "diagnosticsPage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 92,
+          "symbol": "save",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 117,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 118,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 119,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 126,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 127,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 145,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 146,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 147,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 148,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 149,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 150,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 151,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 152,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 155,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 158,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 159,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 160,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 161,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 162,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 172,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 175,
+          "symbol": "activate",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 195,
+          "symbol": "deactivate",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "固定 registerCommand -> observeOperation -> provider 服务；activate/注册/关闭各有上层边界。诊断前刷新已有 LogFlushState，失败/超时在结果显示覆盖缺口，不再默认为全部落盘。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/fileRef.ts",
+      "sha256": "b21693031f3b73016ead3638df826c4c566c0805fb56154a62e11b5dc4516cea",
+      "functions": 1,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/imageFile.ts",
+      "sha256": "ff8d5498492e22d372b144618c24b191aefc683ef5a1211ce7332de0fefa2824",
+      "functions": 1,
+      "operations": 1,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 5,
+          "symbol": "readImageFile",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "只做有界文件读取，异常传播至 panel.loadLocalImage 或 remote.image.read；不在底层重复记录路径。remote 真实读取错误以前只返回业务拒绝，本次补脱敏日志。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/logging.ts",
+      "sha256": "07cf116a1becddf9332e95b8ba5543ba0d8d605b7e613b4b2300466a0c107905",
+      "functions": 28,
+      "operations": 8,
+      "catches": 9,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 12,
+          "symbol": "pruneLogs",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 21,
+          "symbol": "pruneLogs",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 23,
+          "symbol": "pruneLogs",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 33,
+          "symbol": "flushLogWriters",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 36,
+          "symbol": "flushLogWriters",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 38,
+          "symbol": "flushLogWriters",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "health",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 86,
+          "symbol": "health",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 90,
+          "symbol": "prune",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 92,
+          "symbol": "prune",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 98,
+          "symbol": "prune",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 114,
+          "symbol": "write",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 114,
+          "symbol": "write",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 118,
+          "symbol": "flush",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 120,
+          "symbol": "flush",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 123,
+          "symbol": "flush",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 130,
+          "symbol": "flush",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 138,
+          "symbol": "flush",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 142,
+          "symbol": "flush",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 145,
+          "symbol": "flush",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 146,
+          "symbol": "flush",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 163,
+          "symbol": "dispose",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "write/flush/prune 健康记录独立于业务 sink；批次有界保留、重试和恢复落盘，保留扫描覆盖缺口。本次补 onHealth 输出也抛错时的 console 兜底，并验证双通道失败和恢复。最末输出本身不可用时不递归，不能保证永久磁盘故障下落盘。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/notificationRouter.ts",
+      "sha256": "2bcddbbee76c40e1bb04338433325b75bf1ae19fa25e85ef4201f3387f947e3a",
+      "functions": 15,
+      "operations": 2,
+      "catches": 2,
+      "logSites": 4,
+      "candidates": [
+        {
+          "line": 44,
+          "symbol": "server",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 35,
+          "symbol": "running",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 59,
+          "symbol": "endpoint",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 71,
+          "symbol": "endpoint",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 63,
+          "symbol": "catch",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "endpoint 启动错误传播至 sendLocalNotice 调用方；click -> observeOperation 与 HTTP 状态。已有持续 runtime error 监听，移除已成功启动的临时 reject；陌生路径/Origin/已关闭来源按预期拒绝。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/notifications.ts",
+      "sha256": "d5baeb25c7a0ccb123c52495243f6430a4555ad51ed09ecbf3819493e2f36234",
+      "functions": 36,
+      "operations": 9,
+      "catches": 5,
+      "logSites": 3,
+      "candidates": [
+        {
+          "line": 15,
+          "symbol": "queueSessionNotification",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 18,
+          "symbol": "then",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 93,
+          "symbol": "focusNotificationWindow",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 99,
+          "symbol": "subscription",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 118,
+          "symbol": "focusNotificationWindow",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 117,
+          "symbol": "then",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 125,
+          "symbol": "focusNotificationWindow",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 133,
+          "symbol": "sendLocalNotification",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 138,
+          "symbol": "clearLocalNotification",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 145,
+          "symbol": "clearPreviousLocalNotifications",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 165,
+          "symbol": "clearPreviousLocalNotifications",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 172,
+          "symbol": "clearPreviousLocalNotifications",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 181,
+          "symbol": "requestLocalNotificationInner",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 194,
+          "symbol": "requestLocalNotificationInner",
+          "kind": "error-propagated"
+        }
+      ],
+      "review": "focus 的总 2000ms 预算现在覆盖 executeCommand 与窗口状态；settled 防止迟到结果再次结算，finally 解除订阅。成功焦点只恢复该层，notification.click 后续导航由上层单独记录。show/clear/排队边界已有日志；前序失败 catch 仅放行后继队列。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/operations.ts",
+      "sha256": "e2357ec56a69e6c3cf1df0cb9f31ff676f734c4f6700e0545ccff4d12894cb7a",
+      "functions": 9,
+      "operations": 1,
+      "catches": 2,
+      "logSites": 4,
+      "candidates": [
+        {
+          "line": 43,
+          "symbol": "operationLog",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "operationLog 出口失败由 DiagnosticHealth 独立反馈，errorFields 仅白名单；observeOperation 关联开始/终态。日志出口自身最终失败不递归。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/panel/chatViewProvider.ts",
+      "sha256": "62315b2b2840282a3d5fada542a170e624f9c1afdeb07599868d0a9bbe4a4cdd",
+      "functions": 438,
+      "operations": 86,
+      "catches": 103,
+      "logSites": 180,
+      "candidates": [
+        {
+          "line": 115,
+          "symbol": "add",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 278,
+          "symbol": "write",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 289,
+          "symbol": "markPrivate",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 292,
+          "symbol": "markPrivate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 304,
+          "symbol": "reloadSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 305,
+          "symbol": "reloadSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 346,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 364,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 367,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 370,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 374,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 581,
+          "symbol": "resolveWebviewView",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 590,
+          "symbol": "resolveWebviewView",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 592,
+          "symbol": "resolveWebviewView",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 618,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 623,
+          "symbol": "catch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 680,
+          "symbol": "openSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 682,
+          "symbol": "openSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 690,
+          "symbol": "openSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 717,
+          "symbol": "reopenDetached",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 738,
+          "symbol": "adoptPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 744,
+          "symbol": "adoptPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 750,
+          "symbol": "adoptPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 830,
+          "symbol": "revivePanel",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 910,
+          "symbol": "login",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 913,
+          "symbol": "login",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 928,
+          "symbol": "newSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 931,
+          "symbol": "diagnosticModels",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 934,
+          "symbol": "createDiagnosticRepairSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 958,
+          "symbol": "start",
+          "kind": "handler-delegated"
+        },
+        {
+          "line": 953,
+          "symbol": "then",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 965,
+          "symbol": "openInEditor",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 974,
+          "symbol": "stop",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1050,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1056,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1059,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1062,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1065,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1068,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1071,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1110,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1132,
+          "symbol": "onPanelMessage",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1137,
+          "symbol": "onPanelMessage",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1165,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1171,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1176,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1179,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1182,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1185,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1213,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1216,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1219,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1222,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1225,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1230,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1231,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1241,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1244,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1250,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1265,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1276,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1285,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1289,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1302,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1308,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1319,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1324,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1327,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1333,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1345,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1348,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1472,
+          "symbol": "newContext",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1526,
+          "symbol": "excludeSnapshotPaths",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1540,
+          "symbol": "queueSnapshotExclusionUpdate",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1547,
+          "symbol": "resetLocalSnapshotExcludes",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1548,
+          "symbol": "resetLocalSnapshotExcludes",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1565,
+          "symbol": "handleSend",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1598,
+          "symbol": "record",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1602,
+          "symbol": "stage",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1607,
+          "symbol": "syncStage",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1633,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1643,
+          "symbol": "handleSendInner",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1685,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1686,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1708,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1769,
+          "symbol": "editMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1781,
+          "symbol": "editMessage",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1804,
+          "symbol": "editMessageRewindPrepared",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1855,
+          "symbol": "saveImage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1906,
+          "symbol": "queueSessionSettings",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1909,
+          "symbol": "waitSessionSettings",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1930,
+          "symbol": "setPermissionMode",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1961,
+          "symbol": "setPermissionMode",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1979,
+          "symbol": "saveSessionModel",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1981,
+          "symbol": "saveSessionModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2001,
+          "symbol": "setModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2005,
+          "symbol": "setModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2011,
+          "symbol": "setModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2028,
+          "symbol": "saveSessionSpeed",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2030,
+          "symbol": "saveSessionSpeed",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2086,
+          "symbol": "saveSessionEffort",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2088,
+          "symbol": "saveSessionEffort",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2176,
+          "symbol": "autosaveBefore",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2218,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2234,
+          "symbol": "getChangedFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2287,
+          "symbol": "forkCheckpointInner",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2364,
+          "symbol": "forkCheckpointPrepared",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2507,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2518,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2524,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2550,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2567,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2569,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2580,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2589,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2590,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2608,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2623,
+          "symbol": "submitQuestionAnswer",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 2635,
+          "symbol": "restoreCheckpoint",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2900,
+          "symbol": "compactSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2910,
+          "symbol": "compactSessionPrepared",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2957,
+          "symbol": "setPinned",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2999,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3026,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3031,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3039,
+          "symbol": "messageSub",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 3044,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3066,
+          "symbol": "cfgSub",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 3071,
+          "symbol": "reviveNotifyPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 3279,
+          "symbol": "captureFinalSnapshot",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3286,
+          "symbol": "captureFinalSnapshot",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3309,
+          "symbol": "handleEmit",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3374,
+          "symbol": "handleEmitInner",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 3582,
+          "symbol": "sendLocalNotice",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3590,
+          "symbol": "sendLocalNotice",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3608,
+          "symbol": "pending",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 3662,
+          "symbol": "handleNotificationUri",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3663,
+          "symbol": "handleNotificationUri",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3709,
+          "symbol": "sendWebhook",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3824,
+          "symbol": "deliver",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3841,
+          "symbol": "maybeNotifyUsage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3885,
+          "symbol": "onSessionId",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4000,
+          "symbol": "renameSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4032,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4034,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4037,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4051,
+          "symbol": "checkForUpdate",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4066,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4068,
+          "symbol": "fetchRepoFile",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4085,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4086,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4100,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4101,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4103,
+          "symbol": "httpGetText",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4110,
+          "symbol": "resolveWorkspaceFile",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4197,
+          "symbol": "fileRefResolves",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4272,
+          "symbol": "openFile",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4277,
+          "symbol": "openFile",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4283,
+          "symbol": "openFile",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4305,
+          "symbol": "openSymbol",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4328,
+          "symbol": "lspHit",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4370,
+          "symbol": "openSymbolInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4379,
+          "symbol": "openSymbolInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4391,
+          "symbol": "openSymbolInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4441,
+          "symbol": "sourceFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4449,
+          "symbol": "searchDefinition",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4466,
+          "symbol": "contents",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4520,
+          "symbol": "findProjectRoot",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "页面 onPanelMessage/onSidebarMessage 与 process.emit 错误有统一 operation 边界。修复会话改名走原连接，observeOperation 增加开始/成功/失败，并在页面提示失败；不重发修复任务。refreshSessions 的 output 是 extension.ts 包装的 DailyLogWriter，不是纯控制台。发送收尾、设置队列、更新与通知继续复用既有边界。",
+      "reviewBasis": "本次调用链与差异核验"
+    },
+    {
+      "file": "src/questionImages.ts",
+      "sha256": "485a84681644215293f0f265ea07fe08ff6746ef2fd3a6738330b7e2122dbfde",
+      "functions": 1,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/bridgeClient.ts",
+      "sha256": "e003a6426c2d6fbe28053024e2896c047f9eebae75772930d9a6ff2700000e15",
+      "functions": 21,
+      "operations": 4,
+      "catches": 7,
+      "logSites": 10,
+      "candidates": [
+        {
+          "line": 72,
+          "symbol": "connect",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 72,
+          "symbol": "connect",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 74,
+          "symbol": "connect",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 104,
+          "symbol": "receive",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 130,
+          "symbol": "receive",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 119,
+          "symbol": "then",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 127,
+          "symbol": "finally",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 132,
+          "symbol": "connect",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 141,
+          "symbol": "connect",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "parseCommand 拒绝返回固定错误，execute -> observeOperation remote.execute；未知写入结果断开桥接，不能谎称未执行。reply 发送失败由末尾 catch 记录。remote.connection 是独立手机桥接，不是主 Codex RPC。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/remote/command.ts",
+      "sha256": "5783d1c3b7e0ba370eb4ec87f3f8475c04dbdabbd20ea3b3dbb788f485223e30",
+      "functions": 13,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/contract.ts",
+      "sha256": "96c774370516033ad19174bc8626fdceafd46ce2767a0a088b26d14dfc086133",
+      "functions": 3,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/executionReceipts.ts",
+      "sha256": "f85031ae4dc51cea37f053ef119fa40024b0a500cd6cc42a6b7d3766f96c89ce",
+      "functions": 9,
+      "operations": 3,
+      "catches": 1,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 18,
+          "symbol": "transact",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 20,
+          "symbol": "run",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 23,
+          "symbol": "old",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 36,
+          "symbol": "run",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "transact.catch 只允许后续事务继续，run 返回原任务拒绝到 remote.execute；先持久化 unknown 防重放。hash/update 是纯摘要计算，无需重复日志。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/remote/host.ts",
+      "sha256": "51053b9dc3c673fa854b09e8e671d1e0dbf60008386a697a6beccf57a740d190",
+      "functions": 0,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/images.ts",
+      "sha256": "17c86260a883d13d05efad93cd96319bc239490d84802dd19249fb99d4513adf",
+      "functions": 3,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/results.ts",
+      "sha256": "a13c0357c049b5bd25e6943c672851db422b7fe9f8df966eb9f276ea7445b112",
+      "functions": 10,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/runProgress.ts",
+      "sha256": "8a9039e47f3923b51fb027501b3cde85cfab6a74fb2f96b457cdc327de2aedd2",
+      "functions": 4,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/sessionAdapter.ts",
+      "sha256": "f97e8d79ca97d07201c2fcf783a61426ce5a9c8adaa7c6bda69bc5a4c3280cda",
+      "functions": 61,
+      "operations": 3,
+      "catches": 10,
+      "logSites": 2,
+      "candidates": [
+        {
+          "line": 65,
+          "symbol": "publish",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 84,
+          "symbol": "observe",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 90,
+          "symbol": "timer",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 107,
+          "symbol": "closed",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 146,
+          "symbol": "drainTasks",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 151,
+          "symbol": "drainTasks",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 244,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 257,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 261,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 262,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 268,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 277,
+          "symbol": "executeOperation",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 286,
+          "symbol": "executeOperation",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 290,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 292,
+          "symbol": "executeOperation",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 309,
+          "symbol": "executeOperation",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 323,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 338,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 350,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 354,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 357,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 357,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 360,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 367,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 375,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 389,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 404,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 406,
+          "symbol": "executeOperation",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 415,
+          "symbol": "executeOperation",
+          "kind": "branch-unlogged"
+        }
+      ],
+      "review": "publish/observe/schedule/closed 委派 remote.adapter.failure；执行边界由 remote.execute 统一记录。图片读取真实文件错误曾统一吞成 IMAGE_NOT_AVAILABLE，现增加 remote.image.read；明确的图片大小/游标/不可用业务拒绝仍按固定错误返回。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/remote/taskQueue.ts",
+      "sha256": "9f18c5df77cf0115d07a628c606085df1a8e5ebf3068a8096e03b4aed8b4f435",
+      "functions": 8,
+      "operations": 1,
+      "catches": 1,
+      "logSites": 4,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/remote/timeline.ts",
+      "sha256": "bba8dd72ed110bf5f50165e17c88a361ac825965b151c86ac2672a6fbe238afe",
+      "functions": 10,
+      "operations": 1,
+      "catches": 3,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 35,
+          "symbol": "imageSources",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 68,
+          "symbol": "read",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 71,
+          "symbol": "read",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 73,
+          "symbol": "read",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 74,
+          "symbol": "read",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 79,
+          "symbol": "read",
+          "kind": "error-propagated"
+        }
+      ],
+      "review": "imageSources 是纯解析；RemoteImageReader 的 URL/类型拒绝是业务校验，磁盘错误继续传播，本次由 adapter 新增 remote.image.read 落盘。readImageFile 保留实际字节预算。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/remote/transcript.ts",
+      "sha256": "c508d587dc83187f266f88a8fd18a52bf375f1a7945587e127c7480d00f31342",
+      "functions": 11,
+      "operations": 3,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 19,
+          "symbol": "transcriptPage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 35,
+          "symbol": "transcriptSnapshot",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 49,
+          "symbol": "cursor",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "transcriptPage 是内存分页和 createHash.update，静态规则误认为外部 update；读取历史在 SessionStore/remote.execute 边界，纯计算不埋点。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/shared.ts",
+      "sha256": "639c78a4dc2b6bc3327ef60bc70f17a3a97b8114a8b576e0bb92d74cf71a07db",
+      "functions": 18,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/snapshot.ts",
+      "sha256": "a825f7f81d65535dfda66fb4ee172cb0695a465f40c19177a519b869c2ba3c55",
+      "functions": 34,
+      "operations": 9,
+      "catches": 7,
+      "logSites": 4,
+      "candidates": [
+        {
+          "line": 100,
+          "symbol": "walk",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 114,
+          "symbol": "listed",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 114,
+          "symbol": "listed",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 141,
+          "symbol": "read",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 176,
+          "symbol": "current",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 181,
+          "symbol": "read",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 183,
+          "symbol": "read",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 189,
+          "symbol": "fingerprint",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 193,
+          "symbol": "fingerprint",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 195,
+          "symbol": "fingerprints",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 205,
+          "symbol": "readBatch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 237,
+          "symbol": "changed",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "walk/read/fingerprint 将缺失、不可读、扫描不全汇总 skipReasons/completeScan/unrestorableChanges，并由 checkpoint/panel 记录。inode/大小/时间一致性与实际读入预算已有测试；不对每个文件重复埋点。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/webview/diagnostics.ts",
+      "sha256": "f05433121f7f2422198f2bf9f07d382616179f8890484f1cc8e973df398ba853",
+      "functions": 30,
+      "operations": 12,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 11,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 31,
+          "symbol": "send",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 32,
+          "symbol": "select",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 34,
+          "symbol": "select",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 35,
+          "symbol": "select",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 54,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 61,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 62,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 72,
+          "symbol": "renderContent",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 114,
+          "symbol": "renderContent",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 140,
+          "symbol": "renderContent",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 145,
+          "symbol": "renderContent",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 146,
+          "symbol": "renderContent",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 156,
+          "symbol": "renderContent",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 159,
+          "symbol": "renderContent",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 161,
+          "symbol": "renderContent",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 164,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 165,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 166,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 168,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "select/render/折叠/搜索是界面状态；真正操作经 DiagnosticsPage.message/jobs 统一终态，浏览器全局错误经 installWebviewErrors 到宿主。配置失败不推断已成功保存。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/webview/errors.ts",
+      "sha256": "fd77d8d93cabfd85a9252c69f548f37b647fcc66e22fff22da9d21dff0f03a98",
+      "functions": 7,
+      "operations": 1,
+      "catches": 1,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 16,
+          "symbol": "flush",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 19,
+          "symbol": "flush",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 38,
+          "symbol": "installWebviewErrors",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 39,
+          "symbol": "installWebviewErrors",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 42,
+          "symbol": "installWebviewErrors",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "全局 error/unhandledrejection 固定类别上报；通道失败由独立 console 健康信号并在宿主来信时重试。已有图片资源类型，绝不含 URL/路径。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/webview/main.ts",
+      "sha256": "0c75be337e56dba1d03d348c22b3f6fb8c0693edd5729b5eff238f2159a335bf",
+      "functions": 553,
+      "operations": 55,
+      "catches": 15,
+      "logSites": 0,
+      "candidates": [
+        {
+          "line": 21,
+          "symbol": "send",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 36,
+          "symbol": "reportWebviewError",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 62,
+          "symbol": "匿名回调",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 69,
+          "symbol": "匿名回调",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 117,
+          "symbol": "codeBlock",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 210,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 211,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 212,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 213,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 214,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 215,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 216,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 234,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 235,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 236,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 237,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 238,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 239,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 240,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 280,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 281,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 282,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 283,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 284,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 298,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 301,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 302,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 707,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 714,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 718,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 719,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 746,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 746,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 804,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 805,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 806,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 807,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 808,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 809,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 810,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 932,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 932,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 936,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 996,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1039,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1051,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1071,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1072,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1181,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1181,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1205,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1798,
+          "symbol": "createToolGroup",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1872,
+          "symbol": "createToolCard",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 1952,
+          "symbol": "updateToolPartial",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1998,
+          "symbol": "extractSearchLinks",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2004,
+          "symbol": "add",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 2017,
+          "symbol": "extractSearchLinks",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 2019,
+          "symbol": "extractSearchLinks",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2031,
+          "symbol": "prettyHost",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 2055,
+          "symbol": "setToolResult",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 2325,
+          "symbol": "attachPermission",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2326,
+          "symbol": "attachPermission",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2330,
+          "symbol": "attachPermission",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2368,
+          "symbol": "attachReanswer",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 2368,
+          "symbol": "attachReanswer",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2380,
+          "symbol": "pairs",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 2387,
+          "symbol": "renderQuestion",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2400,
+          "symbol": "renderQuestion",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2455,
+          "symbol": "addPictures",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2478,
+          "symbol": "addPictures",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 2490,
+          "symbol": "renderQuestion",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 2498,
+          "symbol": "renderQuestion",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 2499,
+          "symbol": "renderQuestion",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 2710,
+          "symbol": "renderQuestion",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2731,
+          "symbol": "renderQuestion",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3066,
+          "symbol": "showHistoryStatus",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3139,
+          "symbol": "showLocalImage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3145,
+          "symbol": "showLocalImage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3166,
+          "symbol": "hydrateLocalImages",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3172,
+          "symbol": "hydrateLocalImages",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 3180,
+          "symbol": "hydrateLocalImages",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3180,
+          "symbol": "hydrateLocalImages",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3188,
+          "symbol": "linkifyRefs",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3205,
+          "symbol": "linkifyRefs",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 3270,
+          "symbol": "linkifyRefs",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3282,
+          "symbol": "linkifyRefs",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3337,
+          "symbol": "renderChangedFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3343,
+          "symbol": "renderChangedFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3349,
+          "symbol": "renderChangedFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3367,
+          "symbol": "renderCheckpointDivider",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3374,
+          "symbol": "renderCheckpointDivider",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3434,
+          "symbol": "onSendCancelled",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3442,
+          "symbol": "onSendCancelled",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3443,
+          "symbol": "onSendCancelled",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3502,
+          "symbol": "syncDesktopQueue",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3508,
+          "symbol": "syncDesktopQueue",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3630,
+          "symbol": "setComposerText",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3662,
+          "symbol": "clearComposer",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3716,
+          "symbol": "handleSlashCommand",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3730,
+          "symbol": "handleSlashCommand",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3734,
+          "symbol": "handleSlashCommand",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3771,
+          "symbol": "handleSlashCommand",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3839,
+          "symbol": "performSend",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4023,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4062,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4064,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4067,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4092,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4175,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4234,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4244,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4253,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4279,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4304,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4306,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4313,
+          "symbol": "copyLightboxImage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4334,
+          "symbol": "copyLightboxImage",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4381,
+          "symbol": "renderFileChips",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4402,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4403,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4404,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4409,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4436,
+          "symbol": "匿名回调",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4442,
+          "symbol": "匿名回调",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4488,
+          "symbol": "importDroppedPlainFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4500,
+          "symbol": "importDroppedPlainFiles",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4505,
+          "symbol": "importDroppedEntries",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4511,
+          "symbol": "collect",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4512,
+          "symbol": "collect",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4527,
+          "symbol": "collect",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4516,
+          "symbol": "collect",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4527,
+          "symbol": "collect",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4534,
+          "symbol": "collect",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4550,
+          "symbol": "importDroppedEntries",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4695,
+          "symbol": "requestModelChange",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4702,
+          "symbol": "requestEffortChange",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4752,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4770,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4774,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4783,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4804,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4810,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4810,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4812,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4819,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4826,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4829,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4830,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4832,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4833,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4834,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4834,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4842,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4867,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4867,
+          "symbol": "匿名回调",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4877,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4880,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4887,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4893,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4893,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4901,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4895,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4907,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4907,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4910,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4909,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4910,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4915,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4914,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4915,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4917,
+          "symbol": "匿名回调",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4993,
+          "symbol": "copy",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5028,
+          "symbol": "remove",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5081,
+          "symbol": "beginMessageEdit",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5106,
+          "symbol": "beginMessageEdit",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5143,
+          "symbol": "copy",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5183,
+          "symbol": "submitEdit",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5248,
+          "symbol": "submitEdit",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 5308,
+          "symbol": "renderSnapshotSkips",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5320,
+          "symbol": "renderSnapshotSkips",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5375,
+          "symbol": "renderRateLimit",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 5464,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5465,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5468,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5623,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5792,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5793,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5797,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 5807,
+          "symbol": "匿名回调",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "发送由宿主入口记录，全局 error/unhandledrejection 走 installWebviewErrors；高亮、URL、搜索 JSON 解析允许普通文本回退。图片、拖入、剪贴板错误已有安全上报，图片显式重载和历史恢复已有测试。纯 DOM 和计算不逐分支记录，工具名 js 不能据此认定页面崩溃。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/webview/modelPicker.ts",
+      "sha256": "4df47edf1f57c074d7eab6357d0802bdc1597e985da0934d6cba112def9ecaff",
+      "functions": 4,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/webview/selection.ts",
+      "sha256": "affe78d3d9d514c1266b10be68049d1474c62b0853996e94a90d781033f8f9da",
+      "functions": 5,
+      "operations": 0,
+      "catches": 0,
+      "logSites": 0,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/webviewDelivery.ts",
+      "sha256": "69d5e9680fd60b8152ee279bd9091d6002e84cfbc39bf22d7107f582e5154619",
+      "functions": 1,
+      "operations": 1,
+      "catches": 1,
+      "logSites": 3,
+      "candidates": [],
+      "review": "当前静态规则无候选；不据此认定所有路径都有日志。",
+      "reviewBasis": "静态规则"
+    },
+    {
+      "file": "src/workdayCalendar.ts",
+      "sha256": "fd68f5c55eb25397c9600c650a7bb83e1b642e06e515bfcf993842a26b6e4195",
+      "functions": 24,
+      "operations": 1,
+      "catches": 8,
+      "logSites": 13,
+      "candidates": [
+        {
+          "line": 29,
+          "symbol": "isFeishuWebhook",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 44,
+          "symbol": "parseHolidayYear",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 121,
+          "symbol": "updateYear",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 130,
+          "symbol": "updateYear",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "URL/年度解析纯校验；updateYear 镜像失败继续第二来源，最终失败/成功/缓存失败在 refresh 调用链已有日志。取消保持取消，不绕过权限或重复无限请求。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    },
+    {
+      "file": "src/workspaceActivity.ts",
+      "sha256": "c1e90c3d56d855dba2ba03cb31836d2e92e270f251a86a5dc846478e3e42021e",
+      "functions": 24,
+      "operations": 0,
+      "catches": 4,
+      "logSites": 2,
+      "candidates": [
+        {
+          "line": 34,
+          "symbol": "begin",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 51,
+          "symbol": "finish",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 61,
+          "symbol": "save",
+          "kind": "error-propagated"
+        }
+      ],
+      "review": "begin/save 的同步磁盘失败传播至发送准备阶段；finish 的失败由收尾/结果处理边界记录。本次修 handleSend finally 的释放缺口，持久化失败仍保留活动记录供下次核验，不伪造已安全完成。",
+      "reviewBasis": "源码哈希与已有 a86 审查一致，复用边界结论",
+      "previousReview": "benchmarks/diagnostic-a86-source-review.json"
+    }
+  ],
+  "candidates": 750,
+  "unsupported": [
+    "native/Notifications.swift"
+  ],
+  "verification": [
+    "test/diagnostic-4d94-fix.test.cjs",
+    "test/compaction-relay.test.cjs",
+    "test/connection-diagnostics-fix.test.cjs",
+    "test/afefb855-ui.test.cjs",
+    "npm test"
+  ],
+  "limitations": [
+    "哈希复用不是重新逐分支审查；未覆盖源码语言仍列为 unsupported。",
+    "原生窗口最小化/跨窗口点击、OS休眠和真实上游访问控制未做现场自动化，不冒充已验证。",
+    "Webview error/unhandledrejection 与消息投递已有脱敏边界；页面脚本加载前彻底无法运行时无法依赖页内处理器自报。",
+    "纯计算、预期文件探测与已由上层记录的错误不重复埋点。"
+  ]
+}

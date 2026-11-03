@@ -194,3 +194,16 @@ test('归档期间关闭转发器，不再把已取消的 HTTP 请求发送给�
  await assert.rejects(request(f.base+'/responses',raw(make({input:[...longHistory(),{type:'compaction_trigger'}]})),{'thread-id':'cancelled'}));
  assert.equal(requests,0);
 });
+
+test('4d94 断流与恢复的压缩尝试分别计时并保留 routeId，成功后的普通请求保持原配置',async t=>{
+ const {base,wss,routes}=await fixture(t);let attempts=0;const received=[];
+ wss.on('connection',ws=>ws.on('message',data=>{const body=JSON.parse(data);received.push(body);if(++attempts===1){setTimeout(()=>ws.terminate(),25);return;}setTimeout(()=>ws.send(JSON.stringify({type:'response.completed',response:{model:body.model}})),25);}));
+ const failed=await connect(t,base);const closed=once(failed,'close');failed.send(raw(make()),{binary:false});await closed;
+ const recovered=await connect(t,base);await exchange(recovered,raw(make()));
+ const normal=make({input:[]});await exchange(recovered,raw(normal));assert.deepEqual(received[2],normal);
+ const terminals=routes.filter(r=>r.stage==='response');assert.equal(terminals.length,2);
+ assert.equal(terminals[0].outcome,'incomplete');assert.equal(terminals[1].outcome,'completed');
+ assert.notEqual(terminals[0].routeId,terminals[1].routeId);
+ for(const end of terminals){assert.ok(end.elapsedMs>=20);assert.equal(routes.filter(r=>r.routeId===end.routeId).length,2);}
+ assert.doesNotMatch(JSON.stringify(routes),/完整输出|保留约束/);
+});

@@ -100,15 +100,22 @@ export async function focusNotificationWindow(): Promise<void> {
             if (state.focused) { focused = true; onFocused?.(); }
         });
         try {
-            await vscode.commands.executeCommand("workbench.action.focusWindow");
-            if (focused || vscode.window.state.focused) return;
             await new Promise<void>((resolve, reject) => {
-                onFocused = resolve;
+                let settled = false;
+                const finish = (error?: unknown) => {
+                    if (settled) return;
+                    settled = true;
+                    error ? reject(error) : resolve();
+                };
+                onFocused = () => finish();
                 timer = setTimeout(() => {
                     // 扩展宿主繁忙时，状态更新和定时器可能在同一批次到达。
-                    if (focused || vscode.window.state.focused) resolve();
-                    else reject(Object.assign(new Error("通知来源窗口未能切到前台。"), { code: 'ETIMEDOUT' }));
+                    if (focused || vscode.window.state.focused) finish();
+                    else finish(Object.assign(new Error("通知来源窗口未能切到前台。"), { code: 'ETIMEDOUT' }));
                 }, 2000);
+                // 截止时间包含命令本身；迟到的应答只被观察，不能再导航或重新结算。
+                Promise.resolve().then(() => vscode.commands.executeCommand("workbench.action.focusWindow"))
+                    .then(() => { if (focused || vscode.window.state.focused) finish(); }, error => finish(error));
             });
         } finally {
             clearTimeout(timer);

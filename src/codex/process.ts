@@ -183,6 +183,11 @@ export class CodexProcess {
   }
   get modelForNextTurn() { return this.opts.model || this.activeModel; }
   get currentSessionId() { return this.sessionId; }
+  /** 新线程在首次历史落盘前只存在于所属连接，不能交给另一个管理进程改名。 */
+  async setCustomTitle(title: string): Promise<void> {
+    if (!this.sessionId || this.exited || this.disposed) throw new Error('会话连接已关闭，无法保存名称');
+    await this.rpc.request('thread/name/set', { threadId: this.sessionId, name: title || '新对话' });
+  }
   get currentTurnId() {
     // 等待 turn/start 或根轮次结束但子任务仍运行时也能停止；跨进程/新轮次的旧操作不会命中。
     return this.busy ? this.turnId ?? this.pausedQuestion?.turnId ?? `${this.remoteInstance}-${this.dispatchSequence}-${this.compactionSequence}` : undefined;

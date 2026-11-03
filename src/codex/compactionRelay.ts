@@ -3,6 +3,7 @@ import * as http from 'node:http';
 import * as https from 'node:https';
 import type { Duplex } from 'node:stream';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { performance } from 'node:perf_hooks';
 import { WebSocket, WebSocketServer, RawData } from 'ws';
 import { getProxyForUrl } from 'proxy-from-env';
 import * as path from 'node:path';
@@ -40,6 +41,7 @@ export interface CompactionRoute {
   serviceTier: string | null;
   transport: 'http' | 'websocket';
   servedModel?: string;
+  elapsedMs?: number;
 }
 
 /** 只接管已知的官方提供方；自定义网关、身份路由及未知账号保持原配置。 */
@@ -101,6 +103,7 @@ export class CompactionRelay {
   private agent?: http.Agent;
   private closed = false;
   private ready = false;
+  private readonly routeStarted = new Map<string, number>();
   private constructor(private readonly upstream: string, private readonly select: CompactionSelector,
     private readonly onRoute: (route: CompactionRoute) => void, private readonly options: RelayOptions) {
     const target = new URL(upstream);
@@ -148,6 +151,16 @@ export class CompactionRelay {
     } catch { /* 畸形 URL 不能影响扩展宿主 */ }
   }
   private report(route: CompactionRoute): void {
+    if (route.routeId) {
+      if (route.stage === 'request') {
+        if (this.routeStarted.size >= 256) this.routeStarted.delete(this.routeStarted.keys().next().value!);
+        this.routeStarted.set(route.routeId, performance.now());
+      } else {
+        const started = this.routeStarted.get(route.routeId);
+        if (started !== undefined) route = { ...route, elapsedMs: Math.round(performance.now() - started) };
+        this.routeStarted.delete(route.routeId!);
+      }
+    }
     try { this.onRoute(route); } catch (error) { operationFailure('compaction.observer', error); /* 诊断失败不能中断模型请求 */ }
   }
   private async rewrite(raw: Buffer, req: http.IncomingMessage, target: URL, transport: CompactionRoute['transport'], signal: AbortSignal, history?: ResponseHistory, connectionId?: string): Promise<{ body: Buffer; route?: CompactionRoute }> {

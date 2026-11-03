@@ -60,7 +60,7 @@ export class SessionStore {
     if (this.connecting) return this.connecting;
     const rpc = new CodexRpc(this.executable(), this.cwd);
     this.rpc = rpc;
-    rpc.on('request', m => { try { rpc.reject(m.id, '管理连接不执行工具'); } catch {} });
+    rpc.on('request', m => { try { rpc.reject(m.id, '管理连接不执行工具'); } catch { /* 管道故障已由 rpc.write -> fail 记录并清理请求。 */ } });
     rpc.on('notification', m => {
       if (this.rpc === rpc && (m.method === 'account/updated' ||
           m.method === 'account/login/completed' && m.params?.success === true)) {
@@ -352,8 +352,12 @@ export class SessionStore {
     const v = userView(item.content ?? []);
     return { text: v.text, images: (v.images ?? []).flatMap(uri => { const m = /^data:([^;]+);base64,(.+)$/.exec(uri); return m ? [{ mediaType: m[1], data: m[2] }] : []; }) };
   }
-  async setCustomTitle(id: string, title: string): Promise<boolean> {
-    await (await this.connection()).request('thread/name/set', { threadId: id, name: title || '新对话' });
+  async setCustomTitle(id: string, title: string,
+    owner?: { currentSessionId?: string; setCustomTitle(title: string): Promise<void> }): Promise<boolean> {
+    if (owner) {
+      if (owner.currentSessionId !== id) throw new Error('会话名称保存目标不匹配');
+      await owner.setCustomTitle(title);
+    } else await (await this.connection()).request('thread/name/set', { threadId: id, name: title || '新对话' });
     if (this.threads.has(id)) this.threads.get(id).name = title; return true;
   }
   async archive(id: string): Promise<void> {

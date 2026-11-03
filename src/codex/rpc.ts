@@ -219,11 +219,11 @@ export class CodexRpc extends EventEmitter {
     const id = ++this.sequence;
     const startedAt = performance.now(), sourceTimeMs = Date.now();
     const p = params as { threadId?: unknown; turnId?: unknown } | null;
-    const fields = { type: 'rpc', method, requestId: id, sourceTimeMs,
+    const fields = { type: 'rpc', method, requestId: id, operationId: randomUUID(), sourceTimeMs,
       threadId: diagnosticId(p?.threadId) ?? null, turnId: diagnosticId(p?.turnId) ?? null };
     const record = (stage: string, extra: TransportDiagnostic = {}) => {
       if (this.diagnostics) this.diagnostic({ ...fields, stage, ...extra });
-      else operationLog('rpc.request', stage, { processRunId: this.processRunId, requestId: id, method, ...extra });
+      else operationLog('rpc.request', stage, { processRunId: this.processRunId, ...fields, ...extra });
     };
     record('start', { pendingRequests: this.pending.size, timeoutMs: timeout });
     const request = new Promise<T>((resolve, reject) => {
