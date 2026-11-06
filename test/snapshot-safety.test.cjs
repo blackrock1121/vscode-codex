@@ -114,14 +114,14 @@ test('嵌套 Git 仓库作为目录列出时仍备份其源码，不跟随工作
   assert.equal(snapshot.skipReasons.get(path.join(root, 'linked.ts')), 'symlink');
 });
 
-test('重叠工作区不会重复计算同一个文件的容量，33 MiB 不误报超过 64 MiB', async t => {
+test('重叠工作区不会重复计算同一个文件的容量，129 MiB 不误报超过 256 MiB', async t => {
   const dir = await fixture(t), nested = path.join(dir, 'nested');
   await fs.mkdir(nested);
   const text = 'x'.repeat(1024 * 1024);
-  for (let i = 0; i < 33; i++) await fs.writeFile(path.join(nested, `${i}.txt`), text);
+  for (let i = 0; i < 129; i++) await fs.writeFile(path.join(nested, `${i}.txt`), text);
   const snapshot = new WorkspaceSnapshot([dir, nested]);
   await snapshot.capture();
-  assert.equal(snapshot.files.size, 33);
+  assert.equal(snapshot.files.size, 129);
   assert.equal(snapshot.skipped.size, 0);
 });
 

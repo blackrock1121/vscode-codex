@@ -220,7 +220,7 @@ export class WorkspaceSnapshot {
         if (missing) { this.changedDuringRead++; this.skip(file, 'unreadable'); return; }
         if (text === undefined) { this.skip(file, reason ?? 'unreadable'); return; }
         const size = Buffer.byteLength(text);
-        if (this.bytes + size > 64 * 1024 * 1024) { this.skip(file, 'limit'); return; }
+        if (this.bytes + size > 256 * 1024 * 1024) { this.skip(file, 'limit'); return; }
         this.files.set(file, text); this.bytes += size;
       });
       this.timings.readMs += performance.now() - readAt;
