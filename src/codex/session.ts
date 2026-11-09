@@ -39,6 +39,7 @@ export class SessionStore {
   private connecting?: Promise<CodexRpc>;
   private threads = new Map<string, any>();
   private hydrating = new Map<string, Promise<void>>();
+  private historyUnusedSince = new Map<string, number>();
   private pending = new Map<string, { title: string; updatedAt: number }>();
   private deletedIds = new Set<string>();
   private listing?: Promise<void>;
@@ -194,7 +195,11 @@ export class SessionStore {
     // 所有分页完成后再合并缓存，避免覆盖分页期间刚读取的完整历史。
     for (const [id, thread] of found) {
       if (this.deletedIds.has(id)) found.delete(id);
-      else found.set(id, { ...thread, turns: this.threads.get(id)?.turns ?? thread.turns });
+      else {
+        const cached = this.threads.get(id);
+        found.set(id, { ...thread, turns: cached?.turns ?? (cached?.cachedTurnCount !== undefined ? undefined : thread.turns),
+          cachedTurnCount: cached?.cachedTurnCount });
+      }
     }
     // Forked threads can be absent from thread/list briefly after creation.
     for (const [id, thread] of this.threads) if (this.pending.has(id) && !found.has(id)) found.set(id, thread);
@@ -284,9 +289,10 @@ export class SessionStore {
       thread = { ...thread, turns };
     } else checkTurns(thread.turns);
     this.threads.set(id, { ...thread, archived: this.threads.get(id)?.archived ?? false });
+    this.historyUnusedSince.delete(id);
   }
   list(): SessionSummary[] {
-    const entries = new Map<string, SessionSummary>([...this.threads.values()].map(t => [t.id, { id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? 0, archived: t.archived === true }]));
+    const entries = new Map<string, SessionSummary>([...this.threads.values()].map(t => [t.id, { id: t.id, title: t.name?.trim() || previewTitle(t.preview), updatedAt: t.updatedAt * 1000, messageCount: t.turns?.length ?? t.cachedTurnCount ?? 0, archived: t.archived === true }]));
     for (const [id, p] of this.pending) {
       const existing = entries.get(id);
       entries.set(id, { ...existing, id, title: existing?.title && existing.title !== '新对话' ? existing.title : p.title, updatedAt: Math.max(existing?.updatedAt ?? 0, p.updatedAt), messageCount: existing?.messageCount ?? 0 });
@@ -296,10 +302,27 @@ export class SessionStore {
   notePending(id: string, text: string): void {
     this.pending.set(id, { title: previewTitle(text), updatedAt: Date.now() });
   }
+  /** 仅释放不再使用的正文，保留列表元数据；活动/派生/还原会话由调用者保护。 */
+  pruneHistory(retained: ReadonlySet<string>, now = Date.now()): void {
+    if (this.preparations.size) return;
+    for (const id of this.historyUnusedSince.keys()) if (!this.threads.has(id)) this.historyUnusedSince.delete(id);
+    for (const [id, thread] of this.threads) {
+      if (!Array.isArray(thread.turns) || retained.has(id) || this.hydrating.has(id)) {
+        this.historyUnusedSince.delete(id); continue;
+      }
+      const since = this.historyUnusedSince.get(id);
+      if (since === undefined) { this.historyUnusedSince.set(id, now); continue; }
+      if (now - since < 5 * 60000) continue;
+      const { turns, ...metadata } = thread;
+      this.threads.set(id, { ...metadata, cachedTurnCount: turns.length });
+      this.historyUnusedSince.delete(id);
+      operationLog('session.historyCache', 'released', { threadId: id, turnCount: turns.length });
+    }
+  }
   load(id: string): TimelineItem[] { return timeline(this.threads.get(id)?.turns ?? []); }
   isArchived(id: string): boolean { return this.threads.get(id)?.archived === true; }
   findFile(id: string): string | undefined { const t = this.threads.get(id); return t ? (t.path || id) : undefined; }
-  countLines(id: string): number { return this.threads.get(id)?.turns?.length ?? 0; }
+  countLines(id: string): number { const thread = this.threads.get(id); return thread?.turns?.length ?? thread?.cachedTurnCount ?? 0; }
   userTurnLines(id: string): { text: string; hasImages: boolean; line: number }[] {
     return (this.threads.get(id)?.turns ?? []).flatMap((t: any, index: number) => {
       const user = t.items?.find((i: any) => i.type === 'userMessage'); if (!user) return [];

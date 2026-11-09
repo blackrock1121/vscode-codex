@@ -35,6 +35,42 @@ function scrollFixture(w){
  return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
+test('页面休眠仅在无待办输入时确认，草稿、附件和运行中任务必须保留', t => {
+ const f = setup(t, 'sleep');
+ f.emit({kind:'load_history',sessionId:'sleep',items:[],checkpoints:[]});
+ const ask = id => f.emit({kind:'prepare_suspend',requestId:id});
+ ask(1); assert.ok(f.sent.some(m=>m.type==='suspend_ready'&&m.requestId===1));
+ assert.equal(f.states.at(-1).sessionId,'sleep');
+ f.w.document.getElementById('input').value='尚未发送的草稿'; ask(2);
+ assert.equal(f.sent.some(m=>m.type==='suspend_ready'&&m.requestId===2),false);
+ f.w.document.getElementById('input').value='';
+ f.emit({kind:'busy',busy:true}); ask(3);
+ assert.equal(f.sent.some(m=>m.type==='suspend_ready'&&m.requestId===3),false);
+ f.emit({kind:'busy',busy:false});
+ f.emit({kind:'draft',text:'',images:[{mediaType:'image/png',data:'aGVsbG8='}]}); ask(4);
+ assert.equal(f.sent.some(m=>m.type==='suspend_ready'&&m.requestId===4),false);
+ assert.deepEqual(f.errors,[]);
+});
+test('等待回答、排队消息和未确认发送不会因后台休眠而丢失', t => {
+ const question = setup(t);
+ question.emit({kind:'permission_request',requestId:'sleep-question',toolName:'AskUserQuestion',
+   input:{questions:[{id:'q',question:'继续？',options:[{label:'继续'}]}]},suggestions:[]});
+ question.emit({kind:'prepare_suspend',requestId:1});
+ assert.equal(question.sent.some(m=>m.type==='suspend_ready'),false);
+ assert.ok(question.w.document.querySelector('.askp'));
+ const queue = setup(t);
+ queue.emit({kind:'busy',busy:true});
+ queue.w.document.getElementById('input').value='稍后执行'; queue.w.document.getElementById('btn-send').click();
+ queue.emit({kind:'prepare_suspend',requestId:2});
+ assert.equal(queue.sent.some(m=>m.type==='suspend_ready'),false);
+ assert.equal(queue.states.at(-1).recovery.queue[0].text,'稍后执行');
+ const sending = setup(t);
+ sending.w.document.getElementById('input').value='尚未确认'; sending.w.document.getElementById('btn-send').click();
+ sending.emit({kind:'prepare_suspend',requestId:3});
+ assert.equal(sending.sent.some(m=>m.type==='suspend_ready'),false);
+ assert.ok(sending.states.at(-1).recovery.sends.length);
+ for (const f of [question,queue,sending]) assert.deepEqual(f.errors,[]);
+});
 test('发送时间在用户气泡外，回复完成时间紧随复制，显示本地日期且只精确到分钟',t=>{
  const f=setup(t),sentAt=new Date(2026,9,30,9,1,49).getTime(),completedAt=sentAt+65000;
  f.w.Date.now=()=>sentAt;

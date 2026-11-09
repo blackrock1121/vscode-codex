@@ -124,6 +124,7 @@ export function modelChoices(data: any[]): ModelChoice[] {
 }
 
 export type ToWebview =
+  | { kind: 'prepare_suspend'; requestId: number }
   | { kind: "performance_report_result"; requestId?: string; ok: boolean; message: string }
   | { kind: "remote_user"; text: string; images?: string[] }
   | { kind: "models"; models: ModelChoice[] }
@@ -297,6 +298,7 @@ export type TimelineItem = (
 // ---- Webview -> extension host --------------------------------------------
 
 export type FromWebview =
+  | { type: 'suspend_ready'; requestId: number }
   | { type: "desktopQueue"; sessionId?: string; paused: boolean; items: { id: string; text: string; imageCount: number; fileCount: number }[] }
   | { type: "ready" }
   | { type: "reloadHistory" }

@@ -201,6 +201,9 @@ interface SessionCtx {
     mayHaveModifiedWorkspace?: boolean;
     blank: boolean;
     ready: boolean;
+    hiddenSince?: number;
+    suspended?: boolean;
+    suspendRequest?: number;
     sendSeq?: number;
     stopSeq?: number;
     coldStart?: boolean;
@@ -389,7 +392,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.checkTurnStall(ctx);
         // 关闭时仍在运行或刚结束的会话当时不能回收，空闲后必须再次检查。
         this.trimBackground();
+        const retained = new Set([...this.sessions, ...this.detached.values(), ...this.restoring, ...this.forking]
+            .map(ctx => ctx.sessionId).filter((id): id is string => !!id));
+        this.store?.pruneHistory?.(retained);
         for (const ctx of this.sessions) {
+            this.checkIdlePanel(ctx);
             // 隐藏的 webview 可被 VS Code 暂停，未回心跳不代表页面损坏。
             if (!ctx.ready || !ctx.panel.visible) {
                 ctx.missedPings = 0;
@@ -726,6 +733,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         await this.lockChatGroup(panel);
     }
     private adoptPanel(ctx: SessionCtx): void {
+        ctx.suspended = false;
+        ctx.suspendRequest = undefined;
+        ctx.hiddenSince = undefined;
         const panel = ctx.panel;
         panel.webview.options = {
             enableScripts: true,
@@ -742,6 +752,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.onPanelMessage(ctx, m);
         });
         panel.onDidChangeViewState(() => {
+            this.checkIdlePanel(ctx);
             if (panel.active) {
                 this.activeCtx = ctx;
                 this.postActiveFile();
@@ -764,6 +775,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.remoteAdapter?.clearDesktopQueue(ctx);
         ctx.pendingDiagnosticRepair?.cancel();
         this.sessions.delete(ctx);
+        // 关闭期间尚未完成的页面历史读取不再拥有 UI，不能永久阻止后台回收。
+        ctx.historyLoadSeq = (ctx.historyLoadSeq ?? 0) + 1;
+        ctx.historyPending = false;
+        ctx.initialHistoryRead = undefined;
+        ctx.suspendRequest = undefined;
         // 关闭标签清理当前提醒，并使关闭前仍在排队的旧提醒失效。
         void this.clearSessionNotification(ctx.sessionId, "session_closed");
         if (ctx.sessionId)
@@ -784,24 +800,65 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.refreshSessions();
     }
     private static readonly MAX_BACKGROUND = 5;
+    private static readonly IDLE_RELEASE_MS = 5 * 60000;
+    private canReleaseContext(ctx: SessionCtx): boolean {
+        return !ctx.proc?.isBusy && !ctx.starting && !ctx.sending && !ctx.settingsQueue && !ctx.snapshot && !ctx.finalizing &&
+            !ctx.compacting && !ctx.compactionPreparing && !ctx.historyPending && !ctx.initialHistoryRead &&
+            !ctx.changedFilesRefresh && !ctx.pendingDiagnosticRepair && !this.remoteAdapter?.hasPending(ctx) &&
+            !this.restoring.has(ctx) && !this.forking.has(ctx) && !ctx.answeringQuestion &&
+            !ctx.pendingPerm && !ctx.pendingPerms?.size;
+    }
+    /** 隐藏满五分钟后先向页面确认无草稿/队列；没有应答就保留，不能猜测安全。 */
+    private checkIdlePanel(ctx: SessionCtx): void {
+        if (ctx.panel.visible) {
+            ctx.hiddenSince = undefined;
+            ctx.suspendRequest = undefined;
+            if (ctx.suspended) {
+                ctx.panel.webview.html = this.html(ctx.panel.webview, ctx.sessionId);
+                ctx.suspended = false;
+                this.output.appendLine('[resources] panel_resumed');
+            }
+            return;
+        }
+        const now = Date.now();
+        ctx.hiddenSince ??= now;
+        if (ctx.suspended || !ctx.ready || !this.canReleaseContext(ctx) ||
+            now - Math.max(ctx.hiddenSince, ctx.lastEmitAt ?? 0) < ChatViewProvider.IDLE_RELEASE_MS ||
+            ctx.suspendRequest !== undefined && now - ctx.suspendRequest < 60000) return;
+        ctx.suspendRequest = now;
+        this.post(ctx, { kind: 'prepare_suspend', requestId: now });
+    }
+    private suspendPanel(ctx: SessionCtx, requestId: number): void {
+        if (ctx.suspendRequest !== requestId || ctx.panel.visible || !this.alive(ctx) ||
+            !this.canReleaseContext(ctx) || Date.now() - (ctx.lastEmitAt ?? 0) < ChatViewProvider.IDLE_RELEASE_MS) return;
+        // 仅替换网页，保留标签和会话绑定；再次显示时从权威历史重建。
+        ctx.panel.webview.html = '';
+        ctx.suspended = true;
+        ctx.ready = false;
+        ctx.suspendRequest = undefined;
+        ctx.historyLoadSeq = (ctx.historyLoadSeq ?? 0) + 1;
+        const proc = ctx.proc;
+        ctx.proc = undefined; // 关闭回调不能再把主动回收当作连接异常。
+        proc?.dispose();
+        this.output.appendLine('[resources] panel_suspended');
+    }
     private trimBackground(): void {
         let overflow = this.detached.size - ChatViewProvider.MAX_BACKGROUND;
-        if (overflow <= 0)
-            return;
+        const now = Date.now();
         const idle = [...this.detached.values()]
-            .filter((c) => c.proc && !c.proc.isBusy && c.sessionId && !c.starting && !c.snapshot &&
-                !c.finalizing && !this.remoteAdapter?.hasPending(c) && !this.restoring.has(c) && !this.forking.has(c) && !c.answeringQuestion && !c.pendingPerm &&
-                Date.now() - (c.lastEmitAt ?? 0) > 60000)
+            .filter((c) => c.proc && c.sessionId && this.canReleaseContext(c) &&
+                now - (c.lastEmitAt ?? 0) > 60000)
             .sort((a, b) => (a.lastUsedAt ?? 0) - (b.lastUsedAt ?? 0));
         for (const c of idle) {
-            if (overflow <= 0)
-                break;
+            if (overflow <= 0 && now - Math.max(c.lastUsedAt ?? now, c.lastEmitAt ?? 0) < ChatViewProvider.IDLE_RELEASE_MS)
+                continue;
             c.checkpoints.flush();
-            c.proc?.dispose();
+            const proc = c.proc;
             c.proc = undefined;
+            proc?.dispose();
             this.detached.delete(c.sessionId!);
             overflow--;
-            this.output.appendLine(`[codex] LRU 回收后台进程 ${c.sessionId!.slice(0, 8)}（后台剩 ${this.detached.size}）`);
+            this.output.appendLine(`[codex] LRU/空闲到期回收后台进程 ${c.sessionId!.slice(0, 8)}（后台剩 ${this.detached.size}）`);
         }
     }
     async revivePanel(panel: vscode.WebviewPanel, sessionId?: string): Promise<void> {
@@ -1101,6 +1158,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 }
                 case "pong":
+                    break;
+                case "suspend_ready":
+                    this.suspendPanel(ctx, m.requestId);
                     break;
                 case "draft":
                     ctx.draft = m.text;
@@ -1903,7 +1963,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     /** 同一会话的选择和恢复保存按顺序执行，各会话之间互不等待。 */
     private queueSessionSettings(ctx: SessionCtx, change: () => Promise<void>): Promise<void> {
         const task = (ctx.settingsQueue ?? Promise.resolve()).then(change);
-        ctx.settingsQueue = task.catch(() => undefined);
+        const settled = ctx.settingsQueue = task.catch(() => undefined);
+        void settled.then(() => { if (ctx.settingsQueue === settled) ctx.settingsQueue = undefined; });
         return task;
     }
     private async waitSessionSettings(ctx: SessionCtx): Promise<void> {
@@ -2885,6 +2946,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return proc;
     }
     private maybePrespawn(ctx: SessionCtx): void {
+        if (ctx.panel?.visible === false || ctx.suspended) return;
         // 打开归档记录只查看历史，不自动恢复或切换为空白会话。
         if (ctx.sessionId && this.store.isArchived(ctx.sessionId)) return;
         if (!this.config().get<boolean>("prespawnOnOpen", true) && !(ctx.sessionId && fs.existsSync(questionStateFile(this.storageDir(), ctx.sessionId))))
@@ -3303,7 +3365,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const traceId = ctx.performanceTraceId;
             this.output.appendLine(`[finalize] session=${sessionId?.slice(0, 8)} 后台轮次已结束，开始整理还原点`);
             this.post(ctx, { kind: "finalizing" });
-            ctx.finalizing = (async () => {
+            this.trackFinalization(ctx, (async () => {
                 const finalizeAt = Date.now();
                 try {
                     if (ctx.snapshot && ctx.mayHaveModifiedWorkspace) {
@@ -3324,10 +3386,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 if (traceId) this.output.appendLine(`[perf] ${JSON.stringify({ schema: 1, event: "finalization", traceId, threadId: sessionId, atMs: Date.now(), durationMs: Date.now() - finalizeAt })}`);
                 this.handleEmitInner(ctx, { kind: "busy", busy: false });
                 this.handleEmitInner(ctx, e, ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch);
-            })();
+            })());
             return;
         }
         this.handleEmitInner(ctx, e);
+    }
+    private trackFinalization(ctx: SessionCtx, work: Promise<void>): void {
+        ctx.finalizing = work;
+        const release = () => { if (ctx.finalizing === work) ctx.finalizing = undefined; };
+        void work.then(release, error => { release(); operationFailure('checkpoint.finalize', error); });
     }
     private handleEmitInner(ctx: SessionCtx, e: ToWebview, notifyTurnDone = true): void {
         this.remoteAdapter?.observe(ctx, e);
@@ -3341,14 +3408,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         else if (e.kind === "compacted" || e.kind === "busy" || e.kind === "result" ||
             (e.kind === "error" && !e.keepBusy)) ctx.compacting = false;
         // 额度查询、诊断及重试提示不是任务进展，不能掩盖长期静默。
-        if (ctx.lastEventAt !== undefined && !["usage", "rate_limit", "rate_limit_cleared", "models", "speed_context", "diag", "status", "notice", "response_wait"].includes(e.kind)) {
+        const activity = !["usage", "rate_limit", "rate_limit_cleared", "models", "speed_context", "diag", "status", "notice", "response_wait"].includes(e.kind);
+        if (ctx.lastEventAt !== undefined && activity) {
             ctx.lastEventAt = Date.now();
             if (ctx.responseWaitShown) {
                 ctx.responseWaitShown = false;
                 this.post(ctx, { kind: "response_wait", idleMs: 0 });
             }
         }
-        ctx.lastEmitAt = Date.now();
+        // 每三分钟的用量广播不能刷新空闲期限，否则五分钟休眠永远不会触发。
+        if (activity) ctx.lastEmitAt = Date.now();
         if (e.kind === "tool_input" && ctx.snapshot && !["Read", "WebSearch", "TodoWrite", "Skill"].includes(e.name)) {
             const paths = Array.isArray(e.input.changes) ? e.input.changes.map((c: any) => c.path) : [e.input.file_path];
             for (const raw of paths) {
@@ -3909,8 +3978,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastEventAt = undefined;
         // 异常断开也结束活动区间；没有收齐的快照仍保持不可还原。
         const finalizing = this.captureFinalSnapshot(ctx);
-        ctx.finalizing = finalizing;
-        void finalizing.catch(error => operationFailure('checkpoint.finalize', error));
+        this.trackFinalization(ctx, finalizing);
         this.remoteAdapter?.closed(ctx);
         if (!this.alive(ctx) && ctx.sessionId && !this.remoteAdapter?.hasPending(ctx)) {
             this.detached.delete(ctx.sessionId);
@@ -4487,7 +4555,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.view?.show?.(true);
     }
     private post(ctx: SessionCtx, e: ToWebview): void {
-        if (!this.alive(ctx))
+        if (!this.alive(ctx) || ctx.suspended)
             return;
         // 普通回复、问题续轮和停止都从这里报告空闲；不要让前端历史遗留的
         // 还原标记继续拦住队列。真正的还原过程仍持锁到 load_history/restored。

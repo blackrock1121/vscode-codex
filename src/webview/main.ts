@@ -1205,6 +1205,13 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
     case "ping":
       send({ type: "pong", id: m.id }); // 看门狗心跳——必须无条件立即回
       return;
+    case 'prepare_suspend':
+      // 任何待处理输入都保留原页面，包括只有附件/上下文而没有文字的草稿。
+      if (isBusy || compacting || historyPending || stopPending || turnFinalizing || restoreInProgress || waitingQuestionId || childQuestionIds.size || taskQueue.length ||
+          recoverySends.size || inputEl.value || pendingImages.length || pendingContexts.length || attachedFiles.length) return;
+      persistRecovery();
+      send({ type: 'suspend_ready', requestId: m.requestId });
+      return;
     case "draft":
       // 看门狗重建后回填草稿；用户已经打了新内容就绝不覆盖。
       if (!inputEl.value && m.text) {
