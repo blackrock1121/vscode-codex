@@ -511,10 +511,13 @@ body.vscode-dark .question-bar, body.vscode-high-contrast .question-bar { color:
 }
 .img-chip .ic-meta { font-size: 10.5px; line-height: 1.3; opacity: .75; font-variant-numeric: tabular-nums; }
 .msg-image {
-  max-width: 220px; max-height: 220px;
+  max-width: min(220px, 100%); max-height: 220px;
   border-radius: 6px; cursor: zoom-in; display: block;
   border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
 }
+.msg-image:focus-visible { outline: 2px solid var(--vscode-focusBorder); outline-offset: 2px; }
+.generated-image-result { padding: 10px; }
+.tool-card[data-tool-name="imageGeneration"] .tool-input { padding: 10px 10px 0; overflow-wrap: anywhere; }
 .lightbox {
   position: fixed; inset: 0; z-index: 50;
   background: rgba(0,0,0,.82);
@@ -622,7 +625,7 @@ code.code-ref {
 code.code-ref:hover { text-decoration: none; border-bottom-color: currentColor; }
 .md strong { font-weight: 600; }
 .md img { max-width: 100%; border-radius: 5px; }
-.md img.local-image-pending { display: none; }
+img.local-image-pending { display: none; }
 .local-image-placeholder, .local-image-failed {
   display: inline-block; color: var(--vscode-descriptionForeground); font-size: 0.9em;
 }
@@ -967,7 +970,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .tool-card.foldable:not(.collapsed) .tool-body { margin-top: 4px; }
 .tool-meta { flex: 0 0 auto; color: var(--vscode-descriptionForeground); font-size: 11px; white-space: nowrap; }
 .tool-card.foldable.error .tool-meta { color: var(--vscode-errorForeground); }
-.tool-name { font-weight: 600; }
+.tool-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .tool-sub { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 /* copy/run buttons in the card's top-right */
 /* Icon squares at the right end of the title row; hidden until the pointer is
@@ -977,7 +980,7 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   display: flex; gap: 2px; opacity: 0; transition: opacity .12s;
 }
 .tool-actions:empty { display: none; }
-.tool-card:hover .tool-actions { opacity: 1; }
+.tool-card:hover .tool-actions, .tool-card:focus-within .tool-actions { opacity: 1; }
 .tool-card:has(.tool-error-toggle) .tool-actions { opacity: 1; }
 .tool-error-toggle {
   border: 0; padding: 0 2px; background: transparent;
