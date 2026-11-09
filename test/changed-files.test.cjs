@@ -85,32 +85,24 @@ test('普通文本修改、删除、UTF-8 边界和 BOM 保持准确', async t =
   assert.deepEqual(await readDiffFile(boundary), { exists: true, text });
 });
 
-test('连续文件刷新合并执行；读取未结束时仍可处理停止，旧结果不覆盖新结果', async t => {
-  const f = await fixture(t), releases = [];
-  let reads = 0, interrupted = false;
-  f.provider.getChangedFiles = () => { reads++; return new Promise(resolve => releases.push(resolve)); };
-  f.ctx.proc = { isBusy: true, interrupt: async () => { interrupted = true; } };
-  f.provider.refreshChangedFiles(f.ctx); await tick();
-  for (let i = 0; i < 20; i++) f.provider.refreshChangedFiles(f.ctx);
-  await f.provider.stopContext(f.ctx);
-  assert.equal(interrupted, true); assert.equal(reads, 1);
-  releases.shift()({ files: [], totalAdded: 99, totalRemoved: 0 }); await tick();
-  assert.equal(reads, 2); assert.equal(f.messages.some(m => m.kind === 'changed_files'), false);
-  releases.shift()({ files: [], totalAdded: 1, totalRemoved: 0 });
-  await f.ctx.changedFilesRefresh;
-  assert.equal(f.messages.filter(m => m.kind === 'changed_files').length, 1);
-  assert.equal(f.messages.at(-1).totalAdded, 1);
-});
-
-test('切换或关闭会话后，迟到的文件列表不写入当前界面', async t => {
-  for (const close of [false, true]) {
-    const f = await fixture(t); let release;
-    f.provider.getChangedFiles = () => new Promise(resolve => { release = resolve; });
-    f.provider.refreshChangedFiles(f.ctx); await tick();
-    if (close) f.provider.sessions.delete(f.ctx); else f.ctx.sessionId = 'other';
-    release({ files: [], totalAdded: 1, totalRemoved: 0 }); await f.ctx.changedFilesRefresh;
-    assert.equal(f.messages.length, 0);
-  }
+test('加载历史和连续工具结果不读取全量改动文件，文件备份仍保留', async t => {
+  const f = await fixture(t), file = path.join(f.dir, 'saved.txt');
+  f.checkpoints.recordSnapshot(file, '修改前');
+  let scans = 0;
+  f.provider.getChangedFiles = async () => { scans++; return { files: [], totalAdded: 0, totalRemoved: 0 }; };
+  f.provider.store = { load: () => [{type:'user',text:'修改文件'}] };
+  f.provider.checkpointsForView = () => [];
+  f.provider.emptyInterruptedCheckpoint = () => false;
+  f.provider.maybePrespawn = () => {};
+  f.provider.refreshSessions = () => {};
+  f.provider.renderSessionInto(f.ctx, 'session');
+  for (let i = 0; i < 20; i++) f.provider.handleEmitInner(f.ctx, {kind:'tool_result',toolUseId:String(i),content:'已修改',isError:false});
+  await tick();
+  assert.equal(scans, 0, '聊天生命周期不应触发文件差异扫描');
+  assert.equal(f.messages[0].kind,'load_history');
+  assert.equal(f.messages.filter(m=>m.kind==='tool_result').length,20);
+  assert.equal(f.messages.some(m=>m.kind==='changed_files'),false);
+  assert.equal(f.checkpoints.originalOf(file),'修改前');
 });
 
 test('批量保留或回滚读取期间切换会话，不操作新会话的文件', async t => {
@@ -128,19 +120,19 @@ test('批量保留或回滚读取期间切换会话，不操作新会话的文�
   }
 });
 
-test('后台结束先显示整理还原点，停止完成不再等待文件列表刷新', async t => {
-  const f = await fixture(t); let release;
+test('后台结束只整理还原点，不启动文件统计扫描', async t => {
+  const f = await fixture(t);
   f.ctx.mayHaveModifiedWorkspace = true;
   f.ctx.snapshot = { changed: async () => new Map(), unrestorableChanges: new Set() };
   f.provider.notificationVersion = () => 0;
   f.provider.handleEmitInner = (_, event) => f.messages.push(event);
-  f.provider.getChangedFiles = () => new Promise(resolve => { release = resolve; });
+  let scans = 0;
+  f.provider.getChangedFiles = async () => { scans++; return { files: [], totalAdded: 0, totalRemoved: 0 }; };
   const result = { kind: 'result', isError: false };
   f.provider.handleEmit(f.ctx, result);
   assert.deepEqual(f.messages, [{ kind: 'finalizing' }]);
   await f.ctx.finalizing; await tick();
-  assert.equal(typeof release, 'function');
+  assert.equal(scans, 0, '收尾不应扫描文件列表');
   assert.deepEqual(f.messages, [{ kind: 'finalizing' }, { kind: 'busy', busy: false }, result]);
   assert.equal(f.ctx.snapshot, undefined);
-  release({ files: [], totalAdded: 0, totalRemoved: 0 }); await f.ctx.changedFilesRefresh;
 });

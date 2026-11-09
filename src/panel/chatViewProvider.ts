@@ -174,8 +174,6 @@ interface SessionCtx {
     remotePrivate?: boolean;
     snapshot?: WorkspaceSnapshot;
     finalizing?: Promise<void>;
-    changedFilesRefresh?: Promise<void>;
-    changedFilesRefreshPending?: boolean;
     panel: vscode.WebviewPanel;
     webview: vscode.Webview;
     sessionId?: string;
@@ -804,7 +802,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private canReleaseContext(ctx: SessionCtx): boolean {
         return !ctx.proc?.isBusy && !ctx.starting && !ctx.sending && !ctx.settingsQueue && !ctx.snapshot && !ctx.finalizing &&
             !ctx.compacting && !ctx.compactionPreparing && !ctx.historyPending && !ctx.initialHistoryRead &&
-            !ctx.changedFilesRefresh && !ctx.pendingDiagnosticRepair && !this.remoteAdapter?.hasPending(ctx) &&
+            !ctx.pendingDiagnosticRepair && !this.remoteAdapter?.hasPending(ctx) &&
             !this.restoring.has(ctx) && !this.forking.has(ctx) && !ctx.answeringQuestion &&
             !ctx.pendingPerm && !ctx.pendingPerms?.size;
     }
@@ -1327,11 +1325,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     break;
                 case "acceptFile":
                     ctx.checkpoints.accept(m.path);
-                    this.refreshChangedFiles(ctx);
                     break;
                 case "revertFile":
                     this.revertFile(ctx, m.path);
-                    this.refreshChangedFiles(ctx);
                     break;
                 case "acceptAll": {
                     const checkpoints = ctx.checkpoints, sessionId = ctx.sessionId;
@@ -1339,7 +1335,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     if (ctx.checkpoints !== checkpoints || ctx.sessionId !== sessionId) break;
                     for (const f of files)
                         checkpoints.accept(f.path);
-                    this.refreshChangedFiles(ctx);
                     break;
                 }
                 case "revertAll": {
@@ -1351,7 +1346,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                         if (ok === "回滚全部" && ctx.checkpoints === checkpoints && ctx.sessionId === sessionId) {
                             for (const f of files)
                                 this.revertFile(ctx, f.path);
-                            this.refreshChangedFiles(ctx);
                         }
                     }
                     break;
@@ -1424,7 +1418,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         if (ctx.blank) {
             this.post(ctx, { kind: "load_history", items: [], checkpoints: [] });
-            this.refreshChangedFiles(ctx);
             return;
         }
         let sid = this.context.workspaceState.get<string>(LAST_SESSION_KEY);
@@ -1447,7 +1440,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
         else {
             this.post(ctx, { kind: "load_history", items: [], checkpoints: [] });
-            this.refreshChangedFiles(ctx);
         }
     }
     private loadSessionInto(ctx: SessionCtx, sid: string): void {
@@ -1492,7 +1484,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 this.post(ctx, ctx.pendingPerm);
         }
         this.refreshSessions();
-        this.refreshChangedFiles(ctx);
     }
     private async newContext(ctx: SessionCtx, m: {
         text?: string;
@@ -1527,7 +1518,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.checkpoints = new CheckpointManager(this.storageDir());
         this.output.appendLine(`[${new Date().toISOString()}] [clear] ${old?.slice(0, 8) ?? "空"} → 新上下文`);
         this.post(ctx, { kind: "load_history", items: [], checkpoints: [] });
-        this.refreshChangedFiles(ctx);
         this.refreshSessions();
         if (m.text || m.images?.length) {
             await this.handleSend(ctx, m.text ?? "", m.context, m.images, m.files);
@@ -1908,7 +1898,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             this.loadCtxSession(ctx);
             return false;
         }
-        this.refreshChangedFiles(ctx);
         this.output.appendLine(`[${new Date().toISOString()}] [rewind] 回退准备 ${Date.now() - rewindAt}ms`);
         return true;
     }
@@ -2270,28 +2259,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         try { await Promise.race([Promise.all(saves), new Promise<void>(resolve => { timer = setTimeout(() => { operationLog('autosave.tool', 'fallback', { reason: 'timeout' }); resolve(); }, 2000); })]); }
         finally { clearTimeout(timer); }
     }
-    private refreshChangedFiles(ctx: SessionCtx): void {
-        if (!this.alive(ctx))
-            return;
-        ctx.changedFilesRefreshPending = true;
-        if (ctx.changedFilesRefresh) return;
-        // 工具可能连续返回：合并刷新，异步读取不能挡住停止消息和停止超时计时器。
-        ctx.changedFilesRefresh = (async () => {
-            await new Promise<void>(resolve => setImmediate(resolve));
-            while (ctx.changedFilesRefreshPending && this.alive(ctx)) {
-                ctx.changedFilesRefreshPending = false;
-                const checkpoints = ctx.checkpoints, sessionId = ctx.sessionId;
-                const changes = await this.getChangedFiles(ctx);
-                if (!this.alive(ctx) || ctx.checkpoints !== checkpoints || ctx.sessionId !== sessionId) continue;
-                if (ctx.changedFilesRefreshPending) continue;
-                for (const f of changes.files)
-                    this.origChanged.fire(vscode.Uri.from({ scheme: ORIG_SCHEME, path: f.path }));
-                this.post(ctx, { kind: "changed_files", ...changes });
-            }
-        })().catch(err => {
-            this.output.appendLine(`[changed-files] ${String(err)}`);
-        }).finally(() => { ctx.changedFilesRefresh = undefined; });
-    }
+    /** 仅供显式请求（手机改动查看及旧版操作）按需计算；聊天生命周期不自动扫描。 */
     private async getChangedFiles(ctx: SessionCtx): Promise<{
         files: ChangedFile[];
         totalAdded: number;
@@ -2844,7 +2812,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.draftImages = undefined;
             this.post(ctx, { kind: "busy", busy: true });
             this.onPermission(ctx, restoredQuestion);
-            this.refreshChangedFiles(ctx);
             return;
         }
         const draftText = draft ? draft.text : result.userText === "(图片)" ? "" : result.userText;
@@ -2854,7 +2821,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             ctx.draftImages = draftImages;
             this.post(ctx, { kind: "draft", ...draft, text: draftText, images: draftImages });
         }
-        this.refreshChangedFiles(ctx);
     }
     private ensureProcess(ctx: SessionCtx): Promise<CodexProcess | undefined> {
         if (ctx.starting)
@@ -3377,7 +3343,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                     ctx.checkpoints.finishWorkspaceActivity();
                     ctx.snapshot = undefined;
                     ctx.checkpoints.flush();
-                    if (ctx.mayHaveModifiedWorkspace) this.refreshChangedFiles(ctx);
                 }
                 catch (err) { operationFailure('panel.handleEmit', err);
                     this.post(ctx, { kind: "notice", message: `会话或文件快照刷新失败：${String(err)}` });
@@ -3473,7 +3438,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (e.kind === "tool_result") {
             const readOnly = ctx.readOnlyToolIds?.delete(e.toolUseId);
             if (!readOnly) ctx.mayHaveModifiedWorkspace = true;
-            if (!readOnly && !e.isError) this.refreshChangedFiles(ctx);
         }
         if (e.kind === "result") {
             ctx.readOnlyToolIds?.clear();
@@ -4993,15 +4957,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <!-- 保留拖选时的焦点，避免 VS Code 复制前聚焦回输入框并清空文字选区。 -->
     <div id="messages" class="messages" tabindex="-1"></div>
     <footer id="composer">
-      <div id="changed-files" class="changed-files hidden collapsed">
-        <div class="cf-header" id="cf-header">
-          <span class="cf-caret">${ICONS.chevron}</span>
-          <span class="cf-title">已更改文件</span>
-          <span id="cf-count" class="cf-count"></span>
-          <span id="cf-stat" class="cf-stat"></span>
-        </div>
-        <div id="cf-list" class="cf-list"></div>
-      </div>
       <div id="task-queue" class="task-queue hidden"></div>
       <div id="context-chips"></div>
       <div id="file-chips"></div>

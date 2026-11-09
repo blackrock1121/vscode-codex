@@ -6,7 +6,7 @@ import { latestModelChoices, modelDescription } from "./modelPicker";
 import { parseFileRef } from "../fileRef";
 import { parseQuestionReply } from "../codex/events";
 import { AnswerImage, QuestionImages, QUESTION_IMAGE_ANSWER, QUESTION_IMAGE_TYPES, QUESTION_IMAGE_MAX_BYTES, validateQuestionImages } from "../questionImages";
-import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits, ChangedFile, QuestionAnswerModes } from "../shared";
+import type { FromWebview, TimelineItem, ToWebview, SpeedMode, ModelChoice, BillingKind, ResetCredits, QuestionAnswerModes } from "../shared";
 import { ICONS as ICON, GPT_LOGO, speedLabel, speedCost, speedGain, supportsSpeed } from "../shared";
 
 // ---------------------------------------------------------------------------
@@ -306,11 +306,6 @@ const effortMenu = $("effort-menu");
 const modelMenu = $("model-menu");
 const pickBackdrop = $("pick-backdrop");
 const contextChips = $("context-chips");
-const changedFiles = $("changed-files");
-const cfList = $("cf-list");
-const cfStat = $("cf-stat");
-const cfCount = $("cf-count");
-const cfHeader = $("cf-header");
 const lightbox = $("lightbox");
 const lightboxImg = $<HTMLImageElement>("lightbox-img");
 const imagePreviews = $("image-previews");
@@ -1611,9 +1606,6 @@ window.addEventListener("message", (ev: MessageEvent<ToWebview>) => {
       break;
     case "attach_files":
       for (const p of m.paths) addFile(p);
-      break;
-    case "changed_files":
-      renderChangedFiles(m.files, m.totalAdded, m.totalRemoved);
       break;
   }
   const progress = {
@@ -3305,59 +3297,6 @@ function unlinkRef(e: HTMLElement) {
   e.removeAttribute("title");
 }
 
-function renderChangedFiles(
-  files: ChangedFile[],
-  totalAdded: number,
-  totalRemoved: number,
-) {
-  if (!files.length) {
-    changedFiles.classList.add("hidden");
-    cfList.innerHTML = "";
-    return;
-  }
-  // 从「无改动」到「有改动」的首次出现按默认折叠展示（点开与否由用户决定，
-  // 本轮内的后续刷新不再动它）。
-  if (changedFiles.classList.contains("hidden")) changedFiles.classList.add("collapsed");
-  changedFiles.classList.remove("hidden");
-  // Header totals: the panel knew the numbers all along but only ever showed
-  // the two bulk buttons, so "how big is this change" meant expanding the list.
-  cfCount.textContent = `${files.length} 个`;
-  cfStat.innerHTML =
-    `<span class="cf-total"><span class="add">+${totalAdded}</span> <span class="del">−${totalRemoved}</span></span>` +
-    `<span class="cf-sep"></span>` +
-    `<button class="cf-all accept" data-cf="acceptAll" title="同意全部改动（保留）">保留全部</button>` +
-    `<button class="cf-all revert" data-cf="revertAll" title="回滚全部改动">回滚</button>`;
-  cfList.innerHTML = "";
-  for (const f of files) {
-    const row = el("div", "cf-row");
-    const badge = el("span", `cf-badge ${f.status}`, f.status === "added" ? "A" : f.status === "deleted" ? "D" : "M");
-    const slash = f.rel.lastIndexOf("/");
-    const name = el("span", "cf-name", slash >= 0 ? f.rel.slice(slash + 1) : f.rel);
-    const dir = el("span", "cf-dir", slash >= 0 ? f.rel.slice(0, slash) : "");
-    const stat = el("span", "cf-rowstat");
-    if (f.diffUnavailable) {
-      stat.textContent = f.diffUnavailable === "large" ? "大文件" : "二进制";
-      stat.title = "未统计文本行数；仍可保留或回滚此文件";
-    } else stat.innerHTML = `<span class="add">+${f.added}</span> <span class="del">−${f.removed}</span>`;
-    const acc = el("button", "cf-act accept", "✓");
-    acc.title = "同意（保留改动）";
-    acc.onclick = (e) => {
-      e.stopPropagation();
-      send({ type: "acceptFile", path: f.path });
-    };
-    const rev = el("button", "cf-act revert", "↩");
-    rev.title = "回滚（恢复改动前）";
-    rev.onclick = (e) => {
-      e.stopPropagation();
-      send({ type: "revertFile", path: f.path });
-    };
-    row.append(badge, name, dir, stat, acc, rev);
-    row.title = `${f.rel} — 点击查看改动`;
-    row.onclick = () => send({ type: "openDiff", path: f.path });
-    cfList.appendChild(row);
-  }
-}
-
 // ---------------------------------------------------------------------------
 // Inline restore points (checkpoint dividers in the conversation stream)
 // ---------------------------------------------------------------------------
@@ -4834,16 +4773,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") closePickers();
 });
 $("btn-attach-file").onclick = () => send({ type: "pickFiles" });
-cfHeader.onclick = (e) => {
-  const btn = (e.target as HTMLElement).closest("[data-cf]") as HTMLElement | null;
-  if (btn) {
-    if (btn.dataset.cf === "acceptAll") send({ type: "acceptAll" });
-    else if (btn.dataset.cf === "revertAll") send({ type: "revertAll" });
-    return;
-  }
-  changedFiles.classList.toggle("collapsed");
-};
-
 // VS Code 在事件冒泡到 window 时读取菜单上下文。此时固定复制内容，
 // 避免原生菜单夺走焦点后依赖已消失的选区，也不在只读消息上显示剪切/粘贴。
 messagesEl.addEventListener("contextmenu", (event) => {
@@ -5492,9 +5421,6 @@ function setBusy(busy: boolean) {
   // fires on all of them and would otherwise erase the red/green rim instantly.
   if (busy && glowState !== "waiting") setGlow("running");
   if (busy) stoppingView = false; // a new turn is live — resume rendering
-  // 新一轮开始就把「已更改文件」收回折叠态——上一轮手动展开过的话，本轮执行中
-  // 陆续进来的文件会顶着展开列表刷存在感；默认折叠必须对每一轮成立。
-  if (busy) changedFiles.classList.add("collapsed");
   refreshComposerHint(); // toggles send/stop + the "加入等待队列" hint
   if (busy) {
     if (waitingQuestionId) removeWorking();

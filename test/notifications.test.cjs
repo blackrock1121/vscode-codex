@@ -394,7 +394,7 @@ test('结果已收到后在快照整理期间关闭会话不再通知，关闭�
     p.post = (_ctx, message) => posts.push(message);
     p.dispatchNotification = (...args) => notices.push(args);
     p.store.hydrate = async id => hydrated.push(id);
-    p.refreshChangedFiles = current => refreshed.push(current);
+    p.getChangedFiles = async () => { refreshed.push('file-stats'); return { files: [], totalAdded: 0, totalRemoved: 0 }; };
     p.fetchUsage = () => refreshed.push('usage');
     const result = { kind: 'result', isError: false, durationMs: 60000, numTurns: 1 };
     if (closeBeforeResult) p.onPanelClosed(ctx);
@@ -410,7 +410,7 @@ test('结果已收到后在快照整理期间关闭会话不再通知，关闭�
     ]);
     assert.deepEqual(posts, [{ kind: 'finalizing' }, { kind: 'busy', busy: false }, result]);
     assert.deepEqual(hydrated, [ctx.sessionId]);
-    assert.deepEqual(refreshed, [ctx, 'usage']);
+    assert.deepEqual(refreshed, ['usage']);
     assert.equal(ctx.snapshot, undefined);
     assert.equal(ctx.lastUserText, undefined);
     assert.equal(p.detached.get(ctx.sessionId), ctx);

@@ -1645,18 +1645,16 @@ test('普通还原先空闲后加载历史，回退完成后重新唤醒被暂�
  assert.deepEqual(errors,[]);
 });
 
-test('大文件和二进制改动显示说明，仍提供保留和回滚入口',t=>{
+test('聊天输入区不再创建文件统计栏，迟到的旧统计消息不会生成文件列表',t=>{
  const {w,sent,emit,errors}=setup(t);
- emit({kind:'changed_files',totalAdded:0,totalRemoved:0,files:[
-  {path:'/tmp/disk.img',rel:'disk.img',status:'added',added:0,removed:0,diffUnavailable:'large'},
-  {path:'/tmp/icon.bin',rel:'icon.bin',status:'added',added:0,removed:0,diffUnavailable:'binary'},
- ]});
- const rows=w.document.querySelectorAll('.cf-row');assert.equal(rows.length,2);
- assert.equal(rows[0].querySelector('.cf-rowstat').textContent,'大文件');
- assert.equal(rows[1].querySelector('.cf-rowstat').textContent,'二进制');
- rows[0].querySelector('.accept').click();rows[1].querySelector('.revert').click();
- assert.ok(sent.some(m=>m.type==='acceptFile'&&m.path==='/tmp/disk.img'));
- assert.ok(sent.some(m=>m.type==='revertFile'&&m.path==='/tmp/icon.bin'));
+ emit({kind:'changed_files',totalAdded:2400699,totalRemoved:725246,files:
+  Array.from({length:17801},(_,i)=>({path:`/tmp/file-${i}`,rel:`file-${i}`,status:'modified',added:100,removed:50}))});
+ assert.equal(w.document.getElementById('changed-files'),null);
+ assert.equal(w.document.querySelector('.cf-row'),null);
+ assert.doesNotMatch(w.document.getElementById('composer').textContent,/已更改文件|保留全部/);
+ emit({kind:'busy',busy:true});emit({kind:'busy',busy:false});
+ w.document.getElementById('input').value='继续修改';w.document.getElementById('btn-send').click();
+ assert.equal(sent.filter(m=>m.type==='send').at(-1).text,'继续修改');
  assert.deepEqual(errors,[]);
 });
 

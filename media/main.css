@@ -124,7 +124,6 @@ body ::-webkit-scrollbar-thumb { border-radius: 0; }
 .composer-send.stop svg { width: 15px; height: 15px; }
 .tool-icon svg { width: 13px; height: 13px; display: block; }
 .tool-head .tool-icon { color: var(--vscode-descriptionForeground); display: inline-flex; }
-.cf-caret svg { width: 12px; height: 12px; display: block; }
 .code-expand svg { width: 11px; height: 11px; display: block; }
 .code-act svg { width: 12px; height: 12px; display: block; }
 
@@ -1956,83 +1955,6 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 /* Running/stop state — a coordinated accent shade (not a jarring red) */
 .composer-send.stop { background: #b85c3c; color: #fff; border-color: transparent; }
 .composer-send.stop:hover { background: #a04e30; }
-
-/* ---- Changed files panel (above the input) ---- */
-.changed-files {
-  border: 1px solid var(--vscode-panel-border, rgba(128,128,128,.3));
-  border-radius: 9px;
-  margin-bottom: 6px;
-  overflow: hidden;
-  background: var(--vscode-editor-background, transparent);
-}
-.cf-header {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
-  padding: 7px 8px 7px 10px;
-  font-size: 12px;
-  cursor: pointer;
-  user-select: none;
-}
-.cf-header:hover { background: rgba(128,128,128,.08); }
-.cf-caret {
-  flex: 0 0 auto; width: 20px; height: 20px; margin-left: -3px;
-  display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 5px; background: rgba(128,128,128,.12);
-  transition: transform .12s; font-size: 10px; opacity: .85;
-}
-.changed-files.collapsed .cf-caret { transform: rotate(-90deg); }
-.changed-files.collapsed .cf-list { display: none; }
-.cf-title { font-weight: 600; }
-.cf-count { font-size: 11px; color: var(--vscode-descriptionForeground); }
-.cf-total { font-family: var(--code-font); }
-.cf-stat { margin-left: auto; display: flex; align-items: center; gap: 8px; font-size: 11px; font-family: var(--code-font); }
-.cf-stat .cf-sep { width: 1px; height: 13px; background: var(--vscode-panel-border, rgba(128,128,128,.3)); }
-.cf-stat .add, .cf-rowstat .add { color: var(--vscode-gitDecoration-addedResourceForeground, #73c991); }
-.cf-stat .del, .cf-rowstat .del { color: var(--vscode-gitDecoration-deletedResourceForeground, #f14c4c); }
-/* approve-all / revert-all (top-right of the panel header). Keeping is the
-   common, safe action — it gets the tinted button; revert stays a plain word. */
-.cf-all {
-  font-family: var(--vscode-font-family);
-  border: none; border-radius: 5px; background: transparent; cursor: pointer;
-  font-size: 10.5px; padding: 2px 8px; white-space: nowrap;
-}
-.cf-all.accept { color: var(--vscode-testing-iconPassed, #73c991); background: rgba(115,201,145,.13); font-weight: 600; }
-.cf-all.revert { color: var(--vscode-descriptionForeground); padding: 2px 6px; }
-.cf-all:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
-.cf-all.revert:hover { color: var(--vscode-errorForeground, #f14c4c); }
-/* Per-file approve / revert. Always visible (dimmed): hover-only controls are
-   invisible on a touchpad and made the row jump when they appeared. */
-.cf-act {
-  flex: 0 0 auto;
-  width: 20px; height: 20px; line-height: 1;
-  border: none; border-radius: 4px;
-  background: transparent; cursor: pointer; font-size: 12px;
-  opacity: .75; transition: opacity .12s;
-}
-.cf-row:hover .cf-act { opacity: 1; }
-.cf-act.accept { color: var(--vscode-testing-iconPassed, #73c991); }
-.cf-act.revert { color: var(--vscode-errorForeground, #f14c4c); }
-.cf-act:hover { background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.25)); }
-.cf-list { max-height: 160px; overflow-y: auto; }
-.cf-row {
-  display: flex; align-items: center; gap: 8px;
-  padding: 6px 10px;
-  cursor: pointer;
-  font-size: 12px;
-}
-.cf-row:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.12)); }
-/* Status as a single monospace letter — a coloured chip per row read as a
-   badge wall once more than three files changed. */
-.cf-badge {
-  flex: 0 0 auto;
-  width: 14px; text-align: center;
-  font-family: var(--code-font); font-size: 11px; font-weight: 700;
-}
-.cf-badge.modified { color: #cca700; }
-.cf-badge.added { color: #73c991; }
-.cf-badge.deleted { color: #f14c4c; }
-.cf-name { flex: 0 .2 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--vscode-foreground); }
-.cf-dir { flex: 1 1 auto; min-width: 0; color: var(--vscode-descriptionForeground); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cf-rowstat { flex: 0 0 auto; font-family: var(--code-font); font-size: 10.5px; }
 
 /* The shortcut hints used to be crammed into the textarea placeholder, where
    they vanished the moment you typed the first character. */

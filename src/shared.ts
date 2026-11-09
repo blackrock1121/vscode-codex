@@ -224,7 +224,6 @@ export type ToWebview =
   | { kind: "context_added"; label: string; text: string }
   | { kind: "active_file"; path: string | null }
   | { kind: "attach_files"; paths: string[] }
-  | { kind: "changed_files"; files: ChangedFile[]; totalAdded: number; totalRemoved: number }
   | { kind: "notify_config"; webhook: string; minSec: number; local: boolean; localSupported: boolean; quietHours: QuietHours; usageThresholdPct: number; usageFeishu: boolean; usageLocal: boolean }
   | { kind: "notify_calendar"; message: string }
   | { kind: "notify_result"; ok: boolean; message: string }
