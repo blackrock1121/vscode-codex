@@ -1016,6 +1016,7 @@ function scheduleTranscriptResize(composerChanged = false) {
       if (messagesEl.style.paddingBottom !== padding) messagesEl.style.paddingBottom = padding;
       if (jumpLatestBtn.style.bottom !== bottom) jumpLatestBtn.style.bottom = bottom;
       positionSpeedPopover(speedFeedback);
+      positionOpenPickers();
     }
     // 使用执行时的跟随状态，保留观察通知后、下一帧前用户向上滚动的选择。
     maybeScroll();
@@ -4160,6 +4161,7 @@ function refitComposer() {
   }
   fittedComposerWidth = composerTools.clientWidth;
   positionSpeedPopover(speedFeedback);
+  positionOpenPickers();
 }
 if (composerTools && "ResizeObserver" in window) {
   new ResizeObserver(() => {
@@ -4748,12 +4750,19 @@ function positionPickMenu(menu: HTMLElement, trigger: HTMLElement) {
   const w = menu.offsetWidth;
   menu.style.left = `${Math.max(8, Math.min(t.left - pr.left, pr.width - w - 8))}px`;
 }
-window.addEventListener("resize", () => {
+function positionOpenPickers() {
+  // 窄窗口隐藏额度按钮时，同时移除菜单与遮罩；不能继续锚定零尺寸按钮。
+  if (!usageMenu.classList.contains("hidden") && composerTools?.classList.contains("compact-more")) {
+    const returnFocus = usageMenu.contains(document.activeElement);
+    closePickers();
+    if (returnFocus) inputEl.focus({ preventScroll: true });
+  }
   for (const [menu, trigger] of [[modelMenu, modelTrigger], [modeMenu, modeTrigger], [effortMenu, effortTrigger]]) {
     if (!menu.classList.contains("hidden")) positionPickMenu(menu, trigger);
   }
   if (!usageMenu.classList.contains("hidden")) positionUsageMenu();
-});
+}
+window.addEventListener("resize", positionOpenPickers);
 modeTrigger.onclick = (e) => {
   e.stopPropagation();
   hideModeTip();

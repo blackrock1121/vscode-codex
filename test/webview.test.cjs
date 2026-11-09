@@ -990,6 +990,36 @@ test('已打开的额度菜单随窗口缩窄保持在可见范围内',t=>{
  assert.ok(right<=width-8&&right-menu.offsetWidth>=8);
  assert.ok(bottom-parseFloat(menu.style.getPropertyValue('--picker-available-height'))>=8);
 });
+test('控制栏缩窄隐藏额度按钮时关闭其菜单和遮罩，键盘焦点回到输入框',t=>{
+ const {w,emit,errors}=setup(t),tools=w.document.querySelector('.composer-tools');
+ let width=800;
+ Object.defineProperties(tools,{clientWidth:{get:()=>width},scrollWidth:{get:()=>600}});
+ emit({kind:'usage',weekPct:30,weekResetAt:Math.floor(Date.now()/1000)+86400});w.document.getElementById('usage-pill').click();
+ const menu=w.document.getElementById('usage-menu'),backdrop=w.document.getElementById('pick-backdrop');
+ const reset=menu.querySelector('.usage-reset');
+ assert.ok(reset);reset.focus();
+ assert.equal(menu.classList.contains('hidden'),false);
+ // 模型/额度刷新和响应式布局使用同一条控制栏重排路径。
+ width=200;emit({kind:'config',model:'',effort:'high',permissionMode:'default'});
+ assert.equal(menu.classList.contains('hidden'),true);
+ assert.equal(backdrop.classList.contains('hidden'),true);
+ assert.equal(w.document.activeElement,w.document.getElementById('input'));
+ assert.deepEqual(errors,[]);
+});
+test('输入区高度变化后重新定位已打开的菜单，不等待窗口 resize',async t=>{
+ const {w,resize,errors}=setup(t),composer=w.document.getElementById('composer');
+ const menu=w.document.getElementById('model-menu'),trigger=w.document.getElementById('model-trigger');
+ let top=600;
+ composer.getBoundingClientRect=()=>({left:0,right:900,width:900,bottom:700});
+ Object.defineProperty(menu,'offsetParent',{get:()=>composer});
+ Object.defineProperty(menu,'offsetWidth',{get:()=>320});
+ trigger.getBoundingClientRect=()=>({left:150,top});
+ trigger.click();assert.equal(menu.style.bottom,'106px');
+ top=550;resize(composer);await new Promise(resolve=>w.requestAnimationFrame(resolve));
+ assert.equal(menu.style.bottom,'156px');
+ assert.equal(menu.style.getPropertyValue('--picker-available-height'),'536px');
+ assert.equal(menu.classList.contains('hidden'),false);assert.deepEqual(errors,[]);
+});
 test('子问题按来源展示且只接受文字，回答保留根任务计时',t=>{
  const {w,emit}=setup(t);
  let now=1000;Object.defineProperty(w.performance,'now',{value:()=>now});

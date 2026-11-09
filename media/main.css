@@ -1893,8 +1893,9 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
   font-family: inherit;
   font-size: inherit;
   line-height: 1.5;
-  min-height: 62px;
-  max-height: 240px;
+  /* 矮分屏里保留聊天空间；多行草稿在输入框内滚动，不顶出窗口。 */
+  min-height: min(62px, 30vh);
+  max-height: min(240px, 30vh);
 }
 /* The controls wrap as a group; the send button never leaves the right edge. */
 .composer-bottom { display: flex; align-items: flex-end; gap: 8px; }
