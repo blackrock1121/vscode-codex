@@ -4957,11 +4957,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     <!-- 保留拖选时的焦点，避免 VS Code 复制前聚焦回输入框并清空文字选区。 -->
     <div id="messages" class="messages" tabindex="-1"></div>
     <footer id="composer">
-      <div id="task-queue" class="task-queue hidden"></div>
-      <div id="context-chips"></div>
-      <div id="file-chips"></div>
-      <div id="image-previews"></div>
-      <div id="queue-hint" class="queue-hint hidden"><span class="qh-key">↵</span> 任务进行中 · 回车将内容加入<b>等待队列</b></div>
+      <div id="composer-extras" role="region" aria-label="附件与等待队列" tabindex="0">
+        <div id="task-queue" class="task-queue hidden"></div>
+        <div id="context-chips"></div>
+        <div id="file-chips"></div>
+        <div id="image-previews"></div>
+        <div id="queue-hint" class="queue-hint hidden"><span class="qh-key">↵</span> 任务进行中 · 回车将内容加入<b>等待队列</b></div>
+      </div>
       <div class="input-wrap">
         <textarea id="input" rows="1" placeholder="给 Codex 发消息…"></textarea>
         <div class="composer-bottom">

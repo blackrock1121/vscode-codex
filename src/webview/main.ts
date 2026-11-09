@@ -5415,8 +5415,10 @@ function addContextChip(label: string, text: string) {
   if (pendingContexts.some((c) => c.label === label)) return;
   pendingContexts.push({ label, text });
   const chip = el("span", "input-chip");
-  chip.append(document.createTextNode(label));
+  chip.title = label;
+  chip.append(el("span", "input-chip-label", label));
   const x = el("button", "chip-x", "×");
+  x.setAttribute("aria-label", `移除上下文：${label}`);
   x.onclick = () => {
     const i = pendingContexts.findIndex((c) => c.label === label);
     if (i >= 0) pendingContexts.splice(i, 1);

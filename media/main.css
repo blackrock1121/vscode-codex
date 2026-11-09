@@ -1583,6 +1583,17 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 #composer > :not(.pick-backdrop):not(.pick-menu) {
   max-width: var(--col); margin-left: auto; margin-right: auto;
 }
+/* 附件和排队任务共享一个滚动区，数量增多也不挤走输入框和发送按钮。 */
+#composer-extras { max-height: min(200px, 20vh); overflow-y: auto; overscroll-behavior: contain; padding: 3px 2px 0; margin-bottom: 6px; }
+#composer-extras:not(:has(> :not(.hidden):not(:empty))) { display: none; }
+#composer-extras:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+#composer-extras .task-queue { max-height: none; overflow: visible; }
+#composer-extras #image-previews { padding-right: 6px; } /* 为伸出缩略图的移除按钮留空间。 */
+@media (max-height: 500px) {
+  #composer:has(#composer-extras > :not(.hidden):not(:empty)) #input {
+    min-height: min(62px, 20vh); max-height: min(240px, 20vh);
+  }
+}
 
 /* ---- Mode / model pickers ---- */
 /* Every control on the composer row is 26px tall with a 7px radius and the
@@ -1732,12 +1743,13 @@ body.vscode-high-contrast .askq-card .tool-name { color: #c586c0; } /* 1b hue; 6
 .composer-tools.compact-wrap { flex-wrap: wrap; }
 #context-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
 .input-chip {
-  display: inline-flex; align-items: center; gap: 4px;
+  display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-width: 0;
   font-size: 11px;
   background: var(--vscode-badge-background); color: var(--vscode-badge-foreground);
   padding: 1px 4px 1px 8px; border-radius: 4px;
 }
-.chip-x { background: transparent; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; }
+.input-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-x { flex: 0 0 auto; background: transparent; border: none; color: inherit; cursor: pointer; font-size: 13px; line-height: 1; }
 
 /* Circular context-usage gauge (right of the mode picker) */
 .ctx-gauge {
