@@ -35,6 +35,84 @@ function scrollFixture(w){
  return {messages,setHeight:value=>height=value,setViewport:value=>viewport=value,
   scroll:value=>{messages.scrollTop=value;messages.dispatchEvent(new w.Event('scroll'));}};
 }
+const generatedPng='iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=';
+test('原生图片生成实时显示完整 base64，支持放大、复制、保存且重复结果不叠加',async t=>{
+ const copies=[],loaded=[];
+ const {w,emit,sent,errors}=setup(t,undefined,undefined,w=>{
+  w.Image=class{naturalWidth=1;naturalHeight=1;set src(value){loaded.push(value);queueMicrotask(()=>this.onload());}};
+  w.HTMLCanvasElement.prototype.getContext=()=>({drawImage(){}});
+  w.HTMLCanvasElement.prototype.toBlob=callback=>callback(new w.Blob(['png'],{type:'image/png'}));
+  w.ClipboardItem=class{constructor(data){this.data=data;}};
+  Object.defineProperty(w.navigator,'clipboard',{value:{write:async items=>copies.push(items)}});
+ });
+ // 大于普通工具结果的 8000 字符截断阈值。
+ const payload=Buffer.concat([Buffer.from(generatedPng,'base64'),Buffer.alloc(9000)]).toString('base64');
+ const uri=`data:image/png;base64,${payload}`;
+ emit({kind:'tool_input',toolId:'generated',name:'imageGeneration',input:{}});
+ const result={kind:'tool_result',toolUseId:'generated',content:JSON.stringify({result:payload,status:'completed'}),isError:false};
+ emit(result);emit(result);
+ const card=w.document.querySelector('[data-tool-id="generated"]');
+ assert.equal(card.querySelectorAll('.generated-image-result img').length,1);
+ assert.equal(card.querySelector('img').getAttribute('src'),uri);
+ assert.equal(card.querySelector('pre'),null);
+ assert.equal(card.textContent.includes(payload),false);
+ card.querySelector('img').click();assert.equal(w.document.getElementById('lightbox-img').getAttribute('src'),uri);
+ w.document.getElementById('lb-save').click();
+ assert.ok(sent.some(m=>m.type==='saveImage'&&m.dataUri===uri));
+ w.document.getElementById('lb-copy').click();
+ await new Promise(resolve=>setImmediate(resolve));
+ assert.deepEqual(loaded,[uri]);assert.equal(copies.length,1);
+ assert.equal(copies[0][0].data['image/png'].type,'image/png');
+ assert.equal(w.document.getElementById('lb-copy').textContent,'已复制 ✓');
+ assert.deepEqual(errors,[]);
+});
+test('历史图片生成识别裸 base64、data URI 和图片类型，避免折叠进普通工具组',t=>{
+ const {w,emit,errors}=setup(t);
+ const cases=[['png',generatedPng],['jpeg',Buffer.from([255,216,255,...Array(20).fill(0)]).toString('base64')],
+  ['gif',Buffer.from('GIF89a'+String.fromCharCode(0).repeat(20)).toString('base64')],
+  ['webp',Buffer.from('RIFF0000WEBP'+String.fromCharCode(0).repeat(20)).toString('base64')]];
+ for(const [mime,data] of cases){
+  for(const result of [data,JSON.stringify({result:data.replace(/.{20}/g,'$&\n')}),JSON.stringify({result:`data:image/${mime};base64,${data}`})]){
+   emit({kind:'load_history',items:[{type:'tool',toolId:'before',name:'Bash',input:{command:'echo done'},result:'done'},
+    {type:'tool',toolId:'generated',name:'imageGeneration',input:{},result}],checkpoints:[]});
+   const img=w.document.querySelector('.generated-image-result img');assert.ok(img,mime);
+   assert.equal(img.getAttribute('src'),`data:image/${mime};base64,${data}`);
+   assert.equal(img.closest('.tool-group-step'),null);
+   img.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Enter'}));
+   assert.equal(w.document.getElementById('lightbox-img').getAttribute('src'),img.src);
+   w.document.getElementById('lb-close').click();
+  }
+ }
+ assert.deepEqual(errors,[]);
+});
+test('图片生成支持 savedPath，加载失败可重试，预览使用宿主返回的图片',t=>{
+ const {w,emit,sent,errors}=setup(t),path='/tmp/generated image.png';
+ emit({kind:'load_history',items:[{type:'tool',toolId:'generated',name:'imageGeneration',input:{savedPath:path},result:JSON.stringify({status:'completed'})}],checkpoints:[]});
+ assert.ok(sent.some(m=>m.type==='loadLocalImage'&&m.path===path));
+ assert.equal(w.document.querySelector('.file-chip').dataset.path,path);
+ emit({kind:'local_image',path});w.document.querySelector('.local-image-retry').click();
+ assert.equal(sent.filter(m=>m.type==='loadLocalImage').length,2);
+ const uri=`data:image/png;base64,${generatedPng}`;
+ emit({kind:'local_image',path,dataUri:uri});
+ const img=w.document.querySelector('.generated-image-result img');img.dispatchEvent(new w.Event('load'));img.click();
+ assert.equal(w.document.getElementById('lightbox-img').getAttribute('src'),uri);
+ assert.deepEqual(errors,[]);
+});
+test('图片生成失败或未知结果保留诊断文本，普通工具的 base64 不误识别',t=>{
+ const {w,emit,errors}=setup(t);
+ for(const [name,result,isError] of [['imageGeneration',JSON.stringify({result:generatedPng,failure:'生成失败'}),true],
+  ['imageGeneration',JSON.stringify({result:'notAnImage'}),false],['imageGeneration','{"result":"iVBORw0KGgo',false],
+  ['imageGeneration',JSON.stringify({result:`data:image/jpeg;base64,${generatedPng}`}),false],
+  ['Bash',JSON.stringify({result:generatedPng}),false]]){
+  emit({kind:'load_history',items:[{type:'tool',toolId:'generated',name,input:{},result,isError}],checkpoints:[]});
+  assert.equal(w.document.querySelector('.generated-image-result'),null);
+  assert.equal(w.document.querySelector('.tool-result-body').textContent,result);
+ }
+ emit({kind:'load_history',items:[{type:'tool',toolId:'generated',name:'imageGeneration',input:{},result:JSON.stringify({result:generatedPng})}],checkpoints:[]});
+ w.document.querySelector('.generated-image-result img').dispatchEvent(new w.Event('error'));
+ assert.match(w.document.querySelector('.generated-image-result').textContent,/图片无法加载/);
+ assert.deepEqual(errors,[]);
+});
 test('页面休眠仅在无待办输入时确认，草稿、附件和运行中任务必须保留', t => {
  const f = setup(t, 'sleep');
  f.emit({kind:'load_history',sessionId:'sleep',items:[],checkpoints:[]});

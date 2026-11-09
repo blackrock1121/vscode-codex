@@ -67,6 +67,27 @@ test('同名工具通过复合 ID 隔离，子标签不会加入根正文', t =>
   assert.equal(f.events.at(-1).toolUseId, tools[0].toolId);
 });
 
+test('根线程和子线程图片完成时更新 savedPath，缺少开始事件也能创建图片卡片', t => {
+  const f = fixture(t); f.add();
+  for (const threadId of ['root', 'child']) {
+    for (const started of [true, false]) {
+      f.events.length = 0;
+      const item = { id: `image-${started}`, type: 'imageGeneration', status: 'inProgress' };
+      if (started) f.note('item/started', threadId, { turnId: `${threadId}-turn`, item });
+      f.note('item/completed', threadId, { turnId: `${threadId}-turn`, item: { ...item,
+        status: 'completed', savedPath: '/tmp/generated.png', result: 'image-base64' } });
+      const events = f.events.filter(e => e.kind === 'tool_input' || e.kind === 'tool_result');
+      assert.equal(events.length, started ? 3 : 2);
+      const input = events.at(-2), result = events.at(-1);
+      assert.equal(input.kind, 'tool_input'); assert.equal(input.name, 'imageGeneration');
+      assert.equal(input.input.savedPath, '/tmp/generated.png');
+      assert.equal(result.kind, 'tool_result'); assert.equal(result.toolUseId, input.toolId);
+      assert.equal(JSON.parse(result.content).result, 'image-base64');
+      if (threadId === 'child') assert.match(input.agentLabel, /child/);
+    }
+  }
+});
+
 test('子审批用原 RPC 返回，未知外部线程保持拒绝', async t => {
   const f = fixture(t); f.add();
   await f.p.request({ id: 19, method: 'item/commandExecution/requestApproval', params: {

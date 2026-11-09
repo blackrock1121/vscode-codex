@@ -1701,7 +1701,7 @@ let toolBodySeq = 0;
 let toolGroupSeq = 0;
 
 function toolGroupKind(name: string): Exclude<ToolGroupKind, "mixed"> | null {
-  if (!name || name === "AskUserQuestion") return null;
+  if (!name || name === "AskUserQuestion" || name === "imageGeneration") return null;
   if (name === "Bash") return "bash";
   if (DIFF_TOOLS.has(name)) return "edit";
   if (name === "WebSearch" || name === "WebFetch") return "web";
@@ -1893,6 +1893,9 @@ function updateToolInput(toolId: string, name: string, input: Record<string, unk
   if (name === "AskUserQuestion") return; // rendered as an interactive picker, not a card
   let card = toolCards.get(toolId);
   if (!card) card = createToolCard(ensureAssistant(), toolId, name);
+  if (name === "imageGeneration") {
+    card.dataset.imagePath = typeof input.savedPath === "string" ? input.savedPath : "";
+  }
   const sub = card.querySelector(".tool-sub") as HTMLElement;
   const bodyWrap = card.querySelector(".tool-body") as HTMLElement;
   const { subtitle, html } = renderToolInput(name, input);
@@ -2032,6 +2035,27 @@ function prettyHost(url: string): string {
   }
 }
 
+/** 原生图片生成返回裸 base64；必须在普通文本截断之前识别。 */
+function generatedImageUri(content: string): string | undefined {
+  let value: unknown = content;
+  try { value = JSON.parse(content); } catch { /* 兼容裸 base64 结果。 */ }
+  const raw = typeof value === "string" ? value
+    : value && typeof value === "object" ? (value as { result?: unknown }).result : undefined;
+  if (typeof raw !== "string") return;
+  const normalized = raw.replace(/\s/g, "");
+  const uri = /^data:image\/(png|jpeg|gif|webp);base64,(.*)$/i.exec(normalized);
+  const data = uri ? uri[2] : normalized;
+  if (data.length < 16 || !/^[A-Za-z0-9+/]+={0,2}$/.test(data) || data.length % 4 === 1) return;
+  let header: string;
+  try { header = atob(data.slice(0, 16)); } catch { return; }
+  const mime = header.startsWith("\x89PNG\r\n\x1a\n") ? "png"
+    : header.startsWith("\xff\xd8\xff") ? "jpeg"
+    : /^GIF8[79]a/.test(header) ? "gif"
+    : header.startsWith("RIFF") && header.slice(8, 12) === "WEBP" ? "webp" : undefined;
+  if (!mime || (uri && uri[1].toLowerCase() !== mime)) return;
+  return `data:image/${mime};base64,${data}`;
+}
+
 function setToolResult(toolUseId: string, content: string, isError: boolean) {
   const card = toolCards.get(toolUseId);
   if (!card) return;
@@ -2099,6 +2123,30 @@ function setToolResult(toolUseId: string, content: string, isError: boolean) {
   const bodyWrap = card.querySelector(".tool-body") as HTMLElement;
   const existing = card.querySelector(".tool-result");
   if (existing) existing.remove();
+  if (!bad && tn === "imageGeneration") {
+    const src = generatedImageUri(content) || card.dataset.imagePath;
+    if (src) {
+      const box = el("div", "tool-result generated-image-result");
+      const img = el("img", "msg-image") as HTMLImageElement;
+      img.alt = "AI 生成的图片";
+      img.title = "点击放大，可复制或保存图片";
+      img.tabIndex = 0;
+      img.setAttribute("role", "button");
+      const preview = () => { if (img.getAttribute("src")) openLightbox(img.src); };
+      img.onclick = preview;
+      img.onkeydown = event => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); preview(); }
+      };
+      img.onload = () => maybeScroll();
+      img.onerror = () => img.replaceWith(el("span", "local-image-failed", "图片无法加载，请重新打开会话后重试。"));
+      img.src = src;
+      box.appendChild(img);
+      bodyWrap.appendChild(box);
+      hydrateLocalImages(box);
+      maybeScroll();
+      return;
+    }
+  }
   // WebSearch/WebFetch return a JSON-ish blob ("… Links: [{\"title\":…}]") —
   // pull out the titles+urls and show them as a tidy link list, not raw text.
   if (!bad && (tn === "WebSearch" || tn === "WebFetch")) {
@@ -2207,6 +2255,11 @@ function renderToolInput(name: string, input: Record<string, unknown>): { subtit
     };
   }
   switch (name) {
+    case "imageGeneration": {
+      const savedPath = typeof input.savedPath === "string" ? input.savedPath : "";
+      return { subtitle: "", html: savedPath
+        ? `<a class="file-chip" data-action="open" data-path="${escapeHtml(savedPath)}">${escapeHtml(shortPath(savedPath))}</a>` : "" };
+    }
     case "TodoWrite": {
       // 渲染成勾选清单（对齐官方样式）：完成 = 勾选+删除线，进行中 = 高亮，待办 = 空框。
       const todos = Array.isArray(input.todos) ? (input.todos as Array<{ content?: string; status?: string; activeForm?: string }>) : [];

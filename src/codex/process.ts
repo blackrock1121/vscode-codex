@@ -800,8 +800,8 @@ export class CodexProcess {
     if (!done) this.tools.set(id, item); else this.tools.delete(id);
     if (item.type === 'dynamicToolCall' && item.tool === 'AskUserQuestion') return;
     const view = toolView(item);
-    if (!done) this.emit({ kind: 'tool_input', toolId: id, name: view.name, input: view.input, agentLabel: child.label });
-    else this.emit({ kind: 'tool_result', toolUseId: id, content: view.result, isError: view.isError });
+    if (!done || item.type === 'imageGeneration') this.emit({ kind: 'tool_input', toolId: id, name: view.name, input: view.input, agentLabel: child.label });
+    if (done) this.emit({ kind: 'tool_result', toolUseId: id, content: view.result, isError: view.isError });
   }
   private notification(m: RpcMessage): void {
     this.latency.received(m);
@@ -951,8 +951,10 @@ export class CodexProcess {
     this.tools.set(item.id, item);
     if (item.type === 'dynamicToolCall' && item.tool === 'AskUserQuestion') return;
     const view = toolView(item);
-    if (!done) { this.activeBlock = undefined; this.emit({ kind: 'tool_input', toolId: item.id, name: view.name, input: view.input }); }
-    else this.emit({ kind: 'tool_result', toolUseId: item.id, content: view.result, isError: view.isError });
+    if (!done) this.activeBlock = undefined;
+    // 图片文件路径可能只在完成事件里出现；先更新卡片，再交付图片结果。
+    if (!done || item.type === 'imageGeneration') this.emit({ kind: 'tool_input', toolId: item.id, name: view.name, input: view.input });
+    if (done) this.emit({ kind: 'tool_result', toolUseId: item.id, content: view.result, isError: view.isError });
   }
   private async request(m: RpcMessage): Promise<void> {
     const p = m.params ?? {}, key = String(m.id);
