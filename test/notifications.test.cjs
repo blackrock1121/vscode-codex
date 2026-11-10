@@ -1174,9 +1174,9 @@ test('同会话复用系统解析的通知 URI，其他会话独立且解析失�
   await p.sendLocalNotice('一','','session-A');await p.sendLocalNotice('二','','session-A');
   assert.equal(calls,1);
   await p.sendLocalNotice('分支','','branch');assert.equal(calls,2);
-  fail=true;await assert.rejects(p.sendLocalNotice('失败','','retry'),/临时解析失败/);
+  fail=true;assert.equal(await p.sendLocalNotice('解析失败但直连可用','','retry'),true);
   fail=false;await p.sendLocalNotice('重试','','retry');assert.equal(calls,4);
-  assert.equal(nativeCalls.filter(x=>x.data.sessionId==='retry').length,1);
+  assert.equal(nativeCalls.filter(x=>x.data.sessionId==='retry').length,2);
 });
 
 test('提交后的清理覆盖兼容历史安装路径，仅携带同一个完整会话 ID', { timeout: 5000 }, async t => {
@@ -1249,4 +1249,44 @@ test('子问题答复同步推进队列后，异步清理不丢掉下一问题�
  assert.equal(p.notifyTimers.size,1);
  t.mock.timers.tick(59999);assert.equal(sent.length,0);
  t.mock.timers.tick(1);assert.equal(sent.length,1);assert.match(sent[0][1],/待回答/);
+});
+
+
+test('跳转地址解析卡住最多等待1秒，直连仍定位本窗口，迟到结果不重发且缓存可恢复',async t=>{
+ config={notifyLocal:true};nativeCalls=[];resultError=undefined;
+ const p=provider(),original=vscode.env.asExternalUri;let release,calls=0;
+ vscode.env.asExternalUri=uri=>{calls++;return new Promise(resolve=>{release=()=>resolve(original(uri));});};
+ t.after(()=>{vscode.env.asExternalUri=original;release?.();});
+ t.mock.timers.enable({apis:['setTimeout']});
+ const sending=p.sendLocalNotice('超时降级','','session-A');
+ await flush();t.mock.timers.tick(999);assert.equal(nativeCalls.length,0);
+ t.mock.timers.tick(1);assert.equal(await sending,true);
+ assert.equal(nativeCalls.length,1);assert.doesNotMatch(nativeCalls[0].data.url,/windowId/);
+ assert.ok(nativeCalls[0].data.clickEndpoint);
+ t.mock.timers.reset();let opened=0;p.openSession=async id=>{assert.equal(id,'session-A');opened++;};
+ assert.equal((await fetch(nativeCalls[0].data.clickEndpoint,{method:'POST'})).status,204);assert.equal(opened,1);
+ release();await flush();assert.equal(nativeCalls.length,1,'迟到地址不能补发通知');
+ vscode.env.asExternalUri=original;await p.sendLocalNotice('恢复','','session-A');
+ assert.match(nativeCalls[1].data.url,/windowId/);assert.equal(calls,1);
+});
+
+test('隐私会话本机提醒同远程只发固定状态，普通会话仍展示摘要',async()=>{
+ config={notifyLocal:true};nativeCalls=[];resultError=undefined;const p=provider();
+ for(const extra of [{durationMs:65000},{isError:true},{waiting:true,ask:'待回答：保密问题'},{waiting:true,ask:'待授权：保密命令'}]){
+  await p.dispatchNotification({sessionId:'private',remotePrivate:true},'原始秘密正文',{...extra,project:'秘密项目',question:'秘密提问'});
+ }
+ const payload=nativeCalls.map(x=>[x.data.title,x.data.body].join(' ')).join(' ');
+ assert.doesNotMatch(payload,/秘密|保密/);assert.match(payload,/任务完成/);assert.match(payload,/任务出错/);assert.match(payload,/等待回答/);assert.match(payload,/等待授权/);
+ await p.dispatchNotification({sessionId:'normal'},'✅ Codex 任务完成（耗时 1 分 5 秒）',{project:'正常项目',question:'普通摘要'});
+ assert.match(nativeCalls.at(-1).data.body,/普通摘要/);
+});
+
+test('窗口在排队期间销毁，迟到通知不会绕过生命周期检查',async t=>{
+ config={notifyLocal:true};nativeCalls=[];resultError=undefined;const p=provider();let release,entered;
+ const firstReady=new Promise(r=>entered=r);
+ beforeNativeResult=async call=>{if(call.data.title==='先发'){entered();await new Promise(r=>release=r);}};
+ t.after(()=>{beforeNativeResult=undefined;release?.();});
+ const first=p.sendLocalNotice('先发','','session-A');await firstReady;
+ const queued=p.sendLocalNotice('后发','','session-A');await flush();p.disposed=true;release();
+ await first;assert.equal(await queued,false);assert.equal(nativeCalls.length,1);
 });

@@ -142,12 +142,20 @@ struct NoticeResult {
     var code: String? = nil
     var phase: String
     var accepted = true
+    var timings: [String: Int] = [:]
 }
 
 // 在原生队列内部结算截止时间，而非只让调用方退出等待。
 // 回调迟到时不能再次出队、清除新通知或继续投递过期内容。
 final class NoticeWork {
-    var phase = "queued"
+    private var phaseStarted = ProcessInfo.processInfo.systemUptime
+    private var timings: [String: Int] = [:]
+    var phase = "queued" {
+        willSet {
+            timings[phase, default: 0] += max(0, Int((ProcessInfo.processInfo.systemUptime - phaseStarted) * 1000))
+            phaseStarted = ProcessInfo.processInfo.systemUptime
+        }
+    }
     private(set) var finished = false
     private var timer: DispatchWorkItem?
     private let completion: (NoticeResult) -> Void
@@ -165,7 +173,10 @@ final class NoticeWork {
         finished = true
         timer?.cancel()
         timer = nil
-        completion(result)
+        var measured = result
+        timings[phase, default: 0] += max(0, Int((ProcessInfo.processInfo.systemUptime - phaseStarted) * 1000))
+        measured.timings = timings
+        completion(measured)
     }
 }
 
@@ -181,6 +192,30 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
     var queues: [String: [() -> Void]] = [:]
     var latest: [String: Double] = [:]
     let clicks = NotificationClickClient()
+    private var clickFailureAlert: NSAlert?
+
+    func showClickFailure() {
+        // 不能在主队列回调中 runModal：用户未关闭弹窗时，后续通知和超时
+        // 回调也会被困在同一条主队列。普通窗口立即返回，重复失败只保留一份。
+        if let alert = clickFailureAlert { alert.window.makeKeyAndOrderFront(nil); return }
+        let alert = NSAlert()
+        alert.messageText = "未能返回通知来源窗口"
+        alert.informativeText = "原窗口可能已关闭或重载，或 macOS 未能将它切到前台。请切回对应工作区，从会话历史打开任务。"
+        let button = alert.addButton(withTitle: "好")
+        button.target = self
+        button.action = #selector(dismissClickFailure)
+        alert.layout()
+        alert.window.isReleasedWhenClosed = false
+        clickFailureAlert = alert
+        alert.window.center()
+        alert.window.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    @objc func dismissClickFailure() {
+        clickFailureAlert?.window.close()
+        clickFailureAlert = nil
+    }
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         center.setDelegate(self)
@@ -320,7 +355,7 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
             guard file.lastPathComponent == "request.codex-notification",
                   file.deletingLastPathComponent().lastPathComponent.hasPrefix("codex-chat-notify-") else { continue }
             let finish: (NoticeResult) -> Void = { response in
-                var result: [String: Any] = ["ok": response.error == nil, "accepted": response.accepted, "phase": response.phase]
+                var result: [String: Any] = ["ok": response.error == nil, "accepted": response.accepted, "phase": response.phase, "timings": response.timings]
                 if let error = response.error { result["error"] = error }
                 if let code = response.code { result["code"] = code }
                 do {
@@ -366,12 +401,7 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                     if !opened {
                         // 原窗口已失效时不能退回系统 URI 路由，否则又可能激活无关窗口。
                         DispatchQueue.main.async {
-                            let alert = NSAlert()
-                            alert.messageText = "未能返回通知来源窗口"
-                            alert.informativeText = "原窗口可能已关闭或重载，或 macOS 未能将它切到前台。请切回对应工作区，从会话历史打开任务。"
-                            alert.addButton(withTitle: "好")
-                            NSApp.activate(ignoringOtherApps: true)
-                            alert.runModal()
+                            self.showClickFailure()
                         }
                     }
                 }

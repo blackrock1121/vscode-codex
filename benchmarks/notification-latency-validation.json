@@ -1,0 +1,42 @@
+{
+  "version": "0.1.209",
+  "at": "2026-11-10T05:41:05.255Z",
+  "base": "2424ae6da77c506a2ec244b9388e6ec0e7de659f",
+  "sourceDirectory": "/var/folders/yj/bxvy_gxd31x5nwc40glpwy040000gn/T/codex-notification-209-cb7hx1rj/source",
+  "sourceHashes": {
+    "native/Notifications.swift": "16790540847641bb1ee9f7df3999c015dd9efb52ec07d7da20b97d81d55d42e1",
+    "src/notifications.ts": "53111060e8ba8d4487099d58c7d2f4e9c90c3cfd8574ee471e4abcee436182ea",
+    "src/panel/chatViewProvider.ts": "e50773665f6eb4feb048e98fceebb508b5a22000489d6746ec283e04e8f95b15",
+    "test/diagnostic-dd0-fix.test.cjs": "8afec1b4d9374bd4839d5a9f25dd889e1c4380b2793e90a91fc17ae63ca8b181",
+    "test/notifications.test.cjs": "1e56c637ce31bfe142424d2d774534dd6b6fd8ee3316cf07172495c4b416b7c4",
+    "package.json": "fd6095da447b7eadebbf2d2bb2525b8f902d570aa570e847b20f8f8aca7314b5",
+    "package-lock.json": "7532507ff84761852fcf2ab8b003578e8c9057f7e37bf2fe27ab1ad40dbfce47",
+    "scripts/verify-notification-latency.cjs": "257e5d8cdd6d037e2dcb6de794d2b1c63ac89626452c9633d0df4254ed6063eb",
+    "test/notification-nonmodal.test.cjs": "1c83409671619219d3fc8e400ac01cd5c852767f2a389a457ae2117251a674ff",
+    "benchmarks/notification-latency.json": "dea29ddcc383ca86f2d02d5aed596c61eb469f52bfe08879794e02759b13c092"
+  },
+  "checks": [
+    {
+      "command": "npm run check-types",
+      "result": "passed"
+    },
+    {
+      "command": "npm test",
+      "result": "passed",
+      "passed": 985,
+      "failed": 0,
+      "log": "/tmp/codex-notification-latency-isolated-test.log",
+      "scope": "隔离工作树，仅通知修改，未混入其他会话未提交的修改"
+    },
+    {
+      "command": "node scripts/verify-notification-latency.cjs",
+      "result": "passed",
+      "evidence": "benchmarks/notification-latency.json"
+    }
+  ],
+  "limitations": [
+    "真实系统测试在安装后执行，当前记录不声明用户已看到横幅",
+    "非模态失败提示测试使用生产Swift方法及无界面窗口接口，没有自动操作用户窗口",
+    "保留全局30秒等待阈值，未改权限和远程静默时段"
+  ]
+}

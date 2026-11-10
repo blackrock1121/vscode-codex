@@ -12,7 +12,7 @@ try {Module._load=function(name,...args){
  if(name==='node:child_process')return {...child,execFile(file,args,options,callback){
    if(file!=='/usr/bin/open')return child.execFile(file,args,options,callback);
    lastDirectory=path.dirname(args.at(-1));
-   const result=nativeMode==='native_timeout'?{ok:false,error:'PRIVATE_BODY',code:'ETIMEDOUT',phase:'delivered_lookup'}:nativeMode==='superseded'?{ok:true,accepted:false,phase:'queued'}:nativeMode==='denied'?{ok:false,error:'PRIVATE_BODY'}:nativeMode==='invalid'?{}:{ok:true};
+   const result=nativeMode==='native_timeout'?{ok:false,error:'PRIVATE_BODY',code:'ETIMEDOUT',phase:'delivered_lookup',timings:{queued:2,authorization:3,delivered_lookup:20000,submit:-1,PRIVATE_BODY:5}}:nativeMode==='superseded'?{ok:true,accepted:false,phase:'queued'}:nativeMode==='denied'?{ok:false,error:'PRIVATE_BODY'}:nativeMode==='invalid'?{}:{ok:true};
    const write=nativeMode==='timeout'?Promise.resolve():fsp.writeFile(path.join(lastDirectory,'result.json'),JSON.stringify(result));
    write.then(()=>callback(null,'',''),callback);
  }};
@@ -142,6 +142,7 @@ test('通知原生阶段超时落盘可检出；被新操作取代不会伪报�
  nativeMode='native_timeout';
  await assert.rejects(api.sendLocalNotification('/fixture','','','vscode://fixture'),{code:'ETIMEDOUT'});
  assert.ok(f.rows.some(r=>r.operation==='notification.show'&&r.stage==='failed'&&r.phase==='delivered_lookup'&&r.failureCategory==='timeout'));
+ assert.ok(f.rows.some(r=>r.native_delivered_lookupMs===20000&&r.native_queuedMs===2&&r.native_authorizationMs===3&&r.native_submitMs===undefined));
  nativeMode='superseded';assert.equal(await api.sendLocalNotification('/fixture','','','vscode://fixture'),false);
  nativeMode='success';assert.equal(await api.sendLocalNotification('/fixture','','','vscode://fixture'),true);
  assert.ok((await f.scan()).findings.some(r=>r.evidence.includes('delivered_lookup')));

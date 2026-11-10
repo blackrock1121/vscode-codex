@@ -183,15 +183,20 @@ function requestLocalNotification(extensionPath: string, payload: Record<string,
     return observeOperation(payload.operation === 'clear' ? 'notification.clear' : 'notification.show',
         () => requestLocalNotificationInner(extensionPath, payload, fields), fields);
 }
-async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>, fields: { phase: string }): Promise<boolean> {
+async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>, fields: { phase: string; [key: string]: string | number }): Promise<boolean> {
     if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
+    const preparedAt = performance.now();
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-chat-notify-"));
     try {
         await fs.chmod(dir, 0o700);
         const request = path.join(dir, "request.codex-notification");
         await fs.writeFile(request, JSON.stringify({ ...payload, expiresAt: Date.now() + 30000 }), { mode: 0o600 });
+        fields.prepareMs = Math.round(performance.now() - preparedAt);
         fields.phase = 'launch';
+        const launchedAt = performance.now();
         await exec("/usr/bin/open", ["-g", "-a", path.join(extensionPath, "dist", NOTIFIER_APP), request], { timeout: 10000 });
+        fields.launchMs = Math.round(performance.now() - launchedAt);
+        const confirmingAt = performance.now();
         // 原生程序只在系统接受通知后写回结果，权限拒绝不能显示“发送成功”。
         const deadline = Date.now() + 30000;
         fields.phase = 'await_result';
@@ -203,10 +208,16 @@ async function requestLocalNotificationInner(extensionPath: string, payload: Rec
                 await new Promise(resolve => setTimeout(resolve, 100));
                 continue;
             }
+            fields.confirmMs = Math.round(performance.now() - confirmingAt);
             fields.phase = 'native_result';
-            const result = JSON.parse(raw) as { ok: boolean; error?: string; code?: string; phase?: string; accepted?: boolean };
+            const result = JSON.parse(raw) as { ok: boolean; error?: string; code?: string; phase?: string; accepted?: boolean; timings?: Record<string, unknown> };
             if (!result || typeof result.ok !== 'boolean') throw new SyntaxError("本机通知返回了无效结果。");
             if (['authorization', 'delivered_lookup', 'submit', 'queued', 'validation', 'cleared'].includes(result.phase ?? '')) fields.phase = result.phase!;
+            for (const phase of ['queued', 'authorization', 'delivered_lookup', 'submit']) {
+                const elapsed = result.timings?.[phase];
+                if (typeof elapsed === 'number' && Number.isSafeInteger(elapsed) && elapsed >= 0 && elapsed <= 300000)
+                    fields[`native_${phase}Ms`] = elapsed;
+            }
             if (!result.ok) throw Object.assign(new Error(result.error || "系统未接受本机通知。"),
                 { code: ['ETIMEDOUT', 'EACCES', 'EINVAL'].includes(result.code ?? '') ? result.code : undefined });
             // 兼容旧辅助程序；新程序明确区分系统接受和已被新操作取代。

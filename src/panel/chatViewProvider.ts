@@ -3523,6 +3523,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const proc = ctx.proc;
         const sessionId = ctx.sessionId;
         const epoch = this.notificationVersion(sessionId);
+        const scheduledAt = Date.now();
+        operationLog('notification.waiting', 'scheduled', { delayMs: delay, thresholdMs: minSec * 1000 });
         const timer = setTimeout(() => {
             this.notifyTimers.delete(timer);
             if (ctx.waitingNotificationTimer === timer) ctx.waitingNotificationTimer = undefined;
@@ -3531,6 +3533,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             const pend = ctx.pendingPerm;
             if (pend?.kind !== "permission_request" || pend.requestId !== req.requestId)
                 return;
+            operationLog('notification.waiting', 'ready', { delayMs: delay, timerLagMs: Math.max(0, Date.now() - scheduledAt - delay) });
             const waited = Date.now() - (ctx.lastUserActionAt ?? since);
             const mins = Math.floor(waited / 60000);
             const secs = Math.round((waited % 60000) / 1000);
@@ -3607,9 +3610,11 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         };
         if (url && !muted) pending.push(sendRemote());
         if (localEnabled) {
-            const { title, body } = formatLocalNotification(msg, {
-                ...extra,
-                project: typeof extra.project === "string" ? localNotificationProject(extra.project) : extra.project,
+            // 隐私会话两个渠道都只发送固定状态；不能把原始问题带进系统通知中心。
+            const localExtra = privateSession ? remoteNotice.extra : extra;
+            const { title, body } = formatLocalNotification(privateSession ? remoteNotice.text : msg, {
+                ...localExtra,
+                project: typeof localExtra.project === "string" ? localNotificationProject(localExtra.project) : localExtra.project,
             });
             const localStartedAt = performance.now();
             const local = typeof extra.diagnosticId === 'string' ? this.sendLocalNotice(title, body, undefined, extra.diagnosticId) : this.sendLocalNotice(title, body, sessionId);
@@ -3631,7 +3636,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         return Promise.all(pending).then(() => {
             if (deliveryFailed && !sent.length && !this.disposed && this.notificationVersion(sessionId) === epoch) {
                 // 自动任务不消费返回值；必须留下用户可见的失败提示，而不只是日志。
-                void Promise.resolve(vscode.window.showWarningMessage("Codex 提醒未能送达，请查看任务结果，并在通知设置中检查渠道和权限。"))
+                void Promise.resolve().then(() => vscode.window.showWarningMessage("Codex 提醒未能送达，请查看任务结果，并在通知设置中检查渠道和权限。"))
                     .catch(error => operationFailure('notification.fallback', error));
             }
             return {
@@ -3641,34 +3646,60 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         });
     }
     private async sendLocalNotice(title: string, body: string, sessionId?: string, diagnosticId?: string): Promise<boolean> {
-        const createdAt = notificationTime();
-        const epoch = this.notificationVersion(sessionId);
-        // 地址解析不占据原生操作队列，用户回复后的清理无需等旧解析完成。
-        const uri = await this.notificationUri(sessionId, diagnosticId);
-        if (this.disposed) return false;
-        const router = this.notificationRouter ??= new NotificationRouter();
-        const clickEndpoint = await router.endpoint(diagnosticId ? `diagnostic:${diagnosticId}` : sessionId ?? "", () => this.handleNotificationUri(uri, true));
-        return queueSessionNotification(sessionId, async () => {
-            if (this.notificationVersion(sessionId) !== epoch) return false;
-            return sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt, clickEndpoint);
-        });
+        const fields = { phase: 'uri', uriMs: 0, routerMs: 0, queueMs: 0, accepted: false };
+        return observeOperation('notification.local', async () => {
+            const createdAt = notificationTime();
+            const epoch = this.notificationVersion(sessionId);
+            const preparedAt = performance.now();
+            let uri: vscode.Uri;
+            try { uri = await this.notificationUri(sessionId, diagnosticId); }
+            catch (error) {
+                // 点击由本窗口直连路由处理，不依赖系统 URI 分发。解析慢或失败时
+                // 使用原始 URI 保存会话身份，仍必须先建立直连端点，绝不猜测其他窗口。
+                operationLog('notification.uri', 'fallback', { ...errorFields(error), reason: 'direct_click_endpoint' });
+                uri = this.rawNotificationUri(sessionId, diagnosticId);
+            }
+            fields.uriMs = Math.round(performance.now() - preparedAt);
+            if (this.disposed || this.notificationVersion(sessionId) !== epoch) return false;
+            fields.phase = 'router';
+            const routerAt = performance.now();
+            const router = this.notificationRouter ??= new NotificationRouter();
+            const clickEndpoint = await router.endpoint(diagnosticId ? `diagnostic:${diagnosticId}` : sessionId ?? "", () => this.handleNotificationUri(uri, true));
+            fields.routerMs = Math.round(performance.now() - routerAt);
+            fields.phase = 'queue';
+            const queuedAt = performance.now();
+            return queueSessionNotification(sessionId, async () => {
+                fields.queueMs = Math.round(performance.now() - queuedAt);
+                if (this.disposed || this.notificationVersion(sessionId) !== epoch) return false;
+                fields.phase = 'native';
+                fields.accepted = await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt, clickEndpoint);
+                return fields.accepted;
+            });
+        }, fields);
+    }
+    private rawNotificationUri(sessionId?: string, diagnosticId?: string): vscode.Uri {
+        const query = new URLSearchParams({ window: this.notificationWindowKey });
+        if (sessionId) query.set("session", sessionId);
+        if (diagnosticId) query.set("diagnostic", diagnosticId);
+        return vscode.Uri.from({ scheme: vscode.env.uriScheme, authority: this.context.extension.id,
+            path: "/notification", query: query.toString() });
     }
     private notificationUri(sessionId?: string, diagnosticId?: string): Promise<vscode.Uri> {
         const key = diagnosticId ? `diagnostic:${diagnosticId}` : sessionId ?? "";
         this.notificationUris ??= new Map();
         const cached = this.notificationUris.get(key);
         if (cached) return cached;
-        const query = new URLSearchParams({ window: this.notificationWindowKey });
-        if (sessionId) query.set("session", sessionId);
-        if (diagnosticId) query.set("diagnostic", diagnosticId);
-        // 保留 VS Code 返回的完整 URI；只在本窗口生命周期内复用，失败允许重试。
-        const pending = Promise.resolve().then(() => vscode.env.asExternalUri(vscode.Uri.from({
-            scheme: vscode.env.uriScheme, authority: this.context.extension.id,
-            path: "/notification", query: query.toString(),
-        }))).catch(error => {
+        let timer: NodeJS.Timeout | undefined;
+        // 地址解析不允许无限拖延提醒。超时后删除缓存，迟到结果只能被观察，不能重发。
+        const pending = Promise.race([
+            Promise.resolve().then(() => vscode.env.asExternalUri(this.rawNotificationUri(sessionId, diagnosticId))),
+            new Promise<never>((_, reject) => {
+                timer = setTimeout(() => reject(Object.assign(new Error("通知跳转地址解析超时。"), { code: 'ETIMEDOUT' })), 1000);
+            }),
+        ]).catch(error => {
             if (this.notificationUris.get(key) === pending) this.notificationUris.delete(key);
             throw error;
-        });
+        }).finally(() => clearTimeout(timer));
         this.notificationUris.set(key, pending);
         return pending;
     }
