@@ -84,18 +84,22 @@ export class CodexRpc extends EventEmitter {
   private lastReceivedAt?: number;
   private maxDecodeMs = 0;
   private maxHandlerMs = 0;
+  private turnTimings?: { decodeMs: number; handlerMs: number };
   private writeBackpressureCount = 0;
   private readonly createdAt = performance.now();
   private closePhase?: string;
   constructor(private readonly executable: string, private readonly cwd: string, private readonly env?: NodeJS.ProcessEnv,
     private readonly diagnostics = false) { super(); }
+  beginTimingWindow(): void { this.turnTimings = { decodeMs: 0, handlerMs: 0 }; }
   transportSnapshot() {
     return { processRunId: this.processRunId, localReceivedMessages: this.receivedMessages,
       localReceivedBytes: this.receivedBytes, localLastMessageAgeMs: this.lastReceivedAt === undefined ? null :
         Math.round(performance.now() - this.lastReceivedAt), localPendingRequests: this.pending.size,
       oldestPendingRequest: [...this.pending.entries()].slice(0, 1).map(([requestId, p]) => ({ requestId, method: p.method, elapsedMs: Math.round(performance.now() - p.startedAt) }))[0] ?? null,
       connectionState: this.closed ? 'closed' : this.child ? 'connected' : 'starting',
-      maxDecodeMs: Math.round(this.maxDecodeMs), maxHandlerMs: Math.round(this.maxHandlerMs),
+      maxDecodeMs: Math.round(this.turnTimings?.decodeMs ?? this.maxDecodeMs), maxHandlerMs: Math.round(this.turnTimings?.handlerMs ?? this.maxHandlerMs),
+      handlerTimingScope: this.turnTimings ? 'turn' : 'connection',
+      processMaxDecodeMs: Math.round(this.maxDecodeMs), processMaxHandlerMs: Math.round(this.maxHandlerMs),
       writeBackpressureCount: this.writeBackpressureCount, stdinBufferedBytes: this.child?.stdin.writableLength ?? 0 };
   }
   private diagnostic(row: TransportDiagnostic) {
@@ -169,11 +173,12 @@ export class CodexRpc extends EventEmitter {
     let fragments: string[] = [];
     const receiveLine = (line: string) => {
       if (this.closed) return;
-      const decodingAt = performance.now();
+      const decodingAt = performance.now(), timingWindow = this.turnTimings;
       let msg: RpcMessage;
       try { msg = JSON.parse(line); } catch { this.fail(new SyntaxError(`Codex 返回了无效协议数据（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       if (!isRpcMessage(msg)) { this.fail(new SyntaxError(`Codex 返回了无效协议消息结构（stdout 行长度 ${Buffer.byteLength(line)} 字节）`)); return; }
       const handlingAt = performance.now(); this.maxDecodeMs = Math.max(this.maxDecodeMs, handlingAt - decodingAt);
+      if (timingWindow) timingWindow.decodeMs = Math.max(timingWindow.decodeMs, handlingAt - decodingAt);
       this.receivedMessages++; this.lastReceivedAt = performance.now();
       if (msg.method) {
         try { this.emit(msg.id === undefined ? 'notification' : 'request', msg); }
@@ -184,7 +189,9 @@ export class CodexRpc extends EventEmitter {
         clearTimeout(p.timer); this.pending.delete(msg.id);
         if (msg.error) p.reject(Object.assign(new Error(`${msg.error.message} (${msg.error.code})`), { rpcCode: msg.error.code })); else p.resolve(msg.result);
       }
-      this.maxHandlerMs = Math.max(this.maxHandlerMs, performance.now() - handlingAt);
+      const handlerMs = performance.now() - handlingAt;
+      this.maxHandlerMs = Math.max(this.maxHandlerMs, handlerMs);
+      if (timingWindow) timingWindow.handlerMs = Math.max(timingWindow.handlerMs, handlerMs);
     };
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {

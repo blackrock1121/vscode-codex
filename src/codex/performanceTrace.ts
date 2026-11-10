@@ -94,7 +94,7 @@ export class PerformanceTrace {
   private readonly questionPauses = new Map<string, { traceId: string; threadId: string; turnId?: string; itemId: string; startedWallMs: number; confirmedWallMs?: number }>();
   constructor(private readonly emit: (row: PerformanceRow) => void,
     private readonly now = () => performance.now(), private readonly wall = () => Date.now(),
-    private readonly transport = (): PerformanceRow => ({})) {}
+    private readonly transport = (): PerformanceRow => ({}), private readonly beginTransportWindow = () => {}) {}
   get currentTraceId(): string | undefined { return this.run?.context.traceId; }
   private write(event: string, extra: PerformanceRow = {}): void {
     const r = this.run;
@@ -105,6 +105,7 @@ export class PerformanceTrace {
   }
   begin(threadId: string | undefined, settings: PerformanceRow, context?: PerformanceContext): void {
     if (this.run) this.finish('superseded');
+    this.beginTransportWindow();
     const at = this.now();
     const c = context ?? { traceId: randomUUID(), startedAt: at, startedWallMs: this.wall() };
     this.run = { context: c, threadId, threads: new Set(threadId ? [threadId] : []), turns: new Set(),

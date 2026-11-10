@@ -65,7 +65,10 @@ test('a86 HTTP 响应头等待可观测但不截断后端，客户端取消及�
  const waitFor=async predicate=>{const deadline=Date.now()+1000;while(!predicate()){assert.ok(Date.now()<deadline,'事件等待超时');await new Promise(resolve=>setTimeout(resolve,5));}};
  const first=request();await waitFor(()=>f.rows.some(r=>r.operation==='relay.http'&&r.stage==='waiting'));
  assert.equal(pending.destroyed,false);pending.writeHead(200);pending.end('backend done');assert.equal((await first.done).status,200);
- const cancelled=request();const rejected=assert.rejects(cancelled.done);await waitFor(()=>f.rows.filter(r=>r.stage==='waiting').length>=2);cancelled.abort();await rejected;
+ const previous=new Set(f.rows.filter(r=>r.operation==='relay.http'&&r.stage==='start').map(r=>r.operationId));
+ const cancelled=request();const rejected=assert.rejects(cancelled.done);
+ // 前一次请求可产生多个心跳；必须等到本次请求的心跳，不能按累计条数提前取消。
+ await waitFor(()=>f.rows.some(r=>r.operation==='relay.http'&&r.stage==='waiting'&&!previous.has(r.operationId)));cancelled.abort();await rejected;
  await waitFor(()=>f.rows.some(r=>r.operation==='relay.http'&&r.stage==='cancelled'));
  mode='ok';const next=await request().done;assert.equal(next.status,200);assert.match(next.body,/done/);
  const ends=f.rows.filter(r=>r.operation==='relay.http'&&r.stage==='completed');assert.equal(ends.length,2);

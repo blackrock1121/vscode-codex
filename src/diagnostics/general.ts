@@ -54,7 +54,7 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
     const telemetry = row.type === 'runtime_error' && /opentelemetry_sdk\b.*\b(?:ExportError|export error)\b/i.test(String(row.message ?? ''));
     const category = telemetry || String(row.operation ?? '').startsWith('telemetry.') ? '遥测采集' : row.diagnosticType === 'logging' || row.event === 'logging_health' ? '采集完整性' : compaction ? '压缩' :
       legacyRelay || String(row.operation ?? '').startsWith('relay.') ? '连接与进程' :
-      row.operation === 'remote.connection' ? '手机接入连接' : row.errorOrigin === 'backend' || row.event === 'codex.sse_event' ? '后端服务' :
+      row.operation === 'remote.connection' ? '手机接入连接' : row.errorOrigin === 'backend' || ['codex.sse_event', 'codex.api_request', 'codex.websocket_request', 'codex.websocket_event', 'codex.websocket_connect'].includes(String(row.event)) ? '后端服务' :
       row.type === 'runtime_error' && /codex_skills_extension\b.*failed to install system skills|codex_models_manager\b.*failed to refresh available models/i.test(String(row.message ?? '')) ? '后端组件' :
       row.operation ? component(String(row.operation)) : row.type === 'runtime_error' ? component(String(row.message ?? 'stderr')) : row.kind === 'bash' || row.kind === 'tool' || row.event === 'codex.tool_result' ? '工具执行' : row.type === 'rpc' ? '连接与进程' : '插件运行';
     const httpCode = row.httpStatusCode ?? row['http.response.status_code'] ?? row.status_code ??
@@ -66,7 +66,7 @@ export function classifyIncident(line: string, row?: PerformanceRow): Incident |
       httpCode !== undefined ? `HTTP ${httpCode}` : undefined,
       Number.isSafeInteger(row.businessCode) ? `businessCode=${row.businessCode}` : undefined,
       row.exitCode !== undefined && row.exitCode !== null ? `exitCode=${row.exitCode}` : undefined,
-      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'phase', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin', 'connectionKind', 'connectionId', 'initiator', 'terminationReason'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
+      ...['model', 'effort', 'trigger', 'speedMode', 'id', 'compactionId', 'routeId', 'reason', 'scope', 'phase', 'operationId', 'diagnosticId', 'processRunId', 'failureId', 'errorOrigin', 'connectionKind', 'connectionId', 'initiator', 'terminationReason', 'responseKind', 'responseErrorCode'].filter(key => typeof row[key] === 'string').map(key => `${key}=${row[key]}`),
       typeof row.timeoutMs === 'number' ? `timeoutMs=${row.timeoutMs}` : undefined,
       Number.isSafeInteger(row.requestId) ? `requestId=${row.requestId}` : undefined, row.message]
       .filter(v => typeof v === 'string' || typeof v === 'number').join(' · ');

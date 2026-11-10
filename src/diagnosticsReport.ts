@@ -75,11 +75,11 @@ export function performanceReport(rows: PerformanceRow[], sourceNote = ''): stri
   for (const r of rows.filter(r => r.diagnosticType === 'compaction' && ['end', 'model_selected', 'settings_synced'].includes(String(r.stage))).slice(-20))
     text.push(`| ${cell(r.traceId)} | ${cell(r.trigger)} / ${cell(r.stage)} | ${cell(r.model)} / ${cell(r.effort)} | ${seconds(r.elapsedMs)} | ${cell(r.outcome ?? r.modelSource)} |`);
   text.push('', '### 压缩路由与回退', '', '回退表示本次采用原生路径；是否压缩成功须另看同一请求的结束记录，启动预算到期也不等于 RPC 超时。', '',
-    '| 时间 / 版本 / 窗口 | 任务或会话 | 阶段 | 原因 / 范围 |', '| --- | --- | --- | --- |');
+    '| 时间 / 版本 / 窗口 | 任务或会话 | 阶段 | 原因 / 范围 | 原模型 / effort → 压缩模型 / effort | 配置作用域 / 会话配置改变 |', '| --- | --- | --- | --- | --- | --- |');
   for (const r of rows.filter(r => r.diagnosticType === 'compaction_route').slice(-20)) {
     const at = new Date(Number(r.logAtMs ?? r.atMs));
     const safe = (value: unknown) => cell(typeof value === 'string' ? redactDiagnosticText(value, 160) : value);
-    text.push(`| ${Number.isFinite(at.getTime()) ? at.toISOString() : '未记录'} / ${safe(r.pluginVersion)} / ${safe(r.windowId)} | ${safe(r.traceId ?? r.threadId)} | ${safe(r.stage)} | ${safe(r.reason)} / ${safe(r.scope)} |`);
+    text.push(`| ${Number.isFinite(at.getTime()) ? at.toISOString() : '未记录'} / ${safe(r.pluginVersion)} / ${safe(r.windowId)} | ${safe(r.traceId ?? r.threadId)} | ${safe(r.stage)} | ${safe(r.reason)} / ${safe(r.scope)} | ${safe(r.fromModel)} / ${safe(r.fromEffort)} → ${safe(r.toModel)} / ${safe(r.effort)} | ${safe(r.configurationScope)} / ${r.sessionConfigurationChanged === true ? '是' : r.sessionConfigurationChanged === false ? '否' : '未记录'} |`);
   }
   text.push('', '## 模型/网络观测', '',
     '下表只列后端实际给出的数值。API 请求耗时包含多种等待，不能等同于推理耗时；不同记录也可能覆盖同一次请求，不合并相加。', '',

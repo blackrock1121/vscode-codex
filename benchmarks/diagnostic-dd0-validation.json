@@ -1,0 +1,41 @@
+{
+  "diagnosticId": "dd0c053e-6cfe-4477-9bb8-2476a3aa2050",
+  "version": "0.1.207",
+  "sourceHash": "43008b0e13e7020ea8ab8b9fa6289d5d437cc91349457d7063103631fb5a9fc4",
+  "at": "2026-11-10T03:17:33.921Z",
+  "checks": [
+    {
+      "command": "npm run check-types",
+      "exitCode": 0
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "tests": 976,
+      "passed": 976,
+      "failed": 0,
+      "log": "/tmp/codex-dd0-full-test-final.log",
+      "sha256": "62541051b9c065e4915d2230415380d6799052c52b7f38ddf529ea80b6d9fc19"
+    },
+    {
+      "command": "node scripts/verify-diagnostic-dd0.cjs",
+      "exitCode": 0,
+      "artifact": "benchmarks/diagnostic-dd0-comparison.json"
+    },
+    {
+      "command": "node scripts/audit-diagnostic-dd0.cjs /Users/duodian/.codex-chat",
+      "exitCode": 0,
+      "issues": 75,
+      "originalLogReferences": 113
+    }
+  ],
+  "initialFailure": {
+    "command": "npm test",
+    "exitCode": 1,
+    "passed": 975,
+    "failed": 1,
+    "log": "/tmp/codex-dd0-full-test.log",
+    "reason": "旧HTTP取消测试按累计心跳条数提前取消第二请求；改按operationId等待，保持全部原断言。"
+  },
+  "runtimeVerification": "未在已启用的新版本真实触发macOS通知、图像后端和压缩；测试包含模拟故障、真实本机HTTP/RPC管道、日志落盘及诊断回扫，不能替代现场恢复证明。"
+}

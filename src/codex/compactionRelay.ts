@@ -86,6 +86,22 @@ function forwardedHeaders(headers: http.IncomingHttpHeaders, websocket: boolean)
 }
 function bytes(data: RawData): Buffer { return Buffer.isBuffer(data) ? data : Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data); }
 
+/** 只保存固定路由类别和已知错误码，不能把提示词、图片或任意服务正文写入日志。 */
+function httpTargetKind(target: URL): string {
+  return /\/images(?:\/(?:generations|edits|variations))?$/.test(target.pathname) ? 'image_generation' :
+    /\/responses\/compact$/.test(target.pathname) ? 'compaction' : /\/responses$/.test(target.pathname) ? 'responses' :
+    /\/models$/.test(target.pathname) ? 'models' : 'other';
+}
+function httpErrorCode(body: Buffer): string | undefined {
+  try {
+    const value = JSON.parse(body.toString('utf8'));
+    const code = value?.error?.code ?? value?.error?.type;
+    return ['invalid_request_error', 'invalid_request', 'invalid_value', 'unsupported_parameter', 'missing_required_parameter',
+      'content_policy_violation', 'rate_limit_exceeded', 'insufficient_quota', 'invalid_api_key', 'server_error',
+      'model_not_found', 'context_length_exceeded'].includes(code) ? code : undefined;
+  } catch { return undefined; } // 错误正文允许不是 JSON；状态码仍有完整终态。
+}
+
 /**
  * 每个 CLI 连接独占的回环转发器。凭据由 CLI 正常提供，仅转发到固定官方地址；
  * 不读凭据文件；精简的旧工具原文仅归档到本机，不写入诊断日志。
@@ -342,7 +358,7 @@ export class CompactionRelay {
     const controller = new AbortController();
     const requestId = randomUUID(), started = Date.now();
     const fields = { operationId: requestId, connectionId: requestId, processRunId: this.options.processRunId,
-      transport: 'http', targetService: target.hostname };
+      transport: 'http', targetService: target.hostname, targetKind: httpTargetKind(target) };
     req.once('aborted', () => controller.abort());
     res.once('close', () => controller.abort());
     const chunks: Buffer[] = []; let size = 0;
@@ -355,9 +371,11 @@ export class CompactionRelay {
     const routed = req.method === 'POST' ? await this.rewrite(original, req, target, 'http', controller.signal, undefined, requestId) : { body: original };
     const body = routed.body;
     let ended = false, httpStatusCode: number | undefined, firstResponseMs: number | undefined;
+    let responseKind = 'unknown', responseErrorCode: string | undefined;
     let headerTimer: NodeJS.Timeout | undefined;
     const heartbeatMs = this.options.responseHeaderHeartbeatMs ?? 30_000;
-    operationLog('relay.http', 'start', { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough' });
+    operationLog('relay.http', 'start', { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough',
+      requestBytes: original.length, requestModified: !body.equals(original) });
     // HTTP 只观察传输终态，不把 2xx/SSE 结束冒充压缩语义成功。
     const finish = (outcome: CompactionRoute['outcome'], reason: string, error?: unknown) => {
       if (ended) return;
@@ -365,7 +383,7 @@ export class CompactionRelay {
       clearInterval(headerTimer);
       const failureId = outcome === 'failed' ? randomUUID() : undefined;
       const details = { ...fields, routeId: routed.route?.routeId, requestKind: routed.route ? 'compaction' : 'passthrough',
-        httpStatusCode, firstResponseMs, durationMs: Date.now() - started, reason, failureId };
+        httpStatusCode, firstResponseMs, responseKind, responseErrorCode, durationMs: Date.now() - started, reason, failureId };
       if (outcome === 'failed') operationFailure('relay.http', error ?? new Error(`HTTP ${httpStatusCode}`), details);
       else operationLog('relay.http', outcome === 'cancelled' ? 'cancelled' : outcome === 'incomplete' ? 'incomplete' : 'completed', details);
       if (routed.route) this.report({ ...routed.route, stage: 'transport_end', outcome, reason, httpStatusCode, failureId });
@@ -380,10 +398,25 @@ export class CompactionRelay {
       clearInterval(headerTimer);
       httpStatusCode = response.statusCode;
       firstResponseMs = Date.now() - started;
+      const contentType = String(response.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+      responseKind = contentType === 'application/json' ? 'json' : contentType === 'text/event-stream' ? 'sse' :
+        contentType === 'text/html' ? 'html' : contentType.startsWith('image/') ? 'image' : 'other';
+      // 有界采样错误 JSON；流和大图片继续直接转发。压缩正文不自行解码。
+      const errorChunks: Buffer[] = []; let errorBytes = 0;
+      if (httpStatusCode && httpStatusCode >= 400 && responseKind === 'json' && !response.headers['content-encoding']) {
+        response.on('data', (chunk: Buffer) => {
+          errorBytes += chunk.length;
+          if (errorBytes <= 8192) errorChunks.push(chunk); else errorChunks.length = 0;
+        });
+      }
       operationLog('relay.http', 'response_headers', { ...fields, routeId: routed.route?.routeId,
-        requestKind: routed.route ? 'compaction' : 'passthrough', httpStatusCode, firstResponseMs });
+        requestKind: routed.route ? 'compaction' : 'passthrough', httpStatusCode, firstResponseMs, responseKind });
       res.writeHead(response.statusCode ?? 502, forwardedHeaders(response.headers, false));
-      response.on('end', () => finish(httpStatusCode && httpStatusCode >= 400 ? 'failed' : undefined, 'http_stream_ended'));
+      response.on('end', () => {
+        if (errorChunks.length) responseErrorCode = httpErrorCode(Buffer.concat(errorChunks));
+        finish(httpStatusCode && httpStatusCode >= 400 ? 'failed' : undefined,
+          httpStatusCode && httpStatusCode >= 400 ? 'http_error_response' : 'http_stream_ended');
+      });
       response.on('error', error => { finish(controller.signal.aborted ? 'cancelled' : 'failed', 'response_error', error); res.destroy(); }); response.pipe(res);
     });
     this.requests.add(upstream);

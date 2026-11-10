@@ -1,0 +1,34 @@
+{
+  "diagnosticId": "dd0c053e-6cfe-4477-9bb8-2476a3aa2050",
+  "baseline": "0a837d0",
+  "version": "0.1.207",
+  "at": "2026-11-10T03:17:08.512Z",
+  "scope": "源码隔离模拟和日志落盘回扫，不是已安装扩展的运行复测",
+  "before": {
+    "focus": "completed",
+    "focusMs": 2003,
+    "handlerPeaks": [
+      350,
+      350
+    ],
+    "hostFindings": 2,
+    "preservedCompactionFields": [],
+    "apiFailureCategory": "插件运行"
+  },
+  "after": {
+    "focus": "completed",
+    "focusMs": 0,
+    "handlerPeaks": [
+      350,
+      0
+    ],
+    "hostFindings": 1,
+    "preservedCompactionFields": [
+      "fromEffort",
+      "configurationScope",
+      "sessionConfigurationChanged",
+      "serviceTier"
+    ],
+    "apiFailureCategory": "后端服务"
+  }
+}

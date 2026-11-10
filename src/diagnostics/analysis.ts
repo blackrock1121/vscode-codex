@@ -21,7 +21,7 @@ export interface DiagnosticCoverage {
   requestedFromMs?: number; requestedToMs?: number; includedLines?: number; outsideRangeLines?: number; unknownTimeLines?: number;
 }
 export interface DiagnosticModelAnalysis { status: 'completed' | 'failed'; model: string; effort: string; message?: string; durationMs: number; evidenceSent?: number; evidenceOmitted?: number }
-export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[]; summary: DiagnosticSummary; sourceNote: string; coverage?: DiagnosticCoverage; general?: GeneralSummary; loggingAudit?: LoggingAuditSummary; modelAnalysis?: DiagnosticModelAnalysis; compactionEvidence?: Record<string, string | number>[] }
+export interface DiagnosticOutput { report: string; findings: DiagnosticFinding[]; summary: DiagnosticSummary; sourceNote: string; coverage?: DiagnosticCoverage; general?: GeneralSummary; loggingAudit?: LoggingAuditSummary; modelAnalysis?: DiagnosticModelAnalysis; compactionEvidence?: Record<string, string | number | boolean | null>[] }
 const n = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : 0;
 const seconds = (ms: number) => `${(ms / 1000).toFixed(1)} 秒`;
 const failureCategories = new Set(['command_not_found', 'missing_dependency', 'architecture_mismatch', 'permission', 'timeout',

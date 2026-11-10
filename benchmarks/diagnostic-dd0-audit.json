@@ -1,0 +1,4806 @@
+{
+  "diagnosticId": "dd0c053e-6cfe-4477-9bb8-2476a3aa2050",
+  "batchId": "d806c02c-42c6-4bf5-aef4-e72f7bd0d71b",
+  "baseline": "0a837d0",
+  "version": "0.1.207",
+  "at": "2026-11-10T03:17:07.439Z",
+  "reportSha256": "37ef6213fa2e3bb87c4ca95aa48c01acb8f52f6843770483370770db55747574",
+  "reportLines": 992,
+  "reportSourceCoverage": "报告明确未包含源码规则审查；以下是本次额外核验的调用链，不代表全部源码分支均动态测试。",
+  "sourceHash": "43008b0e13e7020ea8ab8b9fa6289d5d437cc91349457d7063103631fb5a9fc4",
+  "sourceReview": [
+    {
+      "file": "src/codex/rpc.ts",
+      "sha256": "c9d9412bc4f8a8029d752109036029a6187e728a1fce39469b5ddaf5fc8f1862",
+      "candidates": [
+        {
+          "line": 113,
+          "symbol": "start",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 133,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 134,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 135,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 136,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 153,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 160,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 178,
+          "symbol": "receiveLine",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 197,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 212,
+          "symbol": "initialize",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 239,
+          "symbol": "request",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 262,
+          "symbol": "write",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 268,
+          "symbol": "write",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 299,
+          "symbol": "disposeAndWait",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 302,
+          "symbol": "disposeAndWait",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 318,
+          "symbol": "codexSpawnEnvironment",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 328,
+          "symbol": "resolveCodex",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 336,
+          "symbol": "resolveCodex",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "JSON/信封失败进入 rpc.process；写入失败结算所有 pending；请求错误/超时有 rpc.request 终态。原 maxHandlerMs/maxDecodeMs 为进程累计，本次分离轮次窗口并保留 processMax。CLI stderr 工具错误不是扩展宿主异常；模型目录刷新与遥测导出分开。"
+    },
+    {
+      "file": "src/codex/process.ts",
+      "sha256": "44cd5f739e6956eaaca61a419f31cdfddbffaa5c4de123f27f93cff953d9db5d",
+      "candidates": [
+        {
+          "line": 159,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 169,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 169,
+          "symbol": "CodexProcess",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "CodexProcess",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "CodexProcess",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 171,
+          "symbol": "CodexProcess",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 187,
+          "symbol": "setCustomTitle",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 208,
+          "symbol": "preTool",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 211,
+          "symbol": "preTool",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 226,
+          "symbol": "timedRequest",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 260,
+          "symbol": "finally",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 279,
+          "symbol": "prepare",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 299,
+          "symbol": "startSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 318,
+          "symbol": "startSession",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 327,
+          "symbol": "prefetchCompactionSettings",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 449,
+          "symbol": "restoreQuestion",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 481,
+          "symbol": "dispatch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 518,
+          "symbol": "dispatch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 520,
+          "symbol": "dispatch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 549,
+          "symbol": "compact",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 620,
+          "symbol": "stopInvalidQuestion",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 641,
+          "symbol": "checking",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 659,
+          "symbol": "checking",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 685,
+          "symbol": "routeChildNotification",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 701,
+          "symbol": "discoverChildren",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 717,
+          "symbol": "stopping",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 725,
+          "symbol": "stopping",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 928,
+          "symbol": "notification",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 959,
+          "symbol": "request",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 961,
+          "symbol": "request",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 962,
+          "symbol": "request",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 984,
+          "symbol": "request",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 989,
+          "symbol": "childRequest",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 999,
+          "symbol": "childRequest",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1004,
+          "symbol": "childRequest",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1014,
+          "symbol": "childRequest",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1079,
+          "symbol": "respondPermission",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1133,
+          "symbol": "interrupt",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1155,
+          "symbol": "stop",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1158,
+          "symbol": "stop",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1235,
+          "symbol": "disposeAndWait",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "send/compact 以 PerformanceTrace.begin 开始；finish/stop/dispose 负责终态。compactionRouted 已写 request_only 和 sessionConfigurationChanged=false，自动压缩不修改共享配置；旧兼容路径有 compaction.restore 开始、成功、失败和取消。此次没有更改选模、推理、服务档位及权限。"
+    },
+    {
+      "file": "src/codex/performanceTrace.ts",
+      "sha256": "5b862bdfcfd8f7bf113996fe214546d9b3b8eccf45245cbd7cd3931bfd58bc0d",
+      "candidates": [
+        {
+          "line": 104,
+          "symbol": "write",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "工具 started/completed、首次输出/静默、审批、取消和 finish 已有日志。非零退出分类不是根因。缺失子线程终态会保留 incomplete；不能凭退出码143猜取消来源。轮次开始重置处理计时窗口，旧轮次先结算。"
+    },
+    {
+      "file": "src/codex/session.ts",
+      "sha256": "d258bed5e8e133e8665de6590768866405f78c922c7855ded2da68528fc14dc4",
+      "candidates": [
+        {
+          "line": 64,
+          "symbol": "connection",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 64,
+          "symbol": "connection",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 65,
+          "symbol": "connection",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 72,
+          "symbol": "connection",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 73,
+          "symbol": "connection",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 100,
+          "symbol": "readMetadata",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 111,
+          "symbol": "readModelCatalog",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 170,
+          "symbol": "refreshInner",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 174,
+          "symbol": "results",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 227,
+          "symbol": "hydrateWith",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 232,
+          "symbol": "hydrateWith",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 237,
+          "symbol": "readTurnCount",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 240,
+          "symbol": "readTurnCount",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 242,
+          "symbol": "readTurnCount",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 249,
+          "symbol": "readTurnCountWith",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 266,
+          "symbol": "hydrateThread",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 276,
+          "symbol": "hydrateThread",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 378,
+          "symbol": "setCustomTitle",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 380,
+          "symbol": "setCustomTitle",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 383,
+          "symbol": "setCustomTitle",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 386,
+          "symbol": "archive",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 392,
+          "symbol": "delete",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 428,
+          "symbol": "prepareFork",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 432,
+          "symbol": "fork",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 448,
+          "symbol": "fork",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 448,
+          "symbol": "fork",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 449,
+          "symbol": "fork",
+          "kind": "branch-unlogged"
+        }
+      ],
+      "review": "read/hydrate/RPC统一记录；readMetadata catch 清理失败缓存后重抛，非吞错。模型列表和对话连接独立，断线只对只读请求恢复一次。"
+    },
+    {
+      "file": "src/codex/compactionRelay.ts",
+      "sha256": "adb85af107354233a32e51dffbc0120dcb9cbf4515833698a14fdeab9c41a345",
+      "candidates": [
+        {
+          "line": 61,
+          "symbol": "routeCompaction",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 102,
+          "symbol": "httpErrorCode",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 135,
+          "symbol": "CompactionRelay",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 140,
+          "symbol": "start",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 145,
+          "symbol": "start",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 151,
+          "symbol": "start",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 155,
+          "symbol": "start",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 167,
+          "symbol": "target",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 246,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 247,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 248,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 249,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 253,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 272,
+          "symbol": "upgrade",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 297,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 321,
+          "symbol": "finally",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 300,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 308,
+          "symbol": "catch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 316,
+          "symbol": "catch",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 318,
+          "symbol": "catch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 319,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 326,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 326,
+          "symbol": "websocket",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 340,
+          "symbol": "websocket",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 344,
+          "symbol": "websocket",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 350,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 351,
+          "symbol": "websocket",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 362,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 363,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 392,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 407,
+          "symbol": "upstream",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 415,
+          "symbol": "upstream",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 420,
+          "symbol": "upstream",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 423,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 424,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 435,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 436,
+          "symbol": "http",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "非 responses 路由按原字节透传；HTTP/WS已统一终态，解析/URL非匹配为正常降级。本次补安全路由类别、请求是否改写、响应类型和已知错误码，400与提前断流原因分开；没有改写图像请求或重试。历史400正文已丢弃，不能补出其业务根因。"
+    },
+    {
+      "file": "src/notifications.ts",
+      "sha256": "a0579310ff37beeae6a93f96a0147badf112364345e279c5b11735ac74b65b78",
+      "candidates": [
+        {
+          "line": 15,
+          "symbol": "queueSessionNotification",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 18,
+          "symbol": "then",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 93,
+          "symbol": "focusNotificationWindow",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 102,
+          "symbol": "subscription",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 121,
+          "symbol": "focusNotificationWindow",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 120,
+          "symbol": "then",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 128,
+          "symbol": "focusNotificationWindow",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 136,
+          "symbol": "sendLocalNotification",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 141,
+          "symbol": "clearLocalNotification",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 148,
+          "symbol": "clearPreviousLocalNotifications",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 168,
+          "symbol": "clearPreviousLocalNotifications",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 175,
+          "symbol": "clearPreviousLocalNotifications",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 201,
+          "symbol": "requestLocalNotificationInner",
+          "kind": "error-propagated"
+        }
+      ],
+      "review": "show/clear/focus 经 observeOperation。原 chmod 在 try 外会遗留临时目录，finally rm 抛错会覆盖主错误；本次修复并为清理错误单独落盘。确认超时补 ETIMEDOUT 与 await_result，成功/失败状态保留。队列 catch 只保证下一动作继续，原 promise 仍交回调用方。"
+    },
+    {
+      "file": "src/notificationRouter.ts",
+      "sha256": "2bcddbbee76c40e1bb04338433325b75bf1ae19fa25e85ef4201f3387f947e3a",
+      "candidates": [
+        {
+          "line": 44,
+          "symbol": "server",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 35,
+          "symbol": "running",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 59,
+          "symbol": "endpoint",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 71,
+          "symbol": "endpoint",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 63,
+          "symbol": "catch",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "点击在 observeOperation notification.click 下，透传失败为500；prepared不代表聚焦。并发点击共用运行操作；未知/失效窗口拒绝。"
+    },
+    {
+      "file": "src/panel/chatViewProvider.ts",
+      "sha256": "a65b14e00fef8255880134f687acbcef7be1f23edb15a743989a25f0d9355442",
+      "candidates": [
+        {
+          "line": 115,
+          "symbol": "add",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 279,
+          "symbol": "write",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 290,
+          "symbol": "markPrivate",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 293,
+          "symbol": "markPrivate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 305,
+          "symbol": "reloadSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 306,
+          "symbol": "reloadSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 347,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 365,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 368,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 371,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 375,
+          "symbol": "ChatViewProvider",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 586,
+          "symbol": "resolveWebviewView",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 595,
+          "symbol": "resolveWebviewView",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 597,
+          "symbol": "resolveWebviewView",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 623,
+          "symbol": "catch",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 628,
+          "symbol": "catch",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 685,
+          "symbol": "openSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 687,
+          "symbol": "openSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 695,
+          "symbol": "openSession",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 722,
+          "symbol": "reopenDetached",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 746,
+          "symbol": "adoptPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 752,
+          "symbol": "adoptPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 759,
+          "symbol": "adoptPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 885,
+          "symbol": "revivePanel",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 965,
+          "symbol": "login",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 968,
+          "symbol": "login",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 983,
+          "symbol": "newSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 986,
+          "symbol": "diagnosticModels",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 989,
+          "symbol": "createDiagnosticRepairSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1013,
+          "symbol": "start",
+          "kind": "handler-delegated"
+        },
+        {
+          "line": 1008,
+          "symbol": "then",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1020,
+          "symbol": "openInEditor",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1029,
+          "symbol": "stop",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1105,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1111,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1114,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1117,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1120,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1123,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1126,
+          "symbol": "onSidebarMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1168,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1190,
+          "symbol": "onPanelMessage",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1195,
+          "symbol": "onPanelMessage",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1223,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1229,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1234,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1237,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1240,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1243,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1271,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1274,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1277,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1280,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1283,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1288,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1289,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1299,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1302,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1308,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1323,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1332,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1340,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1344,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1356,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1362,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1373,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1378,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1381,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1387,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1399,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1402,
+          "symbol": "onPanelMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1522,
+          "symbol": "newContext",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1576,
+          "symbol": "excludeSnapshotPaths",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1590,
+          "symbol": "queueSnapshotExclusionUpdate",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1597,
+          "symbol": "resetLocalSnapshotExcludes",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1598,
+          "symbol": "resetLocalSnapshotExcludes",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1615,
+          "symbol": "handleSend",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1648,
+          "symbol": "record",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1652,
+          "symbol": "stage",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1657,
+          "symbol": "syncStage",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1683,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1693,
+          "symbol": "handleSendInner",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1735,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1736,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1758,
+          "symbol": "handleSendInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1819,
+          "symbol": "editMessage",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1831,
+          "symbol": "editMessage",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 1854,
+          "symbol": "editMessageRewindPrepared",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 1904,
+          "symbol": "saveImage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1955,
+          "symbol": "settled",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 1959,
+          "symbol": "waitSessionSettings",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 1980,
+          "symbol": "setPermissionMode",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2011,
+          "symbol": "setPermissionMode",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2029,
+          "symbol": "saveSessionModel",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2031,
+          "symbol": "saveSessionModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2051,
+          "symbol": "setModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2055,
+          "symbol": "setModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2061,
+          "symbol": "setModel",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2078,
+          "symbol": "saveSessionSpeed",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2080,
+          "symbol": "saveSessionSpeed",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2136,
+          "symbol": "saveSessionEffort",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2138,
+          "symbol": "saveSessionEffort",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2226,
+          "symbol": "autosaveBefore",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2263,
+          "symbol": "getChangedFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2316,
+          "symbol": "forkCheckpointInner",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2393,
+          "symbol": "forkCheckpointPrepared",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2536,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2547,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2553,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2579,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2596,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2598,
+          "symbol": "forkRewind",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2609,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2618,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2619,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2637,
+          "symbol": "submitQuestionAnswer",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 2652,
+          "symbol": "submitQuestionAnswer",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 2664,
+          "symbol": "restoreCheckpoint",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2928,
+          "symbol": "compactSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2938,
+          "symbol": "compactSessionPrepared",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 2985,
+          "symbol": "setPinned",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3027,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3054,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3059,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3067,
+          "symbol": "messageSub",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 3072,
+          "symbol": "messageSub",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3094,
+          "symbol": "cfgSub",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 3099,
+          "symbol": "reviveNotifyPanel",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 3307,
+          "symbol": "captureFinalSnapshot",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3314,
+          "symbol": "captureFinalSnapshot",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3337,
+          "symbol": "handleEmit",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3408,
+          "symbol": "handleEmitInner",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 3615,
+          "symbol": "sendLocalNotice",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3623,
+          "symbol": "sendLocalNotice",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3641,
+          "symbol": "pending",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 3695,
+          "symbol": "handleNotificationUri",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3696,
+          "symbol": "handleNotificationUri",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3743,
+          "symbol": "sendWebhook",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 3858,
+          "symbol": "deliver",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3875,
+          "symbol": "maybeNotifyUsage",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 3919,
+          "symbol": "onSessionId",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4033,
+          "symbol": "renameSession",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4065,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4067,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4070,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4084,
+          "symbol": "checkForUpdate",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4099,
+          "symbol": "checkForUpdate",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4101,
+          "symbol": "fetchRepoFile",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4118,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4119,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4133,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4134,
+          "symbol": "req",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4136,
+          "symbol": "httpGetText",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 4143,
+          "symbol": "resolveWorkspaceFile",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 4230,
+          "symbol": "fileRefResolves",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4305,
+          "symbol": "openFile",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4310,
+          "symbol": "openFile",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4316,
+          "symbol": "openFile",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4338,
+          "symbol": "openSymbol",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4361,
+          "symbol": "lspHit",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4403,
+          "symbol": "openSymbolInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4412,
+          "symbol": "openSymbolInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4424,
+          "symbol": "openSymbolInner",
+          "kind": "branch-unlogged"
+        },
+        {
+          "line": 4474,
+          "symbol": "sourceFiles",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4482,
+          "symbol": "searchDefinition",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4499,
+          "symbol": "contents",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 4553,
+          "symbol": "findProjectRoot",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "页面消息顶层、配置持久化、历史读取、发送准备、通知和图片读取有统一错误边界。首次历史 Promise 的空 catch 仅提前观察拒绝，ready 后统一处理；修复会话标题 catch 已由 observeOperation 记录。此次修复原生点击 missing_session 返回伪成功。通知失败已有 webhook fallback，不擅自发送新消息。"
+    },
+    {
+      "file": "src/webviewDelivery.ts",
+      "sha256": "69d5e9680fd60b8152ee279bd9091d6002e84cfbc39bf22d7107f582e5154619",
+      "candidates": [],
+      "review": "页面投递失败和恢复统一由 postWebviewMessage 记录，不在每个调用点重复埋点。"
+    },
+    {
+      "file": "src/imageFile.ts",
+      "sha256": "ff8d5498492e22d372b144618c24b191aefc683ef5a1211ce7332de0fefa2824",
+      "candidates": [
+        {
+          "line": 5,
+          "symbol": "readImageFile",
+          "kind": "operation-unlogged"
+        }
+      ],
+      "review": "文件句柄 try/finally、有界读取；宿主 loadLocalImage 记录 start/completed/unavailable/failed。两条历史missing_or_unresolved不足以断言脚本崩溃。"
+    },
+    {
+      "file": "src/diagnostics/scan.ts",
+      "sha256": "c98fa810de34be74e4dffd0433cb1c78efa0254b1200e2d812219f05bda146e8",
+      "candidates": [
+        {
+          "line": 61,
+          "symbol": "scanPluginLogs",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 64,
+          "symbol": "filter",
+          "kind": "error-propagated"
+        },
+        {
+          "line": 73,
+          "symbol": "snapshots",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 75,
+          "symbol": "snapshots",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 94,
+          "symbol": "consume",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 157,
+          "symbol": "scanPluginLogs",
+          "kind": "catch-unlogged"
+        }
+      ],
+      "review": "完整扫描和时间过滤独立；原压缩摘要白名单漏掉配置范围、false和原effort，本次保留已有证据，不补造历史未知值。"
+    },
+    {
+      "file": "src/diagnostics/general.ts",
+      "sha256": "ec7f9c2522a61ebfd5ceb1521dd006dbe431ffde23e2c1dbefbf5cede01e1e61",
+      "candidates": [],
+      "review": "failureId和同窗口callId已去重；不猜不同ID的父子关系。本次把 API/websocket 后端失败从插件运行分类中分开。"
+    },
+    {
+      "file": "src/codex/telemetry.ts",
+      "sha256": "b83ccffea977f943ea96fd697c083929ee2de0afb31c8341da2dce4ea1dcfa75",
+      "candidates": [
+        {
+          "line": 106,
+          "symbol": "transportDiagnostics",
+          "kind": "catch-unlogged"
+        },
+        {
+          "line": 142,
+          "symbol": "LocalTelemetry",
+          "kind": "entry-unlogged"
+        },
+        {
+          "line": 166,
+          "symbol": "start",
+          "kind": "operation-unlogged"
+        },
+        {
+          "line": 171,
+          "symbol": "start",
+          "kind": "entry-unlogged"
+        }
+      ],
+      "review": "接收/解码/回调失败都有日志；字段白名单不保存工具正文，未知原因保持未知。导出重置来自CLI采集链，不能推断主RPC断开。"
+    },
+    {
+      "file": "src/codex/executionPolicy.ts",
+      "sha256": "f4c1b107486c663b5a487b68e6109f9909b27a4c7b6e78b32bd3cad0e6266710",
+      "candidates": [],
+      "review": "已有前置检查、按失败原因处理、只并发独立操作和避免重复验证的指令。插件不拥有外部工具的命令、会话ID或进程终止生命周期，不通过改权限或自动重跑掩盖失败。"
+    }
+  ],
+  "issues": [
+    {
+      "issueId": "issue-70507a299e773c5413b80210",
+      "findingId": "failure-nonzero_exit",
+      "title": "工具失败：nonzero_exit",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为nonzero_exit，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-41c8d4f3df123caa03a0a32b",
+      "findingId": "failure-build_or_test",
+      "title": "工具失败：build_or_test",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为build_or_test，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-f2e1b1bd8b6005ae23154c18",
+      "findingId": "failure-timeout",
+      "title": "工具失败：timeout",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为timeout，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-257ed05f72e37e0e346b6aa9",
+      "findingId": "phase-tools",
+      "title": "工具执行占用较长",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "工具墙钟与累计耗时已分开，日志包含首次输出和静默时长；缺少完整命令依赖图，不能据460.5秒判断插件调度瓶颈，未擅自中断或重跑。"
+    },
+    {
+      "issueId": "issue-8c758beb2d0ab7f8c927cfbc",
+      "findingId": "phase-unobserved",
+      "title": "存在较长的未归因等待",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验用户等待单独计时，最长轮次不能按17.64小时算模型执行；未知区间目前仅有客户端状态和心跳，后端细分timing缺失，保持未知。"
+    },
+    {
+      "issueId": "issue-96006da87f80323ced1b66cd",
+      "findingId": "repeat",
+      "title": "重复命令较多",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "指纹能确认同进程重复但不能证明无效重试；现有executionPolicy已有复用会话、先看错误证据和避免重复验证的规则。未在缺少命令/输出变化证据时禁止合理轮询。"
+    },
+    {
+      "issueId": "issue-627c5284270d7daae612f9f5",
+      "findingId": "coverage",
+      "title": "诊断阶段存在缺失",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "4个incomplete分别为bash、message和两个agent；finish会明确记录缺失终态而不是按0秒完成。源码发送/RPC/压缩/通知/页面/历史调用链已核验，未找到足以补造这些历史终态的证据。"
+    },
+    {
+      "issueId": "issue-3bd603e7a70bc906b9ddbe68",
+      "findingId": "host",
+      "title": "扩展宿主出现延迟",
+      "samples": [],
+      "outcome": "fixed",
+      "reason": "已修复连接历史最大处理/解码耗时重复计入后续轮次：每轮独立计时，仍保留连接历史峰值。11条历史告警存在重复峰值，不能回推出真实每轮耗时。"
+    },
+    {
+      "issueId": "issue-a7038f475313ee804e90b46d",
+      "findingId": "failure-missing_file",
+      "title": "工具失败：missing_file",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为missing_file，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-973317c48aa3de63fb65fa51",
+      "findingId": "phase-compaction",
+      "title": "上下文压缩耗时较长",
+      "samples": [],
+      "outcome": "fixed",
+      "reason": "已修复压缩证据在摘要和报告中丢失：保留原effort、配置作用域、sessionConfigurationChanged=false和默认服务档位。原始四条路由日志证明两次压缩仅改请求；本次不宣称缩短117.9/121.6秒后端压缩。"
+    },
+    {
+      "issueId": "issue-3d48084ae831a31e8028ea68",
+      "findingId": "failure-syntax",
+      "title": "工具失败：syntax",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为syntax，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-d6e78fba82f84317d83ab687",
+      "findingId": "failure-command_not_found",
+      "title": "工具失败：command_not_found",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为command_not_found，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-9c983d02ae7b75141bf81289",
+      "findingId": "failure-unknown",
+      "title": "工具失败：unknown",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为unknown，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-e4b168c3cf7658fc58f72e0a",
+      "findingId": "failure-missing_dependency",
+      "title": "工具失败：missing_dependency",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为missing_dependency，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-87613d922dd1432826b2066d",
+      "findingId": "failure-dns",
+      "title": "工具失败：dns",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为dns，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-0e064ad37d0a21a8bb2dfc64",
+      "findingId": "serial",
+      "title": "可检查工具并发机会",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "并行机会是筛查线索，无法从工具时序还原依赖图；现有策略已批量执行独立工具且保留模型和权限，没有增加并发上限。"
+    },
+    {
+      "issueId": "issue-a839cc3480d5c94dbb43e301",
+      "findingId": "phase-preparation",
+      "title": "发送前准备较慢",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "唯一5.4秒样例中连接与会话准备占5.203秒，报告对应thread/start约5.20秒；不能确定为本地阻塞，现有准备分项与独立快照/连接并发保留。"
+    },
+    {
+      "issueId": "issue-be70f783516dc186d642016f",
+      "findingId": "failure-architecture_mismatch",
+      "title": "工具失败：architecture_mismatch",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为architecture_mismatch，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-c7846c6845bd85fad3423426",
+      "findingId": "failure-permission",
+      "title": "工具失败：permission",
+      "samples": [],
+      "outcome": "deferred",
+      "reason": "核验全量工具分类汇总，线索为permission，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-ba2e7a451bbbbcd6d65929b3",
+      "findingId": "log-f5f52fc5a500",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-f5f52fc5a500",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 21658,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794193357910,
+          "event": "span_end",
+          "traceId": "79025ab1-a67a-43e1-b82e-c7de4a47b4a4",
+          "threadId": "01a1be3f-114d-7171-b2a0-4d1b4b68a8d7",
+          "itemId": "exec-27a9bd50-bacf-4fc0-bd77-d1faca36e40b",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 1,
+          "firstOutputMs": null,
+          "outputIdleMs": 1
+        },
+        {
+          "findingId": "log-f5f52fc5a500",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 21795,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794193420350,
+          "event": "span_end",
+          "traceId": "1c56bd07-2b9b-425f-9f01-b3ab279fed3e",
+          "threadId": "01a1aa22-661d-76c0-a100-9a9cbe5e37f4",
+          "itemId": "exec-6bc96895-dae6-4c7a-b919-5ae65db9a88b",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 624,
+          "firstOutputMs": 612,
+          "outputIdleMs": 11
+        },
+        {
+          "findingId": "log-f5f52fc5a500",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 22154,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "atMs": 1794278083412,
+          "event": "span_end",
+          "traceId": "e55239d8-1d9a-4243-a64c-0194f9e22fd9",
+          "threadId": "01a1c34a-a8de-7812-8bfc-d975218a3fdf",
+          "itemId": "exec-bef82e0e-2166-431a-a896-d33e60bdb256",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 1653,
+          "firstOutputMs": 1629,
+          "outputIdleMs": 24
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为nonzero_exit，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-85bc18f5ba331c456c9be694",
+      "findingId": "log-2feb1dbf2fa7",
+      "title": "后端组件异常",
+      "samples": [
+        {
+          "findingId": "log-2feb1dbf2fa7",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 22730,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "traceId": null,
+          "processRunId": "f3b07974-a002-46f2-a0a5-398be3bbbf78",
+          "failureCategory": "timeout",
+          "type": "runtime_error"
+        },
+        {
+          "findingId": "log-2feb1dbf2fa7",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 22746,
+          "version": "0.1.200",
+          "windowId": "7252fb3c-f667-406e-95f9-34cbeb776a87",
+          "traceId": null,
+          "processRunId": "551ad7ef-1ac7-4332-a671-4d2da9485d89",
+          "failureCategory": "timeout",
+          "type": "runtime_error"
+        },
+        {
+          "findingId": "log-2feb1dbf2fa7",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 20972,
+          "version": "0.1.199",
+          "windowId": "88c6f86d-3433-43f4-9ba6-4d70967636d8",
+          "traceId": null,
+          "processRunId": "e82aebb3-2285-4082-afe3-a5667aefe065",
+          "failureCategory": "timeout",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "external",
+      "reason": "核验为CLI codex_models_manager目录刷新超时。范围内另有91条model/list成功终态，但不是45次刷新逐条恢复证明；插件模型读取有独立缓存与RPC边界，不据此重启对话或修改模型选择。上游目录服务超时本次无法修复。"
+    },
+    {
+      "issueId": "issue-faae32814fa463c4c43ab961",
+      "findingId": "log-7f2860efb0fd",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-7f2860efb0fd",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 21829,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794193435894,
+          "event": "span_end",
+          "traceId": "1c56bd07-2b9b-425f-9f01-b3ab279fed3e",
+          "threadId": "01a1aa22-661d-76c0-a100-9a9cbe5e37f4",
+          "itemId": "exec-9bd7b48e-d9c3-470a-aba0-7b64f37b194c",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "timeout",
+          "failureEvidence": "tool_output",
+          "durationMs": 3365,
+          "firstOutputMs": 3356,
+          "outputIdleMs": 8
+        },
+        {
+          "findingId": "log-7f2860efb0fd",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 26618,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794194945041,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-27135fd4-bf63-4259-995e-1af59384677d",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "timeout",
+          "failureEvidence": "tool_output",
+          "durationMs": 3038,
+          "firstOutputMs": 3029,
+          "outputIdleMs": 9
+        },
+        {
+          "findingId": "log-7f2860efb0fd",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 26553,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794279536504,
+          "event": "span_end",
+          "traceId": "41c7e1ab-bcad-4ff6-954d-f9e9b81b84e4",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-1d4070b3-fd6d-4c5f-a987-4821089b19e4",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "timeout",
+          "failureEvidence": "tool_output",
+          "durationMs": 10352,
+          "firstOutputMs": 10343,
+          "outputIdleMs": 9
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为timeout，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-4e8c8a7627f965a200426235",
+      "findingId": "log-c08db51d1331",
+      "title": "通知异常",
+      "samples": [
+        {
+          "findingId": "log-c08db51d1331",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 42311,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "atMs": 1794207394326,
+          "stage": "failed",
+          "operation": "notification.focus",
+          "operationId": "56d62a94-c64b-4625-9379-96c9673d75e2",
+          "failureId": "d80a62d7-6e2a-4297-9e9a-a7484ce4107c",
+          "failureCategory": "timeout",
+          "errorType": "Error",
+          "errorCode": "ETIMEDOUT",
+          "phase": "window_focus",
+          "durationMs": 2014
+        },
+        {
+          "findingId": "log-c08db51d1331",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 50439,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "atMs": 1794210686987,
+          "stage": "failed",
+          "operation": "notification.focus",
+          "operationId": "24be8b53-814a-4ba3-abdd-ffc18397252d",
+          "failureId": "088f2b6e-c4e9-4ad7-9cda-22894f9c83b9",
+          "failureCategory": "timeout",
+          "errorType": "Error",
+          "errorCode": "ETIMEDOUT",
+          "phase": "window_focus",
+          "durationMs": 2001
+        },
+        {
+          "findingId": "log-c08db51d1331",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25645,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "atMs": 1794279188893,
+          "stage": "failed",
+          "operation": "notification.focus",
+          "operationId": "a0d81760-a464-4eb6-b5b2-4d650dbbe3aa",
+          "failureId": "07be2128-e750-4e3d-bce5-c2fe7be99814",
+          "failureCategory": "timeout",
+          "errorType": "Error",
+          "errorCode": "ETIMEDOUT",
+          "phase": "window_focus",
+          "durationMs": 2001
+        }
+      ],
+      "outcome": "fixed",
+      "reason": "已修复已聚焦窗口仍等待命令返回的冗余等待；后台窗口仍须真实聚焦并保留2000毫秒期限。不能据此认定历史16次后台/最小化窗口超时已全部恢复，仍需原生现场复验。"
+    },
+    {
+      "issueId": "issue-f761530c23fb4d0b1eb8b641",
+      "findingId": "log-2f98394be38a",
+      "title": "通知异常",
+      "samples": [
+        {
+          "findingId": "log-2f98394be38a",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 42312,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "atMs": 1794207394327,
+          "stage": "failed",
+          "operation": "notification.click",
+          "operationId": "e6c52a5d-bdbf-4348-9fa4-97a89e59b9b2",
+          "failureId": "d80a62d7-6e2a-4297-9e9a-a7484ce4107c",
+          "failureCategory": "timeout",
+          "errorType": "Error",
+          "errorCode": "ETIMEDOUT",
+          "durationMs": 2015
+        },
+        {
+          "findingId": "log-2f98394be38a",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 50440,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "atMs": 1794210686987,
+          "stage": "failed",
+          "operation": "notification.click",
+          "operationId": "01909cc0-8da4-4746-bce2-ba122d79ba0d",
+          "failureId": "088f2b6e-c4e9-4ad7-9cda-22894f9c83b9",
+          "failureCategory": "timeout",
+          "errorType": "Error",
+          "errorCode": "ETIMEDOUT",
+          "durationMs": 2002
+        },
+        {
+          "findingId": "log-2f98394be38a",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25646,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "atMs": 1794279188893,
+          "stage": "failed",
+          "operation": "notification.click",
+          "operationId": "0baf8f78-77aa-4868-b9da-d55c94bf4edd",
+          "failureId": "07be2128-e750-4e3d-bce5-c2fe7be99814",
+          "failureCategory": "timeout",
+          "errorType": "Error",
+          "errorCode": "ETIMEDOUT",
+          "durationMs": 2003
+        }
+      ],
+      "outcome": "fixed",
+      "reason": "与focus共享failureId，不计为额外16次故障。修复前台冗余等待，并修复目标会话缺失仍向原生辅助程序返回204的伪成功；后台窗口现场恢复待验证。"
+    },
+    {
+      "issueId": "issue-2787b3644a211685ddde549c",
+      "findingId": "log-1b4c5e45cc6d",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-1b4c5e45cc6d",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 26544,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794194893974,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-90b3fdb5-d833-40e5-a5de-d4e159347a26",
+          "tool": "log_center__get_repo_pipeline_log",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 2906,
+          "firstOutputMs": null,
+          "outputIdleMs": 2906
+        },
+        {
+          "findingId": "log-1b4c5e45cc6d",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 26622,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794194945984,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-010b8786-4aed-4f04-9cff-1557a0638407",
+          "tool": "log_center__get_repo_pipeline_log",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 941,
+          "firstOutputMs": null,
+          "outputIdleMs": 941
+        },
+        {
+          "findingId": "log-1b4c5e45cc6d",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27744,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794195433442,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-162ec744-74bc-49d5-bdb2-5390ab594975",
+          "tool": "log_center__get_repo_pipeline_log",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 1047,
+          "firstOutputMs": null,
+          "outputIdleMs": 1047
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为unknown，涉及log_center__get_repo_pipeline_log；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-8ce602f96d3feeb60d05ec14",
+      "findingId": "log-a164caba36d5",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-a164caba36d5",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 26545,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "codex.tool_result",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "call_id": "exec-90b3fdb5-d833-40e5-a5de-d4e159347a26",
+          "tool_name": "log_center__get_repo_pipeline_log",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-a164caba36d5",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 26623,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "codex.tool_result",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "call_id": "exec-010b8786-4aed-4f04-9cff-1557a0638407",
+          "tool_name": "log_center__get_repo_pipeline_log",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-a164caba36d5",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27745,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "codex.tool_result",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "call_id": "exec-162ec744-74bc-49d5-bdb2-5390ab594975",
+          "tool_name": "log_center__get_repo_pipeline_log",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为unknown，涉及log_center__get_repo_pipeline_log；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-c6c5fd4aae7d7e21f017e2d5",
+      "findingId": "log-b9fa566c3f2a",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-b9fa566c3f2a",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 41399,
+          "version": "0.1.202",
+          "windowId": "fc1ec8da-b6c1-45aa-8201-8ca5da374fc1",
+          "atMs": 1794206858916,
+          "event": "span_end",
+          "traceId": "30748247-ee3d-4e8d-bd0f-5cb63989fc47",
+          "threadId": "01a19f51-4910-79b2-9224-a6a1bdc78eee",
+          "itemId": "exec-beda4b5d-893b-4375-882a-8530690ceb12",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "exit_code",
+          "durationMs": 7641,
+          "firstOutputMs": null,
+          "outputIdleMs": 7641
+        },
+        {
+          "findingId": "log-b9fa566c3f2a",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 46302,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "atMs": 1794208977873,
+          "event": "span_end",
+          "traceId": "ca28033e-4688-49c2-8af5-f9e84048bd8c",
+          "threadId": "01a19f16-e934-7f81-af11-557fd321de1b",
+          "itemId": "exec-9092e7ee-70a2-46ed-9af5-70d75f789b09",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "exit_code",
+          "durationMs": 1,
+          "firstOutputMs": null,
+          "outputIdleMs": 1
+        },
+        {
+          "findingId": "log-b9fa566c3f2a",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 23771,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794278477400,
+          "event": "span_end",
+          "traceId": "613c79f4-2d73-4bdf-9cbf-d969ff61ff4e",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-8ba9b8b3-9b5e-42d6-aa8f-a27ef22005eb",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "exit_code",
+          "durationMs": 4,
+          "firstOutputMs": null,
+          "outputIdleMs": 4
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为nonzero_exit，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-d3b2153bbaff0b0d4b631468",
+      "findingId": "log-91392beb79f8",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-91392beb79f8",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 43629,
+          "version": "0.1.202",
+          "windowId": "adfaaa90-d236-4d56-a310-cba639f531e0",
+          "atMs": 1794207863247,
+          "event": "span_end",
+          "traceId": "aefbd9bc-e304-4836-b5a9-75c6fa9cfd39",
+          "threadId": "01a1bf1f-21ec-7850-bebb-17269ee44310",
+          "itemId": "exec-acd9230d-a806-4a8b-b202-069a114ccdbd",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "missing_file",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        },
+        {
+          "findingId": "log-91392beb79f8",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 44014,
+          "version": "0.1.202",
+          "windowId": "8a1088bc-2327-4fc0-8b0f-ece1fdbd447a",
+          "atMs": 1794207999440,
+          "event": "span_end",
+          "traceId": "3fb1d318-640e-4f7e-ae0f-94e1ade8b97b",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-57d29493-f0ef-4e0b-af83-31365f43276b",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "missing_file",
+          "failureEvidence": "tool_output",
+          "durationMs": 4,
+          "firstOutputMs": null,
+          "outputIdleMs": 4
+        },
+        {
+          "findingId": "log-91392beb79f8",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 26133,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794279378851,
+          "event": "span_end",
+          "traceId": "41c7e1ab-bcad-4ff6-954d-f9e9b81b84e4",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-76e04569-9fd5-4370-9169-2f14f4133bb3",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "missing_file",
+          "failureEvidence": "tool_output",
+          "durationMs": 116,
+          "firstOutputMs": 101,
+          "outputIdleMs": 5
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为missing_file，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-f53bf7e1a1a6319836ee2372",
+      "findingId": "log-718d0ca918ad",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-718d0ca918ad",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 22769,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794193708133,
+          "event": "span_end",
+          "traceId": "79025ab1-a67a-43e1-b82e-c7de4a47b4a4",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-1ebf467b-55ab-41ca-b7df-a8f91757fae4",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "missing_file",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        },
+        {
+          "findingId": "log-718d0ca918ad",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 39266,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794205426954,
+          "event": "span_end",
+          "traceId": "ac12667e-729d-4c7b-bb1c-4b6ca94d8455",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-946e9fe1-cf9f-4647-9717-b8196a9532a3",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "missing_file",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        },
+        {
+          "findingId": "log-718d0ca918ad",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 23787,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794278486380,
+          "event": "span_end",
+          "traceId": "613c79f4-2d73-4bdf-9cbf-d969ff61ff4e",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-7ec4e431-b34d-4886-9d54-d4dcb95b0513",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "missing_file",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为missing_file，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-a017520fd5a193446ee4d61d",
+      "findingId": "log-b4e2745abb3d",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-b4e2745abb3d",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 23948,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794194079393,
+          "event": "span_end",
+          "traceId": "e5551b71-72c5-41fb-b084-91a98df0aa36",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-611b7df5-8070-4352-b82e-b0a0948c7fac",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 206,
+          "firstOutputMs": 192,
+          "outputIdleMs": 14
+        },
+        {
+          "findingId": "log-b4e2745abb3d",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 23949,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794194079394,
+          "event": "span_end",
+          "traceId": "e5551b71-72c5-41fb-b084-91a98df0aa36",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-e758a315-837b-4344-a8ab-20aeac465fd6",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 209,
+          "firstOutputMs": 194,
+          "outputIdleMs": 15
+        },
+        {
+          "findingId": "log-b4e2745abb3d",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25839,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "atMs": 1794279288720,
+          "event": "span_end",
+          "traceId": "554731cb-799c-431f-896e-eaf7c3549508",
+          "threadId": "01a1c34a-a8de-7812-8bfc-d975218a3fdf",
+          "itemId": "exec-cddf9165-dce1-4e5a-b3da-0a03e96f6b96",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 1,
+          "firstOutputMs": null,
+          "outputIdleMs": 1
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为nonzero_exit，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-dbe584a57ef7c6aab9cee687",
+      "findingId": "log-44d6470bdafc",
+      "title": "后端服务异常",
+      "samples": [
+        {
+          "findingId": "log-44d6470bdafc",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27421,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "event": "codex.sse_event",
+          "traceId": "4f2e19cb-2aa7-48c9-9cde-a487aef3d09e",
+          "processRunId": "ea996cf3-7b43-4246-af81-8d5a894ea301",
+          "failureCategory": "unknown",
+          "failureEvidence": "error_message",
+          "model": "gpt-6-astra",
+          "type": "event"
+        },
+        {
+          "findingId": "log-44d6470bdafc",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 50947,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "codex.sse_event",
+          "traceId": "dd5e509c-cc0c-4db9-8c56-14772cc51cc7",
+          "processRunId": "75c5e7a3-6951-40db-8174-cfd7485e17b3",
+          "failureCategory": "unknown",
+          "failureEvidence": "error_message",
+          "model": "gpt-6-astra",
+          "type": "event"
+        },
+        {
+          "findingId": "log-44d6470bdafc",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 18118,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.sse_event",
+          "traceId": "8353386d-7fee-4fdd-8155-0e15e9b035dd",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "failureCategory": "unknown",
+          "failureEvidence": "error_message",
+          "model": "gpt-6-astra",
+          "type": "event"
+        }
+      ],
+      "outcome": "external",
+      "reason": "核验为后端codex.sse_event错误，插件通过遥测白名单记录。缺少后端错误详情，网络/鉴权/服务原因与恢复仍未知，不能作为插件崩溃修复。"
+    },
+    {
+      "issueId": "issue-9caf6555a904aa0580538195",
+      "findingId": "log-a24b30ddf788",
+      "title": "连接与进程异常",
+      "samples": [
+        {
+          "findingId": "log-a24b30ddf788",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 46866,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "atMs": 1794209329126,
+          "stage": "failed",
+          "operation": "relay.http",
+          "operationId": "fd6a4d44-6fd7-4362-bb00-34247e246cc3",
+          "failureId": "5ad38af7-54f4-4a0f-be1d-4b44b9ac0ba5",
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "connectionId": "fd6a4d44-6fd7-4362-bb00-34247e246cc3",
+          "failureCategory": "unknown",
+          "errorType": "Error",
+          "reason": "http_stream_ended",
+          "durationMs": 2143,
+          "httpStatusCode": 400,
+          "targetService": "chatgpt.com"
+        },
+        {
+          "findingId": "log-a24b30ddf788",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47292,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "atMs": 1794209551753,
+          "stage": "failed",
+          "operation": "relay.http",
+          "operationId": "2f8504af-60e8-4d6f-8fce-b5cf71c5b6ea",
+          "failureId": "84de274e-8a46-4456-8cf9-c5d71dd3eeac",
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "connectionId": "2f8504af-60e8-4d6f-8fce-b5cf71c5b6ea",
+          "failureCategory": "unknown",
+          "errorType": "Error",
+          "reason": "http_stream_ended",
+          "durationMs": 4070,
+          "httpStatusCode": 400,
+          "targetService": "chatgpt.com"
+        },
+        {
+          "findingId": "log-a24b30ddf788",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 26414,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "atMs": 1794279500855,
+          "stage": "failed",
+          "operation": "relay.http",
+          "operationId": "02ca1ff6-47ca-45af-b18c-7086d07969b5",
+          "failureId": "2ae3be52-5899-4eb1-9936-154c117d8a90",
+          "processRunId": "727b056d-7647-4b51-978b-e888edd1634d",
+          "connectionId": "02ca1ff6-47ca-45af-b18c-7086d07969b5",
+          "failureCategory": "unknown",
+          "errorType": "Error",
+          "reason": "http_stream_ended",
+          "durationMs": 4287,
+          "httpStatusCode": 400,
+          "targetService": "chatgpt.com"
+        }
+      ],
+      "outcome": "fixed",
+      "reason": "已修复relay HTTP诊断缺少请求类别、是否改写和安全响应错误码的缺口，明确区分400完整响应与提前断流；本机HTTP成功/400/断流回归通过。历史图像400业务原因仍未知，未宣称图像生成恢复。"
+    },
+    {
+      "issueId": "issue-969ed6a3d797debe641aaa0f",
+      "findingId": "log-51a18baaf177",
+      "title": "上游 HTTP 访问受阻",
+      "samples": [
+        {
+          "findingId": "log-51a18baaf177",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 46867,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "upstream_http_error",
+          "failureId": "7cb03eff-9d2a-4589-83bb-dffb5334c957",
+          "traceId": null,
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "failureCategory": "unknown",
+          "httpStatusCode": 400,
+          "targetKind": "unknown",
+          "responseKind": "text",
+          "type": "runtime_error"
+        },
+        {
+          "findingId": "log-51a18baaf177",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47293,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "upstream_http_error",
+          "failureId": "c1a01de5-6895-4a1b-8995-0fe8aa8bc33c",
+          "traceId": null,
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "failureCategory": "unknown",
+          "httpStatusCode": 400,
+          "targetKind": "unknown",
+          "responseKind": "text",
+          "type": "runtime_error"
+        },
+        {
+          "findingId": "log-51a18baaf177",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 26415,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "event": "upstream_http_error",
+          "failureId": "2c75735b-0e1c-411e-a315-bfe44aed5f8a",
+          "traceId": null,
+          "processRunId": "727b056d-7647-4b51-978b-e888edd1634d",
+          "failureCategory": "unknown",
+          "httpStatusCode": 400,
+          "targetKind": "unknown",
+          "responseKind": "text",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "已关联上游400、relay终态与imageGeneration/imagegen失败，按同一链排查而不按四层累加。历史正文和请求参数未保留；新增中继安全观测和本机透传测试不能证明真实生成恢复，具体请求/后端原因待查。"
+    },
+    {
+      "issueId": "issue-aebdf41c237b4a1fa0f0d0d0",
+      "findingId": "log-bc159d466117",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-bc159d466117",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 46868,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "atMs": 1794209329129,
+          "event": "span_end",
+          "traceId": "817bbca1-b218-4388-9908-780417b24518",
+          "threadId": "01a19f51-4910-79b2-9224-a6a1bdc78eee",
+          "itemId": "exec-81c50720-8140-4626-b638-238436f1486d",
+          "tool": "imageGeneration",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "unavailable",
+          "durationMs": 2150,
+          "firstOutputMs": null,
+          "outputIdleMs": 2150
+        },
+        {
+          "findingId": "log-bc159d466117",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47294,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "atMs": 1794209551756,
+          "event": "span_end",
+          "traceId": "7cef1c64-668f-4b18-b309-3041a443a502",
+          "threadId": "01a19f51-4910-79b2-9224-a6a1bdc78eee",
+          "itemId": "exec-1bddd22b-7fd8-463a-8e76-c45f4efba0d6",
+          "tool": "imageGeneration",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "unavailable",
+          "durationMs": 4078,
+          "firstOutputMs": null,
+          "outputIdleMs": 4078
+        },
+        {
+          "findingId": "log-bc159d466117",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 26416,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "atMs": 1794279500861,
+          "event": "span_end",
+          "traceId": "a2613c0d-ba96-4f16-852f-d9ef8510485d",
+          "threadId": "01a19f51-4910-79b2-9224-a6a1bdc78eee",
+          "itemId": "exec-ecade4a5-5b56-4f3a-8cf6-3d78402914e0",
+          "tool": "imageGeneration",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "unavailable",
+          "durationMs": 4298,
+          "firstOutputMs": null,
+          "outputIdleMs": 4298
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "已关联上游400、relay终态与imageGeneration/imagegen失败，按同一链排查而不按四层累加。历史正文和请求参数未保留；新增中继安全观测和本机透传测试不能证明真实生成恢复，具体请求/后端原因待查。"
+    },
+    {
+      "issueId": "issue-1da223a5c00729815a066cba",
+      "findingId": "log-6f6dfb528db3",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-6f6dfb528db3",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 46869,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "codex.tool_result",
+          "traceId": "817bbca1-b218-4388-9908-780417b24518",
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "call_id": "exec-81c50720-8140-4626-b638-238436f1486d",
+          "tool_name": "imagegen",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-6f6dfb528db3",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47295,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "codex.tool_result",
+          "traceId": "7cef1c64-668f-4b18-b309-3041a443a502",
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "call_id": "exec-1bddd22b-7fd8-463a-8e76-c45f4efba0d6",
+          "tool_name": "imagegen",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-6f6dfb528db3",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 26419,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "event": "codex.tool_result",
+          "traceId": "a2613c0d-ba96-4f16-852f-d9ef8510485d",
+          "processRunId": "727b056d-7647-4b51-978b-e888edd1634d",
+          "call_id": "exec-ecade4a5-5b56-4f3a-8cf6-3d78402914e0",
+          "tool_name": "imagegen",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "已关联上游400、relay终态与imageGeneration/imagegen失败，按同一链排查而不按四层累加。历史正文和请求参数未保留；新增中继安全观测和本机透传测试不能证明真实生成恢复，具体请求/后端原因待查。"
+    },
+    {
+      "issueId": "issue-6093d5171d03f79b2aa8c790",
+      "findingId": "log-1cbcf4a62d07",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-1cbcf4a62d07",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 37340,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794204676089,
+          "event": "span_end",
+          "traceId": "0dbfac02-30cc-46b6-acab-d417539feb2c",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "call_a90a689eb45e40e3875bd7de5c0c1bd6",
+          "tool": "js",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 14,
+          "firstOutputMs": null,
+          "outputIdleMs": 14
+        },
+        {
+          "findingId": "log-1cbcf4a62d07",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 37758,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794204747910,
+          "event": "span_end",
+          "traceId": "0dbfac02-30cc-46b6-acab-d417539feb2c",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "call_900484e746a64d8b9fde0018522439f5",
+          "tool": "js",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 706,
+          "firstOutputMs": null,
+          "outputIdleMs": 706
+        },
+        {
+          "findingId": "log-1cbcf4a62d07",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 22940,
+          "version": "0.1.206",
+          "windowId": "429c93df-2eb8-4ad6-96c4-9c25e1489720",
+          "atMs": 1794278282139,
+          "event": "span_end",
+          "traceId": "50bb6ab0-36fb-4812-8c9e-8514b45df212",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "call_6cd4ec15325f4f7c8f6044aa9a84fe86",
+          "tool": "js",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 624,
+          "firstOutputMs": null,
+          "outputIdleMs": 624
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为unknown，涉及js；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-271c362146428bcf948f1fc9",
+      "findingId": "log-fc58dbc512c6",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-fc58dbc512c6",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 37341,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "event": "codex.tool_result",
+          "traceId": "0dbfac02-30cc-46b6-acab-d417539feb2c",
+          "processRunId": "2f006c13-e563-4d19-a7a8-c274591ebf8d",
+          "call_id": "call_a90a689eb45e40e3875bd7de5c0c1bd6",
+          "tool_name": "js",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-fc58dbc512c6",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 37759,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "event": "codex.tool_result",
+          "traceId": "0dbfac02-30cc-46b6-acab-d417539feb2c",
+          "processRunId": "2f006c13-e563-4d19-a7a8-c274591ebf8d",
+          "call_id": "call_900484e746a64d8b9fde0018522439f5",
+          "tool_name": "js",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-fc58dbc512c6",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 22947,
+          "version": "0.1.206",
+          "windowId": "429c93df-2eb8-4ad6-96c4-9c25e1489720",
+          "event": "codex.tool_result",
+          "traceId": "50bb6ab0-36fb-4812-8c9e-8514b45df212",
+          "processRunId": "27685f52-6963-455e-9dc7-6d2a756ffe0d",
+          "call_id": "call_6cd4ec15325f4f7c8f6044aa9a84fe86",
+          "tool_name": "js",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为unknown，涉及js；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-60f525e40acbfb30eba1431b",
+      "findingId": "log-a91228053438",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-a91228053438",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 46320,
+          "version": "0.1.203",
+          "windowId": "943d453b-7932-469b-9684-c0bd68bff60e",
+          "atMs": 1794208992087,
+          "event": "span_end",
+          "traceId": "5ab0d6c4-b424-433f-bdcf-cd4be5be0406",
+          "threadId": "01a1bf1f-21ec-7850-bebb-17269ee44310",
+          "itemId": "exec-df4effb8-9d43-4cf4-8144-c3833108e08d",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 143,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 270804,
+          "firstOutputMs": null,
+          "outputIdleMs": 270804
+        },
+        {
+          "findingId": "log-a91228053438",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47470,
+          "version": "0.1.203",
+          "windowId": "943d453b-7932-469b-9684-c0bd68bff60e",
+          "atMs": 1794209632210,
+          "event": "span_end",
+          "traceId": "fbacbdce-62dd-41da-bf2d-b5d7234750e4",
+          "threadId": "01a1bf1f-21ec-7850-bebb-17269ee44310",
+          "itemId": "exec-4cda24d1-5453-47ff-a7bf-dc19ab64a8c5",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 143,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 291331,
+          "firstOutputMs": 10,
+          "outputIdleMs": 291322
+        },
+        {
+          "findingId": "log-a91228053438",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 48726,
+          "version": "0.1.203",
+          "windowId": "943d453b-7932-469b-9684-c0bd68bff60e",
+          "atMs": 1794210025730,
+          "event": "span_end",
+          "traceId": "0958981f-5245-4ed3-9a81-115d7b4f2905",
+          "threadId": "01a1bf1f-21ec-7850-bebb-17269ee44310",
+          "itemId": "exec-589ec4b1-239a-434a-a10b-563ca8d1c586",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 143,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "durationMs": 155284,
+          "firstOutputMs": 29,
+          "outputIdleMs": 155254
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "退出143只证明SIGTERM相关终止。核对到一条原会话执行结果为READY后143，仍缺少信号发送者；保留待查，不从nonzero_exit之外重复计数。"
+    },
+    {
+      "issueId": "issue-bbe6e619fecedb28f1f2755d",
+      "findingId": "log-161923a8e36f",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-161923a8e36f",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 21660,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794193358210,
+          "event": "span_end",
+          "traceId": "79025ab1-a67a-43e1-b82e-c7de4a47b4a4",
+          "threadId": "01a1be3f-114d-7171-b2a0-4d1b4b68a8d7",
+          "itemId": "exec-cb678e68-2e6e-4185-8636-3da303507d55",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "build_or_test",
+          "failureEvidence": "tool_output",
+          "durationMs": 252,
+          "firstOutputMs": 131,
+          "outputIdleMs": 33
+        },
+        {
+          "findingId": "log-161923a8e36f",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 43955,
+          "version": "0.1.202",
+          "windowId": "adfaaa90-d236-4d56-a310-cba639f531e0",
+          "atMs": 1794207977597,
+          "event": "span_end",
+          "traceId": "aefbd9bc-e304-4836-b5a9-75c6fa9cfd39",
+          "threadId": "01a1bf1f-21ec-7850-bebb-17269ee44310",
+          "itemId": "exec-8bfba89f-dedc-48e6-9b87-401c706c5a44",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "build_or_test",
+          "failureEvidence": "tool_output",
+          "durationMs": 6999,
+          "firstOutputMs": 257,
+          "outputIdleMs": 6
+        },
+        {
+          "findingId": "log-161923a8e36f",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 56696,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794213766491,
+          "event": "span_end",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-73ef5b85-4fa3-4eef-a886-da6d74b36246",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "build_or_test",
+          "failureEvidence": "tool_output",
+          "durationMs": 12470,
+          "firstOutputMs": 12213,
+          "outputIdleMs": 49
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为build_or_test，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-faadc6e90d80f12164550959",
+      "findingId": "log-a8d58f9589a9",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-a8d58f9589a9",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 53315,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "codex.tool_result",
+          "traceId": "63e894e3-0678-4b5f-b03b-ae0406c25278",
+          "processRunId": "75c5e7a3-6951-40db-8174-cfd7485e17b3",
+          "call_id": "exec-a32dc513-fe49-4be4-af27-4a16beddb102",
+          "tool_name": "apply_patch",
+          "failureCategory": "patch_mismatch",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-a8d58f9589a9",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 57805,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.tool_result",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "call_id": "exec-8f37e3a5-0a5a-429d-94a6-59fa353e150a",
+          "tool_name": "apply_patch",
+          "failureCategory": "patch_mismatch",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-a8d58f9589a9",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25227,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "event": "codex.tool_result",
+          "traceId": "554731cb-799c-431f-896e-eaf7c3549508",
+          "processRunId": "3902a46d-1dc3-4ab0-b7b0-8ef805b96736",
+          "call_id": "exec-63b1d420-7c40-44d3-ad70-790158279de3",
+          "tool_name": "apply_patch",
+          "failureCategory": "patch_mismatch",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为patch_mismatch，涉及apply_patch；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-43e4473a2012720df61229a2",
+      "findingId": "log-1319f2b3f17b",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-1319f2b3f17b",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 55698,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794213289979,
+          "event": "span_end",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-919aa5aa-ce04-4406-b058-eddd6457fe33",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "architecture_mismatch",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        },
+        {
+          "findingId": "log-1319f2b3f17b",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 15003,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794274953986,
+          "event": "span_end",
+          "traceId": "31160879-09be-4e32-8261-90845f20531d",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-cb032a1d-983b-45d1-96a8-3d8d7b9def70",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "architecture_mismatch",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        },
+        {
+          "findingId": "log-1319f2b3f17b",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25148,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794279035662,
+          "event": "span_end",
+          "traceId": "f01ffbd0-f605-45c0-ab03-332d154ba4af",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-90e7242f-4472-4d67-b10f-57834ba8b035",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "architecture_mismatch",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为architecture_mismatch，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-d9aadaac29bd73ec0d8767d6",
+      "findingId": "log-c4053b959cd0",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-c4053b959cd0",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 58966,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.tool_result",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "call_id": "exec-91424ca6-a9f1-4b30-8afc-955c07aaacfe",
+          "tool_name": "write_stdin",
+          "failureCategory": "tool_session_missing",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-c4053b959cd0",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 20340,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.tool_result",
+          "traceId": "8be8b8b3-6a98-4ed9-9044-c716dc2b170f",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "call_id": "exec-02d1ee79-4515-4e67-818f-1902c442cc9f",
+          "tool_name": "write_stdin",
+          "failureCategory": "tool_session_missing",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-c4053b959cd0",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 20341,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.tool_result",
+          "traceId": "8be8b8b3-6a98-4ed9-9044-c716dc2b170f",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "call_id": "exec-2bb6f581-3903-45e3-89ff-43748b30eeb3",
+          "tool_name": "write_stdin",
+          "failureCategory": "tool_session_missing",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验3处报告引用原日志，线索为tool_session_missing，涉及write_stdin；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。 write_stdin的进程ID由CLI工具服务管理；未找到插件丢失会话证据，须在原工具执行端核验退出/取消/清理顺序。"
+    },
+    {
+      "issueId": "issue-f827278962d3b06d7a308746",
+      "findingId": "log-96d7a2f62840",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-96d7a2f62840",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27239,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "atMs": 1794195157597,
+          "event": "span_end",
+          "traceId": "4f2e19cb-2aa7-48c9-9cde-a487aef3d09e",
+          "threadId": "01a19f16-e934-7f81-af11-557fd321de1b",
+          "itemId": "exec-708758e0-92ee-4e76-ada2-7479e2129515",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "errorType": "TypeError",
+          "durationMs": 114,
+          "firstOutputMs": 108,
+          "outputIdleMs": 5
+        },
+        {
+          "findingId": "log-96d7a2f62840",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 28042,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794195625508,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-726d89fd-6d94-4a26-a33e-c302a395c742",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "errorType": "TypeError",
+          "durationMs": 3362,
+          "firstOutputMs": 3354,
+          "outputIdleMs": 7
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为nonzero_exit，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-5ac1419005e1ff07d30e6c17",
+      "findingId": "log-18cb4df1c7c5",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-18cb4df1c7c5",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27603,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794195359353,
+          "event": "span_end",
+          "traceId": "e5551b71-72c5-41fb-b084-91a98df0aa36",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-2337ae81-8b28-4930-8616-ec29968fa719",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "missing_dependency",
+          "failureEvidence": "tool_output",
+          "errorType": "ModuleNotFoundError",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        },
+        {
+          "findingId": "log-18cb4df1c7c5",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 17226,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794276345106,
+          "event": "span_end",
+          "traceId": "8353386d-7fee-4fdd-8155-0e15e9b035dd",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-c3233ce9-c13a-47a5-9d04-abcc6a131131",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "missing_dependency",
+          "failureEvidence": "tool_output",
+          "errorType": "ModuleNotFoundError",
+          "durationMs": 1213,
+          "firstOutputMs": 1146,
+          "outputIdleMs": 67
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为missing_dependency，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-f651271996fb6690028aba03",
+      "findingId": "log-782907562ac1",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-782907562ac1",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 32330,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794202534326,
+          "event": "span_end",
+          "traceId": "4e6d1c08-edd6-4d04-a7b0-2a1c3a0d5bb7",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-4386951a-3753-44d1-95fb-748b97cb8e5d",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "dns",
+          "failureEvidence": "tool_output",
+          "durationMs": 1,
+          "firstOutputMs": null,
+          "outputIdleMs": 1
+        },
+        {
+          "findingId": "log-782907562ac1",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 32535,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794202628498,
+          "event": "span_end",
+          "traceId": "4e6d1c08-edd6-4d04-a7b0-2a1c3a0d5bb7",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-9cee808e-07d8-4d7f-a875-e4d3f192327f",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "dns",
+          "failureEvidence": "tool_output",
+          "durationMs": 1,
+          "firstOutputMs": null,
+          "outputIdleMs": 1
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为dns，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-96ab4b62c26bf90602221794",
+      "findingId": "log-6ec4ff535fc2",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-6ec4ff535fc2",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 34991,
+          "version": "0.1.200",
+          "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+          "atMs": 1794203499040,
+          "event": "span_end",
+          "traceId": "ffb745be-23a3-4466-8c9c-557c73742da5",
+          "threadId": "01a1beda-2f2a-7912-a3c8-e6491d9a4377",
+          "itemId": "exec-1ea1103c-a482-4589-8921-4834e0c6bd37",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 127,
+          "failureCategory": "command_not_found",
+          "failureEvidence": "tool_output",
+          "durationMs": 1,
+          "firstOutputMs": null,
+          "outputIdleMs": 1
+        },
+        {
+          "findingId": "log-6ec4ff535fc2",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 57101,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794213909036,
+          "event": "span_end",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-f1b6faee-5147-42ef-810f-fe9e4e8abc79",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 127,
+          "failureCategory": "command_not_found",
+          "failureEvidence": "tool_output",
+          "durationMs": 2,
+          "firstOutputMs": null,
+          "outputIdleMs": 2
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为command_not_found，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-5c7f30568af65b85dd4d2505",
+      "findingId": "log-fb24c1b326de",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-fb24c1b326de",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47016,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "event": "codex.tool_result",
+          "traceId": "cb64da08-c714-40bb-acc2-97c17d3f945c",
+          "processRunId": "ea996cf3-7b43-4246-af81-8d5a894ea301",
+          "call_id": "call_17dc5d4920b84a7981ae0f5a7dc30ac5",
+          "tool_name": "exec",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-fb24c1b326de",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 55612,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "codex.tool_result",
+          "traceId": "328194c6-d398-4472-84e1-bb790f580f32",
+          "processRunId": "7d04fc62-c4d3-4e00-8a7c-fbdbd8d93bab",
+          "call_id": "call_2a4cbf7093644adc9ca1fdbda259f0f4",
+          "tool_name": "exec",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为unknown，涉及exec；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-a8fb1373ebd3b577dd3785e9",
+      "findingId": "log-517d4400fcf6",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-517d4400fcf6",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 53316,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "event": "codex.tool_result",
+          "traceId": "63e894e3-0678-4b5f-b03b-ae0406c25278",
+          "processRunId": "75c5e7a3-6951-40db-8174-cfd7485e17b3",
+          "call_id": "call_6205a33b7dd34ae08abcca85cf1d992f",
+          "tool_name": "exec",
+          "failureCategory": "patch_mismatch",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        },
+        {
+          "findingId": "log-517d4400fcf6",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25228,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "event": "codex.tool_result",
+          "traceId": "554731cb-799c-431f-896e-eaf7c3549508",
+          "processRunId": "3902a46d-1dc3-4ab0-b7b0-8ef805b96736",
+          "call_id": "call_76d4016204594bd0ae458317526d86bb",
+          "tool_name": "exec",
+          "failureCategory": "patch_mismatch",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为patch_mismatch，涉及exec；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-8942785916dbe49be3b54197",
+      "findingId": "log-594eddaf7d7b",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-594eddaf7d7b",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 57740,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794214139983,
+          "event": "span_end",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-ac6793bb-9c23-4adb-b0d6-bd1b22ca8076",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "permission",
+          "failureEvidence": "tool_output",
+          "durationMs": 201,
+          "firstOutputMs": 3,
+          "outputIdleMs": 70
+        },
+        {
+          "findingId": "log-594eddaf7d7b",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 58519,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794214435403,
+          "event": "span_end",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-c695e36d-8d04-46e1-bbfc-8d5c594568a5",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "permission",
+          "failureEvidence": "tool_output",
+          "durationMs": 142733,
+          "firstOutputMs": 11586,
+          "outputIdleMs": 1457
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为permission，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-d2de62b0e6242029338444b6",
+      "findingId": "log-d4752b964a35",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-d4752b964a35",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 17267,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794276364552,
+          "event": "span_end",
+          "traceId": "8353386d-7fee-4fdd-8155-0e15e9b035dd",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-9c1adc52-43f6-494c-8444-0743dac4e427",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "errorType": "AssertionError",
+          "durationMs": 1305,
+          "firstOutputMs": 1243,
+          "outputIdleMs": 62
+        },
+        {
+          "findingId": "log-d4752b964a35",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 17293,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "atMs": 1794276387831,
+          "event": "span_end",
+          "traceId": "8353386d-7fee-4fdd-8155-0e15e9b035dd",
+          "threadId": "01a1bf5f-5a0b-7902-9bdd-a6374f481f23",
+          "itemId": "exec-79aa76d0-ae65-4bcc-a908-756958a4eab5",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "tool_output",
+          "errorType": "AssertionError",
+          "durationMs": 1490,
+          "firstOutputMs": 1405,
+          "outputIdleMs": 85
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验2处报告引用原日志，线索为nonzero_exit，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-f235dca33fb3c93d33e988c6",
+      "findingId": "log-8711ba35c899",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-8711ba35c899",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 24768,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794194278622,
+          "event": "span_end",
+          "traceId": "b1b87d88-5a35-472f-bac7-e87c9605d5f2",
+          "threadId": "01a1be46-d3b2-7ed3-9106-e0da11c2f3ae",
+          "itemId": "exec-169a9f44-c341-4332-99d5-778d84897ca2",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "syntax",
+          "failureEvidence": "tool_output",
+          "errorType": "SyntaxError",
+          "durationMs": 95,
+          "firstOutputMs": 87,
+          "outputIdleMs": 8
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为syntax，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-b6b6ff6645f1a7e90e545964",
+      "findingId": "log-dc8005b4c76d",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-dc8005b4c76d",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 24818,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794194304216,
+          "event": "span_end",
+          "traceId": "03b441f2-4392-4ddb-bcf7-02968bed008e",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-fa4b5007-066f-42b3-a5ad-e9c4de97a44e",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 127,
+          "failureCategory": "command_not_found",
+          "failureEvidence": "exit_code",
+          "durationMs": 12,
+          "firstOutputMs": null,
+          "outputIdleMs": 12
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为command_not_found，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-8e37f9646d8190472b070bb5",
+      "findingId": "log-48486db3ae97",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-48486db3ae97",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 25146,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794194364482,
+          "event": "span_end",
+          "traceId": "03b441f2-4392-4ddb-bcf7-02968bed008e",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-665319ef-ebd7-423b-97c6-068ececfc3f1",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 143,
+          "failureCategory": "nonzero_exit",
+          "failureEvidence": "exit_code",
+          "durationMs": 38218,
+          "firstOutputMs": null,
+          "outputIdleMs": 38218
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "退出143的取消来源没有明确关联，仍保留nonzero_exit；不能认定用户主动停止或插件崩溃。"
+    },
+    {
+      "issueId": "issue-bcc3cad88acd60afc928d320",
+      "findingId": "log-3e4aa0c391f3",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-3e4aa0c391f3",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27501,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794195330649,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-44dc862e-2cb8-4d98-892d-e21e802cb65c",
+          "tool": "log_center__get_repo_container_log",
+          "kind": "tool",
+          "outcome": "failed",
+          "exitCode": null,
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "durationMs": 122,
+          "firstOutputMs": null,
+          "outputIdleMs": 122
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为unknown，涉及log_center__get_repo_container_log；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-58fef690380d57c6139d772b",
+      "findingId": "log-ca08d8791827",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-ca08d8791827",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27503,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "codex.tool_result",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "call_id": "exec-44dc862e-2cb8-4d98-892d-e21e802cb65c",
+          "tool_name": "log_center__get_repo_container_log",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为unknown，涉及log_center__get_repo_container_log；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-98ab38859eb677ca3e2d49ae",
+      "findingId": "log-e7fca8b6e707",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-e7fca8b6e707",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 27942,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "codex.tool_result",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "call_id": "call_d4b0c573588f411e8d12236037b8fbc1",
+          "tool_name": "wait",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为unknown，涉及wait；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-933d3a7e636312fdb3516e32",
+      "findingId": "log-26b022401156",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-26b022401156",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 28088,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "atMs": 1794195640649,
+          "event": "span_end",
+          "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+          "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+          "itemId": "exec-8d6fd226-b762-481a-b4ea-8a6efcb91bef",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 1,
+          "failureCategory": "syntax",
+          "failureEvidence": "tool_output",
+          "durationMs": 1450,
+          "firstOutputMs": 1443,
+          "outputIdleMs": 7
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为syntax，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-113647d3d06d80384d557488",
+      "findingId": "log-09601ecd6694",
+      "title": "遥测采集异常",
+      "samples": [
+        {
+          "findingId": "log-09601ecd6694",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 28166,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "traceId": null,
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "failureCategory": "network_or_service",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "external",
+      "reason": "核验为CLI opentelemetry_sdk导出连接重置，独立于主RPC。插件接收/解码/回调已有错误边界；CLI内部重试、丢弃量及导出恢复未提供，不能算对话断开。"
+    },
+    {
+      "issueId": "issue-8fbb23576a32a82b60290953",
+      "findingId": "log-a064127e3537",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-a064127e3537",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 38781,
+          "version": "0.1.202",
+          "windowId": "a881d4fc-dc3d-45e9-baa4-b272e54a05ce",
+          "atMs": 1794205180452,
+          "event": "span_end",
+          "traceId": "ad946744-bbc6-464c-aa02-411f645a0e3a",
+          "threadId": "01a1bef5-7ff6-7ce3-9ccb-d53b87bbba1e",
+          "itemId": "exec-1dc3e852-2507-43c0-b4a7-9abb88445ee9",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 128,
+          "failureCategory": "timeout",
+          "failureEvidence": "tool_output",
+          "durationMs": 3,
+          "firstOutputMs": null,
+          "outputIdleMs": 3
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为timeout，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-a31c7ee13f8fbe8fef090f3a",
+      "findingId": "log-29808ad35921",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-29808ad35921",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47014,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "traceId": null,
+          "processRunId": "ea996cf3-7b43-4246-af81-8d5a894ea301",
+          "failureCategory": "unknown",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为unknown，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-0a6aba0f5a04987c53edff17",
+      "findingId": "log-0c484c27e588",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-0c484c27e588",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 47015,
+          "version": "0.1.189",
+          "windowId": "8375c2b5-cbad-4ccb-a2dc-a7878570aacf",
+          "event": "codex.tool_result",
+          "traceId": "cb64da08-c714-40bb-acc2-97c17d3f945c",
+          "processRunId": "ea996cf3-7b43-4246-af81-8d5a894ea301",
+          "call_id": "exec-88f255d1-bd7d-434a-a54d-8c22dc13c474",
+          "tool_name": "apply_patch",
+          "failureCategory": "unknown",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为unknown，涉及apply_patch；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-bc1634812aa7446c4bf6e518",
+      "findingId": "log-f0feed65960a",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-f0feed65960a",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 53314,
+          "version": "0.1.203",
+          "windowId": "b5d7de7e-94aa-411c-9c30-0a4e6cc26c79",
+          "traceId": null,
+          "processRunId": "75c5e7a3-6951-40db-8174-cfd7485e17b3",
+          "failureCategory": "patch_mismatch",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为patch_mismatch，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-dd8d8903590fe24cc4f27031",
+      "findingId": "log-da804c032110",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-da804c032110",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 57801,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "traceId": null,
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "failureCategory": "patch_mismatch",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为patch_mismatch，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-0f772b86958299dd2418ba76",
+      "findingId": "log-95311030f78a",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-95311030f78a",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 57806,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.tool_result",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "call_id": "call_ea04097cff35485c8d93168b39c57a30",
+          "tool_name": "exec",
+          "failureCategory": "permission",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为permission，涉及exec；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-c62ffa0af9bc94f48b75785a",
+      "findingId": "log-a53cd6c93f9b",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-a53cd6c93f9b",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 58961,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "traceId": null,
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "failureCategory": "tool_session_missing",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为tool_session_missing，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。 write_stdin的进程ID由CLI工具服务管理；未找到插件丢失会话证据，须在原工具执行端核验退出/取消/清理顺序。"
+    },
+    {
+      "issueId": "issue-1f7ad1fb6e3195e34543ec88",
+      "findingId": "log-ebbf61a08ebe",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-ebbf61a08ebe",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 58967,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "event": "codex.tool_result",
+          "traceId": "c136ebd0-26ca-4d3f-a15f-197cd7e33cf3",
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "call_id": "call_4fff506ccdf04e75b1c083a144e37279",
+          "tool_name": "exec",
+          "failureCategory": "tool_session_missing",
+          "failureEvidence": "tool_output",
+          "model": "gpt-6-astra",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为tool_session_missing，涉及exec；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。 write_stdin的进程ID由CLI工具服务管理；未找到插件丢失会话证据，须在原工具执行端核验退出/取消/清理顺序。"
+    },
+    {
+      "issueId": "issue-4c1d8a4ce7a55c9be4686851",
+      "findingId": "log-6552b08f6b92",
+      "title": "插件运行异常",
+      "samples": [
+        {
+          "findingId": "log-6552b08f6b92",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 16915,
+          "version": "0.1.202",
+          "windowId": "a881d4fc-dc3d-45e9-baa4-b272e54a05ce",
+          "event": "codex.api_request",
+          "traceId": null,
+          "processRunId": "126ec705-71ef-4da1-89f7-43373f88c851",
+          "failureCategory": "network_or_service",
+          "failureEvidence": "error_message",
+          "type": "event",
+          "success": false
+        }
+      ],
+      "outcome": "fixed",
+      "reason": "修复codex.api_request失败被归为插件运行异常的错误分类；API及WebSocket请求现在归入后端服务链。历史网络/服务故障具体原因和恢复状态仍未证实。"
+    },
+    {
+      "issueId": "issue-5b48f5f30588c1ce33fb6eec",
+      "findingId": "log-0b2517acf2b9",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-0b2517acf2b9",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 18058,
+          "version": "0.1.206",
+          "windowId": "429c93df-2eb8-4ad6-96c4-9c25e1489720",
+          "atMs": 1794276650672,
+          "event": "span_end",
+          "traceId": "79b8d7a6-41b6-4d3f-8ef1-8a72f960f5e0",
+          "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+          "itemId": "exec-9d4146cc-d72f-4207-b942-3c6e6d0f6019",
+          "tool": "commandExecution",
+          "kind": "bash",
+          "outcome": "failed",
+          "exitCode": 2,
+          "failureCategory": "timeout",
+          "failureEvidence": "tool_output",
+          "durationMs": 9185,
+          "firstOutputMs": 1062,
+          "outputIdleMs": 62
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为timeout，涉及commandExecution；执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-da6ec6ff4f5a1bd040a3f268",
+      "findingId": "log-9d0546fc3801",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-9d0546fc3801",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 20336,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "traceId": null,
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "failureCategory": "tool_session_missing",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为tool_session_missing，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。 write_stdin的进程ID由CLI工具服务管理；未找到插件丢失会话证据，须在原工具执行端核验退出/取消/清理顺序。"
+    },
+    {
+      "issueId": "issue-1f4404f8210a2f0e5f1116f7",
+      "findingId": "log-2de34fe6f839",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-2de34fe6f839",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 20337,
+          "version": "0.1.206",
+          "windowId": "45457a16-2271-4660-b6b4-d1b657cf7b5c",
+          "traceId": null,
+          "processRunId": "f72d0cb7-9741-46ca-b50d-976e479c2a28",
+          "failureCategory": "tool_session_missing",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为tool_session_missing，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。 write_stdin的进程ID由CLI工具服务管理；未找到插件丢失会话证据，须在原工具执行端核验退出/取消/清理顺序。"
+    },
+    {
+      "issueId": "issue-b101a2ed4efe32caba4160ab",
+      "findingId": "log-65e1fdc2edbd",
+      "title": "通知异常",
+      "samples": [
+        {
+          "findingId": "log-65e1fdc2edbd",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 24228,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "atMs": 1794278581267,
+          "stage": "failed",
+          "operation": "notification.show",
+          "operationId": "d1a05812-cc81-416b-85cc-a50733b2054d",
+          "failureId": "7c44b010-2dc8-47f2-a218-f88fb74c3115",
+          "failureCategory": "unknown",
+          "errorType": "Error",
+          "durationMs": 30152
+        }
+      ],
+      "outcome": "fixed",
+      "reason": "修复通知确认超时缺少错误码/阶段、chmod失败临时目录泄漏和清理失败覆盖发送结果。现在区分prepare/launch/await_result/native_result；清理失败单独记录。原30.153秒样例不能证明macOS权限或展示服务故障已恢复。"
+    },
+    {
+      "issueId": "issue-e3f0eaaf55c91f95b87910bb",
+      "findingId": "log-82561e76b2d3",
+      "title": "通知异常",
+      "samples": [
+        {
+          "findingId": "log-82561e76b2d3",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 24229,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "structured": false,
+          "elapsedMs": 30153
+        }
+      ],
+      "outcome": "fixed",
+      "reason": "与同窗相邻notification.show为同一展示失败线索，不叠加计数。已补确认超时ETIMEDOUT及阶段，修复清理异常造成发送伪失败；保留已有远程降级，未发送真实通知，原生展示待验证。"
+    },
+    {
+      "issueId": "issue-078ad5a9f96fe60504a720bc",
+      "findingId": "log-5705cf0f4066",
+      "title": "工具执行异常",
+      "samples": [
+        {
+          "findingId": "log-5705cf0f4066",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25226,
+          "version": "0.1.206",
+          "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+          "traceId": null,
+          "processRunId": "3902a46d-1dc3-4ab0-b7b0-8ef805b96736",
+          "failureCategory": "patch_mismatch",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "核验1处报告引用原日志，线索为patch_mismatch，执行与结果来自CLI/外部工具，插件当前仅观测和展示。完整命令、stderr及目标代码未保存在插件日志，不能仅按退出码或关键词判定环境/业务/插件根因。保留待查，未自动重跑或放宽权限。"
+    },
+    {
+      "issueId": "issue-12eb6fa23bb929de7703f840",
+      "findingId": "log-acf579148ca9",
+      "title": "工具取消来源待核验",
+      "samples": [
+        {
+          "findingId": "log-acf579148ca9",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 24329,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "tool_cancelled",
+          "traceId": null,
+          "processRunId": "f3b07974-a002-46f2-a0a5-398be3bbbf78",
+          "type": "runtime_error"
+        },
+        {
+          "findingId": "log-acf579148ca9",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 25920,
+          "version": "0.1.200",
+          "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+          "event": "tool_cancelled",
+          "traceId": null,
+          "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+          "type": "runtime_error"
+        },
+        {
+          "findingId": "log-acf579148ca9",
+          "file": "codex-chat-2026-11-10.log",
+          "line": 25592,
+          "version": "0.1.206",
+          "windowId": "7d557caa-e859-40c0-bb45-48aee865140b",
+          "event": "tool_cancelled",
+          "traceId": null,
+          "processRunId": "727b056d-7647-4b51-978b-e888edd1634d",
+          "type": "runtime_error"
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "CLI仅报告dynamic tool cancelled，缺少明确cancel发起者和父工具ID；不推断用户取消、不合并成插件故障，也不因退出143放行失败。"
+    },
+    {
+      "issueId": "issue-e1bd1ca70be79cb5cad8a27d",
+      "findingId": "log-247c50bbace2",
+      "title": "页面脚本警告或降级",
+      "samples": [
+        {
+          "findingId": "log-247c50bbace2",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 36079,
+          "version": "0.1.202",
+          "windowId": "c0095f35-9287-45fc-852e-06b695cb9783",
+          "atMs": 1794204250283,
+          "stage": "unavailable",
+          "operation": "webview.image.read",
+          "operationId": "6f04ec01-183d-4300-84cb-cbfd58f83bf1",
+          "reason": "missing_or_unresolved",
+          "durationMs": 1
+        },
+        {
+          "findingId": "log-247c50bbace2",
+          "file": "codex-chat-2026-11-09.log",
+          "line": 36081,
+          "version": "0.1.202",
+          "windowId": "c0095f35-9287-45fc-852e-06b695cb9783",
+          "atMs": 1794204250296,
+          "stage": "unavailable",
+          "operation": "webview.image.read",
+          "operationId": "71c13c9c-24ff-4f58-934f-41bff92b5eae",
+          "reason": "missing_or_unresolved",
+          "durationMs": 1
+        }
+      ],
+      "outcome": "deferred",
+      "reason": "当前loadLocalImage具有start/completed/unavailable/failed，读取有界，页面可降级；历史两次missing_or_unresolved缺少原图片引用，尚不能定位源文件丢失、路径或页面生命周期，未作无证据改动。"
+    }
+  ],
+  "rawEvidence": {
+    "sampleReferences": 113,
+    "foundSamples": 113,
+    "hostRows": [
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 22247,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794193605153,
+        "event": "turn_summary",
+        "traceId": "1c56bd07-2b9b-425f-9f01-b3ab279fed3e",
+        "threadId": "01a1aa22-661d-76c0-a100-9a9cbe5e37f4",
+        "processRunId": "7f12ab94-ee5b-41e3-9fb2-25ab6307d07a",
+        "outcome": "interrupted",
+        "elapsedMs": 994317,
+        "maxHandlerMs": 326,
+        "maxDecodeMs": 35,
+        "maxEventLoopDelayMs": 4,
+        "incompleteSpans": 1,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 22509,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794193674691,
+        "event": "turn_summary",
+        "traceId": "609c78b4-d759-4d68-9dc2-196d0e600a4d",
+        "threadId": "01a1aa22-661d-76c0-a100-9a9cbe5e37f4",
+        "processRunId": "7f12ab94-ee5b-41e3-9fb2-25ab6307d07a",
+        "outcome": "disposed",
+        "elapsedMs": 28516,
+        "maxHandlerMs": 326,
+        "maxDecodeMs": 35,
+        "maxEventLoopDelayMs": 0,
+        "incompleteSpans": 1,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 23167,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794193860945,
+        "event": "turn_summary",
+        "traceId": "77a21f95-95db-47fb-95f8-1fc1f364da38",
+        "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "outcome": "completed",
+        "elapsedMs": 74667,
+        "maxHandlerMs": 302,
+        "maxDecodeMs": 34,
+        "maxEventLoopDelayMs": 4,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 23371,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794193885663,
+        "event": "turn_summary",
+        "traceId": "07997821-68e3-4f4f-abcd-adff2a6c948d",
+        "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "outcome": "completed",
+        "elapsedMs": 22687,
+        "maxHandlerMs": 302,
+        "maxDecodeMs": 34,
+        "maxEventLoopDelayMs": 0,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 24192,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794194136633,
+        "event": "turn_summary",
+        "traceId": "1b2ab35e-88ce-4fe3-b635-6452e7d34841",
+        "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "outcome": "completed",
+        "elapsedMs": 37789,
+        "maxHandlerMs": 302,
+        "maxDecodeMs": 34,
+        "maxEventLoopDelayMs": 0,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 26157,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794194722104,
+        "event": "turn_summary",
+        "traceId": "54f4b089-c8f8-4771-928c-4757f6c8f09e",
+        "threadId": "01a1be46-d3b2-7ed3-9106-e0da11c2f3ae",
+        "processRunId": "f3b07974-a002-46f2-a0a5-398be3bbbf78",
+        "outcome": "completed",
+        "elapsedMs": 79787,
+        "maxHandlerMs": 507,
+        "maxDecodeMs": 44,
+        "maxEventLoopDelayMs": 1,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 26223,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794194744967,
+        "event": "turn_summary",
+        "traceId": "03b441f2-4392-4ddb-bcf7-02968bed008e",
+        "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "outcome": "answered",
+        "elapsedMs": 571514,
+        "maxHandlerMs": 302,
+        "maxDecodeMs": 34,
+        "maxEventLoopDelayMs": 17,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 26313,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794194759935,
+        "event": "turn_summary",
+        "traceId": "2c9d6526-8af7-4415-82fb-b052525b2277",
+        "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "outcome": "completed",
+        "elapsedMs": 14969,
+        "maxHandlerMs": 302,
+        "maxDecodeMs": 34,
+        "maxEventLoopDelayMs": 0,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 27034,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794195071427,
+        "event": "turn_summary",
+        "traceId": "9684798a-bb1a-4ca8-aa6c-b687ff258b25",
+        "threadId": "01a1be46-d3b2-7ed3-9106-e0da11c2f3ae",
+        "processRunId": "f3b07974-a002-46f2-a0a5-398be3bbbf78",
+        "outcome": "completed",
+        "elapsedMs": 51008,
+        "maxHandlerMs": 507,
+        "maxDecodeMs": 44,
+        "maxEventLoopDelayMs": 0,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 28164,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794195681095,
+        "event": "turn_summary",
+        "traceId": "8f115057-5a99-4eda-9b20-3944f2d90e9d",
+        "threadId": "01a1af82-36f7-7580-94e6-86c807ea8b5c",
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "outcome": "completed",
+        "elapsedMs": 832280,
+        "maxHandlerMs": 302,
+        "maxDecodeMs": 34,
+        "maxEventLoopDelayMs": 4,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 30456,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794200928500,
+        "event": "turn_summary",
+        "traceId": "22c49632-f530-4eb0-ae81-f226636d30e7",
+        "threadId": "01a1be46-d3b2-7ed3-9106-e0da11c2f3ae",
+        "processRunId": "f3b07974-a002-46f2-a0a5-398be3bbbf78",
+        "outcome": "completed",
+        "elapsedMs": 16655,
+        "maxHandlerMs": 507,
+        "maxDecodeMs": 44,
+        "maxEventLoopDelayMs": 0,
+        "incompleteSpans": 0,
+        "droppedSpans": 0
+      }
+    ],
+    "incomplete": [
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 22245,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794193605153,
+        "event": "span_end",
+        "traceId": "1c56bd07-2b9b-425f-9f01-b3ab279fed3e",
+        "threadId": "01a1aa22-661d-76c0-a100-9a9cbe5e37f4",
+        "itemId": "exec-613b5dcc-0529-486f-9f94-810e8778b13c",
+        "tool": "commandExecution",
+        "kind": "bash",
+        "outcome": "incomplete",
+        "durationMs": 12796,
+        "firstOutputMs": null,
+        "outputIdleMs": 12796
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 22508,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "atMs": 1794193674691,
+        "event": "span_end",
+        "traceId": "609c78b4-d759-4d68-9dc2-196d0e600a4d",
+        "threadId": "01a1aa22-661d-76c0-a100-9a9cbe5e37f4",
+        "itemId": "msg_01d20cb8398567e1016af139084da08199a87a0f97386c38d9",
+        "tool": "agentMessage",
+        "kind": "message",
+        "outcome": "incomplete",
+        "durationMs": 2279,
+        "firstOutputMs": 0,
+        "outputIdleMs": 311
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 31344,
+        "version": "0.1.200",
+        "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+        "atMs": 1794202193328,
+        "event": "span_end",
+        "traceId": "e5551b71-72c5-41fb-b084-91a98df0aa36",
+        "threadId": "01a1be3e-e6ec-71b2-8c12-8cf6db88fa16",
+        "itemId": null,
+        "tool": null,
+        "kind": "agent",
+        "outcome": "incomplete",
+        "durationMs": 7143264,
+        "firstOutputMs": null,
+        "outputIdleMs": 7143264
+      },
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 41828,
+        "version": "0.1.200",
+        "windowId": "d72e6205-3165-4e49-af08-44316b265cd4",
+        "atMs": 1794207278409,
+        "event": "span_end",
+        "traceId": "58d5672d-bb54-4353-aa9e-2021f8c5cc2d",
+        "threadId": "01a1be44-764f-7562-a9ae-9e1e288729e8",
+        "itemId": null,
+        "tool": null,
+        "kind": "agent",
+        "outcome": "incomplete",
+        "durationMs": 746193,
+        "firstOutputMs": null,
+        "outputIdleMs": 746193
+      }
+    ],
+    "preparation": [
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 38471,
+        "version": "0.1.202",
+        "windowId": "a881d4fc-dc3d-45e9-baa4-b272e54a05ce",
+        "atMs": 1794205127746,
+        "event": "preparation_stage",
+        "stage": "connection",
+        "traceId": "ad946744-bbc6-464c-aa02-411f645a0e3a",
+        "threadId": "01a1bef5-7ff6-7ce3-9ccb-d53b87bbba1e",
+        "outcome": "completed",
+        "durationMs": 5203
+      }
+    ],
+    "compaction": [
+      {
+        "file": "codex-chat-2026-11-10.log",
+        "line": 22194,
+        "version": "0.1.206",
+        "windowId": "429c93df-2eb8-4ad6-96c4-9c25e1489720",
+        "atMs": 1794278099673,
+        "stage": "request",
+        "traceId": "50bb6ab0-36fb-4812-8c9e-8514b45df212",
+        "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+        "processRunId": "27685f52-6963-455e-9dc7-6d2a756ffe0d",
+        "connectionId": "78334704-3be3-4ec3-b517-32f71d284dff",
+        "fromModel": "gpt-6-astra",
+        "toModel": "gpt-6.1-sol",
+        "fromEffort": "high",
+        "effort": "xhigh",
+        "serviceTier": null,
+        "configurationScope": "request_only",
+        "sessionConfigurationChanged": false
+      },
+      {
+        "file": "codex-chat-2026-11-10.log",
+        "line": 22675,
+        "version": "0.1.206",
+        "windowId": "429c93df-2eb8-4ad6-96c4-9c25e1489720",
+        "atMs": 1794278221169,
+        "stage": "response",
+        "traceId": "50bb6ab0-36fb-4812-8c9e-8514b45df212",
+        "threadId": "01a1aad9-48c7-7991-8a65-633beb86bb34",
+        "processRunId": "27685f52-6963-455e-9dc7-6d2a756ffe0d",
+        "connectionId": "78334704-3be3-4ec3-b517-32f71d284dff",
+        "outcome": "completed",
+        "elapsedMs": 121497,
+        "fromModel": "gpt-6-astra",
+        "toModel": "gpt-6.1-sol",
+        "fromEffort": "high",
+        "effort": "xhigh",
+        "serviceTier": null,
+        "configurationScope": "request_only",
+        "sessionConfigurationChanged": false
+      },
+      {
+        "file": "codex-chat-2026-11-10.log",
+        "line": 25926,
+        "version": "0.1.206",
+        "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+        "atMs": 1794279315529,
+        "stage": "request",
+        "traceId": "554731cb-799c-431f-896e-eaf7c3549508",
+        "threadId": "01a1c34a-a8de-7812-8bfc-d975218a3fdf",
+        "processRunId": "3902a46d-1dc3-4ab0-b7b0-8ef805b96736",
+        "connectionId": "a7a9ceca-a4af-435c-b12d-19e70f9e2666",
+        "fromModel": "gpt-6-astra",
+        "toModel": "gpt-6.1-sol",
+        "fromEffort": "high",
+        "effort": "xhigh",
+        "serviceTier": null,
+        "configurationScope": "request_only",
+        "sessionConfigurationChanged": false
+      },
+      {
+        "file": "codex-chat-2026-11-10.log",
+        "line": 26226,
+        "version": "0.1.206",
+        "windowId": "2a91aa89-f802-435a-ae97-57cdf69c344e",
+        "atMs": 1794279433303,
+        "stage": "response",
+        "traceId": "554731cb-799c-431f-896e-eaf7c3549508",
+        "threadId": "01a1c34a-a8de-7812-8bfc-d975218a3fdf",
+        "processRunId": "3902a46d-1dc3-4ab0-b7b0-8ef805b96736",
+        "connectionId": "a7a9ceca-a4af-435c-b12d-19e70f9e2666",
+        "outcome": "completed",
+        "elapsedMs": 117833,
+        "fromModel": "gpt-6-astra",
+        "toModel": "gpt-6.1-sol",
+        "fromEffort": "high",
+        "effort": "xhigh",
+        "serviceTier": null,
+        "configurationScope": "request_only",
+        "sessionConfigurationChanged": false
+      }
+    ],
+    "modelCatalog": {
+      "refreshErrors": 45,
+      "modelListCompleted": 91
+    },
+    "telemetryExports": [
+      {
+        "file": "codex-chat-2026-11-09.log",
+        "line": 28166,
+        "version": "0.1.200",
+        "windowId": "6446dd0e-5b17-465e-ac12-41ceca026705",
+        "traceId": null,
+        "processRunId": "dabe4f2e-c090-426c-b440-008553758cc0",
+        "failureCategory": "network_or_service",
+        "type": "runtime_error",
+        "messageClass": "telemetry_export"
+      }
+    ]
+  },
+  "limits": [
+    "工具完整命令/输出未保存在插件日志；不能按分类批量认定环境根因。",
+    "后端细分timing、历史400正文和取消来源无法从已脱敏日志恢复。",
+    "原始运行范围固定24小时、跨版本；不把本次源码模拟测试当成线上故障已恢复。"
+  ],
+  "resultSummary": {
+    "deferred": 64,
+    "fixed": 8,
+    "external": 3
+  }
+}

@@ -154,7 +154,7 @@ export class CodexProcess {
     this.compactionStore = new CompactionValidationStore(opts.compactionStateDir);
     this.compactionPolicy = new CompactionPolicy(this.compactionStore, opts.compactionModel?.trim() || 'auto');
     this.latency = new PerformanceTrace(row => this.emit({ kind: 'diag', message: `[perf] ${JSON.stringify(row)}` }),
-      undefined, undefined, () => this.rpc.transportSnapshot());
+      undefined, undefined, () => this.rpc.transportSnapshot(), () => this.rpc.beginTimingWindow());
     this.rpc = new CodexRpc(opts.codexPath, opts.cwd, opts.env, opts.transportDiagnostics !== false);
     this.rpc.on('diagnostic', (row: TransportDiagnostic) => {
       row = this.latency.annotateTransport(row);

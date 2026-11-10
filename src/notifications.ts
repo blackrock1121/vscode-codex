@@ -1,4 +1,4 @@
-import { observeOperation, operationLog, errorFields } from './operations';
+import { observeOperation, operationLog, operationFailure, errorFields } from './operations';
 import * as vscode from "vscode";
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
@@ -91,6 +91,9 @@ let lastFocusFailureId: string | undefined;
 export async function focusNotificationWindow(): Promise<void> {
     const recoveryCandidate = lastFocusFailureId;
     try { await observeOperation('notification.focus', async () => {
+        // 原生辅助程序可能已完成激活；不要再等待一个不会发生的焦点变化，
+        // 也不要让无关的命令应答阻塞已经确认的交接。
+        if (vscode.window.state.focused) return;
         let focused = false;
         let onFocused: (() => void) | undefined;
         let timer: NodeJS.Timeout | undefined;
@@ -176,18 +179,22 @@ export async function clearPreviousLocalNotifications(extensionPath: string, ses
 }
 
 function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
-    return observeOperation(payload.operation === 'clear' ? 'notification.clear' : 'notification.show', () => requestLocalNotificationInner(extensionPath, payload));
+    const fields = { phase: 'prepare', timeoutMs: 30000 };
+    return observeOperation(payload.operation === 'clear' ? 'notification.clear' : 'notification.show',
+        () => requestLocalNotificationInner(extensionPath, payload, fields), fields);
 }
-async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
+async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>, fields: { phase: string }): Promise<void> {
     if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-chat-notify-"));
-    await fs.chmod(dir, 0o700);
     try {
+        await fs.chmod(dir, 0o700);
         const request = path.join(dir, "request.codex-notification");
         await fs.writeFile(request, JSON.stringify(payload), { mode: 0o600 });
+        fields.phase = 'launch';
         await exec("/usr/bin/open", ["-g", "-a", path.join(extensionPath, "dist", NOTIFIER_APP), request], { timeout: 10000 });
         // 原生程序只在系统接受通知后写回结果，权限拒绝不能显示“发送成功”。
         const deadline = Date.now() + 30000;
+        fields.phase = 'await_result';
         while (Date.now() < deadline) {
             let raw: string;
             try { raw = await fs.readFile(path.join(dir, "result.json"), "utf8"); }
@@ -196,12 +203,16 @@ async function requestLocalNotificationInner(extensionPath: string, payload: Rec
                 await new Promise(resolve => setTimeout(resolve, 100));
                 continue;
             }
+            fields.phase = 'native_result';
             const result = JSON.parse(raw) as { ok: boolean; error?: string };
+            if (!result || typeof result.ok !== 'boolean') throw new SyntaxError("本机通知返回了无效结果。");
             if (!result.ok) throw new Error(result.error || "系统未接受本机通知。");
             return;
         }
-        throw new Error("本机通知未及时确认，请在 macOS 系统设置 → 通知中检查 Codex Copilot Notifications 的权限后重试。");
+        throw Object.assign(new Error("本机通知未及时确认，请在 macOS 系统设置 → 通知中检查 Codex Copilot Notifications 的权限后重试。"), { code: 'ETIMEDOUT' });
     } finally {
-        await fs.rm(dir, { recursive: true, force: true });
+        // 清理失败单独记录，不能覆盖原始发送错误，也不能把已展示的通知当成发送失败。
+        try { await fs.rm(dir, { recursive: true, force: true }); }
+        catch (error) { operationFailure('notification.cleanup', error); }
     }
 }

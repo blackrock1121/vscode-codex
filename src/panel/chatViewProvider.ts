@@ -3705,6 +3705,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 await this.openSession(sessionId);
             } else {
                 this.output.appendLine(`[notify] click_rejected session=${sessionId} reason=missing_session`);
+                if (focusWindow) throw Object.assign(new Error("该通知对应的会话已不在当前项目的历史中。"), { code: 'ENOENT' });
                 void vscode.window.showWarningMessage("该通知对应的会话已不在当前项目的历史中。");
             }
         } catch (error) {

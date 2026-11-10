@@ -173,7 +173,7 @@ test('诊断本机通知点击定位对应记录，与会话通知和全局设�
   assert.equal(nativeCalls[0].data.sessionId, undefined); assert.match(decodeURIComponent(nativeCalls[0].data.url), /diagnostic=11111111/);
   const response = await fetch(nativeCalls[0].data.clickEndpoint, { method: 'POST' });
   assert.equal(response.status, 204);
-  assert.deepEqual(commands, [['workbench.action.focusWindow'], ['codex-chat.openDiagnostics', diagnosticRecord.id]]);
+  assert.deepEqual(commands, [['codex-chat.openDiagnostics', diagnosticRecord.id]], '前台窗口无需重复聚焦');
   const second = await p.notificationUri(undefined, '22222222-2222-4222-8222-222222222222');
   const settings = await p.notificationUri(); assert.notEqual(second.toString(), settings.toString());
 });
@@ -645,7 +645,7 @@ test('窗口 1 与 19 即使包含同一项目和会话，通知点击也只聚�
   a.openSession = async id => actions.push(['open', '1', id]);
   b.openSession = async id => actions.push(['open', '19', id]);
   a.showNotifyConfig = () => actions.push(['settings', '1']);
-  vscode.commands.executeCommand = async command => actions.push(['focus', command]);
+  vscode.commands.executeCommand = async command => { actions.push(['focus', command]); vscode.window.state.focused = true; };
   vscode.env.asExternalUri = async uri => vscode.Uri.from({ ...uri,
     query: uri.query + '&windowId=' + (uri.query.includes('workspace-kms') ? '1' : '19') });
   nativeCalls = []; warnings = []; resultError = undefined;
@@ -657,6 +657,7 @@ test('窗口 1 与 19 即使包含同一项目和会话，通知点击也只聚�
   const id = /\bwindowId=(\d+)/.exec(decodeURIComponent(new URL(first.url).search.slice(1)))[1];
   assert.equal(['window:19', 'window:1'].find(ctx => new RegExp(`window:${id}`).test(ctx)), 'window:19');
   for (const notice of [first, second, first, settings]) {
+    vscode.window.state.focused = false;
     const response = await fetch(notice.clickEndpoint, { method: 'POST' });
     assert.equal(response.status, 204);
   }
@@ -668,16 +669,18 @@ test('窗口 1 与 19 即使包含同一项目和会话，通知点击也只聚�
 
 test('通知直连聚焦失败会返回错误，用户再次点击可重试；窗口销毁后的迟到解析不再发送', async t => {
   const p = provider(), original = vscode.commands.executeCommand;
-  t.after(() => { vscode.commands.executeCommand = original; });
+  t.after(() => { vscode.commands.executeCommand = original; vscode.window.state.focused = true; });
   let opened = 0;
   p.openSession = async () => opened++;
   nativeCalls = []; resultError = undefined;
   await p.sendLocalNotice('通知', '', 'session-A');
   const endpoint = nativeCalls[0].data.clickEndpoint;
+  vscode.window.state.focused = false;
   vscode.commands.executeCommand = async () => { throw new Error('聚焦失败'); };
   assert.equal((await fetch(endpoint, { method: 'POST' })).status, 500);
   assert.equal(opened, 0);
   vscode.commands.executeCommand = original;
+  vscode.window.state.focused = true;
   assert.equal((await fetch(endpoint, { method: 'POST' })).status, 204);
   assert.equal(opened, 1);
   const closed = provider();
