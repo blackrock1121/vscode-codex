@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { operationFailure } from '../operations';
+import { operationFailure, operationLog } from '../operations';
 import type { FromWebview, SpeedMode, ToWebview } from '../shared';
 import { parseCommand, type Command } from './command';
 import type { RemoteReply } from './bridgeClient';
@@ -47,7 +47,7 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
     private readonly timers = new Map<C, ReturnType<typeof setTimeout>>();
     private remoteImageReader?: RemoteImageReader;
     private disabled = false;
-    private lastFailureAt = 0;
+    private readonly failures = new Map<string, { id: string; at: number; count: number }>();
     private readonly receipts?: ExecutionReceipts;
     constructor(private readonly host: RemoteSessionHost<C>) { if (host.receipts) this.receipts = new ExecutionReceipts(host.receipts); }
     private state(ctx: C): RemoteState {
@@ -55,14 +55,26 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
         if (!state) { state = {}; this.states.set(ctx, state); }
         return state;
     }
-    private failure(error: unknown): void {
-        if (Date.now() - this.lastFailureAt < 30000) return;
-        this.lastFailureAt = Date.now();
-        operationFailure('remote.adapter', error);
+    private failure(phase: string, error: unknown, sessionId?: string): void {
+        const key = `${phase}:${sessionId ?? "unbound"}`, previous = this.failures.get(key), now = Date.now();
+        const state = previous ?? { id: randomUUID(), at: 0, count: 0 };
+        state.count++; this.failures.set(key, state);
+        // 限制关闭会话留下的失败摘要；丢弃摘要不声明恢复。
+        if (this.failures.size > 256) this.failures.delete(this.failures.keys().next().value!);
+        if (previous && now - state.at < 30000) return;
+        state.at = now;
+        operationFailure('remote.adapter', error, { phase, sessionId, failureId: state.id, occurrenceCount: state.count });
+    }
+    private recovered(phase: string, sessionId?: string): void {
+        if (!sessionId) return;
+        const key = `${phase}:${sessionId}`, state = this.failures.get(key);
+        if (!state) return;
+        this.failures.delete(key);
+        operationLog('remote.adapter', 'recovered', { phase, sessionId, previousFailureId: state.id, occurrenceCount: state.count });
     }
     private publish(id: string, event: Record<string, unknown>): void {
         if (this.disabled) return;
-        try { this.host.publish(id, event); } catch (error) { this.failure(error); }
+        try { this.host.publish(id, event); this.recovered('publish', id); } catch (error) { this.failure('publish', error, id); }
     }
     observe(ctx: C, e: ToWebview): void {
         try {
@@ -81,13 +93,14 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
 
             this.remoteEvent(ctx, e);
             if (e.kind === 'result' || e.kind === 'rate_limit_cleared') this.schedule(ctx);
-        } catch (error) { this.failure(error); }
+            this.recovered('observe', ctx.sessionId);
+        } catch (error) { this.failure('observe', error, ctx.sessionId); }
     }
     private schedule(ctx: C): void {
         if (this.disabled || !this.hasPending(ctx) || this.timers.has(ctx)) return;
         const timer = setTimeout(() => {
             this.timers.delete(ctx);
-            void this.drainTasks(ctx).catch(error => this.failure(error));
+            void this.drainTasks(ctx).then(() => this.recovered('drain', ctx.sessionId), error => this.failure('drain', error, ctx.sessionId));
         }, 0);
         this.timers.set(ctx, timer);
     }
@@ -104,7 +117,8 @@ export class RemoteSessionAdapter<C extends RemoteSession> {
             state?.run?.observe({kind: 'busy', busy: false});
             if (state?.remoteNotify) this.remoteEvent(ctx, {kind: 'result', isError: true});
             if (state?.taskQueue?.items.length) { state.taskQueue.paused = true; this.postQueue(ctx); }
-        } catch (error) { this.failure(error); }
+            this.recovered('close', ctx.sessionId);
+        } catch (error) { this.failure('close', error, ctx.sessionId); }
     }
     setEnabled(enabled: boolean): void {
         this.disabled = !enabled;

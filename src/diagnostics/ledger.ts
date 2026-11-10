@@ -5,8 +5,9 @@ import type { DiagnosticRecord } from './jobs';
 import type { DiagnosticFinding } from './analysis';
 import { actionable, type IssueView, type RepairResult, type TrackedIssue, type TrackingView } from './tracking';
 import { redactDiagnosticText } from './redact';
+import { observeOperation, operationFailure, operationLog } from '../operations';
 
-interface Batch { id: string; recordId: string; issueIds: string[]; startedAt: number; sessionId?: string; revision: number; reportedIds: string[]; error?: string; cancelled?: boolean }
+interface Batch { id: string; recordId: string; issueIds: string[]; startedAt: number; sessionId?: string; revision: number; reportedIds: string[]; error?: string; errorFailureId?: string; cancelled?: boolean }
 interface Membership { ids: Record<string, string[]>; relations: Record<string, IssueView['relation']>; legacy: boolean }
 interface Ledger { schema: 1; issues: Record<string, TrackedIssue>; records: Record<string, Membership>; batches: Record<string, Batch> }
 const hash = (value: string) => createHash('sha256').update(value).digest('hex').slice(0, 24);
@@ -28,7 +29,7 @@ export class DiagnosticLedger {
   constructor(dir: string) { this.dir = path.join(dir, 'tracking'); }
   receiptPath(id: string): string { if (!uuid(id)) throw Error('修复批次编号无效'); return path.join(this.dir, `receipt-${id}.json`); }
   private async transaction<T>(fn: (data: Ledger) => Promise<T> | T): Promise<T> {
-    const run = this.queue.catch(() => {}).then(async () => {
+    const run = this.queue.catch(() => {}).then(() => observeOperation('diagnostics.ledger', async () => {
       await fs.mkdir(this.dir, { recursive: true, mode: 0o700 });
       const lockPath = path.join(this.dir, 'ledger.lock');
       let lock: fs.FileHandle | undefined;
@@ -58,11 +59,15 @@ export class DiagnosticLedger {
         if (before !== after) {
           const temp = `${file}.${randomUUID()}.tmp`;
           try { await fs.writeFile(temp, after, { mode: 0o600 }); await fs.rename(temp, file); }
-          finally { await fs.unlink(temp).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; }); }
+          finally { await fs.unlink(temp).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') operationFailure('diagnostics.ledger.cleanup', error, { phase: 'temporary' }); }); }
         }
         return result;
-      } finally { await lock.close(); await fs.unlink(lockPath); }
-    });
+      } finally {
+        // close 失败也要尝试释放锁；清理错误独立记录，不能覆盖读写台账的原始异常。
+        try { await lock.close(); } catch (error) { operationFailure('diagnostics.ledger.cleanup', error, { phase: 'close' }); }
+        await fs.unlink(lockPath).catch(error => { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') operationFailure('diagnostics.ledger.cleanup', error, { phase: 'unlock' }); });
+      }
+    }));
     this.queue = run; return run;
   }
   private register(data: Ledger, record: DiagnosticRecord): void {
@@ -127,10 +132,20 @@ export class DiagnosticLedger {
           if (result.outcome === 'fixed' && (issue.lastEventByVersion?.[result.version!] ?? 0) > Math.max(issue.resultAt, result.verification?.at ?? 0)) issue.state = 'recurred';
           issue.history.push({ at: Date.now(), batchId: batch.id, sessionId: batch.sessionId, state: issue.state, result });
         }
-        batch.revision = raw.revision; batch.reportedIds = [...new Set([...batch.reportedIds, ...seen])]; delete batch.error;
+        operationLog('diagnostics.receipt.validate', batch.errorFailureId ? 'recovered' : 'completed', {
+          diagnosticId: batch.recordId, batchId: batch.id, revision: raw.revision, resultCount: results.length,
+          previousFailureId: batch.errorFailureId,
+        });
+        batch.revision = raw.revision; batch.reportedIds = [...new Set([...batch.reportedIds, ...seen])]; delete batch.error; delete batch.errorFailureId;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
-        batch.error = error instanceof SyntaxError ? '修复结果 JSON 不完整，请保存完整文件后刷新' : redactDiagnosticText(String((error as Error).message), 300);
+        const message = error instanceof SyntaxError ? '修复结果 JSON 不完整，请保存完整文件后刷新' : redactDiagnosticText(String((error as Error).message), 300);
+        // 相同坏回报的页面刷新不刷屏；结果正文和 reason/tests 不进入运行日志。
+        if (batch.error !== message || !batch.errorFailureId) {
+          batch.errorFailureId = randomUUID();
+          operationFailure('diagnostics.receipt.validate', error, { diagnosticId: batch.recordId, batchId: batch.id, failureId: batch.errorFailureId });
+        }
+        batch.error = message;
       }
     }
   }

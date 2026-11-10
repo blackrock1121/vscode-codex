@@ -280,19 +280,27 @@ export class CompactionRelay {
     const history = new ResponseHistory();
     const controller = new AbortController();
     const fields = { connectionId, processRunId: this.options.processRunId };
+    let closure: { initiator: 'client' | 'upstream'; closeCode: number } | undefined;
+    let connectionFailureId: string | undefined;
+    operationLog('relay.websocket', 'start', { ...fields, operationId: connectionId });
+    // 仅明确的本地关闭/正常客户端关闭可以判为预期取消。ECANCELED 本身不代表用户停止。
+    const expectedClose = () => this.closed || closure?.initiator === 'client' && [1000, 1001].includes(closure.closeCode);
     let writes = Promise.resolve(), pendingBytes = 0;
     const responses: (CompactionRoute | undefined)[] = [];
     const incomplete = (reason: string, outcome?: CompactionRoute['outcome'], failureId?: string) => {
       for (const route of responses.splice(0)) if (route) this.report({ ...route, stage: 'response',
-        outcome: this.closed ? 'cancelled' : outcome ?? 'incomplete', reason, failureId });
+        outcome: expectedClose() ? 'cancelled' : outcome ?? 'incomplete', reason, failureId });
     };
     let writeFailed = false;
     const failedWrite = (reason: string, error: unknown) => {
       if (writeFailed) return;
       writeFailed = true;
-      const failureId = randomUUID();
-      if (!this.closed) operationFailure('relay.websocket.write', error, { ...fields, reason, failureId });
-      incomplete(reason, 'failed', this.closed ? undefined : failureId); controller.abort(); client.terminate(); upstream.terminate();
+      const cancelled = expectedClose();
+      const failureId = cancelled ? undefined : connectionFailureId ??= randomUUID();
+      const details = { ...fields, reason, failureId, initiator: this.closed ? 'relay' : closure?.initiator ?? 'unknown', closeCode: closure?.closeCode };
+      if (cancelled) operationLog('relay.websocket.write', 'cancelled', details);
+      else operationFailure('relay.websocket.write', error, details);
+      incomplete(reason, 'failed', failureId); controller.abort(); client.terminate(); upstream.terminate();
     };
     client.on('message', (data, binary) => {
       const original = bytes(data); pendingBytes += original.length; client.pause();
@@ -347,10 +355,16 @@ export class CompactionRelay {
       if (peer.readyState === WebSocket.CONNECTING || code === 1006) peer.terminate();
       else if (peer.readyState === WebSocket.OPEN) peer.close(code === 1005 ? 1000 : code, reason);
     };
-    client.on('close', (code, reason) => { incomplete('client_closed'); controller.abort(); this.sockets.delete(client); history.clear(); closePeer(upstream, code, reason); });
-    upstream.on('close', (code, reason) => { incomplete('upstream_closed'); controller.abort(); this.sockets.delete(upstream); history.clear(); closePeer(client, code, reason); });
-    client.on('error', error => { if (!this.closed && !controller.signal.aborted) operationFailure('relay.websocket.client', error, fields); controller.abort(); upstream.terminate(); });
-    upstream.on('error', error => { if (!this.closed && !controller.signal.aborted) operationFailure('relay.websocket.upstream', error, fields); controller.abort(); client.terminate(); });
+    const closed = (initiator: 'client' | 'upstream', code: number) => {
+      if (closure) return;
+      closure = { initiator, closeCode: code };
+      operationLog('relay.websocket', expectedClose() ? 'cancelled' : 'closed', { ...fields, operationId: connectionId,
+        initiator: this.closed ? 'relay' : initiator, closeCode: code, failureId: connectionFailureId, pendingWrites: pendingBytes > 0 });
+    };
+    client.on('close', (code, reason) => { closed('client', code); incomplete('client_closed', undefined, connectionFailureId); controller.abort(); this.sockets.delete(client); history.clear(); closePeer(upstream, code, reason); });
+    upstream.on('close', (code, reason) => { closed('upstream', code); incomplete('upstream_closed', undefined, connectionFailureId); controller.abort(); this.sockets.delete(upstream); history.clear(); closePeer(client, code, reason); });
+    client.on('error', error => { if (!expectedClose() && !controller.signal.aborted) operationFailure('relay.websocket.client', error, { ...fields, failureId: connectionFailureId ??= randomUUID() }); controller.abort(); upstream.terminate(); });
+    upstream.on('error', error => { if (!expectedClose() && !controller.signal.aborted) operationFailure('relay.websocket.upstream', error, { ...fields, failureId: connectionFailureId ??= randomUUID() }); controller.abort(); client.terminate(); });
   }
   private async http(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     const target = this.target(req);

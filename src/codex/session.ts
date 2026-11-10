@@ -453,5 +453,8 @@ export class SessionStore {
       await preparation.dispose();
     }
   }
-  dispose() { this.disposed = true; this.invalidateMetadata(); this.readFailures.clear(); this.rpc?.dispose(); for (const preparation of this.preparations) void preparation.dispose(); }
+  dispose() {
+    this.disposed = true; this.invalidateMetadata(); this.readFailures.clear(); this.rpc?.dispose();
+    for (const preparation of this.preparations) void preparation.dispose().catch(error => operationFailure('session.fork.dispose', error));
+  }
 }

@@ -27,3 +27,5 @@ export * from '../../src/workspaceActivity';
 export * from '../../src/workdayCalendar';
 export * from '../../src/notifications';
 export * from '../../src/diagnostics/analysis';
+export * from '../../src/diagnostics/ledger';
+export * from '../../src/diagnostics/wait';

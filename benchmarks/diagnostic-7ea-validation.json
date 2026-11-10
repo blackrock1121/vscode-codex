@@ -1,0 +1,486 @@
+{
+  "schema": 1,
+  "diagnosticId": "7ea81c7b-112c-466c-99d4-b134aada2b74",
+  "batchId": "4e2c3a58-1eda-4d82-ada4-8e3e1727b5da",
+  "at": "2026-11-10T05:50:33.057536+00:00",
+  "baseline": {
+    "commit": "2424ae6da77c506a2ec244b9388e6ec0e7de659f",
+    "version": "0.1.208",
+    "newRegressionTests": {
+      "total": 6,
+      "passed": 0,
+      "failed": 6,
+      "exitCode": 1,
+      "note": "负对照预期失败；断言/原始 EACCES 被 EIO 覆盖/未处理 Promise，未隐藏失败"
+    }
+  },
+  "after": {
+    "version": "0.1.210",
+    "typecheckExitCode": 0,
+    "fullSuite": {
+      "total": 991,
+      "passed": 991,
+      "failed": 0,
+      "exitCode": 0,
+      "packageVersionAtTest": "0.1.209",
+      "note": "完整回归时尚未升版本；随后仅递增包版本及添加审查证据，六个生产源码哈希未变；0.1.210 六组定向测试和打包通过。"
+    },
+    "targetedFinalVersion": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "exitCode": 0
+    },
+    "packageExitCode": 0
+  },
+  "lockRecovery": {
+    "before": {
+      "version": "0.1.208",
+      "propagatedCode": "EIO",
+      "staleLock": true,
+      "retry": "failed",
+      "retryMs": 2269.63
+    },
+    "after": {
+      "version": "0.1.210",
+      "propagatedCode": "EACCES",
+      "staleLock": false,
+      "retry": "completed",
+      "retryMs": 0.57
+    },
+    "command": "node scripts/verify-diagnostic-7ea.cjs <源码构建目录> [--expect-fixed]",
+    "limitation": "同一注入场景的单次测量；不外推整体任务提速，未调用真实上游。"
+  },
+  "commands": [
+    "npm run check-types",
+    "npm test",
+    "node --test test/diagnostic-7ea-fix.test.cjs",
+    "npm run package",
+    "node scripts/audit-diagnostic-7ea.cjs <完整报告路径>"
+  ],
+  "newTestCoverage": [
+    "坏回报去重/恢复，真实临时日志文件和全面诊断检出",
+    "台账权限/关闭双失败，保留首错并释放锁",
+    "WebSocket 成功、失败、正常/异常关闭及停止竞争",
+    "诊断 timeout/abort 类型、RPC failureId 传播",
+    "派生连接退出拒绝已观察",
+    "远端阶段及会话隔离、次数汇总、关联恢复"
+  ],
+  "sourceHashes": {
+    "src/codex/compactionRelay.ts": "4f31bca881eb964e19456931308c9bc206a8e853df22c317b875adbb39614a10",
+    "src/codex/session.ts": "8085178d1b2b837990ec438a72f2d4f8afc518437cbbc977838e7e12272bacac",
+    "src/diagnostics/ledger.ts": "447dc91ec6d7a98ebf211adab93f50ec99b22646c3abd907ab348f0fb2dcb7e6",
+    "src/diagnostics/model.ts": "c56af557267ab99171dc14c440c50c047893ec8ba378979eaabcff1ddaf6a6ee",
+    "src/diagnostics/wait.ts": "7e01ef432dd41c96e2146b33af455b134d0529b873e9ecf149f3ba95264c7e85",
+    "src/remote/sessionAdapter.ts": "3f2898f262a7af03d280b48a26f053911ced5f731b50a97af3f0e894976900be"
+  },
+  "runtimeVerification": "未宣称安装并启用后的真实功能验证通过；fixed 回报保持待验证。",
+  "counts": {
+    "fixed": 7,
+    "external": 9,
+    "not_a_bug": 33,
+    "deferred": 1
+  },
+  "results": [
+    {
+      "issueId": "issue-e0d48f2efb260ee61214eee5",
+      "findingIds": [
+        "logging-source-src/checkpoints.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "restore 的 stat/write/delete 拒绝由 panel.restoreCheckpoint/forkRewind 统一报告；rollback 的独立错误已有 operationFailure。成功在面板恢复操作终态记录。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-7cd13a87044d863308ec95fb",
+      "findingIds": [
+        "logging-source-src/codex/compactionInput.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "save 的 ENOENT/EEXIST 是内容寻址归档探测；其他错误进入 optimizeCompactionInput fallback，再经 relay.rewrite/process.compaction_route 落盘。reduce 和 cancelled 是计算或信号检查；预算到期保留原输入，不重复记录每个片段。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-b33e0ce4c8e803fc02e687e9",
+      "findingIds": [
+        "logging-source-src/codex/compactionRelay.ts"
+      ],
+      "outcome": "fixed",
+      "reason": "请求改写、HTTP、WebSocket 和 report 回调已有统一日志；JSON/URL/错误码解析是容错探测。本次补关闭发起方、关闭码和连接终态；正常客户端/本地关闭竞争记 cancelled，未知 ECANCELED 仍 failed，故障标识复用。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-265a3622a167a98483791b8b",
+      "findingIds": [
+        "logging-source-src/codex/compactionValidation.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "validateCompactionModel/phase/compacted/answer 委派 RPC 和 relay，runCompactionValidation 统一记录评测失败/取消/结果；清理在 finally。模型评测输入是合成样本，答案解析计评分，不为纯评分重复埋点。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-7756c21126fefc0f3800eca0",
+      "findingIds": [
+        "logging-source-src/codex/events.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "三处均为提问回复 JSON 解析、脱敏和工具展示转换；实际交互由 process.request/answerQuestion 与 panel.submitQuestionAnswer 记录。普通文本解析失败不应变成运行故障。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-8214af569168eddc29ea107f",
+      "findingIds": [
+        "logging-source-src/codex/performanceTrace.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "write 的日志出口异常委派 DiagnosticHealth(performance.sink)，有独立健康反馈与 recovered/lostRecords；不递归写同一个失败出口。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-096e96bbaa18ae44082027cf",
+      "findingIds": [
+        "logging-source-src/codex/process.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "构造回调异常到 handlerFailed；启动/请求由 RPC 记录；子进程发现/停止、无效提问、压缩及回退有 operation 或 compaction_route 终态。预注册 catch 只抑制提前拒绝，原任务仍由 await/caller 消费。纯回调转发和探测不重复计故障。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-fdfe4e80abbdbb99585278be",
+      "findingIds": [
+        "logging-source-src/codex/rpc.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "start/initialize/fail/close 与 request start/end 覆盖生命周期；receiveLine 回调抛错会 fail 并拒绝 pending。codexSpawnEnvironment/resolveCodex 是候选环境探测，最终无法启动由 start 统一记录。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-73a2c85985498ca53a6eaf92",
+      "findingIds": [
+        "logging-source-src/codex/session.ts"
+      ],
+      "outcome": "fixed",
+      "reason": "connection/readMetadata/hydrate/readTurnCount 委派 RPC/session.read，断线只重试一次且有 retry/recovered；fork.ready 的防提前拒绝 catch 之后仍 await。本次修复 dispose 对 fork preparation 清理拒绝未观察，独立安全记录，避免未处理 Promise。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-79743157e97f64b7753b84de",
+      "findingIds": [
+        "logging-source-src/codex/telemetry.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "transportDiagnostics 的属性 JSON 是可选格式解析；LocalTelemetry 启动/接收异常经 telemetry_status 和 operationFailure 反馈，导出链由 RPC diagnostic -> process -> panel 写盘，不输出原始属性。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-55df28794df7ba78f1784bea",
+      "findingIds": [
+        "logging-source-src/diagnosticHealth.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "failed 的 catch 是独立最终出口也失败后的终止，继续调用自己会递归；计数保留并在出口恢复后写 recovered/lostRecords。永久不可写不能保证磁盘记录，已有独立反馈是明确限制。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-a590733300a7d5313fc04fb5",
+      "findingIds": [
+        "logging-source-src/diagnostics/jobs.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "workerRunner 的 message/error/exit/abort/timeout 汇入唯一终态；execute/save/progress/list/取消/锁释放均有上层操作记录。alive 的 ESRCH/EPERM 为进程探测，队列 catch 不吞原任务；只对 EEXIST 有界等待。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-ff82386db5c0f430c4dae87a",
+      "findingIds": [
+        "logging-source-src/diagnostics/ledger.ts"
+      ],
+      "outcome": "fixed",
+      "reason": "本次补 transaction 与回报 validate 的独立落盘；坏回报刷新去重，新修订关联恢复。close 失败也尝试释放锁且不覆盖主异常，临时文件/锁清理非 ENOENT 安全记录。validate 成功仅代表校验，持久成功由 ledger completed 判定。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-2690ca382ea90388c411def7",
+      "findingIds": [
+        "logging-source-src/diagnostics/model.ts"
+      ],
+      "outcome": "fixed",
+      "reason": "已有 diagnostics.model 唯一终态、进度/销毁异常记录；result.catch 只预观察，serverRequest 拒绝后的 fail 汇入同边界。本次保留 RPC 原异常 failureId/requestId/rpcCode，取消与超时用结构化错误，保留本地报告。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-18ac97bdaa72b00ac6881899",
+      "findingIds": [
+        "logging-source-src/diagnostics/page.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "show/message/refresh 委派 jobs 或 observeOperation，后台 Promise 有 error 出口；postWebviewMessage 有拒绝/关闭/恢复反馈。折叠、选择、过期请求丢弃为界面状态，不是外部操作失败。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-004aff59510795b89521766c",
+      "findingIds": [
+        "logging-source-src/diagnostics/scan.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "stat/read 错误累计 scanErrors/unreadableFiles，解析错累计 invalidLines；根目录非 ENOENT 传播 worker/jobs。缺失结果以覆盖缺口展示，不等于无问题；consume 为内存汇总。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-3e3e88e618085a35f2ab8b8d",
+      "findingIds": [
+        "logging-source-src/diagnostics/wait.ts"
+      ],
+      "outcome": "fixed",
+      "reason": "辅助 Promise 由 configuration/model 统一记录；本次给超时加 ETIMEDOUT/errorOrigin，取消用 AbortError，迟到结果和拒绝被消费，不推进已结束任务。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-cb10afb2e5ddc2241e82bd86",
+      "findingIds": [
+        "logging-source-src/diagnostics/worker.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "线程捕获错误后向父进程发结构化 error；workerRunner/execute 统一落盘，异常退出即失败。在线程内重复使用未注册主线程 sink 不能增加可见性。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-2549a0937ba9e7e0a98e047f",
+      "findingIds": [
+        "logging-source-src/diagnosticsReport.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "旧版抽样读取容忍坏 JSON；全面诊断使用 scanPluginLogs 的文件/坏行覆盖统计。根目录异常已记录并传播，不伪装空报告；readPerformanceReport 委派同一读取入口。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-ea4676213faca4df550179c5",
+      "findingIds": [
+        "logging-source-src/diff.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "readDiffFile 的缺文件/目录/二进制/过大各返回明确展示状态，非预期读取异常已有安全日志；面板不显示为成功读取空正文。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-6d2e383d48f3a136ddcf1603",
+      "findingIds": [
+        "logging-source-src/extension.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "activate start/completed/failed 与固定命令 observeOperation 已存在；事件委派 provider/jobs 的操作终态；deactivate 等待 jobs 与 writer。纯参数转发不额外创建故障记录。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-6f956d64e30644757af9536d",
+      "findingIds": [
+        "logging-source-src/imageFile.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "readImageFile 的 open/stat/read/close 拒绝向调用方传播；panel.webview.image.read 与 remote.execute 记录结果。不能在通用文件读取和每个调用方重复埋点。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-6c3c0ab193fe8cdb00bb9692",
+      "findingIds": [
+        "logging-source-src/logging.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "写入失败保留批次并有界退避，分日期成功不重放；prune 非 ENOENT 与 flush 失败通过独立 onHealth/console 反馈。健康快照和 checkLogFlush 向诊断报告未落盘状态；同失败写入器不递归。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-531f639fbde5bf77fed0689c",
+      "findingIds": [
+        "logging-source-src/notificationRouter.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "server/endpoint 启动异常拒绝到调用方；原生点击 observeOperation，失败返回 HTTP500，成功204；关闭和无效路径为协议拒绝。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-4be6a39bcc19c1f8e4d6d61f",
+      "findingIds": [
+        "logging-source-src/notifications.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "show/clear/focus 已有统一记录；queue catch 释放队列但调用者仍接收原异常；旧通知清理返回汇总由 panel 记录。0.1.209 的地址解析/非模态修复属于另一会话，本次不重复计功。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-631400995616a6f97f9b739e",
+      "findingIds": [
+        "logging-source-src/operations.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "operationLog 的 catch 委派 DiagnosticHealth(operation.sink)，独立失败出口及恢复计数；observeOperation 保留同异常的 failureId，纯日志封装不递归。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-5c9c71c7a7ba2100b60c5ffc",
+      "findingIds": [
+        "logging-source-src/panel/chatViewProvider.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "页面消息到 onPanelMessage/onSidebarMessage 的统一错误出口；发送准备以 stage/syncStage 分段计时，恢复/文件/图片/通知/快照各有边界；Webview 投递由 postWebviewMessage 处理拒绝与恢复。预注册拒绝、队列释放仍 await 原任务，URI/根目录/搜索为可选探测；0.1.209 通知变更不计本次修复。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-c6b12dd85ec5bb378cfd0124",
+      "findingIds": [
+        "logging-source-src/remote/bridgeClient.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "连接、协议解码、执行和回复拒绝已有 operationFailure；未知写操作异常不伪称未执行；可选配置不存在和关闭为预期分支。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-c98556ce8b217d877821a042",
+      "findingIds": [
+        "logging-source-src/remote/executionReceipts.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "transact 前序 catch 仅解除队列，原 run 返回执行入口；持久失败传播 remote.execute，先写 unknown 再执行以防重复操作。无需在每次读写重复记录。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-8f63eff83246e2c24fd7e3eb",
+      "findingIds": [
+        "logging-source-src/remote/sessionAdapter.ts"
+      ],
+      "outcome": "fixed",
+      "reason": "executeOperation 由 remote.execute 统一记录；后台 publish/observe/drain/closed 原全局节流会吞另一阶段首错，本次按阶段及会话分别去重，成功仅关联同会话恢复，保留故障次数并限制摘要内存。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-156908f5ebc2390ec7100faf",
+      "findingIds": [
+        "logging-source-src/remote/timeline.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "imageSources JSON/URI 为格式探测；RemoteImageReader 读取/解码异常传播 remote.execute；缓存命中和分块哈希不产生外部操作，无需重复日志。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-1836422d42448918e25af6a3",
+      "findingIds": [
+        "logging-source-src/remote/transcript.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "三处为内存分页、哈希 update 和游标，规则把 update 识别为操作；真正历史读取由 SessionStore/remote.execute 统一处理，不新增纯计算日志。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-db77a8f1c83d2b6b58f6901a",
+      "findingIds": [
+        "logging-source-src/snapshot.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "walk/read/fingerprint 的跳过/读取错误进入 skipReasons/completeScan/unrestorableChanges；capture 有汇总日志，上层 preparation/final_snapshot 有计时及终态。扫描期间文件消失为生命周期变化，不把跳过当完整成功。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-1942743e1aeb2f8d8b234146",
+      "findingIds": [
+        "logging-source-src/webview/diagnostics.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "选择/渲染/折叠/搜索均为界面状态；实际任务 send -> DiagnosticsPage.message -> jobs。全局 error/rejection 经固定脱敏桥接到 diagnostics.webview，避免记录报告正文。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-273788a1983bde011ea5f985",
+      "findingIds": [
+        "logging-source-src/webview/errors.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "flush 的 send 异常保留有界 pending，并有独立控制台不可用提示；下次宿主消息再传并恢复。窗口 error/rejection 是统一入口；桥本身断开时无法保证宿主落盘，明确保留边界。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-8341a4a7ea1258756f6ec3f3",
+      "findingIds": [
+        "logging-source-src/webview/main.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "事件通过 send 委派面板；全局 error/rejection 由 installWebviewErrors 汇总上报；图片、剪贴板、拖入已有固定操作名。URL/JSON/base64/高亮解析容错与 DOM 构造是纯展示，不逐函数埋点；无效协议回退不代表页面崩溃。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-d0e9fce87e95017cbe990578",
+      "findingIds": [
+        "logging-source-src/workdayCalendar.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "URL/年度解析为校验；updateYear 首来源失败尝试镜像，最终成功/全部失败及缓存写入失败由 refresh 统一日志；无有效日历保持照常推送。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-6a9f0b539d127079035a0531",
+      "findingIds": [
+        "logging-source-src/workspaceActivity.ts"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "begin/finish/save 的拒绝经 Checkpoints.startWorkspaceActivity/finishWorkspaceActivity 传播到 panel 发送准备、消息或 final_snapshot 边界；原子持久化不吞错，finish 写失败会撤回内存 ended 状态。blockReason 自身有 verify 失败/恢复日志。 全部原版本位置及文件哈希见 benchmarks/diagnostic-7ea-source-review.json；静态复核不等于逐分支运行复验。"
+    },
+    {
+      "issueId": "issue-bd240f4b3f87cd385c502323",
+      "findingIds": [
+        "logging-source-unsupported"
+      ],
+      "outcome": "deferred",
+      "reason": "人工核验 finish/result.json、NSLog(result_write_failed)、通知授权/投递/清理回调和点击 URLSession -> NotificationRouter；父接口 show/clear/focus 有统一日志。0.1.209 通知变更由另一会话提交。 Swift 自动覆盖规则仍不支持；本次原生编译和父调用测试不等于真实授权、点击、最小化/多窗口及磁盘故障全场景复验，保留后续验证。"
+    },
+    {
+      "issueId": "issue-fe0f4cb2a208a37d6a457a7e",
+      "findingIds": [
+        "log-812c1fafb3bd"
+      ],
+      "outcome": "external",
+      "reason": "对应三条 rollout commandExecution 输出均为 curl: (28) Operation timed out，分别约 25/20/25 秒、0 bytes received；执行目录不是插件仓库，三条命令指纹不同，不能按原样重试合并。属于外部请求超时，未改插件超时或业务命令。证据：11-10 日志 32312/33013/33486；对应 rollout 行 1245/1456/1531。"
+    },
+    {
+      "issueId": "issue-50b5be981ea5cca8bf50463f",
+      "findingIds": [
+        "log-a9e368e563c8"
+      ],
+      "outcome": "external",
+      "reason": "日志 16915 为 CLI codex.api_request success=false、network_or_service；同 processRunId 后续 17768 起有成功请求，证明该进程仍能请求，但缺少请求级关联，不能断言原失败请求已恢复或区分网络/服务内部根因。没有证据需修改插件业务行为。"
+    },
+    {
+      "issueId": "issue-e84665a789e84b37b7c78ecb",
+      "findingIds": [
+        "log-2503f4c16f07"
+      ],
+      "outcome": "external",
+      "reason": "thread/name/set requestId=8 后端 rpcCode=-32603，实际 durationMs=88；与 session.repair.title 共享 failureId=160b1d5b-e2e6-4bd2-9e67-0e76735b7fb7，为一次失败。session.read/observeOperation 及面板 notice 已保留原会话并显示标题失败；未找到后续同请求标题成功证据。"
+    },
+    {
+      "issueId": "issue-7a2277b91fb44d26a6cc4baf",
+      "findingIds": [
+        "log-26f16528c10e"
+      ],
+      "outcome": "external",
+      "reason": "与 log-2503f4c16f07 是同一次 thread/name/set -32603 的上层记录，耗时88毫秒，不是60秒超时。现有标题修复失败提示和会话保留有效，不重复计故障，不声称后端标题已修复。"
+    },
+    {
+      "issueId": "issue-73cd501883842a04e94628ea",
+      "findingIds": [
+        "log-dc1a85095b75"
+      ],
+      "outcome": "external",
+      "reason": "对应 rollout 行952，commandExecution exitCode=3 的结构化错误 type=authentication、message=need_user_authorization；执行目录不是插件仓库。需要外部服务用户授权，非插件异常；未绕过授权或执行日志中的命令。"
+    },
+    {
+      "issueId": "issue-2a3f6f64bdb8197498b87f36",
+      "findingIds": [
+        "log-569b53dea194"
+      ],
+      "outcome": "external",
+      "reason": "对应 rollout 行1670，act_call_app_tool 返回 code=5002、reason=PIPELINE_NOT_GRANTED_TO_SYSTEM、retryable=false；属于外部流水线访问权限。与 log-76aba7e8e7ac 同 callId，按一次故障理解，未修改插件权限。"
+    },
+    {
+      "issueId": "issue-a9a3430355889889216b5213",
+      "findingIds": [
+        "log-76aba7e8e7ac"
+      ],
+      "outcome": "external",
+      "reason": "与 log-569b53dea194 同 callId=exec-97310319-339d-4770-9dbe-6f46c1b66477 的工具结果，PIPELINE_NOT_GRANTED_TO_SYSTEM。确认外部流水线权限不足，非 Webview 异常；不重复重试或计数。"
+    },
+    {
+      "issueId": "issue-ec1b673de58a7668a509dd56",
+      "findingIds": [
+        "log-2a42d9e76805"
+      ],
+      "outcome": "fixed",
+      "reason": "原 ECANCELED 没有关闭发起方，历史取消意图仍无法补证。本次记录连接生命周期/发起方/关闭码，正常客户端或本地关闭竞争记 cancelled；未知取消码及异常上游关闭仍保留失败/不完整，复用故障标识并只结束路由一次。已用本地故障注入验证落盘与诊断检出，尚非已启用版本真实后端复测。"
+    },
+    {
+      "issueId": "issue-2c97cf495cacc8ab028bee09",
+      "findingIds": [
+        "log-c5af5365e545"
+      ],
+      "outcome": "external",
+      "reason": "对应 rollout 行357 显示 current-context is not set，随后连接本地 Kubernetes API [::1]:8080 被拒绝；执行目录不是插件仓库。属于外部 kubeconfig 环境缺失，与 failure-network_or_service 同一次115毫秒工具失败；未改无关业务项目或用户集群配置。"
+    },
+    {
+      "issueId": "issue-9a6f433f6810ea994ea0dd8c",
+      "findingIds": [
+        "log-0a9e33e5499c"
+      ],
+      "outcome": "not_a_bug",
+      "reason": "源码 prepareCompactionRelay 的启动预算到期有意回退 native，避免可选路由准备阻塞启动。同进程日志35737 config/read、35756 model/list、35761 thread/resume 均成功，后续还有 API 成功；这不是压缩成功证明，也不修改会话模型/推理/权限。保留原生回退策略，实际该次压缩结果仍未知。"
+    },
+    {
+      "issueId": "issue-25bc2dcc656b6eda46876221",
+      "findingIds": [
+        "failure-network_or_service"
+      ],
+      "outcome": "external",
+      "reason": "与 log-c5af5365e545 为同一次 commandExecution exitCode=1、durationMs=115；对应外部工作区 Kubernetes current-context 未配置并连接拒绝。统计不另外计故障，未修改插件连接或绕过环境配置。"
+    }
+  ]
+}

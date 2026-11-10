@@ -49,8 +49,8 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
   let closing: Promise<void> | undefined;
   const close = () => closing ??= Promise.resolve().then(() => rpc.disposeAndWait())
     .catch(error => operationFailure('diagnostics.model.dispose', error, { operationId }));
-  const fail = (message: string) => { if (!settled) { settled = true; failureMessage = message; rejectResult(new Error(message)); lifetime.abort(); void close(); } };
-  const abort = () => fail('诊断已中断');
+  const fail = (message: string, cause?: Error) => { if (!settled) { settled = true; failureMessage = message; rejectResult(cause ?? new Error(message)); lifetime.abort(); void close(); } };
+  const abort = () => fail('诊断已中断', Object.assign(new Error('诊断已中断'), { name: 'AbortError' }));
   const reportProgress = (message: string) => {
     try { progress(message); }
     catch (error) { operationFailure('diagnostics.model.progress', error, { operationId }); fail('诊断进度回调失败，已保留本地检查结果'); }
@@ -80,7 +80,7 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
       settled = true; resolveResult(final || text);
     }
   };
-  const timer = setTimeout(() => { fail(`模型诊断超过 ${Math.max(1, Math.ceil(timeoutMs / 60000))} 分钟，已停止；本地检查结果已保留`); }, timeoutMs);
+  const timer = setTimeout(() => { fail(`模型诊断超过 ${Math.max(1, Math.ceil(timeoutMs / 60000))} 分钟，已停止；本地检查结果已保留`, Object.assign(new Error('模型诊断超时'), { code: 'ETIMEDOUT', errorOrigin: 'timeout' })); }, timeoutMs);
   const heartbeat = setInterval(() => reportProgress(`模型诊断中：${request.model} / ${request.effort}，已运行 ${Math.floor((Date.now() - started) / 1000)} 秒…`), 15000);
   timer.unref(); heartbeat.unref();
   rpc.on('notification', notification); rpc.on('close', closed); rpc.on('request', serverRequest); signal.addEventListener('abort', abort, { once: true });
@@ -104,7 +104,7 @@ export async function analyzeWithModel(rpc: Rpc, output: DiagnosticOutput, reque
     void rpc.request('turn/start', { threadId, input: [{ type: 'text', text: diagnosticModelPrompt(output), text_elements: [] }],
       model: request.model, effort: request.effort, serviceTier: 'default', approvalPolicy: 'never',
       sandboxPolicy: { type: 'readOnly', networkAccess: false }, environments: [], outputSchema: OUTPUT_SCHEMA })
-      .then(turn => { turnId = turn?.turn?.id ?? turnId; }).catch(error => fail(`模型诊断请求失败：${redactDiagnosticText(String((error as Error).message), 200)}`));
+      .then(turn => { turnId = turn?.turn?.id ?? turnId; }).catch(error => fail(`模型诊断请求失败：${redactDiagnosticText(String((error as Error).message), 200)}`, error instanceof Error ? error : undefined));
     const raw = await result;
     const parsed = JSON.parse(raw);
     if (typeof parsed.summary !== 'string' || !Array.isArray(parsed.findings) || parsed.findings.length > 50) throw new Error('模型诊断结果格式无效');
