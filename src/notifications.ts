@@ -134,8 +134,8 @@ export async function focusNotificationWindow(): Promise<void> {
 
 /** 通过独立 macOS 应用发送系统通知；与 webhook 完全独立，不使用 shell 拼接内容。 */
 export async function sendLocalNotification(extensionPath: string, title: string, body: string, url: string,
-    sessionId?: string, createdAt = notificationTime(), clickEndpoint?: string): Promise<void> {
-    await requestLocalNotification(extensionPath, { operation: "show", id: sessionId ? localNotificationId(sessionId) : randomUUID(), title, body, url, sessionId, createdAt, clickEndpoint });
+    sessionId?: string, createdAt = notificationTime(), clickEndpoint?: string): Promise<boolean> {
+    return requestLocalNotification(extensionPath, { operation: "show", id: sessionId ? localNotificationId(sessionId) : randomUUID(), title, body, url, sessionId, createdAt, clickEndpoint });
 }
 
 export async function clearLocalNotification(extensionPath: string, sessionId: string, createdAt = notificationTime()): Promise<void> {
@@ -178,18 +178,18 @@ export async function clearPreviousLocalNotifications(extensionPath: string, ses
     return { completed, failed };
 }
 
-function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<void> {
+function requestLocalNotification(extensionPath: string, payload: Record<string, unknown>): Promise<boolean> {
     const fields = { phase: 'prepare', timeoutMs: 30000 };
     return observeOperation(payload.operation === 'clear' ? 'notification.clear' : 'notification.show',
         () => requestLocalNotificationInner(extensionPath, payload, fields), fields);
 }
-async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>, fields: { phase: string }): Promise<void> {
+async function requestLocalNotificationInner(extensionPath: string, payload: Record<string, unknown>, fields: { phase: string }): Promise<boolean> {
     if (!localNotificationsSupported()) throw new Error("本机通知目前仅支持本机 macOS 的 VS Code；飞书推送不受影响。");
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), "codex-chat-notify-"));
     try {
         await fs.chmod(dir, 0o700);
         const request = path.join(dir, "request.codex-notification");
-        await fs.writeFile(request, JSON.stringify(payload), { mode: 0o600 });
+        await fs.writeFile(request, JSON.stringify({ ...payload, expiresAt: Date.now() + 30000 }), { mode: 0o600 });
         fields.phase = 'launch';
         await exec("/usr/bin/open", ["-g", "-a", path.join(extensionPath, "dist", NOTIFIER_APP), request], { timeout: 10000 });
         // 原生程序只在系统接受通知后写回结果，权限拒绝不能显示“发送成功”。
@@ -204,10 +204,13 @@ async function requestLocalNotificationInner(extensionPath: string, payload: Rec
                 continue;
             }
             fields.phase = 'native_result';
-            const result = JSON.parse(raw) as { ok: boolean; error?: string };
+            const result = JSON.parse(raw) as { ok: boolean; error?: string; code?: string; phase?: string; accepted?: boolean };
             if (!result || typeof result.ok !== 'boolean') throw new SyntaxError("本机通知返回了无效结果。");
-            if (!result.ok) throw new Error(result.error || "系统未接受本机通知。");
-            return;
+            if (['authorization', 'delivered_lookup', 'submit', 'queued', 'validation', 'cleared'].includes(result.phase ?? '')) fields.phase = result.phase!;
+            if (!result.ok) throw Object.assign(new Error(result.error || "系统未接受本机通知。"),
+                { code: ['ETIMEDOUT', 'EACCES', 'EINVAL'].includes(result.code ?? '') ? result.code : undefined });
+            // 兼容旧辅助程序；新程序明确区分系统接受和已被新操作取代。
+            return result.accepted !== false;
         }
         throw Object.assign(new Error("本机通知未及时确认，请在 macOS 系统设置 → 通知中检查 Codex Copilot Notifications 的权限后重试。"), { code: 'ETIMEDOUT' });
     } finally {

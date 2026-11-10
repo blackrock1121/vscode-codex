@@ -13,7 +13,7 @@ test('原生清理只匹配完整会话，保留其他会话、派生分支、�
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const source = await fs.readFile(path.join(__dirname, '../native/Notifications.swift'), 'utf8');
   // 编译生产代码中的纯归属判断，不启动通知程序、不接触用户的通知中心。
-  const policy = source.slice(0, source.indexOf('final class NotificationApp:'))
+  const policy = source.slice(0, source.indexOf('protocol NotificationCenterServing'))
     .replace(/^import (AppKit|CoreServices|UserNotifications)$/gm, '');
   const fixture = `
 let a = "01999999-aaaa-7000-8000-000000000001"

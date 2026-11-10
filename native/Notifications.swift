@@ -7,6 +7,7 @@ struct Notice: Decodable {
     let operation: String?
     let sessionId: String?
     let createdAt: Double?
+    let expiresAt: Double?
     let title: String?
     let body: String?
     let url: String?
@@ -115,15 +116,74 @@ final class NotificationClickClient: NSObject, URLSessionTaskDelegate {
     }
 }
 
-final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+// 隔离系统接口，使超时、迟到回调和后续恢复可用生产队列做故障注入验证。
+protocol NotificationCenterServing {
+    func setDelegate(_ delegate: UNUserNotificationCenterDelegate)
+    func authorize(_ completion: @escaping (Bool, Error?) -> Void)
+    func delivered(_ completion: @escaping ([UNNotification]) -> Void)
+    func removeDelivered(_ ids: [String])
+    func removePending(_ ids: [String])
+    func add(_ request: UNNotificationRequest, completion: @escaping (Error?) -> Void)
+}
+final class SystemNotificationCenter: NotificationCenterServing {
     let center = UNUserNotificationCenter.current()
+    func setDelegate(_ delegate: UNUserNotificationCenterDelegate) { center.delegate = delegate }
+    func authorize(_ completion: @escaping (Bool, Error?) -> Void) {
+        center.requestAuthorization(options: [.alert, .sound], completionHandler: completion)
+    }
+    func delivered(_ completion: @escaping ([UNNotification]) -> Void) { center.getDeliveredNotifications(completionHandler: completion) }
+    func removeDelivered(_ ids: [String]) { center.removeDeliveredNotifications(withIdentifiers: ids) }
+    func removePending(_ ids: [String]) { center.removePendingNotificationRequests(withIdentifiers: ids) }
+    func add(_ request: UNNotificationRequest, completion: @escaping (Error?) -> Void) { center.add(request, withCompletionHandler: completion) }
+}
+
+struct NoticeResult {
+    var error: String? = nil
+    var code: String? = nil
+    var phase: String
+    var accepted = true
+}
+
+// 在原生队列内部结算截止时间，而非只让调用方退出等待。
+// 回调迟到时不能再次出队、清除新通知或继续投递过期内容。
+final class NoticeWork {
+    var phase = "queued"
+    private(set) var finished = false
+    private var timer: DispatchWorkItem?
+    private let completion: (NoticeResult) -> Void
+    init(completion: @escaping (NoticeResult) -> Void) { self.completion = completion }
+    func start(timeout: TimeInterval) {
+        let deadline = DispatchWorkItem { [weak self] in
+            guard let self = self else { return }
+            self.finish(NoticeResult(error: "系统通知接口未及时响应。", code: "ETIMEDOUT", phase: self.phase, accepted: false))
+        }
+        timer = deadline
+        DispatchQueue.main.asyncAfter(deadline: .now() + max(0, timeout), execute: deadline)
+    }
+    func finish(_ result: NoticeResult) {
+        guard !finished else { return }
+        finished = true
+        timer?.cancel()
+        timer = nil
+        completion(result)
+    }
+}
+
+final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    let center: NotificationCenterServing
+    let operationTimeout: TimeInterval
+    init(center: NotificationCenterServing = SystemNotificationCenter(), operationTimeout: TimeInterval = 20) {
+        self.center = center
+        self.operationTimeout = operationTimeout
+        super.init()
+    }
     // 所有队列状态只在主线程访问；同一会话串行，不同会话互不阻塞。
     var queues: [String: [() -> Void]] = [:]
     var latest: [String: Double] = [:]
     let clicks = NotificationClickClient()
 
     func applicationWillFinishLaunching(_ notification: Notification) {
-        center.delegate = self
+        center.setDelegate(self)
     }
 
     // 全部在主线程操作 AppKit。不能把 activate 的返回值当成已进入前台。
@@ -164,33 +224,45 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
         else if target.isActive { finish(true) }
     }
 
-    func enqueue(_ notice: Notice, finish: @escaping (String?) -> Void) {
+    func enqueue(_ notice: Notice, finish: @escaping (NoticeResult) -> Void) {
         let key = notice.sessionId.map { "codex-session:\($0)" } ?? notice.id
         let time = notice.createdAt ?? Date().timeIntervalSince1970 * 1000
+        let expiresAt = notice.expiresAt ?? Date().timeIntervalSince1970 * 1000 + 25000
         latest[key] = max(latest[key] ?? time, time)
-        let current = { self.latest[key] == time }
-        let done: (String?) -> Void = { error in
-            DispatchQueue.main.async {
-                finish(error)
-                self.queues[key]?.removeFirst()
-                if self.queues[key]?.isEmpty == true { self.queues.removeValue(forKey: key) }
-                else { self.queues[key]?.first?() }
+        let work = NoticeWork { result in
+            finish(result)
+            self.queues[key]?.removeFirst()
+            if self.queues[key]?.isEmpty == true { self.queues.removeValue(forKey: key) }
+            else { self.queues[key]?.first?() }
+        }
+        let current = { () -> Bool in
+            guard !work.finished else { return false }
+            guard self.latest[key] == time else {
+                work.finish(NoticeResult(phase: work.phase, accepted: false))
+                return false
             }
+            guard Date().timeIntervalSince1970 * 1000 < expiresAt else {
+                work.finish(NoticeResult(error: "通知请求已过期。", code: "ETIMEDOUT", phase: work.phase, accepted: false))
+                return false
+            }
+            return true
         }
         let action = {
-            guard current() else { done(nil); return }
+            guard current() else { return }
+            work.start(timeout: min(self.operationTimeout, (expiresAt - Date().timeIntervalSince1970 * 1000) / 1000))
             if notice.operation == "clear" {
-                self.replace(notice, key: key, current: current, finish: done)
+                self.replace(notice, key: key, current: current, work: work)
                 return
             }
-            self.center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            work.phase = "authorization"
+            self.center.authorize { granted, error in
                 DispatchQueue.main.async {
-                    guard current() else { done(nil); return }
+                    guard current() else { return }
                     guard granted else {
-                        done(error?.localizedDescription ?? "通知权限未开启，请在 macOS 系统设置 → 通知 → Codex Copilot Notifications 中允许通知。")
+                        work.finish(NoticeResult(error: error?.localizedDescription ?? "通知权限未开启，请在 macOS 系统设置 → 通知 → Codex Copilot Notifications 中允许通知。", code: "EACCES", phase: work.phase, accepted: false))
                         return
                     }
-                    self.replace(notice, key: key, current: current, finish: done)
+                    self.replace(notice, key: key, current: current, work: work)
                 }
             }
         }
@@ -198,10 +270,11 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
         if queues[key]?.count == 1 { action() }
     }
 
-    func replace(_ notice: Notice, key: String, current: @escaping () -> Bool, finish: @escaping (String?) -> Void) {
-        center.getDeliveredNotifications { delivered in
+    func replace(_ notice: Notice, key: String, current: @escaping () -> Bool, work: NoticeWork) {
+        work.phase = "delivered_lookup"
+        center.delivered { delivered in
             DispatchQueue.main.async {
-                guard current() else { finish(nil); return }
+                guard current() else { return }
                 let clearing = notice.operation == "clear"
                 let requestedAt = notice.createdAt ?? Date().timeIntervalSince1970 * 1000
                 if delivered.contains(where: { item in
@@ -209,7 +282,7 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                         url: item.request.content.userInfo["url"] as? String ?? "", sessionId: notice.sessionId,
                         createdAt: item.request.content.userInfo["createdAt"] as? Double,
                         deliveredAt: item.date.timeIntervalSince1970 * 1000, than: requestedAt)
-                }) { finish(nil); return }
+                }) { work.finish(NoticeResult(phase: work.phase, accepted: false)); return }
                 // 同时识别旧版随机 ID 通知；只清理该会话，派生后的不同 ID 不受影响。
                 let old = delivered.filter { notification in
                     let request = notification.request
@@ -217,10 +290,10 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                         url: request.content.userInfo["url"] as? String ?? "", sessionId: notice.sessionId)
                         && (clearing || request.identifier != key)
                 }.map { $0.request.identifier }
-                self.center.removeDeliveredNotifications(withIdentifiers: old)
+                self.center.removeDelivered(old)
                 if clearing {
-                    self.center.removePendingNotificationRequests(withIdentifiers: [key])
-                    finish(nil)
+                    self.center.removePending([key])
+                    work.finish(NoticeResult(phase: "cleared"))
                     return
                 }
                 let content = UNMutableNotificationContent()
@@ -230,9 +303,12 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                 content.userInfo = ["url": notice.url ?? "", "createdAt": requestedAt]
                 if let endpoint = notice.clickEndpoint { content.userInfo["clickEndpoint"] = endpoint }
                 content.threadIdentifier = key
-                // 相同 request identifier 会替换通知中心里已展示的旧通知并再次提醒。
+                work.phase = "submit"
                 self.center.add(UNNotificationRequest(identifier: key, content: content, trigger: nil)) { error in
-                    finish(error?.localizedDescription)
+                    DispatchQueue.main.async {
+                        // add 已交给系统后无法可靠撤回，超时不盲目重发。
+                        work.finish(NoticeResult(error: error?.localizedDescription, phase: "submit", accepted: error == nil))
+                    }
                 }
             }
         }
@@ -243,8 +319,10 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
             let file = URL(fileURLWithPath: filename)
             guard file.lastPathComponent == "request.codex-notification",
                   file.deletingLastPathComponent().lastPathComponent.hasPrefix("codex-chat-notify-") else { continue }
-            let finish: (String?) -> Void = { error in
-                let result: [String: Any] = error.map { ["ok": false, "error": $0] } ?? ["ok": true]
+            let finish: (NoticeResult) -> Void = { response in
+                var result: [String: Any] = ["ok": response.error == nil, "accepted": response.accepted, "phase": response.phase]
+                if let error = response.error { result["error"] = error }
+                if let code = response.code { result["code"] = code }
                 do {
                     let data = try JSONSerialization.data(withJSONObject: result)
                     try data.write(to: file.deletingLastPathComponent().appendingPathComponent("result.json"), options: .atomic)
@@ -259,11 +337,11 @@ final class NotificationApp: NSObject, NSApplicationDelegate, UNUserNotification
                   notice.operation == "clear" ? !(notice.sessionId ?? "").isEmpty : callbackURL(notice.url ?? "") != nil,
                   notice.sessionId == nil || notice.id == "codex-session:\(notice.sessionId!)",
                   notice.operation == "clear" || notice.sessionId == nil || notificationSession(notice.url ?? "") == notice.sessionId else {
-                finish("本机通知内容无效。")
+                finish(NoticeResult(error: "本机通知内容无效。", code: "EINVAL", phase: "validation", accepted: false))
                 continue
             }
             if let endpoint = notice.clickEndpoint, notificationClickEndpoint(endpoint) == nil {
-                finish("本机通知跳转地址无效。")
+                finish(NoticeResult(error: "本机通知跳转地址无效。", code: "EINVAL", phase: "validation", accepted: false))
                 continue
             }
             enqueue(notice, finish: finish)

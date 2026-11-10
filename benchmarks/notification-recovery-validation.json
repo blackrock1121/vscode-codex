@@ -1,0 +1,42 @@
+{
+  "version": "0.1.208",
+  "at": "2026-11-10T03:35:52.496Z",
+  "sourceHashes": {
+    "native/Notifications.swift": "c3fa24be7ce2c242865cc60ad7ddb7476f3a93a57a724a86fd50268bfa9058ed",
+    "src/notifications.ts": "cfd3c0b1d61b37466ab604d3f88e91fb0ef94b48647d2e49378c5296929de0fb",
+    "src/panel/chatViewProvider.ts": "44684f5d834fb35cefc4d4cb9f8fafa01a42a0b5864234178f644cbbcfcf36fb"
+  },
+  "checks": [
+    {
+      "command": "npm run check-types",
+      "result": "passed"
+    },
+    {
+      "command": "npm test",
+      "result": "passed",
+      "total": 981,
+      "passed": 981,
+      "failed": 0,
+      "log": "/tmp/codex-notification-full-final.log"
+    },
+    {
+      "command": "node scripts/verify-notification-recovery.cjs",
+      "result": "passed",
+      "evidence": "benchmarks/notification-recovery.json"
+    }
+  ],
+  "cases": [
+    "原生授权、查询及提交回调丢失后，同会话恢复且其他会话不阻塞",
+    "迟到回调不重复结算、不删除新提醒",
+    "拒绝权限、已过期请求、旧请求被替代如实返回",
+    "排队审批与异步子问题答复后下一提醒重新计时且不重复",
+    "所有渠道失败有可见兜底，成功补发或已失效任务不误报",
+    "原生阶段和ETIMEDOUT落盘后可被诊断检出"
+  ],
+  "limits": [
+    "原生回调丢失测试使用可控系统接口注入，期限缩短为150ms；生产期限20秒",
+    "真实系统测试需安装后单独运行smoke-local-notification.cjs；本记录不冒充系统横幅可见证明",
+    "原生已经提交给系统的通知无法可靠撤回；超时不盲目重试避免重复提醒",
+    "历史154个辅助进程与旧版本清理开销已观察，未据此宣称是本次遗漏的确定原因或强制终止它们"
+  ]
+}

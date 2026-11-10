@@ -210,6 +210,7 @@ interface SessionCtx {
     performanceTraceId?: string;
     lastUserText?: string;
     lastUserActionAt?: number;
+    waitingNotificationTimer?: NodeJS.Timeout;
     initialHistoryCached?: boolean;
     initialHistoryRead?: Promise<void>;
     historyLoadSeq?: number;
@@ -1923,6 +1924,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         ctx.lastUserActionAt = Date.now();
         if (ctx.lastEventAt !== undefined) ctx.lastEventAt = Date.now();
         this.clearSessionNotification(sourceId);
+        this.refreshWaitingNotification(ctx);
         return true;
     }
     private async updateConfig(key: string, value: unknown): Promise<boolean> {
@@ -2610,6 +2612,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             if (!await ctx.proc.answerChildQuestion(requestId, answers, images, answerModes))
                 throw new Error("子 Agent 问题已失效，答案未提交。");
             void this.clearSessionNotification(ctx.sessionId, "question_answer");
+            ctx.lastUserActionAt = Date.now();
+            this.refreshWaitingNotification(ctx);
             return;
         }
         const seq = ctx.questionAnswerSeq = (ctx.questionAnswerSeq ?? 0) + 1;
@@ -2655,6 +2659,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             }
             this.output.appendLine(`[question] handed_off session=${sourceId} elapsedMs=${Math.round(performance.now() - startedAt)}; clearing_notification=true`);
             void this.clearSessionNotification(sourceId, "question_answer");
+            ctx.lastUserActionAt = Date.now();
+            this.refreshWaitingNotification(ctx);
             this.post(ctx, { kind: "question_checkpoint", requestId, checkpointId });
             if (snapshot) this.reportSnapshotSkips(ctx, snapshot);
         } finally {
@@ -3496,7 +3502,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             `${proj ? `\n项目：${proj}` : ""}${q ? `\n提问：${q}` : ""}`;
         this.dispatchNotification(ctx, msg, { isError: e.isError, durationMs: dur, project: proj, question: q });
     }
+    private refreshWaitingNotification(ctx: SessionCtx): void {
+        const pending = ctx.pendingPerm;
+        if (pending?.kind === 'permission_request')
+            this.maybeNotifyWaiting(ctx, { ...pending, input: pending.input ?? {}, suggestions: pending.suggestions ?? [] });
+    }
     private maybeNotifyWaiting(ctx: SessionCtx, req: PermissionRequest): void {
+        if (ctx.waitingNotificationTimer) {
+            clearTimeout(ctx.waitingNotificationTimer);
+            this.notifyTimers.delete(ctx.waitingNotificationTimer);
+            ctx.waitingNotificationTimer = undefined;
+        }
         const cfg = vscode.workspace.getConfiguration("codexChat");
         const url = (cfg.get<string>("notifyWebhook") || "").trim();
         if (!url && !cfg.get<boolean>("notifyLocal"))
@@ -3509,7 +3525,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const epoch = this.notificationVersion(sessionId);
         const timer = setTimeout(() => {
             this.notifyTimers.delete(timer);
-            if (ctx.proc !== proc || ctx.sessionId !== sessionId || this.notificationVersion(sessionId) !== epoch)
+            if (ctx.waitingNotificationTimer === timer) ctx.waitingNotificationTimer = undefined;
+            if (this.disposed || ctx.proc !== proc || ctx.sessionId !== sessionId || this.notificationVersion(sessionId) !== epoch)
                 return;
             const pend = ctx.pendingPerm;
             if (pend?.kind !== "permission_request" || pend.requestId !== req.requestId)
@@ -3537,6 +3554,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 `${proj ? `\n项目：${proj}` : ""}\n${ask}${q ? `\n本轮提问：${q}` : ""}`;
             this.dispatchNotification(ctx, msg, { waiting: true, project: proj, question: q, ask });
         }, delay);
+        ctx.waitingNotificationTimer = timer;
         this.notifyTimers.add(timer);
     }
     async notifyDiagnostic(record: DiagnosticRecord): Promise<NotificationResult> {
@@ -3574,14 +3592,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.output.appendLine(`[notify] dispatch session=${sessionId ?? "none"} event=${event} local=${localEnabled} remote=${!!url && !muted} muted=${muted} epoch=${epoch}`);
         if (muted) this.output.appendLine("[notify] 当前为中国大陆工作日的配置时段，已跳过飞书推送（本机通知不受影响）");
         const sent: string[] = [], failed: string[] = [], pending: Promise<void>[] = [];
+        let deliveryFailed = false;
         const sendRemote = () => {
             const remoteStartedAt = performance.now();
             return this.sendWebhook(url, remoteNotice.text, remoteNotice.extra).then(r => {
                 this.output.appendLine(`[notify] remote_result session=${sessionId ?? "none"} event=${event} ok=${r.ok} status=${r.status ?? "none"} elapsedMs=${Math.round(performance.now() - remoteStartedAt)}`);
                 if (r.ok) sent.push("远程通知已发送");
-                else failed.push(`远程通知发送失败${r.error ? `（${r.error}）` : r.status ? `（HTTP ${r.status}）` : ''}`);
+                else { deliveryFailed = true; failed.push(`远程通知发送失败${r.error ? `（${r.error}）` : r.status ? `（HTTP ${r.status}）` : ''}`); }
             }).catch(error => {
                 this.output.appendLine(`[notify] remote_error session=${sessionId ?? "none"} event=${event} errorType=${error instanceof Error ? error.name : typeof error}`);
+                deliveryFailed = true;
                 failed.push("远程通知发送失败，请检查通知设置和网络");
             });
         };
@@ -3599,7 +3619,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 else failed.push("本机通知未发送，来源窗口或任务状态已变化");
             }).catch(error => {
                 this.output.appendLine(`[notify] local_error session=${sessionId ?? "none"} event=${event} elapsedMs=${Math.round(performance.now() - localStartedAt)} errorType=${error instanceof Error ? error.name : typeof error}`);
-                failed.push("本机通知发送失败，请检查系统通知权限");
+                deliveryFailed = true;
+                failed.push("本机通知发送失败，请检查系统通知权限或插件日志");
                 if (muted && ctx.sessionId === sessionId && this.notificationVersion(sessionId) === epoch) {
                     this.output.appendLine(`[notify] remote_fallback session=${sessionId ?? "none"} event=${event}`);
                     muted = false;
@@ -3607,10 +3628,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             }));
         }
-        return Promise.all(pending).then(() => ({
-            status: failed.length ? 'failed' : sent.length ? 'sent' : 'not_configured',
-            message: [...sent, ...failed, ...(muted ? ['远程通知按全局工作时段规则静默'] : [])].join('；') || '全局通知未开启',
-        }));
+        return Promise.all(pending).then(() => {
+            if (deliveryFailed && !sent.length && !this.disposed && this.notificationVersion(sessionId) === epoch) {
+                // 自动任务不消费返回值；必须留下用户可见的失败提示，而不只是日志。
+                void Promise.resolve(vscode.window.showWarningMessage("Codex 提醒未能送达，请查看任务结果，并在通知设置中检查渠道和权限。"))
+                    .catch(error => operationFailure('notification.fallback', error));
+            }
+            return {
+                status: failed.length ? 'failed' : sent.length ? 'sent' : 'not_configured',
+                message: [...sent, ...failed, ...(muted ? ['远程通知按全局工作时段规则静默'] : [])].join('；') || '全局通知未开启',
+            };
+        });
     }
     private async sendLocalNotice(title: string, body: string, sessionId?: string, diagnosticId?: string): Promise<boolean> {
         const createdAt = notificationTime();
@@ -3622,8 +3650,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const clickEndpoint = await router.endpoint(diagnosticId ? `diagnostic:${diagnosticId}` : sessionId ?? "", () => this.handleNotificationUri(uri, true));
         return queueSessionNotification(sessionId, async () => {
             if (this.notificationVersion(sessionId) !== epoch) return false;
-            await sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt, clickEndpoint);
-            return true;
+            return sendLocalNotification(this.context.extensionUri.fsPath, title, body, uri.toString(), sessionId, createdAt, clickEndpoint);
         });
     }
     private notificationUri(sessionId?: string, diagnosticId?: string): Promise<vscode.Uri> {
@@ -3914,6 +3941,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         if (ctx.pendingPerm?.kind === "permission_request") {
             if (ctx.pendingPerm.toolName === "AskUserQuestion") ctx.pendingQuestionAt = Date.now();
             if (this.alive(ctx)) this.post(ctx, ctx.pendingPerm);
+            this.refreshWaitingNotification(ctx);
         }
     }
     private onSessionId(ctx: SessionCtx, id: string, resumed: boolean): void {

@@ -1,0 +1,23 @@
+{
+  "version": "0.1.208",
+  "baselineCommit": "494a3c8",
+  "at": "2026-11-10T03:34:27.107Z",
+  "scenario": "前一审批结束，下一排队问题转为待处理；执行生产队列推进方法，隔离提醒发送",
+  "before": {
+    "visiblePendingCards": 1,
+    "remindersScheduled": 0
+  },
+  "after": {
+    "visiblePendingCards": 1,
+    "remindersScheduled": 1
+  },
+  "nativeQueue": {
+    "before": "系统回调不返回时，同会话队列无内部截止时间，外层30秒超时不能释放队列",
+    "after": "原生操作20秒期限内结算并释放队列，按请求截止时间拒绝迟到操作，终态只结算一次",
+    "evidence": "test/notification-native-queue.test.cjs 编译生产Swift实现注入授权/查询/提交回调丢失、迟到、拒绝、过期及后续恢复；测试缩短期限为150ms"
+  },
+  "limits": [
+    "这份对比是源码测试，不等同于历史通知故障已恢复或实际横幅可见",
+    "系统已经接受的提交不能可靠撤销，超时后不会盲目重发"
+  ]
+}

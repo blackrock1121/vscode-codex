@@ -1198,3 +1198,55 @@ test('提交后的清理覆盖兼容历史安装路径，仅携带同一个完�
   assert.ok(paths.every(p=>!p.includes('0.1.67')&&!p.includes('0.1.71')));
   assert.equal(new Set(nativeCalls.map(x=>x.data.createdAt)).size,1);
 });
+
+test('排队审批进入前台后重新计时提醒，忽略已处理请求并遵守清理后的代次', async t => {
+  config = { notifyLocal: true, notifyMinDurationSec: 60 };
+  const p = provider(), sent = [];
+  const request = id => ({kind:'permission_request',requestId:id,toolName:'Bash',input:{},suggestions:[]});
+  const first=request('one'), second=request('two'), third=request('three');
+  const ctx={sessionId:'queue',proc:{},pendingPerm:first,pendingPerms:new Map([['one',first],['two',second],['three',third]]),lastUserActionAt:Date.now()-90000};
+  p.dispatchNotification=(...args)=>sent.push(args);
+  t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+  p.resolvePendingPermission(ctx,'one');
+  ctx.lastUserActionAt=Date.now();
+  p.notificationEpochs=new Map([['queue',1]]);
+  p.refreshWaitingNotification(ctx);
+  assert.equal(p.notifyTimers.size,1,'提交后重排应替换旧提醒，不能重复发送');
+  await flush();
+  t.mock.timers.tick(59999);assert.equal(sent.length,0);
+  t.mock.timers.tick(1);assert.equal(sent.length,1);assert.match(sent[0][1],/待授权/);
+  p.resolvePendingPermission(ctx,'two');p.resolvePendingPermission(ctx,'three');await flush();
+  t.mock.timers.tick(60000);assert.equal(sent.length,1,'已处理的后续卡片不发送过期提醒');
+  assert.equal(p.notifyTimers.size,0);
+});
+
+test('所有通知通道失败时显示本机兜底提示；成功补发、过期和关闭会话不误报警', async () => {
+  const p=provider();config={notifyLocal:true};warnings=[];
+  p.sendLocalNotice=async()=>{throw Error('失败');};
+  assert.equal((await p.dispatchNotification({sessionId:'s'},'私密内容',{})).status,'failed');
+  assert.equal(warnings.length,1);assert.doesNotMatch(warnings[0],/私密内容/);
+  warnings=[];p.sendLocalNotice=async()=>false;
+  await p.dispatchNotification({sessionId:'s'},'内容',{});assert.equal(warnings.length,0);
+  p.sendLocalNotice=async()=>{p.notificationEpochs=new Map([['s',1]]);throw Error('失败');};
+  await p.dispatchNotification({sessionId:'s'},'内容',{});assert.equal(warnings.length,0);
+  config={notifyLocal:true,notifyWebhook:'https://open.feishu.cn/open-apis/bot/v2/hook/test',notifyFeishuQuietHours:{enabled:true,start:'08:30',end:'18:00'}};
+  p.workdayCalendar={refresh:async()=>{},shouldMute:()=>true};
+  p.sendLocalNotice=async()=>{throw Error('失败');};p.sendWebhook=async()=>({ok:true});
+  await p.dispatchNotification({sessionId:'s'},'内容',{});assert.equal(warnings.length,0);
+});
+
+
+test('子问题答复同步推进队列后，异步清理不丢掉下一问题的提醒',async t=>{
+ config={notifyLocal:true,notifyMinDurationSec:60};const p=provider(),sent=[];
+ const first={kind:'permission_request',requestId:'child',toolName:'AskUserQuestion',input:{},suggestions:[]};
+ const next={...first,requestId:'next'};
+ const ctx={sessionId:'child-queue',pendingPerm:first,pendingPerms:new Map([['child',first],['next',next]]),lastUserActionAt:Date.now()-90000};
+ ctx.proc={isChildQuestion:()=>true,answerChildQuestion:async()=>{p.resolvePendingPermission(ctx,'child');return true;}};
+ p.clearSessionNotification=async()=>{p.notificationEpochs=new Map([['child-queue',1]]);};
+ p.dispatchNotification=(...args)=>sent.push(args);
+ t.mock.timers.enable({apis:['setTimeout','Date'],now:Date.now()});
+ await p.submitQuestionAnswer(ctx,'child',{});
+ assert.equal(p.notifyTimers.size,1);
+ t.mock.timers.tick(59999);assert.equal(sent.length,0);
+ t.mock.timers.tick(1);assert.equal(sent.length,1);assert.match(sent[0][1],/待回答/);
+});

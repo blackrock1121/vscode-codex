@@ -12,7 +12,7 @@ try {Module._load=function(name,...args){
  if(name==='node:child_process')return {...child,execFile(file,args,options,callback){
    if(file!=='/usr/bin/open')return child.execFile(file,args,options,callback);
    lastDirectory=path.dirname(args.at(-1));
-   const result=nativeMode==='denied'?{ok:false,error:'PRIVATE_BODY'}:nativeMode==='invalid'?{}:{ok:true};
+   const result=nativeMode==='native_timeout'?{ok:false,error:'PRIVATE_BODY',code:'ETIMEDOUT',phase:'delivered_lookup'}:nativeMode==='superseded'?{ok:true,accepted:false,phase:'queued'}:nativeMode==='denied'?{ok:false,error:'PRIVATE_BODY'}:nativeMode==='invalid'?{}:{ok:true};
    const write=nativeMode==='timeout'?Promise.resolve():fsp.writeFile(path.join(lastDirectory,'result.json'),JSON.stringify(result));
    write.then(()=>callback(null,'',''),callback);
  }};
@@ -134,4 +134,16 @@ test('dd0 宿主处理峰值按轮次重置，保留连接峰值且上一轮终�
  const accumulator=new api.PerformanceAccumulator();summaries.forEach(r=>accumulator.add(r));
  assert.equal(accumulator.result().findings.find(r=>r.id==='host').occurrences,1);
  t.mock.restoreAll();assert.equal(f.rows.filter(r=>r.operation==='rpc.process'&&r.stage==='failed').length,0);
+});
+
+
+test('通知原生阶段超时落盘可检出；被新操作取代不会伪报已发送', async t=>{
+ const f=fixture(t);t.after(()=>{nativeMode='success';});
+ nativeMode='native_timeout';
+ await assert.rejects(api.sendLocalNotification('/fixture','','','vscode://fixture'),{code:'ETIMEDOUT'});
+ assert.ok(f.rows.some(r=>r.operation==='notification.show'&&r.stage==='failed'&&r.phase==='delivered_lookup'&&r.failureCategory==='timeout'));
+ nativeMode='superseded';assert.equal(await api.sendLocalNotification('/fixture','','','vscode://fixture'),false);
+ nativeMode='success';assert.equal(await api.sendLocalNotification('/fixture','','','vscode://fixture'),true);
+ assert.ok((await f.scan()).findings.some(r=>r.evidence.includes('delivered_lookup')));
+ assert.doesNotMatch(JSON.stringify(f.rows),/PRIVATE_BODY/);
 });
